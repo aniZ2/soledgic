@@ -1,0 +1,37 @@
+{
+  "name": "soledgic",
+  "version": "1.0.0",
+  "description": "Soledgic - Double-Entry Accounting for Creator Platforms",
+  "private": true,
+  "scripts": {
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "supabase:migrate": "supabase db push",
+    "supabase:seed": "supabase db seed",
+    "functions:serve": "supabase functions serve",
+    "functions:deploy": "supabase functions deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:stress": "vitest run --config vitest.stress.config.ts",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": [
+    "accounting",
+    "ledger",
+    "double-entry",
+    "creator-economy",
+    "revenue-split",
+    "supabase"
+  ],
+  "author": "Soledgic",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@vitest/coverage-v8": "^1.6.0",
+    "dotenv": "^17.2.3",
+    "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

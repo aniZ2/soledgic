@@ -1,0 +1,520 @@
+-- Soledgic: Atomic Integrity & Accounting Logic Fixes
+-- Addresses: C1 (Missing Validation), C2 (Non-Atomic Inserts), H1 (Balance Inversion)
+-- Date: December 22, 2025
+
+-- ============================================================================
+-- 1. ATOMIC RECORD SALE FUNCTION
+-- ============================================================================
+-- Moves core transaction logic into single PostgreSQL function
+-- Ensures ACID compliance - if server crashes mid-request, entire transaction rolls back
+
+CREATE OR REPLACE FUNCTION public.record_sale_atomic(
+  p_ledger_id UUID,
+  p_reference_id TEXT,
+  p_creator_id TEXT,
+  p_gross_amount BIGINT,        -- In cents
+  p_creator_amount BIGINT,      -- In cents
+  p_platform_amount BIGINT,     -- In cents
+  p_processing_fee BIGINT DEFAULT 0,
+  p_product_id TEXT DEFAULT NULL,
+  p_product_name TEXT DEFAULT NULL,
+  p_metadata JSONB DEFAULT '{}'
+) 
+RETURNS TABLE (
+  transaction_id UUID,
+  creator_account_id UUID,
+  creator_balance NUMERIC(14,2)
+)
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_tx_id UUID;
+  v_creator_account_id UUID;
+  v_platform_account_id UUID;
+  v_cash_account_id UUID;
+  v_fee_account_id UUID;
+  v_creator_balance NUMERIC(14,2);
+  v_total_distributed BIGINT;
+BEGIN
+  -- ========================================================================
+  -- STEP 0: VALIDATION
+  -- ========================================================================
+  
+  -- Validate amounts
+  IF p_gross_amount <= 0 THEN
+    RAISE EXCEPTION 'Gross amount must be positive: %', p_gross_amount;
+  END IF;
+  
+  IF p_creator_amount < 0 OR p_platform_amount < 0 OR p_processing_fee < 0 THEN
+    RAISE EXCEPTION 'Amounts cannot be negative';
+  END IF;
+  
+  -- CRITICAL: Double-entry validation BEFORE any inserts
+  v_total_distributed := p_creator_amount + p_platform_amount + p_processing_fee;
+  IF v_total_distributed != p_gross_amount THEN
+    RAISE EXCEPTION 'Double-entry sum mismatch: creator(%) + platform(%) + fee(%) = % != gross(%)',
+      p_creator_amount, p_platform_amount, p_processing_fee, v_total_distributed, p_gross_amount;
+  END IF;
+  
+  -- ========================================================================
+  -- STEP 1: GET OR CREATE ACCOUNTS
+  -- ========================================================================
+  
+  -- Get platform accounts (must exist)
+  SELECT id INTO v_platform_account_id
+  FROM public.accounts
+  WHERE ledger_id = p_ledger_id AND account_type = 'platform_revenue'
+  LIMIT 1;
+  
+  SELECT id INTO v_cash_account_id
+  FROM public.accounts
+  WHERE ledger_id = p_ledger_id AND account_type = 'cash'
+  LIMIT 1;
+  
+  IF v_platform_account_id IS NULL OR v_cash_account_id IS NULL THEN
+    RAISE EXCEPTION 'Platform accounts not initialized for ledger %', p_ledger_id;
+  END IF;
+  
+  -- Get or create creator account
+  SELECT id INTO v_creator_account_id
+  FROM public.accounts
+  WHERE ledger_id = p_ledger_id 
+    AND account_type = 'creator_balance' 
+    AND entity_id = p_creator_id;
+  
+  IF v_creator_account_id IS NULL THEN
+    INSERT INTO public.accounts (
+      ledger_id, account_type, entity_id, entity_type, name
+    ) VALUES (
+      p_ledger_id, 'creator_balance', p_creator_id, 'creator', 'Creator ' || p_creator_id
+    )
+    RETURNING id INTO v_creator_account_id;
+  END IF;
+  
+  -- Get or create fee account if needed
+  IF p_processing_fee > 0 THEN
+    SELECT id INTO v_fee_account_id
+    FROM public.accounts
+    WHERE ledger_id = p_ledger_id AND account_type = 'processing_fees'
+    LIMIT 1;
+    
+    IF v_fee_account_id IS NULL THEN
+      INSERT INTO public.accounts (
+        ledger_id, account_type, entity_type, name
+      ) VALUES (
+        p_ledger_id, 'processing_fees', 'platform', 'Processing Fees'
+      )
+      RETURNING id INTO v_fee_account_id;
+    END IF;
+  END IF;
+  
+  -- ========================================================================
+  -- STEP 2: CREATE TRANSACTION (with idempotency via unique constraint)
+  -- ========================================================================
+  
+  INSERT INTO public.transactions (
+    ledger_id,
+    transaction_type,
+    reference_id,
+    reference_type,
+    description,
+    amount,
+    currency,
+    status,
+    metadata
+  ) VALUES (
+    p_ledger_id,
+    'sale',
+    p_reference_id,
+    'external',
+    COALESCE(p_product_name, 'Sale for creator ' || p_creator_id),
+    p_gross_amount / 100.0,  -- Convert cents to dollars
+    'USD',
+    'completed',
+    jsonb_build_object(
+      'creator_id', p_creator_id,
+      'product_id', p_product_id,
+      'amounts_cents', jsonb_build_object(
+        'gross', p_gross_amount,
+        'creator', p_creator_amount,
+        'platform', p_platform_amount,
+        'fee', p_processing_fee
+      )
+    ) || p_metadata
+  )
+  RETURNING id INTO v_tx_id;
+  
+  -- ========================================================================
+  -- STEP 3: CREATE DOUBLE-ENTRY RECORDS
+  -- ========================================================================
+  -- Accounting rules:
+  --   Assets (cash): Debit increases, Credit decreases
+  --   Liabilities (creator_balance): Credit increases, Debit decreases
+  --   Revenue (platform_revenue): Credit increases, Debit decreases
+  --   Expenses (processing_fees): Debit increases, Credit decreases
+  
+  -- Cash increases (debit) - money coming in
+  INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+  VALUES (v_tx_id, v_cash_account_id, 'debit', p_gross_amount / 100.0);
+  
+  -- Creator balance increases (credit) - we owe them money
+  INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+  VALUES (v_tx_id, v_creator_account_id, 'credit', p_creator_amount / 100.0);
+  
+  -- Platform revenue increases (credit)
+  INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+  VALUES (v_tx_id, v_platform_account_id, 'credit', p_platform_amount / 100.0);
+  
+  -- Processing fees (debit expense) if applicable
+  IF p_processing_fee > 0 AND v_fee_account_id IS NOT NULL THEN
+    INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+    VALUES (v_tx_id, v_fee_account_id, 'debit', p_processing_fee / 100.0);
+  END IF;
+  
+  -- ========================================================================
+  -- STEP 4: GET UPDATED CREATOR BALANCE
+  -- ========================================================================
+  
+  SELECT balance INTO v_creator_balance
+  FROM public.accounts
+  WHERE id = v_creator_account_id;
+  
+  -- ========================================================================
+  -- STEP 5: FINAL VALIDATION (belt and suspenders)
+  -- ========================================================================
+  
+  -- Verify entries balance for this transaction
+  PERFORM 1 FROM (
+    SELECT 
+      SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END) as debits,
+      SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END) as credits
+    FROM public.entries
+    WHERE transaction_id = v_tx_id
+  ) AS totals
+  WHERE debits != credits;
+  
+  IF FOUND THEN
+    RAISE EXCEPTION 'CRITICAL: Double-entry validation failed for transaction %', v_tx_id;
+  END IF;
+  
+  -- Return results
+  RETURN QUERY SELECT v_tx_id, v_creator_account_id, v_creator_balance;
+  
+EXCEPTION
+  WHEN unique_violation THEN
+    -- Idempotent: return existing transaction
+    SELECT t.id, 
+           (SELECT a.id FROM public.accounts a 
+            WHERE a.ledger_id = p_ledger_id 
+            AND a.account_type = 'creator_balance' 
+            AND a.entity_id = p_creator_id),
+           (SELECT a.balance FROM public.accounts a 
+            WHERE a.ledger_id = p_ledger_id 
+            AND a.account_type = 'creator_balance' 
+            AND a.entity_id = p_creator_id)
+    INTO v_tx_id, v_creator_account_id, v_creator_balance
+    FROM public.transactions t
+    WHERE t.ledger_id = p_ledger_id AND t.reference_id = p_reference_id;
+    
+    RETURN QUERY SELECT v_tx_id, v_creator_account_id, v_creator_balance;
+END;
+$$;
+
+COMMENT ON FUNCTION public.record_sale_atomic IS 
+  'ACID-compliant sale recording. All entries created atomically with validation.';
+
+
+-- ============================================================================
+-- 2. CORRECTED BALANCE TRIGGER (H1 Fix)
+-- ============================================================================
+-- Proper accounting: Liabilities INCREASE with credits, Assets INCREASE with debits
+
+CREATE OR REPLACE FUNCTION public.update_account_balance()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  v_account_type TEXT;
+BEGIN
+  -- Get the account type to determine debit/credit behavior
+  SELECT account_type INTO v_account_type
+  FROM public.accounts
+  WHERE id = NEW.account_id;
+  
+  -- Apply proper accounting rules based on account type
+  -- Assets & Expenses: Debit increases, Credit decreases
+  -- Liabilities & Revenue: Credit increases, Debit decreases
+  
+  IF v_account_type IN ('cash', 'processing_fees', 'refund_reserve') THEN
+    -- Asset/Expense accounts
+    IF NEW.entry_type = 'debit' THEN
+      UPDATE public.accounts 
+      SET balance = balance + NEW.amount, updated_at = NOW()
+      WHERE id = NEW.account_id;
+    ELSE  -- credit
+      UPDATE public.accounts 
+      SET balance = balance - NEW.amount, updated_at = NOW()
+      WHERE id = NEW.account_id;
+    END IF;
+  ELSE
+    -- Liability/Revenue accounts (creator_balance, creator_pool, platform_revenue, tax_reserve)
+    IF NEW.entry_type = 'credit' THEN
+      UPDATE public.accounts 
+      SET balance = balance + NEW.amount, updated_at = NOW()
+      WHERE id = NEW.account_id;
+    ELSE  -- debit
+      UPDATE public.accounts 
+      SET balance = balance - NEW.amount, updated_at = NOW()
+      WHERE id = NEW.account_id;
+    END IF;
+  END IF;
+  
+  -- Store running balance for audit trail
+  NEW.running_balance := (SELECT balance FROM public.accounts WHERE id = NEW.account_id);
+  
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.update_account_balance IS 
+  'Proper double-entry: Assets/Expenses increase with debits, Liabilities/Revenue increase with credits.';
+
+-- Recreate trigger
+DROP TRIGGER IF EXISTS trigger_update_balance ON entries;
+CREATE TRIGGER trigger_update_balance
+  BEFORE INSERT ON entries
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_account_balance();
+
+
+-- ============================================================================
+-- 3. DOUBLE-ENTRY ENFORCEMENT TRIGGER (C1 Fix)
+-- ============================================================================
+-- Validates that all transactions have balanced entries at commit time
+
+CREATE OR REPLACE FUNCTION public.validate_double_entry_at_commit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  v_debits NUMERIC(14,2);
+  v_credits NUMERIC(14,2);
+BEGIN
+  -- Calculate totals for this transaction
+  SELECT 
+    COALESCE(SUM(amount) FILTER (WHERE entry_type = 'debit'), 0),
+    COALESCE(SUM(amount) FILTER (WHERE entry_type = 'credit'), 0)
+  INTO v_debits, v_credits
+  FROM public.entries
+  WHERE transaction_id = NEW.transaction_id;
+  
+  -- Allow small rounding differences (up to 1 cent)
+  IF ABS(v_debits - v_credits) > 0.01 THEN
+    RAISE EXCEPTION 'Double-entry violation for transaction %: debits (%) != credits (%)', 
+      NEW.transaction_id, v_debits, v_credits;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.validate_double_entry_at_commit IS 
+  'Enforces debits = credits for every transaction.';
+
+-- Add as CONSTRAINT TRIGGER (deferred to end of transaction)
+DROP TRIGGER IF EXISTS enforce_double_entry ON entries;
+CREATE CONSTRAINT TRIGGER enforce_double_entry
+  AFTER INSERT ON entries
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW 
+  EXECUTE FUNCTION public.validate_double_entry_at_commit();
+
+
+-- ============================================================================
+-- 4. HELPER: SAFE SPLIT CALCULATION (M1 Rounding Fix)
+-- ============================================================================
+-- Ensures no rounding loss by giving remainder to platform
+
+CREATE OR REPLACE FUNCTION public.calculate_sale_split(
+  p_gross_cents BIGINT,
+  p_creator_percent NUMERIC,
+  p_processing_fee_cents BIGINT DEFAULT 0
+)
+RETURNS TABLE (
+  creator_cents BIGINT,
+  platform_cents BIGINT,
+  fee_cents BIGINT
+)
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_net_cents BIGINT;
+  v_creator_cents BIGINT;
+  v_platform_cents BIGINT;
+BEGIN
+  -- Validate inputs
+  IF p_creator_percent < 0 OR p_creator_percent > 100 THEN
+    RAISE EXCEPTION 'creator_percent must be 0-100, got %', p_creator_percent;
+  END IF;
+  
+  IF p_processing_fee_cents < 0 THEN
+    RAISE EXCEPTION 'processing_fee cannot be negative';
+  END IF;
+  
+  IF p_processing_fee_cents > p_gross_cents THEN
+    RAISE EXCEPTION 'processing_fee (%) cannot exceed gross (%)', p_processing_fee_cents, p_gross_cents;
+  END IF;
+  
+  -- Calculate net after fees
+  v_net_cents := p_gross_cents - p_processing_fee_cents;
+  
+  -- Creator gets their percentage (floor to avoid overpayment)
+  v_creator_cents := FLOOR(v_net_cents * p_creator_percent / 100);
+  
+  -- Platform gets remainder (ensures total = gross)
+  v_platform_cents := v_net_cents - v_creator_cents;
+  
+  RETURN QUERY SELECT v_creator_cents, v_platform_cents, p_processing_fee_cents;
+END;
+$$;
+
+COMMENT ON FUNCTION public.calculate_sale_split IS 
+  'Calculates split in cents with platform getting remainder. Prevents rounding loss.';
+
+
+-- ============================================================================
+-- 5. RECORD REFUND ATOMIC (for completeness)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.record_refund_atomic(
+  p_ledger_id UUID,
+  p_reference_id TEXT,
+  p_original_tx_id UUID,
+  p_refund_amount BIGINT,  -- In cents
+  p_reason TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_tx_id UUID;
+  v_original_tx RECORD;
+  v_creator_account_id UUID;
+  v_platform_account_id UUID;
+  v_cash_account_id UUID;
+  v_creator_refund BIGINT;
+  v_platform_refund BIGINT;
+BEGIN
+  -- Get original transaction
+  SELECT * INTO v_original_tx
+  FROM public.transactions
+  WHERE id = p_original_tx_id AND ledger_id = p_ledger_id;
+  
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Original transaction not found: %', p_original_tx_id;
+  END IF;
+  
+  IF v_original_tx.status = 'reversed' THEN
+    RAISE EXCEPTION 'Transaction already reversed: %', p_original_tx_id;
+  END IF;
+  
+  -- Calculate proportional refund
+  -- If refunding 50% of gross, refund 50% of each split
+  v_creator_refund := FLOOR(p_refund_amount * 
+    (v_original_tx.metadata->'amounts_cents'->>'creator')::BIGINT / 
+    (v_original_tx.metadata->'amounts_cents'->>'gross')::BIGINT);
+  v_platform_refund := p_refund_amount - v_creator_refund;
+  
+  -- Get accounts
+  SELECT id INTO v_creator_account_id FROM public.accounts
+  WHERE ledger_id = p_ledger_id AND account_type = 'creator_balance'
+    AND entity_id = v_original_tx.metadata->>'creator_id';
+    
+  SELECT id INTO v_platform_account_id FROM public.accounts
+  WHERE ledger_id = p_ledger_id AND account_type = 'platform_revenue';
+  
+  SELECT id INTO v_cash_account_id FROM public.accounts
+  WHERE ledger_id = p_ledger_id AND account_type = 'cash';
+  
+  -- Create refund transaction
+  INSERT INTO public.transactions (
+    ledger_id, transaction_type, reference_id, reference_type,
+    description, amount, status, reverses, metadata
+  ) VALUES (
+    p_ledger_id, 'refund', p_reference_id, 'external',
+    COALESCE(p_reason, 'Refund for ' || p_original_tx_id),
+    p_refund_amount / 100.0, 'completed', p_original_tx_id,
+    jsonb_build_object('original_tx', p_original_tx_id, 'reason', p_reason)
+  )
+  RETURNING id INTO v_tx_id;
+  
+  -- Reverse entries (opposite of sale)
+  -- Cash decreases (credit)
+  INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+  VALUES (v_tx_id, v_cash_account_id, 'credit', p_refund_amount / 100.0);
+  
+  -- Creator balance decreases (debit)
+  INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+  VALUES (v_tx_id, v_creator_account_id, 'debit', v_creator_refund / 100.0);
+  
+  -- Platform revenue decreases (debit)
+  INSERT INTO public.entries (transaction_id, account_id, entry_type, amount)
+  VALUES (v_tx_id, v_platform_account_id, 'debit', v_platform_refund / 100.0);
+  
+  -- Mark original as reversed
+  UPDATE public.transactions
+  SET reversed_by = v_tx_id, status = 'reversed'
+  WHERE id = p_original_tx_id;
+  
+  RETURN v_tx_id;
+END;
+$$;
+
+COMMENT ON FUNCTION public.record_refund_atomic IS 
+  'ACID-compliant refund recording with proportional split reversal.';
+
+
+-- ============================================================================
+-- 6. ORPHAN TRANSACTION DETECTION VIEW
+-- ============================================================================
+-- For monitoring: find transactions without balanced entries
+
+CREATE OR REPLACE VIEW public.orphaned_transactions AS
+SELECT 
+  t.id,
+  t.ledger_id,
+  t.reference_id,
+  t.amount,
+  t.created_at,
+  COALESCE(e.entry_count, 0) as entry_count,
+  COALESCE(e.total_debits, 0) as total_debits,
+  COALESCE(e.total_credits, 0) as total_credits,
+  CASE 
+    WHEN e.entry_count IS NULL OR e.entry_count = 0 THEN 'NO_ENTRIES'
+    WHEN e.total_debits != e.total_credits THEN 'UNBALANCED'
+    ELSE 'OK'
+  END as status
+FROM public.transactions t
+LEFT JOIN (
+  SELECT 
+    transaction_id,
+    COUNT(*) as entry_count,
+    SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END) as total_debits,
+    SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END) as total_credits
+  FROM public.entries
+  GROUP BY transaction_id
+) e ON e.transaction_id = t.id
+WHERE e.entry_count IS NULL 
+   OR e.entry_count = 0 
+   OR ABS(e.total_debits - e.total_credits) > 0.01;
+
+COMMENT ON VIEW public.orphaned_transactions IS 
+  'Monitoring view for transactions with missing or unbalanced entries.';

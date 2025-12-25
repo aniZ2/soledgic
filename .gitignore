@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Supabase
+.supabase/
+
+# Environment files (SECURITY: never commit secrets)
+.env
+.env.local
+.env.*.local
+.env.test
+.env.production
+*.env
+
+# Test data with secrets
+test-data/api-keys.env
+tests/.env.test
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build
+dist/
+build/
+
+# Credentials & Secrets (SECURITY: belt and suspenders)
+*.pem
+*.key
+*.p12
+credentials.json
+service-account.json

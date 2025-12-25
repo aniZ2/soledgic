@@ -1,0 +1,16 @@
+-- Soledgic: Cleanup remaining unbalanced test transaction
+-- Transaction pi_xxx has 6 entries with $2.34 imbalance (33.47 debits vs 31.13 credits)
+-- This was a test transaction from before the accounting fix
+
+-- Step 1: Delete related held_funds records
+DELETE FROM held_funds 
+WHERE transaction_id = '22100d07-eeaf-4634-8ead-192996219e4c';
+
+-- Step 2: Delete the unbalanced entries
+DELETE FROM entries 
+WHERE transaction_id = '22100d07-eeaf-4634-8ead-192996219e4c';
+
+-- Step 3: Delete the orphaned transaction
+DELETE FROM transactions 
+WHERE id = '22100d07-eeaf-4634-8ead-192996219e4c'
+  AND ledger_id = '0a885204-e07a-48c1-97e9-495ac96a2581';

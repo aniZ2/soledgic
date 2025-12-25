@@ -1,0 +1,227 @@
+// Secure API handler wrapper for Next.js routes
+// Includes: CSRF protection, rate limiting, error sanitization, audit logging
+
+import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { validateCsrf } from './csrf'
+import { checkRateLimit, getRateLimitKey, getRouteLimit } from './rate-limit'
+
+export interface ApiContext {
+  user: { id: string; email?: string } | null
+  requestId: string
+  startTime: number
+}
+
+export interface ApiHandlerOptions {
+  // Require authentication (default: true)
+  requireAuth?: boolean
+  // Enable rate limiting (default: true)
+  rateLimit?: boolean
+  // Enable CSRF protection (default: true for mutations)
+  csrfProtection?: boolean
+  // Max request body size in bytes (default: 1MB)
+  maxBodySize?: number
+  // Route path for rate limiting
+  routePath?: string
+}
+
+type ApiHandler = (
+  request: Request,
+  context: ApiContext
+) => Promise<NextResponse>
+
+/**
+ * Generate a unique request ID
+ */
+function generateRequestId(): string {
+  return `req_${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`
+}
+
+/**
+ * Get client IP from request headers
+ */
+function getClientIp(request: Request): string {
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  const ip = forwardedFor?.split(',')[0].trim() || 
+             request.headers.get('x-real-ip') ||
+             'unknown'
+  return ip
+}
+
+/**
+ * Sanitize error messages for production
+ */
+function sanitizeError(message: string): string {
+  if (process.env.NODE_ENV !== 'production') {
+    return message
+  }
+  
+  // Remove potentially sensitive patterns
+  return message
+    .replace(/\/[^\s]+/g, '[path]')           // File paths
+    .replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, '[ip]')  // IP addresses
+    .replace(/eyJ[A-Za-z0-9_-]+/g, '[token]') // JWT tokens
+    .replace(/sk_[a-zA-Z0-9]+/g, '[key]')     // API keys
+    .substring(0, 200)
+}
+
+/**
+ * Create a secure API handler with all protections enabled
+ */
+export function createApiHandler(
+  handler: ApiHandler,
+  options: ApiHandlerOptions = {}
+): (request: Request) => Promise<NextResponse> {
+  const {
+    requireAuth = true,
+    rateLimit = true,
+    csrfProtection = true,
+    maxBodySize = 1024 * 1024, // 1MB default
+    routePath = '/api'
+  } = options
+  
+  return async (request: Request): Promise<NextResponse> => {
+    const startTime = Date.now()
+    const requestId = generateRequestId()
+    const clientIp = getClientIp(request)
+    
+    try {
+      // 1. CSRF Protection (for mutations)
+      if (csrfProtection) {
+        const { valid, error } = await validateCsrf(request)
+        if (!valid) {
+          console.warn(`[${requestId}] CSRF validation failed: ${error}`)
+          return NextResponse.json(
+            { error: 'Access denied', request_id: requestId },
+            { status: 403 }
+          )
+        }
+      }
+      
+      // 2. Authentication
+      let user: { id: string; email?: string } | null = null
+      
+      if (requireAuth) {
+        const supabase = await createClient()
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        
+        if (!authUser) {
+          return NextResponse.json(
+            { error: 'Unauthorized', request_id: requestId },
+            { status: 401 }
+          )
+        }
+        
+        user = { id: authUser.id, email: authUser.email }
+      }
+      
+      // 3. Rate Limiting
+      if (rateLimit) {
+        const rateLimitKey = getRateLimitKey(request, user?.id)
+        const config = getRouteLimit(routePath)
+        const result = checkRateLimit(`${routePath}:${rateLimitKey}`, config)
+        
+        if (!result.allowed) {
+          const retryAfter = Math.ceil((result.resetAt - Date.now()) / 1000)
+          return NextResponse.json(
+            { 
+              error: 'Rate limit exceeded. Please try again later.',
+              retry_after: retryAfter,
+              request_id: requestId 
+            },
+            { 
+              status: 429,
+              headers: {
+                'Retry-After': String(retryAfter),
+                'X-RateLimit-Remaining': '0',
+                'X-Request-Id': requestId
+              }
+            }
+          )
+        }
+      }
+      
+      // 4. Content Length Check
+      const contentLength = parseInt(request.headers.get('content-length') || '0')
+      if (contentLength > maxBodySize) {
+        return NextResponse.json(
+          { error: 'Request too large', request_id: requestId },
+          { status: 413 }
+        )
+      }
+      
+      // 5. Execute Handler
+      const response = await handler(request, { user, requestId, startTime })
+      
+      // 6. Add security headers to response
+      const headers = new Headers(response.headers)
+      headers.set('X-Request-Id', requestId)
+      headers.set('X-Content-Type-Options', 'nosniff')
+      headers.set('X-Frame-Options', 'DENY')
+      
+      return new NextResponse(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      })
+      
+    } catch (error: any) {
+      console.error(`[${requestId}] API error:`, error.message)
+      
+      // Log to audit (fire-and-forget)
+      try {
+        const supabase = await createClient()
+        await supabase.from('audit_log').insert({
+          action: 'api_error',
+          actor_type: 'system',
+          ip_address: clientIp,
+          request_id: requestId,
+          request_body: { 
+            route: routePath,
+            error_type: error.name,
+            // Don't log full error message for security
+          },
+          risk_score: 10,
+        })
+      } catch {
+        // Ignore audit logging errors
+      }
+      
+      return NextResponse.json(
+        { 
+          error: sanitizeError(error.message || 'An unexpected error occurred'),
+          request_id: requestId 
+        },
+        { 
+          status: 500,
+          headers: { 'X-Request-Id': requestId }
+        }
+      )
+    }
+  }
+}
+
+/**
+ * Helper to parse and validate JSON body
+ */
+export async function parseJsonBody<T>(
+  request: Request,
+  maxSize = 1024 * 1024
+): Promise<{ data: T | null; error: string | null }> {
+  try {
+    const contentLength = parseInt(request.headers.get('content-length') || '0')
+    if (contentLength > maxSize) {
+      return { data: null, error: 'Request body too large' }
+    }
+    
+    const text = await request.text()
+    if (text.length > maxSize) {
+      return { data: null, error: 'Request body too large' }
+    }
+    
+    const data = JSON.parse(text) as T
+    return { data, error: null }
+  } catch {
+    return { data: null, error: 'Invalid JSON' }
+  }
+}

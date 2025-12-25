@@ -1,0 +1,225 @@
+-- Migration: Diagnose and Fix Balance Sheet Imbalances
+-- Run after 20260172_stress_test_fixes.sql
+
+-- ============================================================================
+-- 1. Function to find imbalanced transactions
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION find_imbalanced_transactions(p_ledger_id UUID)
+RETURNS TABLE(
+  transaction_id UUID,
+  transaction_type TEXT,
+  description TEXT,
+  created_at TIMESTAMPTZ,
+  total_debits NUMERIC,
+  total_credits NUMERIC,
+  imbalance NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    t.id as transaction_id,
+    t.transaction_type::TEXT,
+    t.description::TEXT,
+    t.created_at,
+    COALESCE(SUM(CASE WHEN e.entry_type = 'debit' THEN e.amount ELSE 0 END), 0) as total_debits,
+    COALESCE(SUM(CASE WHEN e.entry_type = 'credit' THEN e.amount ELSE 0 END), 0) as total_credits,
+    COALESCE(SUM(CASE WHEN e.entry_type = 'debit' THEN e.amount ELSE -e.amount END), 0) as imbalance
+  FROM transactions t
+  LEFT JOIN entries e ON e.transaction_id = t.id
+  WHERE t.ledger_id = p_ledger_id
+    AND t.status = 'completed'
+  GROUP BY t.id, t.transaction_type, t.description, t.created_at
+  HAVING ABS(COALESCE(SUM(CASE WHEN e.entry_type = 'debit' THEN e.amount ELSE 0 END), 0) -
+             COALESCE(SUM(CASE WHEN e.entry_type = 'credit' THEN e.amount ELSE 0 END), 0)) > 0.001
+  ORDER BY t.created_at DESC;
+END;
+$$;
+
+-- ============================================================================
+-- 2. Function to calculate balance equation check
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION check_balance_equation(p_ledger_id UUID)
+RETURNS TABLE(
+  total_assets NUMERIC,
+  total_liabilities NUMERIC,
+  total_equity NUMERIC,
+  total_revenue NUMERIC,
+  total_expenses NUMERIC,
+  net_income NUMERIC,
+  liabilities_plus_equity NUMERIC,
+  is_balanced BOOLEAN,
+  difference NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_total_assets NUMERIC := 0;
+  v_total_liabilities NUMERIC := 0;
+  v_total_equity NUMERIC := 0;
+  v_total_revenue NUMERIC := 0;
+  v_total_expenses NUMERIC := 0;
+BEGIN
+  -- Assets (debit-normal): positive when debits > credits
+  SELECT COALESCE(SUM(
+    CASE WHEN e.entry_type = 'debit' THEN e.amount ELSE -e.amount END
+  ), 0)
+  INTO v_total_assets
+  FROM accounts a
+  JOIN entries e ON e.account_id = a.id
+  JOIN transactions t ON e.transaction_id = t.id AND t.status = 'completed'
+  WHERE a.ledger_id = p_ledger_id
+    AND a.account_type IN ('cash', 'accounts_receivable', 'inventory', 'prepaid_expense', 
+                           'fixed_asset', 'property', 'equipment');
+
+  -- Liabilities (credit-normal): positive when credits > debits
+  SELECT COALESCE(SUM(
+    CASE WHEN e.entry_type = 'credit' THEN e.amount ELSE -e.amount END
+  ), 0)
+  INTO v_total_liabilities
+  FROM accounts a
+  JOIN entries e ON e.account_id = a.id
+  JOIN transactions t ON e.transaction_id = t.id AND t.status = 'completed'
+  WHERE a.ledger_id = p_ledger_id
+    AND a.account_type IN ('accounts_payable', 'creator_balance', 'payee_balance', 
+                           'accrued_expense', 'tax_payable', 'unearned_revenue',
+                           'long_term_debt', 'notes_payable', 'deferred_tax');
+
+  -- Equity (credit-normal): positive when credits > debits
+  SELECT COALESCE(SUM(
+    CASE WHEN e.entry_type = 'credit' THEN e.amount ELSE -e.amount END
+  ), 0)
+  INTO v_total_equity
+  FROM accounts a
+  JOIN entries e ON e.account_id = a.id
+  JOIN transactions t ON e.transaction_id = t.id AND t.status = 'completed'
+  WHERE a.ledger_id = p_ledger_id
+    AND a.account_type IN ('owner_equity', 'retained_earnings', 'common_stock', 
+                           'additional_paid_in_capital');
+
+  -- Revenue (credit-normal): positive when credits > debits
+  SELECT COALESCE(SUM(
+    CASE WHEN e.entry_type = 'credit' THEN e.amount ELSE -e.amount END
+  ), 0)
+  INTO v_total_revenue
+  FROM accounts a
+  JOIN entries e ON e.account_id = a.id
+  JOIN transactions t ON e.transaction_id = t.id AND t.status = 'completed'
+  WHERE a.ledger_id = p_ledger_id
+    AND a.account_type IN ('revenue', 'platform_revenue');
+
+  -- Expenses (debit-normal): positive when debits > credits
+  SELECT COALESCE(SUM(
+    CASE WHEN e.entry_type = 'debit' THEN e.amount ELSE -e.amount END
+  ), 0)
+  INTO v_total_expenses
+  FROM accounts a
+  JOIN entries e ON e.account_id = a.id
+  JOIN transactions t ON e.transaction_id = t.id AND t.status = 'completed'
+  WHERE a.ledger_id = p_ledger_id
+    AND a.account_type = 'expense';
+
+  RETURN QUERY SELECT
+    v_total_assets,
+    v_total_liabilities,
+    v_total_equity,
+    v_total_revenue,
+    v_total_expenses,
+    (v_total_revenue - v_total_expenses) as net_income,
+    (v_total_liabilities + v_total_equity + v_total_revenue - v_total_expenses) as liabilities_plus_equity,
+    (ABS(v_total_assets - (v_total_liabilities + v_total_equity + v_total_revenue - v_total_expenses)) < 0.01) as is_balanced,
+    (v_total_assets - (v_total_liabilities + v_total_equity + v_total_revenue - v_total_expenses)) as difference;
+END;
+$$;
+
+-- ============================================================================
+-- 3. Function to find orphaned entries (entries without valid transaction)
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION find_orphaned_entries(p_ledger_id UUID)
+RETURNS TABLE(
+  entry_id UUID,
+  transaction_id UUID,
+  account_id UUID,
+  amount NUMERIC,
+  entry_type TEXT,
+  issue TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Find entries with missing or invalid transactions
+  RETURN QUERY
+  SELECT 
+    e.id as entry_id,
+    e.transaction_id,
+    e.account_id,
+    e.amount,
+    e.entry_type::TEXT,
+    CASE 
+      WHEN t.id IS NULL THEN 'Missing transaction'
+      WHEN t.ledger_id != p_ledger_id THEN 'Wrong ledger'
+      WHEN t.status != 'completed' THEN 'Transaction not completed: ' || t.status
+      ELSE 'Unknown issue'
+    END as issue
+  FROM entries e
+  LEFT JOIN transactions t ON e.transaction_id = t.id
+  LEFT JOIN accounts a ON e.account_id = a.id
+  WHERE a.ledger_id = p_ledger_id
+    AND (t.id IS NULL OR t.ledger_id != p_ledger_id OR t.status != 'completed');
+END;
+$$;
+
+-- ============================================================================
+-- 4. Grant permissions
+-- ============================================================================
+
+GRANT EXECUTE ON FUNCTION find_imbalanced_transactions TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION check_balance_equation TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION find_orphaned_entries TO authenticated, anon, service_role;
+
+-- ============================================================================
+-- 5. Run diagnostic on all ledgers and log results (optional - comment out if not needed)
+-- ============================================================================
+
+-- This will print diagnostic info for all ledgers
+DO $$
+DECLARE
+  r RECORD;
+  ledger_rec RECORD;
+BEGIN
+  FOR ledger_rec IN SELECT id, business_name FROM ledgers WHERE status = 'active'
+  LOOP
+    RAISE NOTICE 'Checking ledger: % (%)', ledger_rec.business_name, ledger_rec.id;
+    
+    -- Check balance equation
+    SELECT * INTO r FROM check_balance_equation(ledger_rec.id);
+    IF r.is_balanced THEN
+      RAISE NOTICE '  ✓ Balance sheet is balanced';
+    ELSE
+      RAISE NOTICE '  ✗ IMBALANCED by $%', r.difference;
+      RAISE NOTICE '    Assets: $%, L+E: $%', r.total_assets, r.liabilities_plus_equity;
+    END IF;
+    
+    -- Count imbalanced transactions
+    SELECT COUNT(*) INTO r FROM find_imbalanced_transactions(ledger_rec.id);
+    IF r.count > 0 THEN
+      RAISE NOTICE '  ✗ Found % imbalanced transactions', r.count;
+    END IF;
+    
+    -- Count orphaned entries  
+    SELECT COUNT(*) INTO r FROM find_orphaned_entries(ledger_rec.id);
+    IF r.count > 0 THEN
+      RAISE NOTICE '  ✗ Found % orphaned entries', r.count;
+    END IF;
+  END LOOP;
+END $$;

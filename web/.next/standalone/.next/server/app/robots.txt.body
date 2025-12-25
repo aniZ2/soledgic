@@ -1,0 +1,102 @@
+User-Agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /admin/
+Disallow: /auth/
+Disallow: /_next/
+Disallow: /private/
+Disallow: /*.json$
+
+User-Agent: GPTBot
+Allow: /
+Allow: /docs/
+Allow: /docs/*
+Allow: /blog/
+Allow: /llms.txt
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /auth/
+
+User-Agent: ChatGPT-User
+Allow: /
+Allow: /docs/
+Allow: /docs/*
+Allow: /blog/
+Allow: /llms.txt
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /auth/
+
+User-Agent: Google-Extended
+Allow: /docs/
+Allow: /docs/*
+Allow: /llms.txt
+Disallow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /auth/
+Disallow: /blog/
+
+User-Agent: ClaudeBot
+Allow: /
+Allow: /docs/
+Allow: /docs/*
+Allow: /blog/
+Allow: /llms.txt
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /auth/
+
+User-Agent: Claude-Web
+Allow: /
+Allow: /docs/
+Allow: /docs/*
+Allow: /blog/
+Allow: /llms.txt
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /auth/
+
+User-Agent: PerplexityBot
+Allow: /
+Allow: /docs/
+Allow: /docs/*
+Allow: /blog/
+Allow: /llms.txt
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /auth/
+
+User-Agent: CCBot
+Disallow: /
+
+User-Agent: Amazonbot
+Disallow: /
+
+User-Agent: FacebookBot
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+
+User-Agent: AhrefsBot
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+
+User-Agent: SemrushBot
+Allow: /
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+
+Host: https://soledgic.com
+Sitemap: https://soledgic.com/sitemap.xml

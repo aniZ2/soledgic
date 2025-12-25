@@ -1,0 +1,44 @@
+-- Reset test ledger data for clean stress tests
+-- Ledger ID: 30d29256-b530-47b4-addc-eccf9a722471 (Booklyverse test ledger)
+
+DO $$
+DECLARE
+  v_ledger_id UUID := '30d29256-b530-47b4-addc-eccf9a722471';
+BEGIN
+  RAISE NOTICE 'Resetting test ledger: %', v_ledger_id;
+  
+  -- Delete entries first (foreign key to transactions)
+  DELETE FROM entries WHERE transaction_id IN (
+    SELECT id FROM transactions WHERE ledger_id = v_ledger_id
+  );
+  RAISE NOTICE 'Deleted entries';
+  
+  -- Delete invoice payments (foreign key to invoices)
+  DELETE FROM invoice_payments WHERE invoice_id IN (
+    SELECT id FROM invoices WHERE ledger_id = v_ledger_id
+  );
+  RAISE NOTICE 'Deleted invoice payments';
+  
+  -- Delete invoices
+  DELETE FROM invoices WHERE ledger_id = v_ledger_id;
+  RAISE NOTICE 'Deleted invoices';
+  
+  -- Delete transactions
+  DELETE FROM transactions WHERE ledger_id = v_ledger_id;
+  RAISE NOTICE 'Deleted transactions';
+  
+  -- Delete tax buckets BEFORE accounts (foreign key to accounts)
+  DELETE FROM tax_buckets WHERE ledger_id = v_ledger_id;
+  RAISE NOTICE 'Deleted tax buckets';
+  
+  -- Delete payouts BEFORE accounts (foreign key to accounts)
+  DELETE FROM payouts WHERE ledger_id = v_ledger_id;
+  RAISE NOTICE 'Deleted payouts';
+  
+  -- Delete accounts LAST
+  DELETE FROM accounts WHERE ledger_id = v_ledger_id;
+  RAISE NOTICE 'Deleted accounts';
+  
+  RAISE NOTICE 'Test ledger reset complete';
+END;
+$$;

@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS record_invoice_payment_atomic(UUID, UUID, BIGINT, TEXT, DATE, TEXT, TEXT)

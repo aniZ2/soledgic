@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS void_invoice_atomic(UUID, UUID, TEXT)

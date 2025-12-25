@@ -1,0 +1,67 @@
+-- Initialize platform accounts for Booklyverse ledger after reset
+-- These accounts are required for record_sale_atomic and other operations
+
+DO $$
+DECLARE
+  v_ledger_id UUID := '0a885204-e07a-48c1-97e9-495ac96a2581';
+BEGIN
+  RAISE NOTICE 'Initializing platform accounts for Booklyverse ledger';
+  
+  -- Cash / Bank account (asset)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'cash', 'Cash / Bank', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Accounts Receivable (asset)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'accounts_receivable', 'Accounts Receivable', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Accounts Payable (liability)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'accounts_payable', 'Accounts Payable', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Platform Revenue (revenue)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'revenue', 'Platform Revenue', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Platform Revenue - specific type
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'platform_revenue', 'Platform Revenue', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Processing Fees (expense)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'expense', 'Operating Expenses', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Processing Fees - specific type
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'processing_fees', 'Processing Fees', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Creator Payables (liability for amounts owed to creators)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'creator_payables', 'Creator Payables', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Held Funds (liability)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'held_funds', 'Held Funds', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Withholding (liability)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'withholding', 'Tax Withholding', 0)
+  ON CONFLICT DO NOTHING;
+  
+  -- Retained Earnings (equity)
+  INSERT INTO accounts (ledger_id, account_type, name, balance)
+  VALUES (v_ledger_id, 'retained_earnings', 'Retained Earnings', 0)
+  ON CONFLICT DO NOTHING;
+
+  RAISE NOTICE 'Platform accounts initialized';
+END;
+$$;
