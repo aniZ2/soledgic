@@ -69,9 +69,14 @@ const handler = createHandler(
     const startDate = rawStartDate && dateRegex.test(rawStartDate) ? rawStartDate : null
     const endDate = rawEndDate && dateRegex.test(rawEndDate) ? rawEndDate : null
 
-    // Validate pagination
-    const page = Math.max(1, parseInt(rawPage || '1') || 1)
-    const perPage = Math.min(100, Math.max(1, parseInt(rawPerPage || '50') || 50))
+    // SECURITY: Validate pagination with proper NaN handling
+    const parsedPage = parseInt(rawPage || '1', 10)
+    const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1
+
+    const parsedPerPage = parseInt(rawPerPage || '50', 10)
+    const perPage = Number.isInteger(parsedPerPage) && parsedPerPage > 0
+      ? Math.min(100, parsedPerPage)
+      : 50
 
     // Build query
     let query = supabase

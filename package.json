@@ -27,9 +27,9 @@
   "author": "Soledgic",
   "license": "UNLICENSED",
   "devDependencies": {
-    "@vitest/coverage-v8": "^1.6.0",
+    "@vitest/coverage-v8": "^4.0.16",
     "dotenv": "^17.2.3",
-    "vitest": "^1.6.0"
+    "vitest": "^4.0.16"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

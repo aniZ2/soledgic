@@ -88,8 +88,13 @@ const handler = createHandler(
     if (req.method === 'GET' && !invoiceId) {
       const status = url.searchParams.get('status')
       const customerId = url.searchParams.get('customer_id')
-      const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100)
-      const offset = parseInt(url.searchParams.get('offset') || '0')
+
+      // SECURITY: Validate limit and offset to prevent NaN propagation
+      const limitParam = parseInt(url.searchParams.get('limit') || '50', 10)
+      const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, 100) : 50
+
+      const offsetParam = parseInt(url.searchParams.get('offset') || '0', 10)
+      const offset = Number.isInteger(offsetParam) && offsetParam >= 0 ? offsetParam : 0
 
       let query = supabase
         .from('invoices')
@@ -176,7 +181,20 @@ const handler = createHandler(
         if (unitPrice === null || unitPrice < 0) return errorResponse(`Line item ${i + 1}: unit_price must be non-negative (in cents)`, 400, req, requestId)
 
         const amount = Math.round(quantity * unitPrice)
+
+        // SECURITY: Check for integer overflow - amounts must be safe integers
+        // Max amount is $100M (10 billion cents) to prevent precision loss
+        const MAX_LINE_AMOUNT = 10_000_000_000
+        if (!Number.isSafeInteger(amount) || amount > MAX_LINE_AMOUNT) {
+          return errorResponse(`Line item ${i + 1}: calculated amount exceeds maximum allowed ($100M)`, 400, req, requestId)
+        }
+
         subtotal += amount
+
+        // SECURITY: Check subtotal doesn't overflow
+        if (!Number.isSafeInteger(subtotal) || subtotal > MAX_LINE_AMOUNT) {
+          return errorResponse('Invoice total exceeds maximum allowed ($100M)', 400, req, requestId)
+        }
         validatedLineItems.push({ description, quantity, unit_price: unitPrice, amount })
       }
 

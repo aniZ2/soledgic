@@ -106,13 +106,23 @@ const handler = createHandler(
         .in('status', ['pending', 'processing'])
 
       const pendingAmount = pendingPayouts?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
-      const availableBalance = Math.abs(Number(account.balance)) - pendingAmount
+
+      // SECURITY: Validate balance is a valid finite number
+      const rawBalance = Number(account.balance)
+      if (!Number.isFinite(rawBalance)) {
+        return errorResponse('Invalid account balance state', 500, req)
+      }
+
+      // SECURITY: Handle negative balances explicitly instead of masking with Math.abs
+      // Negative balance indicates a debt - report it accurately
+      const availableBalance = rawBalance - pendingAmount
 
       const response: BalanceResponse = {
         success: true,
         balance: {
           creator_id: creatorId,
-          available: Math.max(0, availableBalance),
+          // Available can be negative if there's a debt or pending exceeds balance
+          available: availableBalance,
           pending: pendingAmount,
           total_earned: totalEarned,
           total_paid_out: totalPaidOut,
@@ -138,12 +148,19 @@ const handler = createHandler(
         return errorResponse('Failed to fetch balances', 500, req)
       }
 
-      const balances = accounts?.map(acc => ({
-        creator_id: acc.entity_id!,
-        available: Math.abs(Number(acc.balance)),
-        pending: 0,
-        currency: acc.currency
-      })) || []
+      // SECURITY: Validate and properly handle balances without masking with Math.abs
+      const balances = accounts?.map(acc => {
+        const balance = Number(acc.balance)
+        return {
+          creator_id: acc.entity_id!,
+          // Report actual balance - negative indicates debt
+          available: Number.isFinite(balance) ? balance : 0,
+          pending: 0,
+          currency: acc.currency,
+          // Flag if balance is in error state
+          ...(balance < 0 ? { has_negative_balance: true } : {})
+        }
+      }) || []
 
       const response: BalanceResponse = {
         success: true,

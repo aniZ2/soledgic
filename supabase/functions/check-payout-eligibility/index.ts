@@ -47,7 +47,30 @@ const handler = createHandler(
 
     const settings = ledger.settings as any
     const minPayoutAmount = settings?.min_payout_amount || 10
-    const availableBalance = Math.abs(Number(account.balance))
+
+    // SECURITY: Validate balance is a valid finite number and not negative
+    // Using Math.abs() could mask data integrity issues - instead, explicitly validate
+    const rawBalance = Number(account.balance)
+    if (!Number.isFinite(rawBalance)) {
+      return errorResponse('Invalid account balance state', 500, req, requestId)
+    }
+
+    // If balance is negative, it indicates a debt - payouts should not be allowed
+    if (rawBalance < 0) {
+      return jsonResponse({
+        success: true,
+        creator_id: creatorId,
+        eligible: false,
+        available_balance: 0,
+        issues: ['Account has negative balance - contact support'],
+        requirements: {
+          balance_error: true,
+          note: 'Account balance is in deficit state'
+        }
+      }, 200, req, requestId)
+    }
+
+    const availableBalance = rawBalance
 
     const issues: string[] = []
 

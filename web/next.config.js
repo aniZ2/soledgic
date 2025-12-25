@@ -57,6 +57,8 @@ const nextConfig = {
               "font-src 'self' https://fonts.gstatic.com",
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://*.plaid.com https://www.google-analytics.com",
               "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://cdn.plaid.com",
+              // SECURITY: Prevent clickjacking by blocking all frame ancestors
+              "frame-ancestors 'none'",
               "form-action 'self'",
               "base-uri 'self'",
               "object-src 'none'",
@@ -148,7 +150,10 @@ const nextConfig = {
   
   // Remove X-Powered-By header
   poweredByHeader: false,
-  
+
+  // SECURITY: Disable source maps in production to prevent code exposure
+  productionBrowserSourceMaps: false,
+
   // Strict mode for React
   reactStrictMode: true,
   

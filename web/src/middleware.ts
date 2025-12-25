@@ -114,7 +114,8 @@ export async function middleware(request: NextRequest) {
               // SECURITY: Enhance cookie security
               httpOnly: true,
               secure: process.env.NODE_ENV === 'production',
-              sameSite: 'lax',
+              // SECURITY: Changed from 'lax' to 'strict' for better CSRF protection
+              sameSite: 'strict',
             })
           )
         },

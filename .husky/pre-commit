@@ -1,0 +1,88 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔒 Running security checks..."
+
+# ============================================================================
+# 1. Check for hardcoded secrets
+# ============================================================================
+echo "Checking for hardcoded secrets..."
+
+# Patterns to detect
+PATTERNS=(
+  'sk_live_[a-zA-Z0-9]{32,}'
+  'sk_test_[a-zA-Z0-9]{20,}'
+  'whsec_[a-zA-Z0-9]{20,}'
+  'SUPABASE_SERVICE_ROLE_KEY.*=.*ey[A-Za-z0-9_-]+'
+  'Bearer ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
+)
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|js|jsx|json|env|sh)$' || true)
+
+if [ -n "$STAGED_FILES" ]; then
+  for pattern in "${PATTERNS[@]}"; do
+    MATCHES=$(echo "$STAGED_FILES" | xargs grep -lE "$pattern" 2>/dev/null || true)
+    if [ -n "$MATCHES" ]; then
+      echo "❌ ERROR: Potential secret detected in staged files!"
+      echo "Pattern: $pattern"
+      echo "Files: $MATCHES"
+      echo ""
+      echo "Please remove secrets and use environment variables instead."
+      exit 1
+    fi
+  done
+fi
+
+echo "✅ No hardcoded secrets detected"
+
+# ============================================================================
+# 2. Check for console.log with sensitive data patterns
+# ============================================================================
+echo "Checking for sensitive console.log statements..."
+
+SENSITIVE_LOG_PATTERNS=(
+  'console\.log.*password'
+  'console\.log.*secret'
+  'console\.log.*token'
+  'console\.log.*api_key'
+  'console\.log.*apiKey'
+)
+
+if [ -n "$STAGED_FILES" ]; then
+  for pattern in "${SENSITIVE_LOG_PATTERNS[@]}"; do
+    MATCHES=$(echo "$STAGED_FILES" | xargs grep -liE "$pattern" 2>/dev/null || true)
+    if [ -n "$MATCHES" ]; then
+      echo "⚠️  WARNING: Potential sensitive data in console.log"
+      echo "Files: $MATCHES"
+      echo "Please review before committing."
+    fi
+  done
+fi
+
+echo "✅ Console.log check passed"
+
+# ============================================================================
+# 3. Check for SQL injection patterns
+# ============================================================================
+echo "Checking for SQL injection patterns..."
+
+SQL_PATTERNS=(
+  '\$\{.*\}.*FROM'
+  '\$\{.*\}.*WHERE'
+  '"\s*\+\s*.*\s*\+\s*".*SELECT'
+)
+
+if [ -n "$STAGED_FILES" ]; then
+  for pattern in "${SQL_PATTERNS[@]}"; do
+    MATCHES=$(echo "$STAGED_FILES" | xargs grep -lE "$pattern" 2>/dev/null || true)
+    if [ -n "$MATCHES" ]; then
+      echo "⚠️  WARNING: Potential SQL injection pattern detected"
+      echo "Files: $MATCHES"
+      echo "Please use parameterized queries."
+    fi
+  done
+fi
+
+echo "✅ SQL injection check passed"
+
+echo "🔒 All security checks passed!"

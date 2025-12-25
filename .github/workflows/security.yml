@@ -1,0 +1,206 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Sundays at midnight
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ============================================================================
+  # Dependency Vulnerability Scanning
+  # ============================================================================
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Audit root dependencies
+        run: |
+          npm ci
+          npm audit --audit-level=high || true
+        continue-on-error: true
+
+      - name: Audit web dependencies
+        run: |
+          cd web
+          npm ci
+          npm audit --audit-level=high || true
+        continue-on-error: true
+
+  # ============================================================================
+  # Secret Scanning
+  # ============================================================================
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # ============================================================================
+  # CodeQL Analysis
+  # ============================================================================
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
+
+  # ============================================================================
+  # Security Headers Check
+  # ============================================================================
+  security-headers:
+    name: Security Headers Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for security headers in Next.js config
+        run: |
+          echo "Checking next.config.js for security headers..."
+
+          # Check for required security headers
+          REQUIRED_HEADERS=("X-Content-Type-Options" "X-Frame-Options" "X-XSS-Protection" "Content-Security-Policy" "Strict-Transport-Security")
+
+          for header in "${REQUIRED_HEADERS[@]}"; do
+            if grep -q "$header" web/next.config.js; then
+              echo "✅ $header found"
+            else
+              echo "❌ $header missing"
+              exit 1
+            fi
+          done
+
+          echo "All required security headers are present!"
+
+  # ============================================================================
+  # Hardcoded Secrets Check
+  # ============================================================================
+  hardcoded-secrets:
+    name: Check for Hardcoded Secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for hardcoded API keys
+        run: |
+          echo "Checking for hardcoded secrets..."
+
+          # Look for common secret patterns in TypeScript/JavaScript files
+          PATTERNS=(
+            "sk_live_[a-zA-Z0-9]+"
+            "sk_test_[a-zA-Z0-9]+"
+            "whsec_[a-zA-Z0-9]+"
+            "SUPABASE_SERVICE_ROLE_KEY.*=.*ey"
+          )
+
+          FOUND_SECRETS=0
+
+          for pattern in "${PATTERNS[@]}"; do
+            MATCHES=$(grep -rE "$pattern" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
+              --exclude-dir=node_modules --exclude-dir=.next --exclude="*.example" \
+              . 2>/dev/null || true)
+
+            if [ ! -z "$MATCHES" ]; then
+              echo "❌ Potential hardcoded secret found matching pattern: $pattern"
+              echo "$MATCHES" | head -5
+              FOUND_SECRETS=1
+            fi
+          done
+
+          if [ $FOUND_SECRETS -eq 1 ]; then
+            echo ""
+            echo "⚠️  Potential hardcoded secrets detected!"
+            echo "Please use environment variables instead."
+            exit 1
+          fi
+
+          echo "✅ No hardcoded secrets found!"
+
+  # ============================================================================
+  # SQL Injection Check
+  # ============================================================================
+  sql-injection:
+    name: SQL Injection Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for SQL injection patterns
+        run: |
+          echo "Checking for potential SQL injection vulnerabilities..."
+
+          # Look for string concatenation in SQL queries
+          DANGEROUS_PATTERNS=(
+            '`.*\$\{.*\}.*SELECT'
+            '`.*\$\{.*\}.*INSERT'
+            '`.*\$\{.*\}.*UPDATE'
+            '`.*\$\{.*\}.*DELETE'
+            "\".*\\+.*SELECT"
+            "\".*\\+.*INSERT"
+          )
+
+          FOUND_ISSUES=0
+
+          for pattern in "${DANGEROUS_PATTERNS[@]}"; do
+            MATCHES=$(grep -rE "$pattern" --include="*.ts" --include="*.tsx" \
+              --exclude-dir=node_modules --exclude-dir=.next \
+              . 2>/dev/null || true)
+
+            if [ ! -z "$MATCHES" ]; then
+              echo "⚠️  Potential SQL injection pattern found:"
+              echo "$MATCHES" | head -3
+              FOUND_ISSUES=1
+            fi
+          done
+
+          if [ $FOUND_ISSUES -eq 1 ]; then
+            echo ""
+            echo "Please review the above patterns for SQL injection vulnerabilities."
+            echo "Use parameterized queries with Supabase client instead of string concatenation."
+          else
+            echo "✅ No obvious SQL injection patterns found!"
+          fi

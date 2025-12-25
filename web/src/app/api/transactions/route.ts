@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const SOLEDGIC_URL = 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
-const API_KEY = 'sk_test_booklyverse_f85dbf0624664cba987abf0d'
+const SOLEDGIC_URL = process.env.SOLEDGIC_API_URL || 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
+const API_KEY = process.env.SOLEDGIC_API_KEY
+
+if (!API_KEY) {
+  console.error('SECURITY: SOLEDGIC_API_KEY environment variable is required')
+}
 
 // Generic proxy to Soledgic endpoints
 async function soledgicCall(endpoint: string, body: any) {

@@ -1,19 +1,41 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+
+// SECURITY: Validate redirect URLs to prevent open redirect attacks
+function isValidRedirect(path: string): boolean {
+  if (!path || typeof path !== 'string') return false
+  if (!path.startsWith('/')) return false
+  if (path.startsWith('//')) return false
+  if (path.includes('://')) return false
+  if (path.includes('\\')) return false
+  if (path.includes('\0')) return false
+  try {
+    const decoded = decodeURIComponent(path)
+    if (decoded.startsWith('//') || decoded.includes('://')) return false
+  } catch {
+    return false
+  }
+  return true
+}
 
 function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/dashboard'
+  const redirectParam = searchParams.get('redirect') || '/dashboard'
+
+  // SECURITY: Validate redirect parameter
+  const redirect = useMemo(() =>
+    isValidRedirect(redirectParam) ? redirectParam : '/dashboard'
+  , [redirectParam])
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
