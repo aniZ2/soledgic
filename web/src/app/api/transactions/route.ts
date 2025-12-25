@@ -9,6 +9,9 @@ if (!API_KEY) {
 
 // Generic proxy to Soledgic endpoints
 async function soledgicCall(endpoint: string, body: any) {
+  if (!API_KEY) {
+    throw new Error('API key not configured')
+  }
   const response = await fetch(`${SOLEDGIC_URL}/${endpoint}`, {
     method: 'POST',
     headers: {
@@ -22,6 +25,10 @@ async function soledgicCall(endpoint: string, body: any) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!API_KEY) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
     const { action, ...params } = await request.json()
 
     switch (action) {

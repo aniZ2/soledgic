@@ -9,6 +9,10 @@ if (!API_KEY) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!API_KEY) {
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
     const body = await request.json()
     const { action } = body
 

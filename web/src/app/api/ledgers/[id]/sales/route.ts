@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { recordSale } from '@/lib/soledge-api'
+import { recordSale } from '@/lib/soledgic-api'
 
 export async function POST(
   request: Request,

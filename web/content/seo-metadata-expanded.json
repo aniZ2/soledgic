@@ -1,0 +1,326 @@
+{
+  "pages": {
+    "home": {
+      "title": "Soledgic | Double-Entry Ledger API for Platforms That Move Money",
+      "description": "Accounting engine for marketplaces, vertical SaaS, logistics platforms, and fintech. Real-time balances, audit-ready reports, atomic transactions.",
+      "keywords": [
+        "double entry ledger api",
+        "marketplace accounting api",
+        "platform payout infrastructure",
+        "embedded payments accounting",
+        "vertical saas accounting",
+        "multi-entity ledger",
+        "consolidated balance sheet api",
+        "fintech ledger system",
+        "stored value accounting",
+        "wallet balance tracking",
+        "sub-ledger api",
+        "stripe for ledgering",
+        "reconciliation automation",
+        "gaap compliant api",
+        "audit ready accounting",
+        "creator payout system",
+        "seller payout api",
+        "contractor payment tracking",
+        "float management",
+        "restricted cash tracking",
+        "ar ap aging api",
+        "high volume transaction ledger",
+        "atomic transaction api",
+        "concurrent balance tracking"
+      ],
+      "og": {
+        "title": "Soledgic | Your Database and Your Bank Should Match",
+        "description": "Double-entry ledger API for platforms that collect money, take a cut, and owe the rest to someone else.",
+        "image": "/og/home.png",
+        "type": "website"
+      }
+    },
+    "verticals": {
+      "creator-platforms": {
+        "title": "Soledgic for Creator Platforms | Royalty & Rev-Share Accounting",
+        "description": "Handle complex creator splits, royalty calculations, and thousands of micro-payouts. Atomic transactions. Audit-ready reports.",
+        "keywords": [
+          "creator platform accounting",
+          "royalty tracking software",
+          "rev share accounting",
+          "creator payout api",
+          "content creator payments",
+          "influencer payment platform",
+          "creator economy infrastructure",
+          "youtube mcn accounting",
+          "podcast network payouts",
+          "music royalty ledger"
+        ],
+        "slug": "/solutions/creator-platforms"
+      },
+      "vertical-saas": {
+        "title": "Soledgic for Vertical SaaS | Embedded Payments Accounting",
+        "description": "Drop an accounting engine into your vertical software. Track what's owed to technicians, attorneys, or service providers.",
+        "keywords": [
+          "vertical saas accounting",
+          "embedded payments ledger",
+          "hvac software payments",
+          "legal software accounting",
+          "property management accounting",
+          "field service payments",
+          "professional services payouts",
+          "vertical software payments",
+          "niche saas accounting",
+          "service provider payments"
+        ],
+        "slug": "/solutions/vertical-saas"
+      },
+      "logistics-marketplaces": {
+        "title": "Soledgic for Logistics & Marketplaces | Float & Liability Tracking",
+        "description": "Know your real cash position. Track restricted funds, vendor liabilities, and AR/AP aging for rental and delivery platforms.",
+        "keywords": [
+          "logistics platform accounting",
+          "uber clone accounting",
+          "rental marketplace ledger",
+          "airbnb clone accounting",
+          "delivery platform payouts",
+          "float management api",
+          "restricted cash tracking",
+          "vendor liability tracking",
+          "marketplace escrow accounting",
+          "booking platform ledger"
+        ],
+        "slug": "/solutions/logistics-marketplaces"
+      },
+      "fintech-wallets": {
+        "title": "Soledgic for Fintech & Wallets | Stored Value Accounting",
+        "description": "Concurrent-safe balance updates. No double-spend. Built for betting apps, rewards programs, and corporate cards.",
+        "keywords": [
+          "fintech ledger api",
+          "wallet balance tracking",
+          "stored value accounting",
+          "betting app ledger",
+          "rewards program accounting",
+          "corporate card tracking",
+          "prepaid balance api",
+          "virtual currency ledger",
+          "loyalty points accounting",
+          "neobank sub-ledger"
+        ],
+        "slug": "/solutions/fintech-wallets"
+      },
+      "ecommerce-aggregators": {
+        "title": "Soledgic for E-commerce Aggregators | Multi-Store Consolidated Reporting",
+        "description": "50 Shopify stores, one Balance Sheet. Multi-ledger architecture with roll-up reporting for portfolio brands.",
+        "keywords": [
+          "ecommerce aggregator accounting",
+          "multi store accounting",
+          "shopify portfolio accounting",
+          "amazon aggregator ledger",
+          "consolidated ecommerce reporting",
+          "multi brand accounting",
+          "holding company ledger",
+          "roll up financial reporting",
+          "portfolio brand accounting",
+          "multi entity ecommerce"
+        ],
+        "slug": "/solutions/ecommerce-aggregators"
+      },
+      "adtech": {
+        "title": "Soledgic for Ad-Tech | High-Volume Micro-Transaction Ledger",
+        "description": "Millions of impressions, clicks, and conversions. Stress-tested for high-velocity reconciliation at ad-tech scale.",
+        "keywords": [
+          "adtech accounting api",
+          "publisher payout ledger",
+          "ad network accounting",
+          "impression tracking ledger",
+          "affiliate payout api",
+          "high volume transaction ledger",
+          "micro transaction accounting",
+          "programmatic ad accounting",
+          "media buying ledger",
+          "ad revenue reconciliation"
+        ],
+        "slug": "/solutions/adtech"
+      }
+    },
+    "features": {
+      "atomic-transactions": {
+        "title": "Atomic Transactions | Soledgic",
+        "description": "Every operation is double-entry. Concurrent-safe balance updates. No double-spend.",
+        "keywords": ["atomic transaction api", "concurrent balance updates", "double entry automation"]
+      },
+      "multi-ledger": {
+        "title": "Multi-Ledger Architecture | Soledgic",
+        "description": "Sub-ledgers per entity. Parent-child relationships. Consolidated reporting across entities.",
+        "keywords": ["multi entity ledger", "sub-ledger api", "consolidated balance sheet"]
+      },
+      "ar-ap-aging": {
+        "title": "AR/AP Aging Reports | Soledgic",
+        "description": "Know what you're owed and what you owe. Track float, restricted cash, and vendor liabilities.",
+        "keywords": ["ar aging api", "ap aging api", "accounts receivable tracking"]
+      },
+      "developer-friendly": {
+        "title": "Developer-Friendly API | Soledgic",
+        "description": "No UUIDs. No account lookups. Just pass creator_id and amount. The Stripe for Ledgering.",
+        "keywords": ["developer friendly accounting api", "simple ledger api", "easy accounting integration"]
+      }
+    }
+  },
+  "blog_topics": [
+    {
+      "title": "Why Your Stripe Dashboard Isn't a Balance Sheet",
+      "slug": "stripe-dashboard-not-balance-sheet",
+      "keywords": ["stripe accounting", "stripe financial reports", "stripe balance sheet"],
+      "target_audience": "Founders who think Stripe handles their accounting"
+    },
+    {
+      "title": "The Hidden Cost of Building Your Own Ledger",
+      "slug": "build-vs-buy-ledger",
+      "keywords": ["build vs buy accounting", "ledger development cost", "internal tools cost"],
+      "target_audience": "CTOs considering building in-house"
+    },
+    {
+      "title": "Float Management for Marketplace Founders",
+      "slug": "float-management-marketplaces",
+      "keywords": ["marketplace float", "restricted cash", "platform cash management"],
+      "target_audience": "Marketplace founders confused about cash position"
+    },
+    {
+      "title": "The Balance Column Anti-Pattern",
+      "slug": "balance-column-antipattern",
+      "keywords": ["database balance tracking", "sub-ledger design", "financial data modeling"],
+      "target_audience": "Engineers who added a balance column to users table"
+    },
+    {
+      "title": "Double-Entry Accounting for Developers",
+      "slug": "double-entry-for-developers",
+      "keywords": ["double entry explained", "ledger for developers", "accounting basics engineers"],
+      "target_audience": "Engineers building financial features"
+    },
+    {
+      "title": "How to Pass Due Diligence Without an Accounting Team",
+      "slug": "due-diligence-without-accountant",
+      "keywords": ["startup due diligence", "series a accounting", "audit preparation"],
+      "target_audience": "Founders preparing for fundraising"
+    },
+    {
+      "title": "Vertical SaaS Needs Vertical Accounting",
+      "slug": "vertical-saas-accounting",
+      "keywords": ["vertical saas payments", "embedded finance accounting", "niche software payments"],
+      "target_audience": "Vertical SaaS founders adding payments"
+    },
+    {
+      "title": "Concurrency in Financial Systems: Why Your Balance Column Will Betray You",
+      "slug": "concurrency-financial-systems",
+      "keywords": ["concurrent transactions", "race condition balance", "atomic financial updates"],
+      "target_audience": "Engineers debugging balance discrepancies"
+    }
+  ],
+  "competitor_keywords": {
+    "modern_treasury": [
+      "modern treasury alternative",
+      "modern treasury for startups",
+      "modern treasury pricing",
+      "cheaper than modern treasury"
+    ],
+    "quickbooks": [
+      "quickbooks for marketplaces",
+      "quickbooks api alternative",
+      "quickbooks multi-entity",
+      "outgrow quickbooks"
+    ],
+    "xero": [
+      "xero for platforms",
+      "xero api limitations",
+      "xero marketplace accounting"
+    ],
+    "spreadsheets": [
+      "spreadsheet accounting problems",
+      "google sheets accounting limits",
+      "excel payout tracking",
+      "outgrow spreadsheet accounting"
+    ],
+    "custom_build": [
+      "build vs buy ledger",
+      "custom accounting system cost",
+      "internal ledger development time",
+      "accounting technical debt"
+    ]
+  },
+  "long_tail_keywords": [
+    "how to track creator payouts",
+    "marketplace payout reconciliation software",
+    "stripe connect sub-ledger",
+    "how to build accounting for saas",
+    "double entry api for startups",
+    "consolidated balance sheet multiple stores",
+    "track money owed to vendors api",
+    "real time balance api",
+    "audit ready financial reports api",
+    "gaap compliant ledger software",
+    "concurrent transaction handling api",
+    "prevent double spend wallet api",
+    "multi tenant accounting system",
+    "platform fee tracking software",
+    "split payment accounting api"
+  ],
+  "structured_data": {
+    "organization": {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Soledgic",
+      "url": "https://soledgic.com",
+      "logo": "https://soledgic.com/logo.png",
+      "description": "Double-entry ledger API for platforms that move money",
+      "founder": {
+        "@type": "Person",
+        "name": "Ani Osifo"
+      },
+      "parentOrganization": {
+        "@type": "Organization",
+        "name": "Osifo Holdings, L.L.C."
+      }
+    },
+    "software": {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Soledgic",
+      "applicationCategory": "FinanceApplication",
+      "applicationSubCategory": "Accounting API",
+      "operatingSystem": "Web API",
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Starter",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        {
+          "@type": "Offer",
+          "name": "Growth",
+          "price": "49",
+          "priceCurrency": "USD",
+          "billingIncrement": "month"
+        },
+        {
+          "@type": "Offer",
+          "name": "Scale",
+          "price": "299",
+          "priceCurrency": "USD",
+          "billingIncrement": "month"
+        }
+      ],
+      "featureList": [
+        "Double-entry ledger",
+        "Atomic transactions",
+        "Multi-ledger support",
+        "Human-readable slugs",
+        "Real-time balances",
+        "AR/AP aging reports",
+        "Balance Sheet",
+        "P&L reports",
+        "Trial Balance",
+        "Bank reconciliation",
+        "Concurrent transaction handling",
+        "Audit trail"
+      ]
+    }
+  }
+}
