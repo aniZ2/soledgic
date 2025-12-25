@@ -34,6 +34,10 @@ npm-debug.log*
 # Build
 dist/
 build/
+.next/
+
+# Supabase temp files
+supabase/.temp/
 
 # Credentials & Secrets (SECURITY: belt and suspenders)
 *.pem
