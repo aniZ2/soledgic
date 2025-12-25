@@ -21,7 +21,7 @@ It starts simple:
 await prisma.user.update({
   where: { id: creatorId },
   data: { balance: { increment: saleAmount } }
-});
+})
 ```
 
 Done. Ship it.
@@ -31,16 +31,6 @@ Done. Ship it.
 ### Month 1: Refunds
 
 Customer wants a refund. You subtract from the creator's balance. But wait—they already withdrew. Now their balance is negative.
-
-```typescript
-// "Uh oh"
-await prisma.user.update({
-  where: { id: creatorId },
-  data: { balance: { decrement: refundAmount } }
-});
-// balance is now -$47.32
-// Is that allowed? Who eats the loss?
-```
 
 You add a `pendingBalance` column.
 
@@ -72,8 +62,6 @@ You start over.
 
 ## The Real Cost
 
-Let's be honest about what "building it yourself" actually costs:
-
 | Item | Cost |
 |------|------|
 | Initial build | 2-4 weeks engineering time |
@@ -87,55 +75,63 @@ At $150k/year fully-loaded engineer cost, that's **$37,500 - $75,000** in engine
 
 For a ledger.
 
-## The Ego Trap
-
-The real reason founders build their own ledger isn't cost. It's ego.
-
-"I'm a good engineer. I can build this."
-
-Yes, you can. But should you?
-
-You could also build your own database. Your own auth system. Your own payment processor. You don't, because those are solved problems.
-
-Ledgers are solved problems too.
-
 ---
 
 ## How Soledgic Saves You 6 Months
 
-Instead of building, integrate in an afternoon:
+### For Your Engineers
+
+Integrate in an afternoon:
 
 ```typescript
-import { Soledgic } from '@soledgic/sdk';
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
-// Record a sale
-await soledgic.recordSale({
-  amount: 10000,
+// Record a sale - handles the split automatically
+const sale = await soledgic.recordSale({
+  referenceId: 'stripe_pi_xxx',
   creatorId: 'creator_123',
-  platformFeePercent: 20,
-});
+  amount: 10000, // cents
+  processingFee: 300,
+})
 
-// Handle a refund
-await soledgic.recordRefund({
-  originalTransactionId: 'txn_xxx',
-  amount: 10000,
-});
+// Handle a refund with full reversal
+await soledgic.reverseTransaction({
+  transactionId: sale.transactionId,
+  reason: 'Customer requested refund',
+})
 
-// Get creator balance
-const { balance } = await soledgic.getBalance({ creatorId: 'creator_123' });
+// Get creator balance (with held funds separated)
+const balance = await soledgic.getCreatorBalance('creator_123')
 ```
 
-Soledgic handles:
-- Double-entry transactions ✓
-- Audit trails ✓
-- Concurrent balance updates ✓
-- Refunds, disputes, partial payments ✓
-- Reconciliation reports ✓
-- Balance Sheet, P&L, Trial Balance ✓
+### The Soledgic Dashboard
 
-Your engineers ship product. We handle the ledger.
+Your finance team gets a full dashboard without any engineering work:
+
+**Dashboard → Inflow**
+Every sale, automatically categorized. See gross amount, processing fees, creator share, and platform revenue at a glance. Filter by date range or creator.
+
+**Dashboard → Outflow**
+Track payouts you've recorded. See payout history by creator. Verify what's been paid vs. what's still owed.
+
+**Dashboard → Directory**
+Look up any creator. See their full transaction history, current balance, holds, and tier. No SQL queries. No engineering tickets.
+
+**Dashboard → Reports**
+- **Profit & Loss**: Revenue minus expenses, net income
+- **Trial Balance**: Verify debits = credits
+- **Creator Earnings**: What each creator earned and was paid
+- **1099 Summary**: Tax compliance for payments over $600
+
+**Dashboard → Reconciliation**
+Match your ledger transactions to Stripe. Identify discrepancies. Mark items reviewed. Full audit workflow.
+
+**Dashboard → Audit**
+Every action logged. Who did what, when. IP addresses tracked. Full audit trail for compliance.
+
+No more "can you pull this report?" Slack messages. Finance logs in and gets what they need.
 
 **$49/month vs $75,000 in engineering time. Easy math.**
 

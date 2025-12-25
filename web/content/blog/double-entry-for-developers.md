@@ -24,8 +24,6 @@ When a customer pays you $100:
 
 ## Debits and Credits (The Simple Version)
 
-Forget what you think these words mean. In accounting:
-
 | Account Type | Increases With |
 |--------------|----------------|
 | Assets (cash, receivables) | Debit |
@@ -41,36 +39,16 @@ Assets = Liabilities + Equity
 
 ## Example: Recording a Marketplace Sale
 
-Your marketplace sells a $100 item. You take 20%, seller gets 80%.
+Your marketplace sells a $100 item. You take 20%, creator gets 80%.
 
-```typescript
-// What happens internally (conceptually)
-const journalEntry = {
-  entries: [
-    { account: 'cash', type: 'debit', amount: 100 },           // Asset ↑
-    { account: 'revenue', type: 'credit', amount: 20 },        // Revenue ↑
-    { account: 'seller_balance', type: 'credit', amount: 80 }, // Liability ↑
-  ]
-};
-
-// Debits: $100
-// Credits: $20 + $80 = $100 ✓ Balanced
 ```
+Journal Entry:
+  Debit:  Cash                 $100  (Asset ↑)
+  Credit: Platform Revenue     $20   (Revenue ↑)
+  Credit: Creator Balance      $80   (Liability ↑)
 
-## Example: Paying Out a Seller
-
-The seller withdraws their $80.
-
-```typescript
-const journalEntry = {
-  entries: [
-    { account: 'seller_balance', type: 'debit', amount: 80 },  // Liability ↓
-    { account: 'cash', type: 'credit', amount: 80 },           // Asset ↓
-  ]
-};
-
-// Debits: $80
-// Credits: $80 ✓ Balanced
+Debits: $100
+Credits: $20 + $80 = $100 ✓ Balanced
 ```
 
 ## Why This Matters
@@ -85,10 +63,7 @@ Every balance is the sum of transactions. You can always explain any number.
 
 ### Reports Are Free
 
-- **Balance Sheet** = Sum of Asset, Liability, Equity accounts
-- **P&L** = Sum of Revenue and Expense accounts
-
-No custom queries. The reports emerge from the data structure.
+Balance Sheet and P&L emerge naturally from the data structure.
 
 ---
 
@@ -96,42 +71,64 @@ No custom queries. The reports emerge from the data structure.
 
 You don't need to implement double-entry yourself. Soledgic does it automatically.
 
-```typescript
-import { Soledgic } from '@soledgic/sdk';
+### For Your Engineers
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
+```typescript
+import Soledgic from '@soledgic/sdk'
+
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
 // You call this
 await soledgic.recordSale({
-  amount: 10000,        // $100.00 in cents
+  referenceId: 'stripe_pi_xxx',
   creatorId: 'creator_123',
-  platformFeePercent: 20,
-});
+  amount: 10000, // $100 in cents
+})
 
 // Soledgic creates balanced journal entries automatically:
 // Debit:  Cash                 $100
-// Credit: Revenue              $20
+// Credit: Platform Revenue     $20
 // Credit: Creator Balance      $80
+
+// Verify books are balanced
+const trialBalance = await soledgic.getTrialBalance()
+// { accounts: [...], totals: { debits: 125000, credits: 125000, balanced: true } }
 ```
 
-Then get reports:
+### The Soledgic Dashboard
 
-```typescript
-const balanceSheet = await soledgic.getBalanceSheet();
-// { assets: { cash: 10000 }, liabilities: { creatorBalances: 8000 }, ... }
+Your finance team doesn't need to understand journal entries. The dashboard shows it all:
 
-const pnl = await soledgic.getProfitLoss({ 
-  startDate: '2024-01-01', 
-  endDate: '2024-12-31' 
-});
-// { revenue: 450000, expenses: 365000, netIncome: 85000 }
+**Dashboard → Reports → Trial Balance**
+The ultimate proof your books are correct:
+- Every account with debit and credit columns
+- Totals at the bottom
+- Green "✓ Ledger is balanced" when debits = credits
+- Red warning if something's wrong (but Soledgic prevents this)
 
-const trialBalance = await soledgic.getTrialBalance();
-// { totalDebits: 1250000, totalCredits: 1250000, balanced: true }
-```
+**Dashboard → Reports → Profit & Loss**
+Select a date range. See:
+- Revenue (broken down by type)
+- Expenses (broken down by category)
+- Net Income
 
-You get the benefits of double-entry accounting without implementing it yourself.
+Export to PDF for your accountant.
 
-**Accountants figured this out 500 years ago. Soledgic brings it to your API.**
+**Dashboard → Reports → Creator Earnings**
+What each creator:
+- Earned (total sales)
+- Was paid (payouts)
+- Is owed (current balance)
+
+**Dashboard → Settings → Close Month**
+When you're ready to lock a period:
+1. Click "Close Month"
+2. Soledgic verifies everything balances
+3. Period is locked - no more changes allowed
+4. Frozen statements generated for auditors
+
+This is real accounting compliance. Not a spreadsheet.
+
+**Accountants figured this out 500 years ago. Soledgic brings it to your API and dashboard.**
 
 [Start free →](https://soledgic.com)

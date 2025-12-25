@@ -18,12 +18,10 @@ This is going to be a problem.
 
 During financial due diligence, you'll be asked for:
 
-1. **Balance Sheet** - What you own, what you owe, what's left
-2. **Profit & Loss Statement** - Revenue minus expenses over time
-3. **Cash Flow Statement** - Cash in, cash out
-4. **Accounts Receivable Aging** - Who owes you money
-5. **Accounts Payable Aging** - Who you owe money
-6. **Revenue Recognition Documentation** - How you count revenue
+1. **Profit & Loss Statement** - Revenue minus expenses over time
+2. **Trial Balance** - Proof your books are balanced
+3. **Creator/Contractor Earnings** - Who you've paid and how much
+4. **1099 Summary** - Tax compliance for payments over $600
 
 If you can't produce these, the deal slows down. If they don't look right, the deal dies.
 
@@ -41,80 +39,103 @@ Stripe shows charges processed. It doesn't show assets vs. liabilities, revenue 
 
 - **No audit trail**: "How did this balance get here?" "I don't know."
 - **Cash doesn't reconcile**: Books don't match bank.
-- **Revenue includes money you owe others**: Seller funds counted as revenue.
-- **Round numbers everywhere**: Real accounting has cents.
+- **Revenue includes money you owe others**: Creator funds counted as revenue.
+- **No period locking**: Books can be changed retroactively.
 
 ### Green Flags ✅
 
 - **Clean reconciliations**: Books match bank, documented.
-- **Proper liability tracking**: You know what you owe sellers.
-- **Aged receivables**: You track how old outstanding invoices are.
+- **Proper liability tracking**: You know what you owe creators.
+- **Frozen periods**: Past months are locked and can't be modified.
 - **Audit trail**: You can explain any number.
-
-## The Due Diligence Checklist
-
-Before you go into due diligence, verify you can produce:
-
-- [ ] Balance Sheet (as of last month end)
-- [ ] P&L Statement (last 12 months, monthly)
-- [ ] AR Aging Report
-- [ ] AP Aging Report
-- [ ] Bank reconciliation (last 3 months)
-
-If you can't produce any of these in under an hour, you have a problem.
 
 ---
 
 ## How Soledgic Makes You Audit-Ready
 
-Soledgic generates every report investors ask for:
+### For Your Engineers
+
+Pull any report programmatically:
 
 ```typescript
-import { Soledgic } from '@soledgic/sdk';
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
-
-// Balance Sheet
-const balanceSheet = await soledgic.getBalanceSheet();
-// {
-//   assets: { cash: 150000, accountsReceivable: 25000 },
-//   liabilities: { accountsPayable: 10000, creatorBalances: 80000 },
-//   equity: { retainedEarnings: 85000 }
-// }
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
 // P&L for the year
-const pnl = await soledgic.getProfitLoss({
-  startDate: '2024-01-01',
-  endDate: '2024-12-31',
-});
-// { revenue: 450000, expenses: 365000, netIncome: 85000 }
+const pnl = await soledgic.getProfitLoss('2024-01-01', '2024-12-31')
 
-// AR Aging - who owes you?
-const arAging = await soledgic.getARAging();
-// { current: 15000, days30: 5000, days60: 3000, days90plus: 2000 }
+// Trial Balance
+const trialBalance = await soledgic.getTrialBalance()
 
-// AP Aging - who do you owe?
-const apAging = await soledgic.getAPAging();
-// { current: 60000, days30: 15000, days60: 5000, days90plus: 0 }
+// Creator earnings
+const earnings = await soledgic.getCreatorEarnings('2024-01-01', '2024-12-31')
 
-// Trial Balance - proves books are balanced
-const trialBalance = await soledgic.getTrialBalance();
-// { totalDebits: 1250000, totalCredits: 1250000, balanced: true }
+// 1099 summary
+const tax = await soledgic.get1099Summary(2024)
+
+// Generate PDFs
+const pnlPdf = await soledgic.getProfitLossPDF('2024-01-01', '2024-12-31')
 ```
 
-Every transaction has an audit trail:
+### The Soledgic Dashboard
 
-```typescript
-// "Why is this creator's balance $247.83?"
-const transactions = await soledgic.getTransactions({
-  creatorId: 'creator_123',
-});
+At 11 PM before the investor call, you don't need engineering. Open the dashboard:
 
-// Returns every transaction with timestamps, amounts, and references
-// Full audit trail for any balance
-```
+**Dashboard → Reports → Profit & Loss**
+1. Select date range (e.g., 2024-01-01 to 2024-12-31)
+2. View revenue breakdown by category
+3. View expenses breakdown
+4. See net income
+5. Click **PDF** or **CSV** to export
 
-Your investors get clean financials. Your deal closes faster.
+**Dashboard → Reports → Trial Balance**
+- Every account with debit/credit balances
+- Totals prove books balance
+- "✓ Ledger is balanced" indicator
+- Export for auditors
+
+**Dashboard → Reports → Creator Earnings**
+- Every creator listed
+- What they earned
+- What they were paid
+- Current balance owed
+- Tier information
+
+**Dashboard → Reports → 1099 Summary**
+- Tax year selector
+- Who needs a 1099 (paid ≥ $600)
+- W-9 status for each payee
+- Export for tax filing
+
+**Dashboard → Settings → Close Month**
+Critical for audit compliance:
+1. Click "Close Month"
+2. Select the month to close
+3. Soledgic runs balance check
+4. Period locks - no changes allowed
+5. Frozen statements generated
+
+This shows auditors you have proper controls. Past periods can't be modified.
+
+**Dashboard → Audit**
+Every action logged:
+- Who accessed what
+- When
+- From which IP
+- What they did
+
+Full audit trail for compliance.
+
+### What You Send to Investors
+
+1. Log into Soledgic dashboard
+2. Go to Reports
+3. Export P&L as PDF
+4. Export Trial Balance as PDF
+5. Attach to email
+
+Total time: 5 minutes.
 
 **Clean books signal operational excellence.**
 

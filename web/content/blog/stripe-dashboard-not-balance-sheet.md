@@ -75,56 +75,54 @@ A creator says you owe them $5,000. You check Stripe. You see transactions, but 
 
 ## How Soledgic Fixes This
 
-Soledgic sits between Stripe and your accounting. When a sale happens:
+Soledgic sits between Stripe and your accounting. Your backend records sales, Soledgic handles the double-entry accounting.
+
+### For Your Engineers
 
 ```typescript
-import { Soledgic } from '@soledgic/sdk';
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
 // In your Stripe webhook handler
 app.post('/webhooks/stripe', async (req, res) => {
-  const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret)
   
   if (event.type === 'payment_intent.succeeded') {
-    const payment = event.data.object;
+    const payment = event.data.object
     
-    // Record in Soledgic - automatically creates balanced journal entries
     await soledgic.recordSale({
-      amount: payment.amount,
+      referenceId: payment.id,
       creatorId: payment.metadata.creator_id,
-      platformFeePercent: 20,
-      reference: payment.id,
-    });
+      amount: payment.amount, // in cents
+      processingFee: payment.application_fee_amount,
+    })
   }
   
-  res.json({ received: true });
-});
+  res.json({ received: true })
+})
 ```
 
-Soledgic automatically:
-- Records your platform fee as revenue
-- Records the creator's share as a liability
-- Updates the creator's balance
-- Creates the audit trail
+### The Soledgic Dashboard
 
-Then when you need reports:
+Your finance team doesn't need to write code. They open the dashboard:
 
-```typescript
-// Balance Sheet - what you own, owe, and have left
-const balanceSheet = await soledgic.getBalanceSheet();
+**Dashboard → Inflow**
+See all sales as they come in. Filter by date, creator, or product. Every transaction shows the split: gross amount, processing fee, creator share, platform revenue.
 
-// P&L - revenue minus expenses
-const pnl = await soledgic.getProfitLoss({ 
-  startDate: '2024-01-01', 
-  endDate: '2024-12-31' 
-});
+**Dashboard → Directory**
+Look up any creator. See their current balance, transaction history, tier, and custom split percentage. Answer "how much do we owe Jane?" in 5 seconds.
 
-// What you owe each creator
-const balances = await soledgic.getBalances();
-```
+**Dashboard → Reports → Profit & Loss**
+Real P&L statement. Revenue minus expenses. Net income. Filter by any date range. Export to PDF or CSV for your accountant.
 
-Your accountant gets real financial statements. Your investors get audit-ready data.
+**Dashboard → Reports → Trial Balance**
+Proof your books balance. Total debits = total credits. Green checkmark means you're good. Red warning means something's wrong.
+
+**Dashboard → Reconciliation**
+Match Soledgic transactions to your Stripe transactions. Identify discrepancies. Mark items as reviewed. Full reconciliation workflow.
+
+No spreadsheets. No "ask engineering to pull a report." Real-time financial data.
 
 **Stripe handles payments. Soledgic handles accounting.**
 

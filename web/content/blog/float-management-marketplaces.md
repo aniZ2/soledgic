@@ -48,75 +48,77 @@ Auditors will ask: "Show me your restricted cash." If you can't separate your mo
 
 ## The Float Formula
 
-```typescript
-const realCash = bankBalance - totalSellerBalances;
-
-// If this number goes negative, you've spent money that wasn't yours
+```
+Real Cash = Bank Balance - Total Creator Balances
 ```
 
-Run this calculation daily.
-
-## Float Timing Creates Complexity
-
-| Event | Your Cash | Your Liability |
-|-------|-----------|----------------|
-| Customer pays $100 | +$100 | +$80 (owe seller) |
-| Stripe takes $3 fee | -$3 | — |
-| You pay seller $80 | -$80 | -$80 |
-| Net position | +$17 | $0 |
-
-Your revenue is $17. But for a few days, you were holding $100. Your books need to show that liability accurately.
+Run this calculation daily. If the number ever goes negative, you've spent money that wasn't yours.
 
 ---
 
 ## How Soledgic Tracks Float
 
-Soledgic automatically separates your money from seller money:
+### For Your Engineers
 
 ```typescript
-import { Soledgic } from '@soledgic/sdk';
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
-// Record a sale - Soledgic tracks the liability automatically
+// Record a sale - liability tracked automatically
 await soledgic.recordSale({
-  amount: 10000,
+  referenceId: 'stripe_pi_xxx',
   creatorId: 'seller_123',
-  platformFeePercent: 20,
-});
+  amount: 10000,
+})
 
-// See what you owe all sellers
-const { totalOwed } = await soledgic.getTotalBalances();
-// totalOwed: 400000 (in cents)
-
-// See aged liabilities - who's been waiting longest?
-const aging = await soledgic.getAPAging();
+// Get financial summary
+const summary = await soledgic.getSummary()
 // {
-//   current: 200000,      // 0-7 days
-//   days8to14: 150000,
-//   days15to30: 40000,
-//   over30: 10000         // Red flag - why haven't these been paid?
+//   total_assets: 50000,
+//   total_liabilities: 40000,  ← What you owe creators
+//   total_revenue: 15000,
+//   net_worth: 10000           ← What's actually yours
 // }
 ```
 
-Your Balance Sheet shows the separation clearly:
+### The Soledgic Dashboard
 
-```typescript
-const balanceSheet = await soledgic.getBalanceSheet();
-// {
-//   assets: {
-//     cash: 500000,              // What's in the bank
-//   },
-//   liabilities: {
-//     sellerBalances: 400000,    // What you owe
-//   },
-//   equity: {
-//     retainedEarnings: 100000,  // What's actually yours
-//   }
-// }
+Your finance team sees float in real-time:
+
+**Dashboard → Home (Summary View)**
+The first thing you see when you log in:
+- Total Assets
+- Total Liabilities (what you owe creators)
+- Net Worth (your actual money)
+- Revenue and expenses
+
+One glance tells you your real cash position.
+
+**Dashboard → Directory**
+See every creator's balance. Filter by balance amount to find who you owe the most. Sort by tier to see your biggest earners.
+
+**Dashboard → Reports → Creator Earnings**
+Full breakdown:
+- What each creator earned
+- What they've been paid out
+- What you still owe them
+
+Export to CSV for detailed analysis.
+
+**Dashboard → Reports → Trial Balance**
+Assets, liabilities, equity all listed. Verify the accounting equation holds:
+
+```
+Assets = Liabilities + Equity
 ```
 
-One API call. Real cash position. No spreadsheets.
+If it doesn't balance, Soledgic shows a warning.
+
+**Dashboard → Outflow**
+Track every payout you've recorded. See pending vs. completed. Know exactly how much has left your account vs. how much is still owed.
+
+No spreadsheets. No manual calculations. Real-time visibility into your cash position.
 
 **Know your float. Know your real money.**
 

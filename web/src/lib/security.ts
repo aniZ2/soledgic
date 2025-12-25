@@ -65,7 +65,31 @@ export function sanitizeRedirect(path: string, defaultPath = '/dashboard'): stri
 // CSRF PROTECTION
 // ============================================================================
 
-const CSRF_SECRET = process.env.CSRF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'development-csrf-secret'
+function getCsrfSecret(): string {
+  const secret = process.env.CSRF_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (secret) {
+    return secret
+  }
+
+  // Only allow fallback in development - NEVER in production
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SECURITY ERROR: CSRF_SECRET environment variable is required in production. ' +
+      'Set CSRF_SECRET to a random 32+ character string.'
+    )
+  }
+
+  // Development-only warning
+  console.warn(
+    '⚠️  CSRF_SECRET not set - using development fallback. ' +
+    'This is insecure and will fail in production.'
+  )
+
+  return 'development-only-csrf-secret-do-not-use-in-production'
+}
+
+const CSRF_SECRET = getCsrfSecret()
 const CSRF_TOKEN_EXPIRY = 60 * 60 * 1000 // 1 hour in milliseconds
 
 /**

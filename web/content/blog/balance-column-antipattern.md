@@ -23,7 +23,7 @@ Every developer does this:
 await prisma.user.update({
   where: { id: userId },
   data: { balance: { increment: amount } }
-});
+})
 ```
 
 Simple. Clean. Ships fast.
@@ -33,15 +33,6 @@ Simple. Clean. Ships fast.
 ### Problem 1: No Audit Trail
 
 The balance column only stores the current state. When you overwrite it, the previous state is gone.
-
-```typescript
-// "Why is my balance $247.83?"
-const user = await prisma.user.findUnique({ where: { id: 'abc' } });
-console.log(user.balance); // 247.83
-
-// How did it get there? 🤷
-// No way to know without a transaction log
-```
 
 ### Problem 2: Race Conditions
 
@@ -67,82 +58,68 @@ You can't.
 
 ---
 
-## The Right Way: Transaction Log + Computed Balance
-
-Instead of storing the balance, store the transactions. Calculate the balance when needed.
-
-```typescript
-// ❌ Don't do this
-user.balance += amount;
-
-// ✅ Do this instead
-await prisma.transaction.create({
-  data: {
-    userId,
-    amount,
-    type: 'credit',
-    reference: stripePaymentId,
-    createdAt: new Date(),
-  }
-});
-
-// Balance is computed
-const balance = await prisma.transaction.aggregate({
-  where: { userId },
-  _sum: { amount: true }
-});
-```
-
-Now you have:
-- Full audit trail
-- Every change recorded
-- Timestamps for everything
-- References to source systems
-
-## But I Already Have a Balance Column
-
-If you've already shipped this pattern, you're accumulating risk. Every day without an audit trail is a day you might lose money and not know why.
-
----
-
 ## How Soledgic Eliminates This Problem
 
-Soledgic is built on double-entry accounting. There is no balance column to corrupt.
+Soledgic is built on double-entry accounting. There is no balance column to corrupt. Balance is always computed from the transaction history.
 
-Every operation creates immutable transaction records:
+### For Your Engineers
 
 ```typescript
-import { Soledgic } from '@soledgic/sdk';
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
 // Record a sale - creates immutable journal entries
-await soledgic.recordSale({
+const sale = await soledgic.recordSale({
+  referenceId: 'stripe_pi_xxx',
+  creatorId: 'creator_123',
   amount: 10000,
-  creatorId: 'creator_123',
-  platformFeePercent: 20,
-  reference: 'stripe_pi_xxx',
-});
+  productName: 'Premium Course',
+})
+
+// Get full transaction history for a creator
+const transactions = await soledgic.getTransactions(
+  '2024-01-01', 
+  '2024-12-31', 
+  'creator_123'
+)
 ```
 
-The creator's balance is always computed from the transaction history.
+### The Soledgic Dashboard
 
-When someone asks "why is my balance $247.83?":
+When a creator asks "why is my balance $247.83?", your support team doesn't need engineering:
 
-```typescript
-// Full audit trail
-const transactions = await soledgic.getTransactions({
-  creatorId: 'creator_123',
-});
+**Dashboard → Directory → Search Creator**
+Type the creator's name or ID. Click to view their profile.
 
-// Returns every transaction that affected this balance
-// With timestamps, amounts, and references
-transactions.forEach(tx => {
-  console.log(`${tx.createdAt}: ${tx.type} $${tx.amount} - ${tx.description}`);
-});
-```
+**Creator Profile → Transaction History**
+See every transaction that affected their balance:
+- Date and time
+- Transaction type (sale, payout, refund, adjustment)
+- Amount and running balance
+- Reference ID (links to Stripe)
 
-Full audit trail. No lost money. No 2 AM debugging sessions.
+**Creator Profile → Balance Breakdown**
+- Ledger Balance: Total earned minus payouts
+- Held Amount: Funds in hold period
+- Available Balance: What they can withdraw
+
+**Dashboard → Audit**
+For compliance, see who viewed what, when. Every action logged with:
+- Timestamp
+- User/API key
+- IP address
+- Action taken
+- Entity affected
+
+**Dashboard → Reconciliation**
+Match your ledger to external systems:
+- Link Soledgic transactions to Stripe transactions
+- Identify unmatched items
+- Mark as reviewed
+- Full reconciliation workflow
+
+No SQL queries. No engineering tickets. Full audit trail in seconds.
 
 **The balance column is a lie. The transaction log is the truth.**
 

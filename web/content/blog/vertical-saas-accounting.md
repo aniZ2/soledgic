@@ -25,6 +25,7 @@ But the moment you handle payments on behalf of your customers, accounting becom
 - Taking a platform fee
 - Owing them the remainder
 - Responsible for reconciliation
+- Potentially issuing 1099s
 
 ## Why QuickBooks Doesn't Work
 
@@ -44,96 +45,92 @@ A patient pays $500 for a procedure. Your system knows: $400 goes to the dentist
 
 Some procedures involve the dentist, a specialist, and a lab. Three parties, one payment. QuickBooks can't express this.
 
-## What Vertical SaaS Actually Needs
-
-Your accounting system needs to understand your domain:
-
-**For Dental/Medical:**
-- Patient pays $1,200
-- Insurance covers $800, patient pays $400
-- Platform fee: $60
-- Dentist payout: $1,140
-
-**For Field Service:**
-- Customer pays $450 for HVAC repair
-- Labor: $300 (tech gets 70% = $210)
-- Parts: $150 (30% markup)
-- Platform fee: $45
-
-**For Property Management:**
-- Rent: $2,000
-- Management fee (10%): $200
-- Reserve contribution: $100
-- Owner payout: $1,700
-
 ---
 
 ## How Soledgic Handles Vertical Complexity
 
-Soledgic gives you a sub-ledger per customer with multi-party transaction support:
+### For Your Engineers
 
 ```typescript
-import { Soledgic } from '@soledgic/sdk';
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY });
+const soledgic = new Soledgic({ apiKey: process.env.SOLEDGIC_API_KEY })
 
-// Create a ledger for each business on your platform
-const dentistLedger = await soledgic.createLedger({
-  businessName: 'Smith Dental Practice',
-  parentOrganization: 'your_dental_platform',
-});
-
-// Record a complex multi-party transaction
+// Record a sale with automatic split calculation
 await soledgic.recordSale({
-  ledgerId: dentistLedger.id,
-  amount: 120000, // $1,200
-  splits: [
-    { payeeId: 'dr_smith', amount: 114000 },      // $1,140 to dentist
-    { payeeId: 'platform_fee', amount: 6000 },   // $60 platform fee
-  ],
-  metadata: {
-    patient: 'john_doe',
-    procedure: 'root_canal',
-    insuranceClaim: 'INS-12345',
-  },
-});
+  referenceId: 'payment_123',
+  creatorId: 'dr_smith',
+  amount: 120000, // $1,200 in cents
+  processingFee: 350,
+  productName: 'Root Canal - Patient John Doe',
+})
 
-// Each business sees their own reports
-const dentistPnL = await soledgic.getProfitLoss({
-  ledgerId: dentistLedger.id,
-  startDate: '2024-01-01',
-  endDate: '2024-12-31',
-});
+// Set custom splits per creator
+await soledgic.setCreatorSplit('dr_smith', 95) // 95% to dentist
 
-// You see roll-up across all businesses
-const platformPnL = await soledgic.getProfitLoss({
-  organization: 'your_dental_platform',
-});
+// Get effective split for any creator
+const split = await soledgic.getEffectiveSplit('dr_smith')
+// { creator_percent: 95, source: 'custom_override' }
+
+// Or use tiers for automatic splits based on volume
+const tiers = await soledgic.listTiers()
+// starter: 80%, growth: 85%, pro: 90%
 ```
 
-Field service with tech payouts:
+### The Soledgic Dashboard
 
-```typescript
-// HVAC job completion
-await soledgic.recordSale({
-  ledgerId: contractorLedger.id,
-  amount: 45000, // $450
-  splits: [
-    { payeeId: 'tech_mike', amount: 21000, type: 'labor' },    // 70% of $300
-    { payeeId: 'parts_cost', amount: 11500, type: 'cogs' },    // Parts at cost
-    { payeeId: 'platform', amount: 4500, type: 'fee' },        // Platform fee
-    { payeeId: 'parts_margin', amount: 3500, type: 'revenue' }, // Parts markup
-    { payeeId: 'contractor', amount: 4500, type: 'labor' },    // 30% of labor
-  ],
-  metadata: {
-    jobId: 'JOB-4521',
-    customer: 'ABC Corp',
-    serviceType: 'hvac_repair',
-  },
-});
-```
+Your platform team manages everything visually:
 
-Sub-ledgers per customer. Multi-party splits. Roll-up reporting. All through one API.
+**Dashboard → Directory**
+Every creator/contractor on your platform:
+- Name and ID
+- Current balance
+- Tier (affects split percentage)
+- Custom split if set
+- Transaction count
+- Last activity
+
+Click any creator to see their full profile and transaction history.
+
+**Dashboard → Directory → Creator Profile**
+For each business on your platform:
+- Balance breakdown (ledger, held, available)
+- Full transaction history
+- Payout history
+- Custom split percentage
+- Metadata you've attached
+
+**Dashboard → Settings → Tiers**
+Configure automatic splits based on volume:
+- Starter: First $10k → 80% to creator
+- Growth: $10k-$50k → 85% to creator
+- Pro: $50k+ → 90% to creator
+
+Creators automatically promote as they hit thresholds.
+
+**Dashboard → Reports → Creator Earnings**
+Platform-wide view:
+- Every creator's earnings for a period
+- What they've been paid
+- What you owe
+- Filter by tier
+
+Export for your records.
+
+**Dashboard → Reports → 1099 Summary**
+Tax compliance:
+- Who's been paid ≥ $600 this tax year
+- W-9 collection status
+- Ready for 1099 filing
+
+**Dashboard → Outflow**
+Track payouts you've recorded:
+- Pending payouts
+- Completed payouts
+- Payout method used
+- Reference IDs for reconciliation
+
+**Note**: Soledgic records payout transactions in your ledger. The actual money movement happens through your existing payment rails (Stripe Connect, direct bank transfer, etc.). We're not a money transmitter - we're your accounting layer.
 
 **Your vertical expertise is your moat. Don't let generic accounting software slow you down.**
 
