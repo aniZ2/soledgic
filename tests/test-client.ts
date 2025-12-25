@@ -307,6 +307,14 @@ export class SoledgicTestClient {
     const params = asOfDate ? `?as_of_date=${asOfDate}` : ''
     return this.requestGet(`ap-aging${params}`)
   }
+
+  // ============================================================================
+  // TEST UTILITIES
+  // ============================================================================
+
+  async cleanupTestData() {
+    return this.request('test-cleanup', {})
+  }
 }
 
 // ============================================================================

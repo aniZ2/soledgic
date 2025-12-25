@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
       testTimeout: 30000,
       hookTimeout: 10000,
       env: env,
+      globalSetup: ['./tests/global-setup.ts'],
     },
   }
 })

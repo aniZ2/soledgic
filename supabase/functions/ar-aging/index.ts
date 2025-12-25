@@ -157,9 +157,10 @@ const handler = createHandler(
     for (const entry of arEntries || []) {
       const tx = entry.transaction
       const metadata = tx.metadata || {}
-      // invoice_id could be in metadata for payments, or the transaction itself is the invoice
-      // Note: receive-payment uses 'original_invoice_id' for the reference
-      const invoiceId = metadata.invoice_id || metadata.original_invoice_id || tx.id
+      // original_invoice_id is the invoice's transaction_id (for matching)
+      // invoice_id is the invoice record id (from invoices table)
+      // For original invoice transactions, tx.id IS the invoice transaction id
+      const invoiceId = metadata.original_invoice_id || tx.id
 
       if (!invoiceBalances[invoiceId]) {
         invoiceBalances[invoiceId] = {
