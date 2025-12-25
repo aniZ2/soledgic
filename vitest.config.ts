@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
       hookTimeout: 10000,
       env: env,
       globalSetup: ['./tests/global-setup.ts'],
+      // Run test files sequentially to prevent cleanup race conditions
+      fileParallelism: false,
     },
   }
 })

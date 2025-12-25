@@ -163,8 +163,14 @@ describe('AP Aging Report', () => {
 describe('Bills & Balance Sheet Consistency', () => {
   let client: SoledgicTestClient
 
-  beforeAll(() => {
+  beforeAll(async () => {
     client = createTestClient('booklyverse')
+    // Clean up to ensure balance sheet consistency checks are isolated
+    try {
+      await client.cleanupTestData()
+    } catch (e) {
+      console.log('Cleanup skipped:', (e as Error).message)
+    }
   })
 
   it('should show AP in current liabilities', async () => {
