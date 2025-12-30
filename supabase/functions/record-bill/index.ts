@@ -49,6 +49,14 @@ interface InstrumentValidationResult {
   mismatches: string[]
 }
 
+interface ProjectionMatch {
+  projection_id: string
+  authorizing_instrument_id: string
+  expected_date: string
+  amount: number
+  currency: string
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: getCorsHeaders(req) })
@@ -287,6 +295,69 @@ Deno.serve(async (req) => {
 
     await supabase.from('entries').insert(entries)
 
+    // ========================================================================
+    // SNAP-TO MATCHING: Shadow Ledger Integration
+    // ========================================================================
+    // Search for a matching projection and link if found.
+    // This does NOT affect double-entry integrity - only adds traceability.
+
+    let projectionMatch: ProjectionMatch | null = null
+    const currency = (ledger.settings as any)?.currency || 'USD'
+
+    try {
+      // Get today's date for matching window (+/- 3 days)
+      const today = new Date()
+      const dateTolerance = 3
+      const minDate = new Date(today)
+      minDate.setDate(minDate.getDate() - dateTolerance)
+      const maxDate = new Date(today)
+      maxDate.setDate(maxDate.getDate() + dateTolerance)
+
+      // Search for matching projection
+      const { data: matchingProjection } = await supabase
+        .from('projected_transactions')
+        .select('id, authorizing_instrument_id, expected_date, amount, currency')
+        .eq('ledger_id', ledger.id)
+        .eq('status', 'pending')
+        .eq('amount', amountInDollars)
+        .eq('currency', currency)
+        .gte('expected_date', minDate.toISOString().split('T')[0])
+        .lte('expected_date', maxDate.toISOString().split('T')[0])
+        .order('expected_date', { ascending: true })
+        .limit(1)
+        .single()
+
+      if (matchingProjection) {
+        projectionMatch = matchingProjection as ProjectionMatch
+
+        // Fulfill the projection: update status and link to transaction
+        await supabase
+          .from('projected_transactions')
+          .update({
+            status: 'fulfilled',
+            matched_transaction_id: transaction.id
+          })
+          .eq('id', projectionMatch.projection_id)
+
+        // Link transaction back to projection
+        await supabase
+          .from('transactions')
+          .update({
+            projection_id: projectionMatch.projection_id,
+            metadata: {
+              ...transactionMetadata,
+              projection_verified: true,
+              matched_projection_id: projectionMatch.projection_id,
+              matched_expected_date: projectionMatch.expected_date
+            }
+          })
+          .eq('id', transaction.id)
+      }
+    } catch (snapError) {
+      // Snap-to matching is non-critical - log but don't fail the transaction
+      console.warn('Snap-to matching failed (non-critical):', snapError)
+    }
+
     // Audit log
     supabase.from('audit_log').insert({
       ledger_id: ledger.id,
@@ -301,7 +372,8 @@ Deno.serve(async (req) => {
         vendor: vendorName,
         paid: isPaid,
         authorizing_instrument_id: instrument?.id || null,
-        verified: instrumentValidation?.verified ?? null
+        verified: instrumentValidation?.verified ?? null,
+        projection_matched: projectionMatch?.projection_id || null
       }
     }).then(() => {}).catch(() => {})
 
@@ -320,6 +392,16 @@ Deno.serve(async (req) => {
         instrument_id: instrumentValidation.instrument_id,
         external_ref: instrumentValidation.external_ref,
         mismatches: instrumentValidation.mismatches.length > 0 ? instrumentValidation.mismatches : undefined
+      }
+    }
+
+    // Include projection match if found (Shadow Ledger snap-to)
+    if (projectionMatch) {
+      response.projection = {
+        matched: true,
+        projection_id: projectionMatch.projection_id,
+        expected_date: projectionMatch.expected_date,
+        instrument_id: projectionMatch.authorizing_instrument_id
       }
     }
 

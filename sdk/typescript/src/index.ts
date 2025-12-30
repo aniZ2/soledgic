@@ -82,6 +82,55 @@ export interface AuthorizationResult {
   mismatches?: string[]
 }
 
+// === SHADOW LEDGER (GHOST ENTRIES) ===
+
+export interface ProjectIntentRequest {
+  authorizingInstrumentId: string
+  untilDate: string  // ISO date string
+  horizonCount?: number  // Max projections to create (default 12, max 60)
+}
+
+export interface ProjectIntentResponse {
+  success: boolean
+  instrumentId: string
+  externalRef: string
+  cadence: string
+  projectionsCreated: number
+  projectionsRequested: number
+  duplicatesSkipped: number
+  dateRange: {
+    from: string
+    to: string
+  }
+  projectedDates: string[]
+}
+
+export interface ProjectionMatch {
+  matched: boolean
+  projectionId: string
+  expectedDate: string
+  instrumentId: string
+}
+
+export interface ObligationItem {
+  expectedDate: string
+  amount: number
+  currency: string
+  counterparty: string | null
+}
+
+export interface Obligations {
+  pendingTotal: number
+  pendingCount: number
+  items: ObligationItem[]
+}
+
+export interface BreachRisk {
+  atRisk: boolean
+  shortfall: number
+  coverageRatio: number
+}
+
 export interface ProcessPayoutRequest {
   referenceId: string
   creatorId: string
@@ -297,6 +346,29 @@ export class Soledgic {
         counterparty_name: req.extractedTerms.counterpartyName,
       },
     })
+  }
+
+  // === SHADOW LEDGER (GHOST ENTRIES) ===
+  // Project future obligations based on authorizing instrument terms.
+  // Ghost entries NEVER affect balances or entries - only express future intent.
+
+  async projectIntent(req: ProjectIntentRequest): Promise<ProjectIntentResponse> {
+    const response = await this.request<any>('project-intent', {
+      authorizing_instrument_id: req.authorizingInstrumentId,
+      until_date: req.untilDate,
+      horizon_count: req.horizonCount,
+    })
+    return {
+      success: response.success,
+      instrumentId: response.instrument_id,
+      externalRef: response.external_ref,
+      cadence: response.cadence,
+      projectionsCreated: response.projections_created,
+      projectionsRequested: response.projections_requested,
+      duplicatesSkipped: response.duplicates_skipped,
+      dateRange: response.date_range,
+      projectedDates: response.projected_dates,
+    }
   }
 
   // === REVERSALS & CORRECTIONS ===
