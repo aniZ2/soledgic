@@ -252,20 +252,27 @@ const handler = createHandler(
       }
     }
 
+    // Build insert payload - only include authorizing_instrument_id if we have an instrument
+    const transactionInsert: Record<string, any> = {
+      ledger_id: ledger.id,
+      transaction_type: 'expense',
+      reference_id: referenceId,
+      reference_type: 'expense',
+      description: description,
+      amount: amountDollars,
+      currency: 'USD',
+      status: 'completed',
+      metadata: transactionMetadata
+    }
+
+    // Only add authorizing_instrument_id if instrument exists (column may not exist in older schemas)
+    if (instrument) {
+      transactionInsert.authorizing_instrument_id = instrument.id
+    }
+
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'expense',
-        reference_id: referenceId,
-        reference_type: 'expense',
-        description: description,
-        amount: amountDollars,
-        currency: 'USD',
-        status: 'completed',
-        authorizing_instrument_id: instrument?.id || null,
-        metadata: transactionMetadata
-      })
+      .insert(transactionInsert)
       .select('id')
       .single()
 

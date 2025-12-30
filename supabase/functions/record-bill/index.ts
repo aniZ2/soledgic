@@ -233,23 +233,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Build insert payload - only include authorizing_instrument_id if we have an instrument
+    const transactionInsert: Record<string, any> = {
+      ledger_id: ledger.id,
+      transaction_type: isPaid ? 'expense' : 'bill',
+      reference_id: body.reference_id ? validateId(body.reference_id, 255) : null,
+      reference_type: 'vendor_bill',
+      description: description,
+      amount: amountInDollars,
+      currency: (ledger.settings as any)?.currency || 'USD',
+      status: 'completed',
+      expense_category_id: expenseCategoryId,
+      merchant_name: vendorName,
+      metadata: transactionMetadata
+    }
+
+    // Only add authorizing_instrument_id if instrument exists (column may not exist in older schemas)
+    if (instrument) {
+      transactionInsert.authorizing_instrument_id = instrument.id
+    }
+
     // Create transaction with optional instrument linkage
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: isPaid ? 'expense' : 'bill',
-        reference_id: body.reference_id ? validateId(body.reference_id, 255) : null,
-        reference_type: 'vendor_bill',
-        description: description,
-        amount: amountInDollars,
-        currency: (ledger.settings as any)?.currency || 'USD',
-        status: 'completed',
-        expense_category_id: expenseCategoryId,
-        merchant_name: vendorName,
-        authorizing_instrument_id: instrument?.id || null,
-        metadata: transactionMetadata
-      })
+      .insert(transactionInsert)
       .select('id')
       .single()
 
