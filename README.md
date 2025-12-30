@@ -12,6 +12,7 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 - [API Endpoints](#api-endpoints)
 - [Authorizing Instruments](#authorizing-instruments)
 - [Shadow Ledger (Ghost Entries)](#shadow-ledger-ghost-entries)
+- [Breach Alerts](#breach-alerts)
 - [Features](#features)
 - [Project Structure](#project-structure)
 - [Database Schema](#database-schema)
@@ -55,10 +56,10 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 │  manage-bank-accts │ manage-splits     │ plaid                  │
 │  import-txns       │ manage-budgets    │ webhooks               │
 ├─────────────────────────────────────────────────────────────────┤
-│  Authorization     │ Shadow Ledger     │                        │
-│  ─────────────     │ ─────────────     │                        │
-│  register-         │ project-intent    │ Ghost entries for      │
-│    instrument      │ (snap-to match)   │ future projections     │
+│  Authorization     │ Shadow Ledger     │ Alerts               │
+│  ─────────────     │ ─────────────     │ ─────────────        │
+│  register-         │ project-intent    │ configure-alerts     │
+│    instrument      │ (snap-to match)   │ send-breach-alert    │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -75,6 +76,8 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 │    instruments        │   (contracts as proof, not CLM)         │
 │  projected_           │ Shadow Ledger: ghost entries for        │
 │    transactions       │   future obligation projection          │
+│  alert_configurations │ Slack/email/webhook alert settings      │
+│  alert_history        │ Sent alert audit trail                  │
 │  bank_accounts        │ Connected bank account tracking         │
 │  bank_lines           │ Imported bank statement lines           │
 │  reconciliations      │ Bank reconciliation records             │
@@ -265,6 +268,13 @@ const balance = await ledger.getTrialBalance()
 |----------|-------------|
 | `POST /project-intent` | Project future obligations from instrument cadence |
 
+### Breach Alerts
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /configure-alerts` | CRUD for Slack/email/webhook alert configurations |
+| `POST /send-breach-alert` | Send breach risk notification to configured channels |
+
 ### Operations
 
 | Endpoint | Description |
@@ -439,6 +449,107 @@ WHERE authorizing_instrument_id = 'uuid'
 
 ---
 
+## Breach Alerts
+
+When `project-intent` creates projections that result in a **breach risk** (pending obligations exceed cash balance), the system can automatically notify you via Slack, email, or webhook.
+
+### Configure Slack Alerts
+
+```bash
+curl -X POST "$URL/configure-alerts" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "action": "create",
+    "alert_type": "breach_risk",
+    "channel": "slack",
+    "config": {
+      "webhook_url": "https://hooks.slack.com/services/T.../B.../xxx"
+    },
+    "thresholds": {
+      "coverage_ratio_below": 0.5,
+      "shortfall_above": 10000
+    }
+  }'
+
+# Response:
+# { "success": true, "data": { "id": "uuid", "alert_type": "breach_risk", "channel": "slack" } }
+```
+
+### Alert Thresholds
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| `coverage_ratio_below` | 0.5 | Trigger when cash / obligations < 50% |
+| `shortfall_above` | 0 | Trigger when shortfall exceeds amount |
+
+### Automatic Triggering
+
+Alerts fire automatically when:
+1. `project-intent` creates new projections
+2. The resulting `breach_risk.at_risk = true`
+3. An active alert configuration exists for the ledger
+
+### Slack Message Format
+
+Alerts use Slack Block Kit with severity levels:
+
+| Coverage Ratio | Severity | Color |
+|----------------|----------|-------|
+| < 25% | CRITICAL | Red |
+| 25-50% | WARNING | Orange |
+| > 50% | NOTICE | Blue |
+
+Example Slack notification:
+```
+🚨 Cash Breach Risk Detected
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ledger: Acme Corp
+Severity: CRITICAL
+
+Current Cash:        $50,000
+Pending Obligations: $150,000
+Projected Shortfall: $100,000
+Coverage Ratio:      33%
+
+📋 Triggered by new projections from: PO-2024-001 (12 new obligations)
+```
+
+### Test Alert Configuration
+
+```bash
+curl -X POST "$URL/configure-alerts" \
+  -H "x-api-key: sk_xxx" \
+  -d '{"action": "test", "config_id": "uuid"}'
+
+# Sends a test message to verify webhook connectivity
+```
+
+### List Alert Configurations
+
+```bash
+curl -X POST "$URL/configure-alerts" \
+  -H "x-api-key: sk_xxx" \
+  -d '{"action": "list"}'
+```
+
+### Alert Types
+
+| Type | Description |
+|------|-------------|
+| `breach_risk` | Cash balance insufficient for pending obligations |
+| `projection_created` | New projections added (future) |
+| `instrument_invalidated` | Authorizing instrument invalidated (future) |
+
+### Alert Channels
+
+| Channel | Status | Configuration |
+|---------|--------|---------------|
+| `slack` | Supported | `webhook_url` required |
+| `email` | Planned | `recipients` array |
+| `webhook` | Planned | Uses existing webhook endpoints |
+
+---
+
 ## Features
 
 ### Core Accounting
@@ -490,6 +601,13 @@ WHERE authorizing_instrument_id = 'uuid'
 - **Balance Breach Prediction**: Current assets vs pending obligations
 - **Automatic Expiration**: Invalidating instruments expires pending projections
 
+### Breach Alerts (Phase 3)
+- **Slack Notifications**: Rich Block Kit messages with severity levels
+- **Configurable Thresholds**: coverage_ratio_below, shortfall_above
+- **Automatic Triggering**: Fires when project-intent detects breach risk
+- **Alert History**: Full audit trail of sent notifications
+- **Test Mode**: Verify webhook connectivity before production use
+
 ---
 
 ## Project Structure
@@ -511,6 +629,8 @@ soledgic/
 │   │   ├── get-runway/      # Cash runway (+ shadow obligations)
 │   │   ├── register-instrument/  # Authorizing instrument registration
 │   │   ├── project-intent/  # Shadow Ledger projections
+│   │   ├── configure-alerts/# Alert configuration CRUD
+│   │   ├── send-breach-alert/ # Slack/email alert sender
 │   │   ├── stripe/          # Stripe integration
 │   │   ├── plaid/           # Plaid integration
 │   │   └── ...              # 35+ more functions
@@ -653,6 +773,13 @@ soledgic/
 | `authorizing_instruments` | Ledger-native financial authorization (immutable) |
 | `projected_transactions` | Shadow Ledger: ghost entries for future projections |
 
+### Breach Alerts
+
+| Table | Description |
+|-------|-------------|
+| `alert_configurations` | Slack/email/webhook alert settings per ledger |
+| `alert_history` | Audit trail of all sent alerts |
+
 ### Security & Audit
 
 | Table | Description |
@@ -781,6 +908,34 @@ await ledger.projectIntent({
 const runway = await ledger.getRunway()
 // runway.obligations.pending_total
 // runway.breach_risk.at_risk
+
+// Breach Alerts: Configure Slack notifications
+await ledger.createAlert({
+  alertType: 'breach_risk',
+  channel: 'slack',
+  config: {
+    webhookUrl: 'https://hooks.slack.com/services/T.../B.../xxx'
+  },
+  thresholds: {
+    coverageRatioBelow: 0.5,  // Alert when coverage < 50%
+    shortfallAbove: 10000     // Alert when shortfall > $10k
+  }
+})
+
+// List configured alerts
+const alerts = await ledger.listAlerts()
+
+// Test alert (sends test message to Slack)
+await ledger.testAlert(alertId)
+
+// Update thresholds
+await ledger.updateAlert({
+  configId: alertId,
+  thresholds: { coverageRatioBelow: 0.3 }
+})
+
+// Delete alert configuration
+await ledger.deleteAlert(alertId)
 ```
 
 See `sdk/typescript/README.md` for full API reference.
