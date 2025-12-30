@@ -10,6 +10,8 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 - [Two Modes](#two-modes)
 - [Quick Start](#quick-start)
 - [API Endpoints](#api-endpoints)
+- [Authorizing Instruments](#authorizing-instruments)
+- [Shadow Ledger (Ghost Entries)](#shadow-ledger-ghost-entries)
 - [Features](#features)
 - [Project Structure](#project-structure)
 - [Database Schema](#database-schema)
@@ -36,7 +38,7 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        SOLEDGIC API                             │
-│                   (48 Edge Functions)                           │
+│                   (50+ Edge Functions)                          │
 ├─────────────────────────────────────────────────────────────────┤
 │  Sales & Income    │ Payouts & Bills   │ Reports & Tax          │
 │  ─────────────     │ ─────────────     │ ─────────────          │
@@ -52,25 +54,31 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 │  import-bank-stmt  │ list-ledgers      │ stripe-webhook         │
 │  manage-bank-accts │ manage-splits     │ plaid                  │
 │  import-txns       │ manage-budgets    │ webhooks               │
+├─────────────────────────────────────────────────────────────────┤
+│  Authorization     │ Shadow Ledger     │                        │
+│  ─────────────     │ ─────────────     │                        │
+│  register-         │ project-intent    │ Ghost entries for      │
+│    instrument      │ (snap-to match)   │ future projections     │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     SUPABASE (PostgreSQL)                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  ledgers          │ Multi-tenant ledger isolation               │
-│  accounts         │ Chart of accounts per ledger (asset/liab)   │
-│  transactions     │ Immutable transaction headers               │
-│  entries          │ Double-entry journal lines (debit/credit)   │
-│  invoices         │ AR/AP invoice management                    │
-│  payouts          │ Creator/contractor payout tracking          │
-│  creator_tiers    │ Tiered split configuration                  │
-│  withholding_rules│ Tax/refund holds                            │
-│  held_funds       │ Funds in reserve                            │
-│  bank_accounts    │ Connected bank account tracking             │
-│  bank_lines       │ Imported bank statement lines               │
-│  reconciliations  │ Bank reconciliation records                 │
-│  audit_log        │ Full audit trail (immutable)                │
+│  ledgers              │ Multi-tenant ledger isolation           │
+│  accounts             │ Chart of accounts per ledger            │
+│  transactions         │ Immutable transaction headers           │
+│  entries              │ Double-entry journal lines              │
+│  invoices             │ AR/AP invoice management                │
+│  payouts              │ Creator/contractor payout tracking      │
+│  authorizing_         │ Ledger-native financial authorization   │
+│    instruments        │   (contracts as proof, not CLM)         │
+│  projected_           │ Shadow Ledger: ghost entries for        │
+│    transactions       │   future obligation projection          │
+│  bank_accounts        │ Connected bank account tracking         │
+│  bank_lines           │ Imported bank statement lines           │
+│  reconciliations      │ Bank reconciliation records             │
+│  audit_log            │ Full audit trail (immutable)            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -245,6 +253,18 @@ const balance = await ledger.getTrialBalance()
 | `POST /webhooks` | Outbound webhook configuration |
 | `POST /process-webhooks` | Process webhook queue |
 
+### Authorizing Instruments
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /register-instrument` | Register financial authorization (PO, contract terms) |
+
+### Shadow Ledger (Projections)
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /project-intent` | Project future obligations from instrument cadence |
+
 ### Operations
 
 | Endpoint | Description |
@@ -254,6 +274,168 @@ const balance = await ledger.getTrialBalance()
 | `POST /send-statements` | Email statements to creators |
 | `POST /upload-receipt` | Upload receipt attachments |
 | `POST /billing` | Internal billing/usage tracking |
+
+---
+
+## Authorizing Instruments
+
+**Authorizing Instruments** are ledger-native financial authorization records. They are NOT contracts in the CLM sense - they exist solely to:
+- Explain WHY money moved
+- Validate whether a transaction was authorized
+- Support reconciliation-by-proof
+
+### Key Principles
+
+- **Ledger-first**: Instruments are subordinate to the ledger
+- **Immutable**: Cannot be edited after creation (invalidate + replace only)
+- **No money movement**: Instruments never create entries or affect balances
+- **Validation only**: Compare transactions against authorized terms
+
+### Register an Instrument
+
+```bash
+curl -X POST "$URL/register-instrument" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "external_ref": "PO-2024-001",
+    "extracted_terms": {
+      "amount": 500000,
+      "currency": "USD",
+      "cadence": "monthly",
+      "counterparty_name": "Acme Corp"
+    }
+  }'
+
+# Response:
+# { "instrument_id": "uuid", "fingerprint": "sha256...", "external_ref": "PO-2024-001" }
+```
+
+### Validate Transaction Against Instrument
+
+```bash
+curl -X POST "$URL/record-expense" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "reference_id": "exp_001",
+    "amount": 500000,
+    "description": "Monthly SaaS subscription",
+    "vendor_name": "Acme Corp",
+    "authorizing_instrument_id": "uuid-of-instrument"
+  }'
+
+# Response includes validation:
+# { "authorization": { "verified": true, "instrument_id": "...", "external_ref": "PO-2024-001" } }
+```
+
+### Extracted Terms Schema
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `amount` | integer | Amount in cents |
+| `currency` | string | ISO currency code (USD, EUR, etc.) |
+| `cadence` | string | Payment frequency: `one_time`, `weekly`, `monthly`, `quarterly`, `annual` |
+| `counterparty_name` | string | Vendor/supplier name for matching |
+
+---
+
+## Shadow Ledger (Ghost Entries)
+
+The **Shadow Ledger** projects future financial obligations based on authorizing instruments. Ghost entries are deterministic projections that:
+
+- **NEVER** affect the `entries` table
+- **NEVER** affect account balances
+- **NEVER** appear in reports (P&L, Balance Sheet, Trial Balance)
+
+They exist only for:
+- Expressing future intent
+- Snap-to matching when real transactions arrive
+- Balance breach prediction (current cash vs obligations)
+
+### Project Future Obligations
+
+```bash
+curl -X POST "$URL/project-intent" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "authorizing_instrument_id": "uuid-of-instrument",
+    "until_date": "2025-12-31",
+    "horizon_count": 12
+  }'
+
+# Response:
+# {
+#   "projections_created": 12,
+#   "cadence": "monthly",
+#   "projected_dates": ["2025-01-15", "2025-02-15", ...]
+# }
+```
+
+### Snap-to Matching
+
+When a real transaction is recorded (`record-expense`, `record-bill`), the system automatically:
+
+1. Searches for pending projections within ±3 days
+2. Matches on: amount, currency, ledger
+3. If match found:
+   - Links transaction to projection (`projection_id`)
+   - Marks projection as `fulfilled`
+   - Sets `metadata.projection_verified = true`
+
+```json
+// Response from record-expense with snap-to match
+{
+  "success": true,
+  "transaction_id": "uuid",
+  "projection": {
+    "matched": true,
+    "projection_id": "uuid",
+    "expected_date": "2025-01-15"
+  }
+}
+```
+
+### Balance Breach Prediction
+
+The `/get-runway` endpoint now includes shadow obligations:
+
+```json
+{
+  "actuals": {
+    "current_state": { "cash_balance": 50000.00 },
+    "runway": { "months": 8 }
+  },
+  "obligations": {
+    "pending_total": 75000.00,
+    "pending_count": 15,
+    "items": [{ "expected_date": "2025-01-15", "amount": 5000 }]
+  },
+  "breach_risk": {
+    "at_risk": true,
+    "shortfall": 25000.00,
+    "coverage_ratio": 0.67
+  }
+}
+```
+
+### Projection Statuses
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Awaiting real transaction match |
+| `fulfilled` | Matched to real transaction |
+| `expired` | Instrument was invalidated |
+
+### Instrument Invalidation
+
+When an instrument is invalidated, all linked pending projections are automatically expired:
+
+```sql
+-- Trigger automatically sets:
+UPDATE projected_transactions
+SET status = 'expired'
+WHERE authorizing_instrument_id = 'uuid'
+  AND status = 'pending';
+```
 
 ---
 
@@ -294,6 +476,20 @@ const balance = await ledger.getTrialBalance()
 - **Row-Level Security**: PostgreSQL RLS on all tables
 - **Organization Hierarchy**: Org → Ledgers → Accounts
 
+### Authorizing Instruments (Phase 1)
+- **Ledger-Native Authorization**: Financial proof without CLM complexity
+- **Immutable Records**: Invalidate + replace only, never edit
+- **Transaction Validation**: Compare transactions against authorized terms
+- **Fingerprint Deduplication**: SHA-256 hash prevents duplicate instruments
+- **Audit Integration**: Full trail of instrument registration and validation
+
+### Shadow Ledger (Phase 2)
+- **Ghost Entries**: Deterministic future projections that never affect balances
+- **Cadence-Based Projection**: Weekly, monthly, quarterly, annual schedules
+- **Snap-to Matching**: Automatic linking when real transactions arrive
+- **Balance Breach Prediction**: Current assets vs pending obligations
+- **Automatic Expiration**: Invalidating instruments expires pending projections
+
 ---
 
 ## Project Structure
@@ -301,20 +497,24 @@ const balance = await ledger.getTrialBalance()
 ```
 soledgic/
 ├── supabase/
-│   ├── functions/           # 48 Edge Functions
+│   ├── functions/           # 50+ Edge Functions
 │   │   ├── _shared/         # Shared utilities
 │   │   ├── record-sale/     # Core sale recording
 │   │   ├── record-income/   # Income recording
-│   │   ├── record-expense/  # Expense recording
+│   │   ├── record-expense/  # Expense recording (+ instrument validation)
+│   │   ├── record-bill/     # Bill recording (+ instrument validation)
 │   │   ├── process-payout/  # Payout initiation
 │   │   ├── invoices/        # Invoice management
 │   │   ├── reconcile/       # Bank reconciliation
 │   │   ├── profit-loss/     # P&L report
 │   │   ├── balance-sheet/   # Balance sheet
+│   │   ├── get-runway/      # Cash runway (+ shadow obligations)
+│   │   ├── register-instrument/  # Authorizing instrument registration
+│   │   ├── project-intent/  # Shadow Ledger projections
 │   │   ├── stripe/          # Stripe integration
 │   │   ├── plaid/           # Plaid integration
-│   │   └── ...              # 38 more functions
-│   └── migrations/          # 80+ database migrations
+│   │   └── ...              # 35+ more functions
+│   └── migrations/          # 130+ database migrations
 │
 ├── sdk/
 │   └── typescript/          # TypeScript SDK
@@ -446,6 +646,13 @@ soledgic/
 | `reconciliations` | Bank reconciliation records |
 | `plaid_items` | Plaid connection tokens (encrypted) |
 
+### Authorizing Instruments & Shadow Ledger
+
+| Table | Description |
+|-------|-------------|
+| `authorizing_instruments` | Ledger-native financial authorization (immutable) |
+| `projected_transactions` | Shadow Ledger: ghost entries for future projections |
+
 ### Security & Audit
 
 | Table | Description |
@@ -543,6 +750,37 @@ await ledger.get1099Summary(year)
 // Balances
 await ledger.getAllBalances()
 await ledger.getCreatorBalance(creatorId)
+
+// Authorizing Instruments
+const instrument = await ledger.registerInstrument({
+  externalRef: 'PO-2024-001',
+  extractedTerms: {
+    amount: 500000,
+    currency: 'USD',
+    cadence: 'monthly',
+    counterpartyName: 'Acme Corp'
+  }
+})
+
+// Record expense with authorization validation
+await ledger.recordExpense({
+  referenceId: 'exp_001',
+  amount: 500000,
+  vendorName: 'Acme Corp',
+  authorizingInstrumentId: instrument.instrumentId
+})
+
+// Shadow Ledger: Project future obligations
+await ledger.projectIntent({
+  authorizingInstrumentId: instrument.instrumentId,
+  untilDate: '2025-12-31',
+  horizonCount: 12
+})
+
+// Get runway with shadow obligations
+const runway = await ledger.getRunway()
+// runway.obligations.pending_total
+// runway.breach_risk.at_risk
 ```
 
 See `sdk/typescript/README.md` for full API reference.
