@@ -39,6 +39,47 @@ export interface RecordExpenseRequest {
   vendorName?: string
   paidFrom?: 'cash' | 'credit_card'
   transactionDate?: string
+  authorizingInstrumentId?: string  // Optional: link to authorizing instrument for validation
+}
+
+export interface RecordBillRequest {
+  amount: number
+  description: string
+  vendorName: string
+  vendorId?: string
+  referenceId?: string
+  dueDate?: string
+  expenseCategory?: string
+  paid?: boolean
+  authorizingInstrumentId?: string  // Optional: link to authorizing instrument for validation
+}
+
+// === AUTHORIZING INSTRUMENTS ===
+
+export interface ExtractedTerms {
+  amount: number          // Amount in cents
+  currency: string        // ISO currency code (e.g., "USD")
+  cadence?: 'one_time' | 'monthly' | 'quarterly' | 'annual' | 'weekly' | 'bi_weekly'
+  counterpartyName: string
+}
+
+export interface RegisterInstrumentRequest {
+  externalRef: string
+  extractedTerms: ExtractedTerms
+}
+
+export interface RegisterInstrumentResponse {
+  success: boolean
+  instrumentId: string
+  fingerprint: string
+  externalRef: string
+}
+
+export interface AuthorizationResult {
+  verified: boolean
+  instrumentId: string
+  externalRef: string
+  mismatches?: string[]
 }
 
 export interface ProcessPayoutRequest {
@@ -224,6 +265,37 @@ export class Soledgic {
       vendor_name: req.vendorName,
       paid_from: req.paidFrom,
       transaction_date: req.transactionDate,
+      authorizing_instrument_id: req.authorizingInstrumentId,
+    })
+  }
+
+  async recordBill(req: RecordBillRequest) {
+    return this.request('record-bill', {
+      amount: req.amount,
+      description: req.description,
+      vendor_name: req.vendorName,
+      vendor_id: req.vendorId,
+      reference_id: req.referenceId,
+      due_date: req.dueDate,
+      expense_category: req.expenseCategory,
+      paid: req.paid,
+      authorizing_instrument_id: req.authorizingInstrumentId,
+    })
+  }
+
+  // === AUTHORIZING INSTRUMENTS ===
+  // Register financial authorization instruments for transaction validation
+  // Instruments are immutable and ledger-adjacent - they explain WHY money moved
+
+  async registerInstrument(req: RegisterInstrumentRequest): Promise<RegisterInstrumentResponse> {
+    return this.request('register-instrument', {
+      external_ref: req.externalRef,
+      extracted_terms: {
+        amount: req.extractedTerms.amount,
+        currency: req.extractedTerms.currency,
+        cadence: req.extractedTerms.cadence,
+        counterparty_name: req.extractedTerms.counterpartyName,
+      },
     })
   }
 

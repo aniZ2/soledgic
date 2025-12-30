@@ -3,7 +3,7 @@
 // Records a bill (accounts payable) - works for any ledger mode
 // SECURITY HARDENED VERSION
 
-import { 
+import {
   getCorsHeaders,
   getSupabaseClient,
   validateApiKey,
@@ -12,7 +12,9 @@ import {
   validateId,
   validateString,
   validateAmount,
-  getClientIp
+  validateUUID,
+  getClientIp,
+  logSecurityEvent
 } from '../_shared/utils.ts'
 
 interface RecordBillRequest {
@@ -25,6 +27,26 @@ interface RecordBillRequest {
   expense_category?: string
   paid?: boolean
   metadata?: Record<string, any>
+  authorizing_instrument_id?: string  // Optional: link to authorizing instrument for validation
+}
+
+interface AuthorizingInstrument {
+  id: string
+  ledger_id: string
+  external_ref: string
+  extracted_terms: {
+    amount: number
+    currency: string
+    cadence?: string
+    counterparty_name: string
+  }
+}
+
+interface InstrumentValidationResult {
+  verified: boolean
+  instrument_id: string
+  external_ref: string
+  mismatches: string[]
 }
 
 Deno.serve(async (req) => {
@@ -128,7 +150,90 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create transaction
+    // ========================================================================
+    // AUTHORIZING INSTRUMENT VALIDATION
+    // ========================================================================
+    // If an authorizing_instrument_id is provided, load and validate it
+    // This does NOT affect double-entry logic - only adds verification metadata
+
+    let instrument: AuthorizingInstrument | null = null
+    let instrumentValidation: InstrumentValidationResult | null = null
+
+    if (body.authorizing_instrument_id) {
+      const instrumentId = validateUUID(body.authorizing_instrument_id)
+      if (!instrumentId) {
+        return errorResponse('Invalid authorizing_instrument_id: must be valid UUID', 400, req)
+      }
+
+      // Load the instrument
+      const { data: instrumentData, error: instrumentError } = await supabase
+        .from('authorizing_instruments')
+        .select('id, ledger_id, external_ref, extracted_terms')
+        .eq('id', instrumentId)
+        .eq('ledger_id', ledger.id)  // Ensure instrument belongs to this ledger
+        .single()
+
+      if (instrumentError || !instrumentData) {
+        return errorResponse('Authorizing instrument not found', 404, req)
+      }
+
+      instrument = instrumentData as AuthorizingInstrument
+
+      // Validate transaction against instrument terms
+      const mismatches: string[] = []
+
+      // Compare amount (transaction amount in cents vs instrument amount in cents)
+      if (amount !== instrument.extracted_terms.amount) {
+        mismatches.push(`amount: expected ${instrument.extracted_terms.amount}, got ${amount}`)
+      }
+
+      // Compare counterparty (vendor_name vs counterparty_name)
+      const txCounterparty = (vendorName || '').toLowerCase().trim()
+      const instCounterparty = (instrument.extracted_terms.counterparty_name || '').toLowerCase().trim()
+      if (txCounterparty !== instCounterparty) {
+        mismatches.push(`counterparty: expected "${instrument.extracted_terms.counterparty_name}", got "${vendorName}"`)
+      }
+
+      instrumentValidation = {
+        verified: mismatches.length === 0,
+        instrument_id: instrument.id,
+        external_ref: instrument.external_ref,
+        mismatches
+      }
+
+      // Log security event for mismatches
+      if (!instrumentValidation.verified) {
+        await logSecurityEvent(supabase, ledger.id, 'instrument_validation_mismatch', {
+          instrument_id: instrument.id,
+          external_ref: instrument.external_ref,
+          mismatches: mismatches,
+          transaction_amount: amount,
+          transaction_vendor: vendorName,
+          ip: getClientIp(req)
+        })
+      }
+    }
+
+    // Build transaction metadata with optional verification status
+    const transactionMetadata: Record<string, any> = {
+      vendor_id: body.vendor_id ? validateId(body.vendor_id, 100) : null,
+      vendor_name: vendorName,
+      due_date: body.due_date,
+      paid: isPaid
+    }
+
+    // Add verification status if instrument was validated
+    if (instrumentValidation) {
+      transactionMetadata.verified = instrumentValidation.verified
+      transactionMetadata.instrument_validation = {
+        instrument_id: instrumentValidation.instrument_id,
+        external_ref: instrumentValidation.external_ref,
+        verified: instrumentValidation.verified,
+        mismatches: instrumentValidation.mismatches
+      }
+    }
+
+    // Create transaction with optional instrument linkage
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
       .insert({
@@ -142,12 +247,8 @@ Deno.serve(async (req) => {
         status: 'completed',
         expense_category_id: expenseCategoryId,
         merchant_name: vendorName,
-        metadata: {
-          vendor_id: body.vendor_id ? validateId(body.vendor_id, 100) : null,
-          vendor_name: vendorName,
-          due_date: body.due_date,
-          paid: isPaid
-        }
+        authorizing_instrument_id: instrument?.id || null,
+        metadata: transactionMetadata
       })
       .select('id')
       .single()
@@ -157,7 +258,7 @@ Deno.serve(async (req) => {
       return errorResponse('Failed to create bill', 500, req)
     }
 
-    // Create entries
+    // Create entries (double-entry integrity preserved - instrument validation has no effect here)
     let entries = []
     if (isPaid) {
       if (!cashAccount) {
@@ -188,15 +289,34 @@ Deno.serve(async (req) => {
       actor_type: 'api',
       ip_address: getClientIp(req),
       user_agent: req.headers.get('user-agent'),
-      request_body: { amount: amountInDollars, vendor: vendorName, paid: isPaid }
+      request_body: {
+        amount: amountInDollars,
+        vendor: vendorName,
+        paid: isPaid,
+        authorizing_instrument_id: instrument?.id || null,
+        verified: instrumentValidation?.verified ?? null
+      }
     }).then(() => {}).catch(() => {})
 
-    return jsonResponse({
+    // Build response
+    const response: Record<string, any> = {
       success: true,
       transaction_id: transaction.id,
       amount: amountInDollars,
       status: isPaid ? 'paid' : 'pending'
-    }, 200, req)
+    }
+
+    // Include validation result if instrument was provided
+    if (instrumentValidation) {
+      response.authorization = {
+        verified: instrumentValidation.verified,
+        instrument_id: instrumentValidation.instrument_id,
+        external_ref: instrumentValidation.external_ref,
+        mismatches: instrumentValidation.mismatches.length > 0 ? instrumentValidation.mismatches : undefined
+      }
+    }
+
+    return jsonResponse(response, 200, req)
 
   } catch (error: any) {
     console.error('Error recording bill:', error)

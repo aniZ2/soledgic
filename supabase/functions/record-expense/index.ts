@@ -3,16 +3,18 @@
 // Records a business expense (Standard + Marketplace mode)
 // SECURITY HARDENED VERSION
 
-import { 
-  createHandler, 
-  jsonResponse, 
+import {
+  createHandler,
+  jsonResponse,
   errorResponse,
   validateId,
   validateAmount,
   validateString,
   validateUrl,
+  validateUUID,
   LedgerContext,
-  getClientIp
+  getClientIp,
+  logSecurityEvent
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -27,6 +29,26 @@ interface ExpenseRequest {
   receipt_url?: string
   tax_deductible?: boolean
   metadata?: Record<string, any>
+  authorizing_instrument_id?: string  // Optional: link to authorizing instrument for validation
+}
+
+interface AuthorizingInstrument {
+  id: string
+  ledger_id: string
+  external_ref: string
+  extracted_terms: {
+    amount: number
+    currency: string
+    cadence?: string
+    counterparty_name: string
+  }
+}
+
+interface InstrumentValidationResult {
+  verified: boolean
+  instrument_id: string
+  external_ref: string
+  mismatches: string[]
 }
 
 const handler = createHandler(
@@ -145,7 +167,91 @@ const handler = createHandler(
       expenseAccount = newExpense
     }
 
-    // Create transaction
+    // ========================================================================
+    // AUTHORIZING INSTRUMENT VALIDATION
+    // ========================================================================
+    // If an authorizing_instrument_id is provided, load and validate it
+    // This does NOT affect double-entry logic - only adds verification metadata
+
+    let instrument: AuthorizingInstrument | null = null
+    let instrumentValidation: InstrumentValidationResult | null = null
+
+    if (body.authorizing_instrument_id) {
+      const instrumentId = validateUUID(body.authorizing_instrument_id)
+      if (!instrumentId) {
+        return errorResponse('Invalid authorizing_instrument_id: must be valid UUID', 400, req)
+      }
+
+      // Load the instrument
+      const { data: instrumentData, error: instrumentError } = await supabase
+        .from('authorizing_instruments')
+        .select('id, ledger_id, external_ref, extracted_terms')
+        .eq('id', instrumentId)
+        .eq('ledger_id', ledger.id)  // Ensure instrument belongs to this ledger
+        .single()
+
+      if (instrumentError || !instrumentData) {
+        return errorResponse('Authorizing instrument not found', 404, req)
+      }
+
+      instrument = instrumentData as AuthorizingInstrument
+
+      // Validate transaction against instrument terms
+      const mismatches: string[] = []
+
+      // Compare amount (transaction amount in cents vs instrument amount in cents)
+      if (amount !== instrument.extracted_terms.amount) {
+        mismatches.push(`amount: expected ${instrument.extracted_terms.amount}, got ${amount}`)
+      }
+
+      // Compare counterparty (vendor_name vs counterparty_name)
+      const txCounterparty = (vendorName || '').toLowerCase().trim()
+      const instCounterparty = (instrument.extracted_terms.counterparty_name || '').toLowerCase().trim()
+      if (txCounterparty !== instCounterparty) {
+        mismatches.push(`counterparty: expected "${instrument.extracted_terms.counterparty_name}", got "${vendorName || ''}"`)
+      }
+
+      instrumentValidation = {
+        verified: mismatches.length === 0,
+        instrument_id: instrument.id,
+        external_ref: instrument.external_ref,
+        mismatches
+      }
+
+      // Log security event for mismatches
+      if (!instrumentValidation.verified) {
+        await logSecurityEvent(supabase, ledger.id, 'instrument_validation_mismatch', {
+          instrument_id: instrument.id,
+          external_ref: instrument.external_ref,
+          mismatches: mismatches,
+          transaction_amount: amount,
+          transaction_vendor: vendorName,
+          ip: getClientIp(req)
+        })
+      }
+    }
+
+    // Create transaction with optional instrument linkage and verification status
+    const transactionMetadata: Record<string, any> = {
+      category: category,
+      vendor_id: vendorId,
+      vendor_name: vendorName,
+      receipt_url: receiptUrl,
+      tax_deductible: body.tax_deductible ?? true,
+      paid_from: paymentAccountType,
+    }
+
+    // Add verification status if instrument was validated
+    if (instrumentValidation) {
+      transactionMetadata.verified = instrumentValidation.verified
+      transactionMetadata.instrument_validation = {
+        instrument_id: instrumentValidation.instrument_id,
+        external_ref: instrumentValidation.external_ref,
+        verified: instrumentValidation.verified,
+        mismatches: instrumentValidation.mismatches
+      }
+    }
+
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
       .insert({
@@ -157,15 +263,8 @@ const handler = createHandler(
         amount: amountDollars,
         currency: 'USD',
         status: 'completed',
-        metadata: {
-          category: category,
-          vendor_id: vendorId,
-          vendor_name: vendorName,
-          receipt_url: receiptUrl,
-          tax_deductible: body.tax_deductible ?? true,
-          paid_from: paymentAccountType,
-          // Don't blindly copy metadata
-        }
+        authorizing_instrument_id: instrument?.id || null,
+        metadata: transactionMetadata
       })
       .select('id')
       .single()
@@ -175,7 +274,7 @@ const handler = createHandler(
       return errorResponse('Failed to create expense transaction', 500, req)
     }
 
-    // Create entries
+    // Create entries (double-entry integrity preserved - instrument validation has no effect here)
     const entries = [
       { transaction_id: transaction.id, account_id: expenseAccount.id, entry_type: 'debit', amount: amountDollars },
       { transaction_id: transaction.id, account_id: paymentAccount.id, entry_type: 'credit', amount: amountDollars },
@@ -191,20 +290,35 @@ const handler = createHandler(
       entity_id: transaction.id,
       actor_type: 'api',
       ip_address: getClientIp(req),
-      request_body: { 
-        amount: amountDollars, 
-        category: category || 'general', 
-        paid_from: paymentAccountType 
+      request_body: {
+        amount: amountDollars,
+        category: category || 'general',
+        paid_from: paymentAccountType,
+        authorizing_instrument_id: instrument?.id || null,
+        verified: instrumentValidation?.verified ?? null
       }
     })
 
-    return jsonResponse({
+    // Build response
+    const response: Record<string, any> = {
       success: true,
       transaction_id: transaction.id,
       amount: amountDollars,
       category: category || 'general',
       paid_from: paymentAccountType
-    }, 200, req)
+    }
+
+    // Include validation result if instrument was provided
+    if (instrumentValidation) {
+      response.authorization = {
+        verified: instrumentValidation.verified,
+        instrument_id: instrumentValidation.instrument_id,
+        external_ref: instrumentValidation.external_ref,
+        mismatches: instrumentValidation.mismatches.length > 0 ? instrumentValidation.mismatches : undefined
+      }
+    }
+
+    return jsonResponse(response, 200, req)
   }
 )
 
