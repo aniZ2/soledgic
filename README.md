@@ -540,12 +540,37 @@ curl -X POST "$URL/configure-alerts" \
 | `projection_created` | New projections added (future) |
 | `instrument_invalidated` | Authorizing instrument invalidated (future) |
 
+### Configure Email Alerts
+
+```bash
+curl -X POST "$URL/configure-alerts" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "action": "create",
+    "alert_type": "breach_risk",
+    "channel": "email",
+    "config": {
+      "recipients": ["cfo@company.com", "finance@company.com"]
+    },
+    "thresholds": {
+      "coverage_ratio_below": 0.5,
+      "shortfall_above": 10000
+    }
+  }'
+```
+
+Email alerts include:
+- HTML-formatted message with severity color-coding
+- Current cash, pending obligations, shortfall, coverage ratio
+- Link to dashboard
+- Triggered via Resend (requires `RESEND_API_KEY` secret)
+
 ### Alert Channels
 
 | Channel | Status | Configuration |
 |---------|--------|---------------|
 | `slack` | Supported | `webhook_url` required |
-| `email` | Planned | `recipients` array |
+| `email` | Supported | `recipients` array (max 10) |
 | `webhook` | Planned | Uses existing webhook endpoints |
 
 ---
@@ -919,6 +944,18 @@ await ledger.createAlert({
   thresholds: {
     coverageRatioBelow: 0.5,  // Alert when coverage < 50%
     shortfallAbove: 10000     // Alert when shortfall > $10k
+  }
+})
+
+// Breach Alerts: Configure email notifications
+await ledger.createAlert({
+  alertType: 'breach_risk',
+  channel: 'email',
+  config: {
+    recipients: ['cfo@company.com', 'finance@company.com']
+  },
+  thresholds: {
+    coverageRatioBelow: 0.5
   }
 })
 

@@ -216,6 +216,119 @@ async function sendBreachAlerts(
         console.error('Failed to send Slack alert:', err)
       }
     }
+
+    // Send email alert
+    if (config.channel === 'email' && config.config?.recipients?.length) {
+      const resendApiKey = Deno.env.get('RESEND_API_KEY')
+      const fromEmail = Deno.env.get('FROM_EMAIL') || 'alerts@soledgic.com'
+
+      if (!resendApiKey) {
+        console.error('Email alert skipped: RESEND_API_KEY not configured')
+        continue
+      }
+
+      const severityEmoji = alertPayload.coverage_ratio < 0.25 ? '🚨' : alertPayload.coverage_ratio < 0.5 ? '⚠️' : '📊'
+      const severityText = alertPayload.coverage_ratio < 0.25 ? 'CRITICAL' : alertPayload.coverage_ratio < 0.5 ? 'WARNING' : 'NOTICE'
+      const severityColor = alertPayload.coverage_ratio < 0.25 ? '#dc2626' : alertPayload.coverage_ratio < 0.5 ? '#f59e0b' : '#3b82f6'
+
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cash Breach Risk Alert</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="border-left: 4px solid ${severityColor}; padding-left: 20px; margin-bottom: 20px;">
+    <h1 style="color: ${severityColor}; margin: 0 0 10px 0; font-size: 24px;">
+      ${severityEmoji} Cash Breach Risk Detected
+    </h1>
+    <p style="margin: 0; color: #666;">
+      <strong>Ledger:</strong> ${ledger.name || 'Ledger'}<br>
+      <strong>Severity:</strong> ${severityText}
+    </p>
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+    <tr>
+      <td style="padding: 15px; background: #f8f9fa; border: 1px solid #e9ecef; width: 50%;">
+        <div style="color: #666; font-size: 12px; text-transform: uppercase;">Current Cash</div>
+        <div style="font-size: 24px; font-weight: bold; color: #333;">${formatCurrency(alertPayload.cash_balance)}</div>
+      </td>
+      <td style="padding: 15px; background: #f8f9fa; border: 1px solid #e9ecef; width: 50%;">
+        <div style="color: #666; font-size: 12px; text-transform: uppercase;">Pending Obligations</div>
+        <div style="font-size: 24px; font-weight: bold; color: #333;">${formatCurrency(alertPayload.pending_total)}</div>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 15px; background: #fff; border: 1px solid #e9ecef;">
+        <div style="color: #666; font-size: 12px; text-transform: uppercase;">Projected Shortfall</div>
+        <div style="font-size: 24px; font-weight: bold; color: ${severityColor};">${formatCurrency(alertPayload.shortfall)}</div>
+      </td>
+      <td style="padding: 15px; background: #fff; border: 1px solid #e9ecef;">
+        <div style="color: #666; font-size: 12px; text-transform: uppercase;">Coverage Ratio</div>
+        <div style="font-size: 24px; font-weight: bold; color: ${severityColor};">${Math.round(alertPayload.coverage_ratio * 100)}%</div>
+      </td>
+    </tr>
+  </table>
+  <p style="color: #666; font-size: 14px;">📋 Triggered by new projections from: <strong>${alertPayload.external_ref}</strong> (${alertPayload.projections_created} new obligations)</p>
+  <div style="margin-top: 30px;">
+    <a href="https://app.soledgic.com/dashboard" style="display: inline-block; background: ${severityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+      View Dashboard
+    </a>
+  </div>
+  <hr style="border: none; border-top: 1px solid #e9ecef; margin: 30px 0;">
+  <p style="color: #999; font-size: 12px;">
+    This alert was generated at ${new Date().toISOString()}<br>
+    Soledgic - Financial Infrastructure for Your Business
+  </p>
+</body>
+</html>`
+
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: config.config.recipients,
+            subject: `${severityEmoji} Cash Breach Risk Alert - ${ledger.name || 'Ledger'} [${severityText}]`,
+            html: emailHtml
+          })
+        })
+
+        const data = await response.json()
+
+        // Log to alert history
+        await supabase.from('alert_history').insert({
+          ledger_id: ledger.id,
+          alert_config_id: config.id,
+          alert_type: 'breach_risk',
+          channel: 'email',
+          payload: { ...alertPayload, recipients: config.config.recipients },
+          status: response.ok ? 'sent' : 'failed',
+          response_status: response.status,
+          error_message: response.ok ? null : (data.message || JSON.stringify(data)),
+          sent_at: response.ok ? new Date().toISOString() : null
+        })
+
+        // Update trigger count on success
+        if (response.ok) {
+          await supabase
+            .from('alert_configurations')
+            .update({
+              last_triggered_at: new Date().toISOString(),
+              trigger_count: (config as any).trigger_count + 1
+            })
+            .eq('id', config.id)
+        }
+      } catch (err) {
+        console.error('Failed to send email alert:', err)
+      }
+    }
   }
 }
 

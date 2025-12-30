@@ -44,6 +44,18 @@ function isValidSlackWebhook(url: string): boolean {
   }
 }
 
+// Validate email address format
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+// Validate email recipients array
+function validateEmailRecipients(recipients: string[]): { valid: boolean; invalid: string[] } {
+  const invalid = recipients.filter(email => !isValidEmail(email))
+  return { valid: invalid.length === 0, invalid }
+}
+
 const handler = createHandler(
   { endpoint: 'configure-alerts', requireAuth: true, rateLimit: true },
   async (
@@ -104,6 +116,15 @@ const handler = createHandler(
         if (body.channel === 'email') {
           if (!body.config?.recipients || body.config.recipients.length === 0) {
             return errorResponse('Email recipients are required', 400, req, context.requestId)
+          }
+          // Validate each email address
+          const validation = validateEmailRecipients(body.config.recipients)
+          if (!validation.valid) {
+            return errorResponse(`Invalid email addresses: ${validation.invalid.join(', ')}`, 400, req, context.requestId)
+          }
+          // Limit to 10 recipients
+          if (body.config.recipients.length > 10) {
+            return errorResponse('Maximum 10 email recipients allowed', 400, req, context.requestId)
           }
         }
 
@@ -310,6 +331,86 @@ const handler = createHandler(
             return jsonResponse({
               success: false,
               message: 'Failed to send test alert',
+              error: err.message
+            }, 200, req, context.requestId)
+          }
+        }
+
+        // Test email
+        if (config.channel === 'email' && config.config?.recipients?.length) {
+          const resendApiKey = Deno.env.get('RESEND_API_KEY')
+          const fromEmail = Deno.env.get('FROM_EMAIL') || 'alerts@soledgic.com'
+
+          if (!resendApiKey) {
+            return jsonResponse({
+              success: false,
+              message: 'Email not configured',
+              error: 'RESEND_API_KEY not set'
+            }, 200, req, context.requestId)
+          }
+
+          const testHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Soledgic Alert Test</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="border-left: 4px solid #22c55e; padding-left: 20px; margin-bottom: 20px;">
+    <h1 style="color: #22c55e; margin: 0 0 10px 0; font-size: 24px;">
+      ✅ Soledgic Alert Test
+    </h1>
+    <p style="margin: 0; color: #666;">
+      This is a test alert from <strong>${ledger.name || 'your ledger'}</strong>.
+    </p>
+  </div>
+  <p>Your email alert integration is working correctly!</p>
+  <p style="color: #999; font-size: 12px;">
+    Sent at ${new Date().toISOString()}<br>
+    Soledgic - Financial Infrastructure for Your Business
+  </p>
+</body>
+</html>`
+
+          try {
+            const response = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${resendApiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                from: fromEmail,
+                to: config.config.recipients,
+                subject: `✅ Soledgic Alert Test - ${ledger.name || 'Your Ledger'}`,
+                html: testHtml,
+                text: `Soledgic Alert Test\n\nThis is a test alert from ${ledger.name || 'your ledger'}.\n\nYour email alert integration is working correctly!\n\nSent at ${new Date().toISOString()}`
+              })
+            })
+
+            const data = await response.json()
+
+            if (response.ok) {
+              return jsonResponse({
+                success: true,
+                message: 'Test email sent successfully',
+                channel: 'email',
+                recipients: config.config.recipients,
+                message_id: data.id
+              }, 200, req, context.requestId)
+            } else {
+              return jsonResponse({
+                success: false,
+                message: 'Failed to send test email',
+                error: data.message || JSON.stringify(data),
+                status: response.status
+              }, 200, req, context.requestId)
+            }
+          } catch (err: any) {
+            return jsonResponse({
+              success: false,
+              message: 'Failed to send test email',
               error: err.message
             }, 200, req, context.requestId)
           }
