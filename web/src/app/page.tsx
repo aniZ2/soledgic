@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { 
+import {
   ArrowRight,
   Check,
   BookOpen,
@@ -33,7 +33,11 @@ import {
   RefreshCw,
   Bell,
   Code2,
-  Database
+  Database,
+  Eye,
+  FileCheck,
+  AlertTriangle,
+  Target
 } from 'lucide-react';
 
 // ============================================================================
@@ -41,14 +45,14 @@ import {
 // ============================================================================
 
 export const metadata: Metadata = {
-  title: 'Double-Entry Accounting API for Freelancers, Startups & Creator Platforms',
-  description: 'Professional accounting software with double-entry bookkeeping, expense tracking, revenue splits, payout management, and 1099 compliance. API-first. Start free trial.',
+  title: 'Double-Entry Accounting API with Predictive Authorization | Soledgic',
+  description: 'The only ledger that proves transactions were authorized before they happened and predicts cash shortfalls before bills arrive. Double-entry bookkeeping, revenue splits, shadow ledger projections. API-first.',
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'Soledgic | Double-Entry Accounting API for Modern Businesses',
-    description: 'Professional accounting software with double-entry bookkeeping, expense tracking, revenue splits, payout management, and 1099 compliance.',
+    title: 'Soledgic | Accounting API with Shadow Ledger & Breach Prediction',
+    description: 'Bridge legal intent and financial reality. Register contracts, project obligations, predict cash shortfalls. Double-entry accounting API for modern platforms.',
     url: '/',
     type: 'website',
   },
@@ -107,12 +111,13 @@ const landingPageJsonLd = {
     ],
     featureList: [
       'Double-entry bookkeeping',
-      'Expense tracking with IRS categories',
+      'Authorizing instruments (contract proof)',
+      'Shadow ledger projections',
+      'Cash breach prediction',
       'Revenue split management',
       'Payout processing',
       '1099 compliance tracking',
       'Bank reconciliation',
-      'Tax-ready reports',
       'REST API access',
     ],
   },
@@ -232,11 +237,16 @@ export default function LandingPage() {
                   Accounting Infrastructure<br />
                   <span className="text-stone-500">for Modern Platforms</span>
                 </h1>
-                
-                <p className="text-lg text-stone-600 leading-relaxed mb-8 max-w-xl">
-                  The <strong>double-entry accounting API</strong> that handles everything: 
-                  expense tracking, revenue splits, creator payouts, and tax compliance. 
+
+                <p className="text-lg text-stone-600 leading-relaxed mb-4 max-w-xl">
+                  The <strong>double-entry accounting API</strong> that handles everything:
+                  expense tracking, revenue splits, creator payouts, and tax compliance.
                   One API call, perfect books.
+                </p>
+
+                <p className="text-[15px] text-stone-500 leading-relaxed mb-8 max-w-xl border-l-2 border-amber-400 pl-4 italic">
+                  The only ledger that can prove a transaction was authorized before it happened
+                  and predict a cash shortfall before the bill arrives.
                 </p>
                 
                 <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -487,6 +497,105 @@ const sale = await soledgic.recordSale({
           </div>
         </section>
 
+        {/* Shadow Ledger / Predictive Authorization Section */}
+        <section className="py-24 px-6 bg-gradient-to-b from-stone-900 to-stone-950 text-white" aria-labelledby="shadow-heading">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center mb-16">
+              <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5 mb-6">
+                <Eye className="w-4 h-4 text-amber-400" />
+                <span className="text-[12px] font-semibold text-amber-400 tracking-wide">NEW: SHADOW LEDGER</span>
+              </div>
+              <h2 id="shadow-heading" className="text-3xl md:text-4xl font-semibold mb-4">
+                See the future.<br />
+                <span className="text-stone-400">Before the bill arrives.</span>
+              </h2>
+              <p className="text-stone-400 max-w-2xl mx-auto text-lg">
+                Soledgic bridges legal intent and financial reality. Register contracts, project obligations,
+                and know your cash position months in advance.
+              </p>
+            </div>
+
+            <div className="grid lg:grid-cols-3 gap-8 mb-16">
+              {/* Authorizing Instruments */}
+              <div className="bg-stone-800/50 rounded-2xl p-8 border border-stone-700/50">
+                <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center mb-6">
+                  <FileCheck className="w-6 h-6 text-emerald-400" />
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Authorizing Instruments</h3>
+                <p className="text-stone-400 text-[15px] leading-relaxed mb-6">
+                  Register POs, contracts, and agreements as ledger-native authorization records.
+                  When expenses arrive, the system proves they were pre-authorized.
+                </p>
+                <code className="text-[11px] bg-stone-900 px-3 py-1.5 rounded text-emerald-400 font-mono">
+                  POST /register-instrument
+                </code>
+              </div>
+
+              {/* Ghost Entries */}
+              <div className="bg-stone-800/50 rounded-2xl p-8 border border-stone-700/50">
+                <div className="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center mb-6">
+                  <Eye className="w-6 h-6 text-violet-400" />
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Ghost Entries</h3>
+                <p className="text-stone-400 text-[15px] leading-relaxed mb-6">
+                  Project future obligations from contract cadence. Monthly subscriptions become
+                  12 ghost entries that never touch your real books until fulfilled.
+                </p>
+                <code className="text-[11px] bg-stone-900 px-3 py-1.5 rounded text-violet-400 font-mono">
+                  POST /project-intent
+                </code>
+              </div>
+
+              {/* Breach Prediction */}
+              <div className="bg-stone-800/50 rounded-2xl p-8 border border-stone-700/50">
+                <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center mb-6">
+                  <AlertTriangle className="w-6 h-6 text-amber-400" />
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Breach Prediction</h3>
+                <p className="text-stone-400 text-[15px] leading-relaxed mb-6">
+                  Compare current cash against projected obligations. Know if you can cover
+                  upcoming commitments before they become overdue.
+                </p>
+                <code className="text-[11px] bg-stone-900 px-3 py-1.5 rounded text-amber-400 font-mono">
+                  GET /get-runway → breach_risk
+                </code>
+              </div>
+            </div>
+
+            {/* Visual Demo */}
+            <div className="bg-stone-900 rounded-xl p-6 border border-stone-800">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="ml-2 text-stone-500 text-xs">shadow-ledger-response.json</span>
+              </div>
+              <pre className="text-[13px] text-stone-300 overflow-x-auto">
+                <code>{`// GET /get-runway response
+{
+  "actuals": {
+    "cash_balance": 50000,
+    "runway": { "months": 8, "status": "healthy" }
+  },
+  "obligations": {
+    "pending_total": 75000,
+    "pending_count": 15,
+    "items": [
+      { "expected_date": "2025-02-01", "amount": 5000, "counterparty": "AWS" },
+      { "expected_date": "2025-02-15", "amount": 3000, "counterparty": "Stripe" }
+    ]
+  },
+  "breach_risk": {
+    "at_risk": true,
+    "shortfall": 25000,
+    "coverage_ratio": 0.67
+  }
+}`}</code>
+              </pre>
+            </div>
+          </div>
+        </section>
+
         {/* API-First Section */}
         <section className="py-24 px-6 bg-[#1C1917] text-white" aria-labelledby="api-heading">
           <div className="max-w-6xl mx-auto">
@@ -546,11 +655,11 @@ const sale = await soledgic.recordSale({
                   <EndpointRow method="POST" path="/record-sale" desc="Record sale with split" />
                   <EndpointRow method="POST" path="/record-expense" desc="Track business expense" />
                   <EndpointRow method="POST" path="/record-income" desc="Log other income" />
-                  <EndpointRow method="POST" path="/record-refund" desc="Process refund" />
                   <EndpointRow method="POST" path="/process-payout" desc="Pay creator" />
-                  <EndpointRow method="GET" path="/get-balance" desc="Check balances" />
+                  <EndpointRow method="POST" path="/register-instrument" desc="Register authorization" />
+                  <EndpointRow method="POST" path="/project-intent" desc="Project obligations" />
+                  <EndpointRow method="GET" path="/get-runway" desc="Runway + breach risk" />
                   <EndpointRow method="GET" path="/profit-loss" desc="P&L report" />
-                  <EndpointRow method="GET" path="/trial-balance" desc="Trial balance" />
                   <EndpointRow method="POST" path="/reconcile" desc="Bank reconciliation" />
                 </div>
               </div>
@@ -569,16 +678,16 @@ const sale = await soledgic.recordSale({
             <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
               <FeatureChip icon={<Scale />} label="Double-Entry Ledger" />
               <FeatureChip icon={<Repeat />} label="Revenue Splits" />
-              <FeatureChip icon={<Receipt />} label="Receipt OCR" />
-              <FeatureChip icon={<Calculator />} label="IRS Categories" />
+              <FeatureChip icon={<FileCheck />} label="Authorization Proof" />
+              <FeatureChip icon={<Eye />} label="Shadow Ledger" />
+              <FeatureChip icon={<AlertTriangle />} label="Breach Prediction" />
+              <FeatureChip icon={<Target />} label="Snap-to Matching" />
               <FeatureChip icon={<Users />} label="1099 Tracking" />
               <FeatureChip icon={<PiggyBank />} label="Tax Reserves" />
               <FeatureChip icon={<Landmark />} label="Bank Reconciliation" />
-              <FeatureChip icon={<TrendingUp />} label="Cash Flow" />
+              <FeatureChip icon={<TrendingUp />} label="Cash Runway" />
               <FeatureChip icon={<FileText />} label="P&L Reports" />
-              <FeatureChip icon={<Clock />} label="Period Controls" />
               <FeatureChip icon={<Shield />} label="Audit Trail" />
-              <FeatureChip icon={<Wallet />} label="Payout Tracking" />
             </div>
           </div>
         </section>
