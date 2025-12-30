@@ -40,6 +40,7 @@ export interface RecordExpenseRequest {
   paidFrom?: 'cash' | 'credit_card'
   transactionDate?: string
   authorizingInstrumentId?: string  // Optional: link to authorizing instrument for validation
+  authorizationDecisionId?: string  // Optional: preflight authorization decision ID
 }
 
 export interface RecordBillRequest {
@@ -52,6 +53,7 @@ export interface RecordBillRequest {
   expenseCategory?: string
   paid?: boolean
   authorizingInstrumentId?: string  // Optional: link to authorizing instrument for validation
+  authorizationDecisionId?: string  // Optional: preflight authorization decision ID
 }
 
 // === AUTHORIZING INSTRUMENTS ===
@@ -182,6 +184,65 @@ export interface AlertTestResult {
   message: string
   channel?: string
   error?: string
+}
+
+// === PREFLIGHT AUTHORIZATION (Phase 3) ===
+
+export type PolicyType = 'require_instrument' | 'budget_cap' | 'projection_guard'
+export type PolicySeverity = 'hard' | 'soft'
+export type AuthorizationDecisionType = 'allowed' | 'warn' | 'blocked'
+
+export interface PolicyViolation {
+  policyId: string
+  policyType: PolicyType
+  severity: PolicySeverity
+  reason: string
+}
+
+export interface PreflightAuthorizationRequest {
+  idempotencyKey: string
+  amount: number  // In cents
+  currency?: string
+  counterpartyName?: string
+  authorizingInstrumentId?: string
+  expectedDate?: string
+  category?: string
+}
+
+export interface PreflightAuthorizationResponse {
+  success: boolean
+  cached: boolean
+  decision: {
+    id: string
+    decision: AuthorizationDecisionType
+    violatedPolicies: PolicyViolation[]
+    expiresAt: string
+    createdAt: string
+  }
+  message?: string
+}
+
+export interface AuthorizationPolicy {
+  id: string
+  policyType: PolicyType
+  config: Record<string, any>
+  severity: PolicySeverity
+  priority: number
+  isActive: boolean
+  createdAt: string
+}
+
+export interface CreatePolicyRequest {
+  policyType: PolicyType
+  config: Record<string, any>
+  severity?: PolicySeverity
+  priority?: number
+}
+
+export interface PreflightResult {
+  decisionId: string
+  decision: AuthorizationDecisionType
+  warning?: string
 }
 
 export interface ProcessPayoutRequest {
@@ -368,6 +429,7 @@ export class Soledgic {
       paid_from: req.paidFrom,
       transaction_date: req.transactionDate,
       authorizing_instrument_id: req.authorizingInstrumentId,
+      authorization_decision_id: req.authorizationDecisionId,
     })
   }
 
@@ -382,6 +444,7 @@ export class Soledgic {
       expense_category: req.expenseCategory,
       paid: req.paid,
       authorizing_instrument_id: req.authorizingInstrumentId,
+      authorization_decision_id: req.authorizationDecisionId,
     })
   }
 
@@ -889,6 +952,77 @@ export class Soledgic {
       action: 'test',
       config_id: configId,
     })
+  }
+
+  // === PREFLIGHT AUTHORIZATION (Phase 3) ===
+  // Evaluate whether a proposed transaction should be allowed BEFORE execution.
+  // This does NOT move money - only decides if the transaction is permitted.
+
+  async preflightAuthorization(req: PreflightAuthorizationRequest): Promise<PreflightAuthorizationResponse> {
+    const response = await this.request<any>('preflight-authorization', {
+      idempotency_key: req.idempotencyKey,
+      amount: req.amount,
+      currency: req.currency,
+      counterparty_name: req.counterpartyName,
+      authorizing_instrument_id: req.authorizingInstrumentId,
+      expected_date: req.expectedDate,
+      category: req.category,
+    })
+    return {
+      success: response.success,
+      cached: response.cached,
+      decision: {
+        id: response.decision.id,
+        decision: response.decision.decision,
+        violatedPolicies: (response.decision.violated_policies || []).map((v: any) => ({
+          policyId: v.policy_id,
+          policyType: v.policy_type,
+          severity: v.severity,
+          reason: v.reason,
+        })),
+        expiresAt: response.decision.expires_at,
+        createdAt: response.decision.created_at,
+      },
+      message: response.message,
+    }
+  }
+
+  // Convenience method: preflight check then record expense if allowed
+  async preflightAndRecordExpense(
+    preflight: PreflightAuthorizationRequest,
+    expense: Omit<RecordExpenseRequest, 'authorizationDecisionId'>
+  ): Promise<{ preflight: PreflightAuthorizationResponse; transaction?: any }> {
+    const preflightResult = await this.preflightAuthorization(preflight)
+
+    if (preflightResult.decision.decision === 'blocked') {
+      return { preflight: preflightResult }
+    }
+
+    const transaction = await this.recordExpense({
+      ...expense,
+      authorizationDecisionId: preflightResult.decision.id,
+    })
+
+    return { preflight: preflightResult, transaction }
+  }
+
+  // Convenience method: preflight check then record bill if allowed
+  async preflightAndRecordBill(
+    preflight: PreflightAuthorizationRequest,
+    bill: Omit<RecordBillRequest, 'authorizationDecisionId'>
+  ): Promise<{ preflight: PreflightAuthorizationResponse; transaction?: any }> {
+    const preflightResult = await this.preflightAuthorization(preflight)
+
+    if (preflightResult.decision.decision === 'blocked') {
+      return { preflight: preflightResult }
+    }
+
+    const transaction = await this.recordBill({
+      ...bill,
+      authorizationDecisionId: preflightResult.decision.id,
+    })
+
+    return { preflight: preflightResult, transaction }
   }
 
   // === BANK IMPORT ===

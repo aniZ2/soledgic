@@ -13,6 +13,7 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 - [Authorizing Instruments](#authorizing-instruments)
 - [Shadow Ledger (Ghost Entries)](#shadow-ledger-ghost-entries)
 - [Breach Alerts](#breach-alerts)
+- [Preflight Authorization](#preflight-authorization)
 - [Features](#features)
 - [Project Structure](#project-structure)
 - [Database Schema](#database-schema)
@@ -56,10 +57,11 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 │  manage-bank-accts │ manage-splits     │ plaid                  │
 │  import-txns       │ manage-budgets    │ webhooks               │
 ├─────────────────────────────────────────────────────────────────┤
-│  Authorization     │ Shadow Ledger     │ Alerts               │
+│  Authorization     │ Shadow Ledger     │ Alerts & Preflight   │
 │  ─────────────     │ ─────────────     │ ─────────────        │
 │  register-         │ project-intent    │ configure-alerts     │
-│    instrument      │ (snap-to match)   │ send-breach-alert    │
+│    instrument      │ (snap-to match)   │ preflight-           │
+│  preflight-auth    │                   │   authorization      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -78,6 +80,10 @@ Soledgic is financial infrastructure that handles revenue splits, creator payout
 │    transactions       │   future obligation projection          │
 │  alert_configurations │ Slack/email/webhook alert settings      │
 │  alert_history        │ Sent alert audit trail                  │
+│  authorization_       │ Preflight authorization policies        │
+│    policies           │   (require_instrument, budget_cap)      │
+│  authorization_       │ Immutable authorization decisions       │
+│    decisions          │   (allowed, warn, blocked)              │
 │  bank_accounts        │ Connected bank account tracking         │
 │  bank_lines           │ Imported bank statement lines           │
 │  reconciliations      │ Bank reconciliation records             │
@@ -274,6 +280,12 @@ const balance = await ledger.getTrialBalance()
 |----------|-------------|
 | `POST /configure-alerts` | CRUD for Slack/email/webhook alert configurations |
 | `POST /send-breach-alert` | Send breach risk notification to configured channels |
+
+### Preflight Authorization
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /preflight-authorization` | Evaluate if transaction is allowed BEFORE execution |
 
 ### Operations
 
@@ -572,6 +584,113 @@ Email alerts include:
 | `slack` | Supported | `webhook_url` required |
 | `email` | Supported | `recipients` array (max 10) |
 | `webhook` | Planned | Uses existing webhook endpoints |
+
+---
+
+## Preflight Authorization
+
+**Preflight Authorization** is a ledger-native policy engine that decides whether a proposed transaction should be allowed **BEFORE** execution.
+
+### Key Principles
+
+> Soledgic never touches the money.
+> It touches **truth**, **intent**, and **consequence**.
+
+- **Advisory Only**: Decisions are recommendations, not execution
+- **Time-Bound**: Decisions expire after 2 hours (default)
+- **Idempotent**: Duplicate requests return cached decisions
+- **No Money Movement**: Never creates entries or affects balances
+
+### Policy Types
+
+| Policy | Severity | Description |
+|--------|----------|-------------|
+| `require_instrument` | hard | Block transactions above threshold without authorizing instrument |
+| `budget_cap` | soft | Warn when spending exceeds monthly/quarterly caps |
+| `projection_guard` | hard | Block if transaction would cause breach risk |
+
+### Preflight Request
+
+```bash
+curl -X POST "$URL/preflight-authorization" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "idempotency_key": "expense-2024-001",
+    "amount": 500000,
+    "currency": "USD",
+    "counterparty_name": "Acme Corp",
+    "authorizing_instrument_id": "uuid-optional"
+  }'
+
+# Response:
+# {
+#   "success": true,
+#   "cached": false,
+#   "decision": {
+#     "id": "uuid",
+#     "decision": "allowed",
+#     "violated_policies": [],
+#     "expires_at": "2025-01-01T14:00:00Z"
+#   }
+# }
+```
+
+### Decision Types
+
+| Decision | Meaning |
+|----------|---------|
+| `allowed` | Transaction may proceed |
+| `warn` | Transaction allowed with soft policy violations |
+| `blocked` | Transaction should NOT proceed (hard violations) |
+
+### Enforcing Decisions
+
+When recording a transaction, pass the decision ID to enforce the preflight check:
+
+```bash
+curl -X POST "$URL/record-expense" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "reference_id": "exp-2024-001",
+    "amount": 500000,
+    "description": "Software subscription",
+    "authorization_decision_id": "uuid-from-preflight"
+  }'
+```
+
+The transaction will be rejected if:
+- Decision not found
+- Decision expired
+- Decision was `blocked`
+
+### SDK Usage
+
+```typescript
+// Preflight check
+const preflight = await ledger.preflightAuthorization({
+  idempotencyKey: 'expense-2024-001',
+  amount: 500000,  // cents
+  counterpartyName: 'Acme Corp'
+})
+
+if (preflight.decision.decision === 'blocked') {
+  console.log('Transaction blocked:', preflight.decision.violatedPolicies)
+} else {
+  // Proceed with transaction
+  const expense = await ledger.recordExpense({
+    referenceId: 'exp-2024-001',
+    amount: 500000,
+    description: 'Software subscription',
+    authorizationDecisionId: preflight.decision.id
+  })
+}
+
+// Or use the convenience method
+const result = await ledger.preflightAndRecordExpense(
+  { idempotencyKey: 'expense-2024-001', amount: 500000 },
+  { referenceId: 'exp-2024-001', description: 'Software' }
+)
+```
 
 ---
 

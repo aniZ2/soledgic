@@ -30,6 +30,7 @@ interface ExpenseRequest {
   tax_deductible?: boolean
   metadata?: Record<string, any>
   authorizing_instrument_id?: string  // Optional: link to authorizing instrument for validation
+  authorization_decision_id?: string  // Optional: preflight authorization decision ID
 }
 
 interface AuthorizingInstrument {
@@ -105,11 +106,58 @@ const handler = createHandler(
       .single()
 
     if (existingTx) {
-      return jsonResponse({ 
-        success: false, 
-        error: 'Duplicate reference_id', 
-        transaction_id: existingTx.id 
+      return jsonResponse({
+        success: false,
+        error: 'Duplicate reference_id',
+        transaction_id: existingTx.id
       }, 409, req)
+    }
+
+    // ========================================================================
+    // PREFLIGHT AUTHORIZATION VERIFICATION (Phase 3)
+    // ========================================================================
+    // If authorization_decision_id is provided, verify it before proceeding.
+    // This does NOT affect double-entry logic - only validates the decision.
+
+    let authorizationDecision: {
+      id: string
+      decision: string
+      expires_at: string
+    } | null = null
+
+    if (body.authorization_decision_id) {
+      const decisionId = validateUUID(body.authorization_decision_id)
+      if (!decisionId) {
+        return errorResponse('Invalid authorization_decision_id: must be valid UUID', 400, req)
+      }
+
+      // Load the decision
+      const { data: decision, error: decisionError } = await supabase
+        .from('authorization_decisions')
+        .select('id, decision, expires_at, proposed_transaction')
+        .eq('id', decisionId)
+        .eq('ledger_id', ledger.id)
+        .single()
+
+      if (decisionError || !decision) {
+        return errorResponse('Authorization decision not found', 404, req)
+      }
+
+      // Check if decision has expired
+      if (new Date(decision.expires_at) < new Date()) {
+        return errorResponse('Authorization decision has expired', 400, req)
+      }
+
+      // Check if decision allows proceeding
+      if (decision.decision === 'blocked') {
+        return errorResponse('Transaction blocked by authorization policy', 403, req)
+      }
+
+      authorizationDecision = {
+        id: decision.id,
+        decision: decision.decision,
+        expires_at: decision.expires_at
+      }
     }
 
     const amountDollars = amount / 100
@@ -373,7 +421,9 @@ const handler = createHandler(
         paid_from: paymentAccountType,
         authorizing_instrument_id: instrument?.id || null,
         verified: instrumentValidation?.verified ?? null,
-        projection_matched: projectionMatch?.projection_id || null
+        projection_matched: projectionMatch?.projection_id || null,
+        authorization_decision_id: authorizationDecision?.id || null,
+        authorization_decision: authorizationDecision?.decision || null
       }
     })
 
@@ -403,6 +453,15 @@ const handler = createHandler(
         projection_id: projectionMatch.projection_id,
         expected_date: projectionMatch.expected_date,
         instrument_id: projectionMatch.authorizing_instrument_id
+      }
+    }
+
+    // Include preflight authorization if provided (Phase 3)
+    if (authorizationDecision) {
+      response.preflight_authorization = {
+        decision_id: authorizationDecision.id,
+        decision: authorizationDecision.decision,
+        warning: authorizationDecision.decision === 'warn' ? 'Transaction allowed with policy warnings' : undefined
       }
     }
 
