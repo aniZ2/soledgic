@@ -131,6 +131,59 @@ export interface BreachRisk {
   coverageRatio: number
 }
 
+// === BREACH ALERTS ===
+
+export type AlertType = 'breach_risk' | 'projection_created' | 'instrument_invalidated'
+export type AlertChannel = 'slack' | 'email' | 'webhook'
+
+export interface AlertThresholds {
+  coverageRatioBelow?: number  // Trigger when coverage drops below (default 0.5 = 50%)
+  shortfallAbove?: number      // Trigger when shortfall exceeds (default 0)
+}
+
+export interface SlackAlertConfig {
+  webhookUrl: string
+  channel?: string
+}
+
+export interface EmailAlertConfig {
+  recipients: string[]
+}
+
+export interface AlertConfiguration {
+  id: string
+  alertType: AlertType
+  channel: AlertChannel
+  config: SlackAlertConfig | EmailAlertConfig | Record<string, any>
+  thresholds: AlertThresholds
+  isActive: boolean
+  lastTriggeredAt?: string
+  triggerCount: number
+  createdAt: string
+}
+
+export interface CreateAlertRequest {
+  alertType: AlertType
+  channel: AlertChannel
+  config: SlackAlertConfig | EmailAlertConfig
+  thresholds?: AlertThresholds
+  isActive?: boolean
+}
+
+export interface UpdateAlertRequest {
+  configId: string
+  config?: Partial<SlackAlertConfig | EmailAlertConfig>
+  thresholds?: AlertThresholds
+  isActive?: boolean
+}
+
+export interface AlertTestResult {
+  success: boolean
+  message: string
+  channel?: string
+  error?: string
+}
+
 export interface ProcessPayoutRequest {
   referenceId: string
   creatorId: string
@@ -715,6 +768,127 @@ export class Soledgic {
 
   async retryWebhookDelivery(deliveryId: string) {
     return this.request('webhooks', { action: 'retry', delivery_id: deliveryId })
+  }
+
+  // === BREACH ALERTS ===
+  // Configure Slack, email, or webhook notifications for breach risk events.
+  // Alerts trigger when project-intent creates projections that exceed cash coverage.
+
+  async listAlerts(): Promise<{ success: boolean; data: AlertConfiguration[] }> {
+    const response = await this.request<any>('configure-alerts', { action: 'list' })
+    return {
+      success: response.success,
+      data: (response.data || []).map((c: any) => ({
+        id: c.id,
+        alertType: c.alert_type,
+        channel: c.channel,
+        config: c.config,
+        thresholds: {
+          coverageRatioBelow: c.thresholds?.coverage_ratio_below,
+          shortfallAbove: c.thresholds?.shortfall_above,
+        },
+        isActive: c.is_active,
+        lastTriggeredAt: c.last_triggered_at,
+        triggerCount: c.trigger_count,
+        createdAt: c.created_at,
+      })),
+    }
+  }
+
+  async createAlert(req: CreateAlertRequest): Promise<{ success: boolean; data: AlertConfiguration }> {
+    const config: Record<string, any> = {}
+    if ('webhookUrl' in req.config) {
+      config.webhook_url = req.config.webhookUrl
+      config.channel = (req.config as SlackAlertConfig).channel
+    } else if ('recipients' in req.config) {
+      config.recipients = req.config.recipients
+    }
+
+    const response = await this.request<any>('configure-alerts', {
+      action: 'create',
+      alert_type: req.alertType,
+      channel: req.channel,
+      config,
+      thresholds: req.thresholds ? {
+        coverage_ratio_below: req.thresholds.coverageRatioBelow,
+        shortfall_above: req.thresholds.shortfallAbove,
+      } : undefined,
+      is_active: req.isActive,
+    })
+
+    return {
+      success: response.success,
+      data: {
+        id: response.data.id,
+        alertType: response.data.alert_type,
+        channel: response.data.channel,
+        config: response.data.config || {},
+        thresholds: {
+          coverageRatioBelow: response.data.thresholds?.coverage_ratio_below,
+          shortfallAbove: response.data.thresholds?.shortfall_above,
+        },
+        isActive: response.data.is_active,
+        triggerCount: response.data.trigger_count || 0,
+        createdAt: response.data.created_at,
+      },
+    }
+  }
+
+  async updateAlert(req: UpdateAlertRequest): Promise<{ success: boolean; data: AlertConfiguration }> {
+    const config: Record<string, any> | undefined = req.config ? {} : undefined
+    if (req.config) {
+      if ('webhookUrl' in req.config && req.config.webhookUrl) {
+        config!.webhook_url = req.config.webhookUrl
+      }
+      if ('channel' in req.config) {
+        config!.channel = req.config.channel
+      }
+      if ('recipients' in req.config) {
+        config!.recipients = req.config.recipients
+      }
+    }
+
+    const response = await this.request<any>('configure-alerts', {
+      action: 'update',
+      config_id: req.configId,
+      config,
+      thresholds: req.thresholds ? {
+        coverage_ratio_below: req.thresholds.coverageRatioBelow,
+        shortfall_above: req.thresholds.shortfallAbove,
+      } : undefined,
+      is_active: req.isActive,
+    })
+
+    return {
+      success: response.success,
+      data: {
+        id: response.data.id,
+        alertType: response.data.alert_type,
+        channel: response.data.channel,
+        config: response.data.config || {},
+        thresholds: {
+          coverageRatioBelow: response.data.thresholds?.coverage_ratio_below,
+          shortfallAbove: response.data.thresholds?.shortfall_above,
+        },
+        isActive: response.data.is_active,
+        triggerCount: 0,
+        createdAt: '',
+      },
+    }
+  }
+
+  async deleteAlert(configId: string): Promise<{ success: boolean; message: string }> {
+    return this.request('configure-alerts', {
+      action: 'delete',
+      config_id: configId,
+    })
+  }
+
+  async testAlert(configId: string): Promise<AlertTestResult> {
+    return this.request('configure-alerts', {
+      action: 'test',
+      config_id: configId,
+    })
   }
 
   // === BANK IMPORT ===
