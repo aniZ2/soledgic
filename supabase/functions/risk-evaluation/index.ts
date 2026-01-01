@@ -1,19 +1,20 @@
-// Soledgic Edge Function: Preflight Authorization
-// POST /preflight-authorization
+// Soledgic Edge Function: Risk Evaluation
+// POST /risk-evaluation
 //
-// Ledger-native policy engine that evaluates whether a proposed transaction
-// is permitted BEFORE execution.
+// Signal Engine: Analyzes risk state BEFORE transaction execution.
+//
+// Philosophy:
+// "Soledgic never says 'do' or 'don't.' It says 'this is where you are standing.'"
 //
 // This system:
-// - Decides whether a transaction SHOULD be allowed
-// - Proves authorization BEFORE execution
-// - Blocks or warns BEFORE risk materializes
+// - Analyzes proposed transactions against policy rules
+// - Generates risk signals (not decisions)
+// - Flags concerns (not blocks actions)
 //
 // This system does NOT:
-// - Move money
-// - Reserve balances
-// - Lock accounts
-// - Execute transfers
+// - Authorize or deny transactions
+// - Make judgments on behalf of users
+// - Block anything (users can acknowledge and proceed)
 
 import {
   createHandler,
@@ -22,13 +23,12 @@ import {
   validateUUID,
   validateString,
   validateInteger,
-  validateDate,
   LedgerContext,
   getClientIp
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-interface PreflightRequest {
+interface RiskEvaluationRequest {
   idempotency_key: string
   amount: number  // In cents
   currency?: string
@@ -38,7 +38,7 @@ interface PreflightRequest {
   category?: string
 }
 
-interface Policy {
+interface RiskPolicy {
   id: string
   policy_type: string
   config: Record<string, any>
@@ -46,33 +46,33 @@ interface Policy {
   priority: number
 }
 
-interface PolicyViolation {
+interface RiskFactor {
   policy_id: string
   policy_type: string
   severity: 'hard' | 'soft'
-  reason: string
+  indicator: string  // Changed from 'reason' to 'indicator'
 }
 
-interface AuthorizationDecision {
+interface RiskEvaluation {
   id: string
-  decision: 'allowed' | 'warn' | 'blocked'
-  violated_policies: PolicyViolation[]
-  expires_at: string
+  signal: 'within_policy' | 'elevated_risk' | 'high_risk'
+  risk_factors: RiskFactor[]
+  valid_until: string
   created_at: string
 }
 
 // ============================================================================
-// POLICY EVALUATORS
+// POLICY EVALUATORS (Signal Generators, not Decision Makers)
 // ============================================================================
 
 // Policy: require_instrument
-// Blocks transactions above threshold without an authorizing instrument
+// Flags transactions above threshold without an authorizing instrument
 async function evaluateRequireInstrument(
   supabase: SupabaseClient,
   ledgerId: string,
-  policy: Policy,
-  request: PreflightRequest
-): Promise<PolicyViolation | null> {
+  policy: RiskPolicy,
+  request: RiskEvaluationRequest
+): Promise<RiskFactor | null> {
   const threshold = policy.config.threshold_amount || 100000  // Default $1000
 
   if (request.amount > threshold && !request.authorizing_instrument_id) {
@@ -80,7 +80,7 @@ async function evaluateRequireInstrument(
       policy_id: policy.id,
       policy_type: policy.policy_type,
       severity: policy.severity,
-      reason: `Transaction of ${formatCurrency(request.amount)} exceeds threshold of ${formatCurrency(threshold)} and requires an authorizing instrument`
+      indicator: `Transaction of ${formatCurrency(request.amount)} exceeds ${formatCurrency(threshold)} threshold without authorizing instrument`
     }
   }
 
@@ -98,7 +98,7 @@ async function evaluateRequireInstrument(
         policy_id: policy.id,
         policy_type: policy.policy_type,
         severity: policy.severity,
-        reason: 'Authorizing instrument not found'
+        indicator: 'Referenced authorizing instrument not found'
       }
     }
 
@@ -107,7 +107,7 @@ async function evaluateRequireInstrument(
         policy_id: policy.id,
         policy_type: policy.policy_type,
         severity: policy.severity,
-        reason: 'Authorizing instrument has been invalidated'
+        indicator: 'Referenced authorizing instrument has been invalidated'
       }
     }
   }
@@ -116,13 +116,13 @@ async function evaluateRequireInstrument(
 }
 
 // Policy: budget_cap
-// Warns or blocks when spending exceeds budget caps
+// Flags when spending exceeds budget caps
 async function evaluateBudgetCap(
   supabase: SupabaseClient,
   ledgerId: string,
-  policy: Policy,
-  request: PreflightRequest
-): Promise<PolicyViolation | null> {
+  policy: RiskPolicy,
+  request: RiskEvaluationRequest
+): Promise<RiskFactor | null> {
   const capAmount = policy.config.cap_amount
   const period = policy.config.period || 'monthly'
   const category = policy.config.category  // Optional category filter
@@ -159,7 +159,7 @@ async function evaluateBudgetCap(
   }
 
   // Query existing spending in period
-  let query = supabase
+  const query = supabase
     .from('transactions')
     .select('id, entries!inner(amount, account:accounts!inner(account_type))')
     .eq('ledger_id', ledgerId)
@@ -169,7 +169,7 @@ async function evaluateBudgetCap(
 
   if (error) {
     console.error('Failed to query budget spending:', error)
-    return null  // Don't block on query failure
+    return null  // Don't flag on query failure
   }
 
   // Sum expense amounts (debits to expense accounts)
@@ -190,7 +190,7 @@ async function evaluateBudgetCap(
       policy_id: policy.id,
       policy_type: policy.policy_type,
       severity: policy.severity,
-      reason: `${period.charAt(0).toUpperCase() + period.slice(1)} budget cap of ${formatCurrency(capAmount)} would be exceeded by ${formatCurrency(overage)}${category ? ` for category "${category}"` : ''}`
+      indicator: `${period.charAt(0).toUpperCase() + period.slice(1)} budget cap of ${formatCurrency(capAmount)} would be exceeded by ${formatCurrency(overage)}${category ? ` for category "${category}"` : ''}`
     }
   }
 
@@ -198,13 +198,13 @@ async function evaluateBudgetCap(
 }
 
 // Policy: projection_guard
-// Blocks if transaction would cause breach risk
+// Flags if transaction would cause liquidity pressure
 async function evaluateProjectionGuard(
   supabase: SupabaseClient,
   ledgerId: string,
-  policy: Policy,
-  request: PreflightRequest
-): Promise<PolicyViolation | null> {
+  policy: RiskPolicy,
+  request: RiskEvaluationRequest
+): Promise<RiskFactor | null> {
   const minCoverageRatio = policy.config.min_coverage_ratio || 0.5
 
   // Get current cash balance
@@ -217,7 +217,7 @@ async function evaluateProjectionGuard(
 
   if (cashError) {
     console.error('Failed to query cash balance:', cashError)
-    return null  // Don't block on query failure
+    return null  // Don't flag on query failure
   }
 
   const cashBalance = Number(cashAccount?.balance || 0) * 100  // Convert to cents
@@ -247,7 +247,7 @@ async function evaluateProjectionGuard(
       policy_id: policy.id,
       policy_type: policy.policy_type,
       severity: policy.severity,
-      reason: `Transaction would reduce coverage ratio to ${Math.round(projectedCoverage * 100)}% (minimum: ${Math.round(minCoverageRatio * 100)}%). Cash after: ${formatCurrency(projectedCash)}, Pending obligations: ${formatCurrency(pendingTotal)}`
+      indicator: `Liquidity pressure: coverage ratio would drop to ${Math.round(projectedCoverage * 100)}% (threshold: ${Math.round(minCoverageRatio * 100)}%). Cash after: ${formatCurrency(projectedCash)}, Pending obligations: ${formatCurrency(pendingTotal)}`
     }
   }
 
@@ -269,13 +269,13 @@ function formatCurrency(amountCents: number): string {
 // ============================================================================
 
 const handler = createHandler(
-  { endpoint: 'preflight-authorization', requireAuth: true, rateLimit: true },
+  { endpoint: 'risk-evaluation', requireAuth: true, rateLimit: true },
   async (
     req: Request,
     supabase: SupabaseClient,
     ledger: LedgerContext | null,
-    body: PreflightRequest,
-    context: { requestId: string }
+    body: RiskEvaluationRequest,
+    context: { requestId: string; startTime: number }
   ) => {
     if (!ledger) {
       return errorResponse('Ledger not found', 401, req, context.requestId)
@@ -305,34 +305,35 @@ const handler = createHandler(
     // STEP 0: IDEMPOTENCY CHECK
     // ========================================================================
 
-    const { data: existingDecision, error: idempError } = await supabase
-      .from('authorization_decisions')
+    const { data: existingEvaluation, error: idempError } = await supabase
+      .from('risk_evaluations')
       .select('*')
       .eq('ledger_id', ledger.id)
       .eq('idempotency_key', idempotencyKey)
       .single()
 
-    if (existingDecision && !idempError) {
-      // Check if decision is still valid (not expired)
-      if (new Date(existingDecision.expires_at) > new Date()) {
-        // Return existing decision without re-evaluation
+    if (existingEvaluation && !idempError) {
+      // Check if evaluation is still valid (not expired)
+      if (new Date(existingEvaluation.valid_until) > new Date()) {
+        // Return existing evaluation without re-analysis
         return jsonResponse({
           success: true,
           cached: true,
-          decision: {
-            id: existingDecision.id,
-            decision: existingDecision.decision,
-            violated_policies: existingDecision.violated_policies,
-            expires_at: existingDecision.expires_at,
-            created_at: existingDecision.created_at
+          evaluation: {
+            id: existingEvaluation.id,
+            signal: existingEvaluation.signal,
+            risk_factors: existingEvaluation.risk_factors,
+            valid_until: existingEvaluation.valid_until,
+            created_at: existingEvaluation.created_at,
+            acknowledged_at: existingEvaluation.acknowledged_at
           }
         }, 200, req, context.requestId)
       }
-      // Expired decision - we'll create a new one (delete old first)
+      // Expired evaluation - we'll create a new one (delete old first)
       await supabase
-        .from('authorization_decisions')
+        .from('risk_evaluations')
         .delete()
-        .eq('id', existingDecision.id)
+        .eq('id', existingEvaluation.id)
     }
 
     // ========================================================================
@@ -341,7 +342,7 @@ const handler = createHandler(
 
     // Get active policies ordered by priority
     const { data: policies, error: policyError } = await supabase
-      .from('authorization_policies')
+      .from('risk_policies')
       .select('id, policy_type, config, severity, priority')
       .eq('ledger_id', ledger.id)
       .eq('is_active', true)
@@ -349,87 +350,88 @@ const handler = createHandler(
 
     if (policyError) {
       console.error(`[${context.requestId}] Failed to load policies:`, policyError.message)
-      return errorResponse('Failed to load authorization policies', 500, req, context.requestId)
+      return errorResponse('Failed to load risk policies', 500, req, context.requestId)
     }
 
-    // If no policies configured, allow by default
+    // If no policies configured, signal within_policy by default
     if (!policies || policies.length === 0) {
-      const decision = await createDecision(supabase, ledger.id, idempotencyKey, body, 'allowed', [])
+      const evaluation = await createEvaluation(supabase, ledger.id, idempotencyKey, body, 'within_policy', [])
       return jsonResponse({
         success: true,
         cached: false,
-        decision,
-        message: 'No authorization policies configured - allowed by default'
+        evaluation,
+        message: 'No risk policies configured - within_policy by default'
       }, 200, req, context.requestId)
     }
 
     // ========================================================================
-    // STEP 2: EVALUATE POLICIES (BY PRIORITY)
+    // STEP 2: EVALUATE POLICIES (GENERATE RISK SIGNALS)
     // ========================================================================
 
-    const violations: PolicyViolation[] = []
+    const riskFactors: RiskFactor[] = []
 
-    for (const policy of policies as Policy[]) {
-      let violation: PolicyViolation | null = null
+    for (const policy of policies as RiskPolicy[]) {
+      let factor: RiskFactor | null = null
 
       switch (policy.policy_type) {
         case 'require_instrument':
-          violation = await evaluateRequireInstrument(supabase, ledger.id, policy, body)
+          factor = await evaluateRequireInstrument(supabase, ledger.id, policy, body)
           break
         case 'budget_cap':
-          violation = await evaluateBudgetCap(supabase, ledger.id, policy, body)
+          factor = await evaluateBudgetCap(supabase, ledger.id, policy, body)
           break
         case 'projection_guard':
-          violation = await evaluateProjectionGuard(supabase, ledger.id, policy, body)
+          factor = await evaluateProjectionGuard(supabase, ledger.id, policy, body)
           break
         default:
           console.warn(`[${context.requestId}] Unknown policy type: ${policy.policy_type}`)
       }
 
-      if (violation) {
-        violations.push(violation)
+      if (factor) {
+        riskFactors.push(factor)
       }
     }
 
     // ========================================================================
-    // STEP 3: DECISION RESOLUTION
+    // STEP 3: SIGNAL DETERMINATION
     // ========================================================================
+    // Signal is purely informational - it does not block anything
 
-    let decision: 'allowed' | 'warn' | 'blocked'
+    let signal: 'within_policy' | 'elevated_risk' | 'high_risk'
 
-    const hardViolations = violations.filter(v => v.severity === 'hard')
-    const softViolations = violations.filter(v => v.severity === 'soft')
+    const hardFactors = riskFactors.filter(f => f.severity === 'hard')
+    const softFactors = riskFactors.filter(f => f.severity === 'soft')
 
-    if (hardViolations.length > 0) {
-      decision = 'blocked'
-    } else if (softViolations.length > 0) {
-      decision = 'warn'
+    if (hardFactors.length > 0) {
+      signal = 'high_risk'
+    } else if (softFactors.length > 0) {
+      signal = 'elevated_risk'
     } else {
-      decision = 'allowed'
+      signal = 'within_policy'
     }
 
     // ========================================================================
-    // STEP 4: PERSIST DECISION
+    // STEP 4: PERSIST EVALUATION
     // ========================================================================
 
-    const authDecision = await createDecision(
+    const evaluation = await createEvaluation(
       supabase,
       ledger.id,
       idempotencyKey,
       body,
-      decision,
-      violations
+      signal,
+      riskFactors
     )
 
-    // Log blocked decisions as security events
-    if (decision === 'blocked') {
+    // Log high_risk evaluations as security events (for awareness, not blocking)
+    if (signal === 'high_risk') {
       await supabase.from('security_events').insert({
         ledger_id: ledger.id,
-        event_type: 'authorization_blocked',
+        event_type: 'high_risk_evaluation',
         severity: 'medium',
         details: {
-          decision_id: authDecision.id,
-          violations: violations,
+          evaluation_id: evaluation.id,
+          risk_factors: riskFactors,
           proposed_amount: body.amount
         },
         ip_address: getClientIp(req)
@@ -439,41 +441,41 @@ const handler = createHandler(
     // Audit log
     await supabase.from('audit_log').insert({
       ledger_id: ledger.id,
-      action: 'preflight_authorization',
-      entity_type: 'authorization_decision',
-      entity_id: authDecision.id,
+      action: 'risk_evaluation',
+      entity_type: 'risk_evaluation',
+      entity_id: evaluation.id,
       actor_type: 'api',
       ip_address: getClientIp(req),
       request_body: {
         idempotency_key: idempotencyKey,
         amount: body.amount,
-        decision: decision,
-        violations_count: violations.length
+        signal: signal,
+        risk_factors_count: riskFactors.length
       }
     }).catch(() => {})  // Non-critical
 
     return jsonResponse({
       success: true,
       cached: false,
-      decision: authDecision
+      evaluation
     }, 200, req, context.requestId)
   }
 )
 
-// Helper to create and persist a decision
-async function createDecision(
+// Helper to create and persist an evaluation
+async function createEvaluation(
   supabase: SupabaseClient,
   ledgerId: string,
   idempotencyKey: string,
-  request: PreflightRequest,
-  decision: 'allowed' | 'warn' | 'blocked',
-  violations: PolicyViolation[]
-): Promise<AuthorizationDecision> {
-  const expiresAt = new Date()
-  expiresAt.setHours(expiresAt.getHours() + 2)  // 2 hour TTL
+  request: RiskEvaluationRequest,
+  signal: 'within_policy' | 'elevated_risk' | 'high_risk',
+  riskFactors: RiskFactor[]
+): Promise<RiskEvaluation> {
+  const validUntil = new Date()
+  validUntil.setHours(validUntil.getHours() + 2)  // 2 hour TTL
 
   const { data, error } = await supabase
-    .from('authorization_decisions')
+    .from('risk_evaluations')
     .insert({
       ledger_id: ledgerId,
       idempotency_key: idempotencyKey,
@@ -485,18 +487,18 @@ async function createDecision(
         expected_date: request.expected_date,
         category: request.category
       },
-      decision: decision,
-      violated_policies: violations,
-      expires_at: expiresAt.toISOString()
+      signal: signal,
+      risk_factors: riskFactors,
+      valid_until: validUntil.toISOString()
     })
-    .select('id, decision, violated_policies, expires_at, created_at')
+    .select('id, signal, risk_factors, valid_until, created_at')
     .single()
 
   if (error) {
-    throw new Error(`Failed to persist decision: ${error.message}`)
+    throw new Error(`Failed to persist evaluation: ${error.message}`)
   }
 
-  return data as AuthorizationDecision
+  return data as RiskEvaluation
 }
 
 Deno.serve(handler)

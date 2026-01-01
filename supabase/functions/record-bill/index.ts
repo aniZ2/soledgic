@@ -28,7 +28,7 @@ interface RecordBillRequest {
   paid?: boolean
   metadata?: Record<string, any>
   authorizing_instrument_id?: string  // Optional: link to authorizing instrument for validation
-  authorization_decision_id?: string  // Optional: preflight authorization decision ID
+  risk_evaluation_id?: string  // Optional: link to prior risk evaluation (informational only)
 }
 
 interface AuthorizingInstrument {
@@ -160,50 +160,52 @@ Deno.serve(async (req) => {
     }
 
     // ========================================================================
-    // PREFLIGHT AUTHORIZATION VERIFICATION (Phase 3)
+    // RISK EVALUATION LINKAGE (Phase 3.1 - Signal Engine)
     // ========================================================================
-    // If authorization_decision_id is provided, verify it before proceeding.
-    // This does NOT affect double-entry logic - only validates the decision.
+    // If risk_evaluation_id is provided, link it for audit purposes.
+    // This is PURELY INFORMATIONAL - we never block based on risk signal.
+    // "Soledgic never says 'do' or 'don't.' It says 'this is where you are standing.'"
 
-    let authorizationDecision: {
+    let riskEvaluation: {
       id: string
-      decision: string
-      expires_at: string
+      signal: string
+      valid_until: string
     } | null = null
 
-    if (body.authorization_decision_id) {
-      const decisionId = validateUUID(body.authorization_decision_id)
-      if (!decisionId) {
-        return errorResponse('Invalid authorization_decision_id: must be valid UUID', 400, req)
+    if (body.risk_evaluation_id) {
+      const evaluationId = validateUUID(body.risk_evaluation_id)
+      if (!evaluationId) {
+        return errorResponse('Invalid risk_evaluation_id: must be valid UUID', 400, req)
       }
 
-      // Load the decision
-      const { data: decision, error: decisionError } = await supabase
-        .from('authorization_decisions')
-        .select('id, decision, expires_at, proposed_transaction')
-        .eq('id', decisionId)
+      // Load the evaluation (purely for audit linkage)
+      const { data: evaluation, error: evalError } = await supabase
+        .from('risk_evaluations')
+        .select('id, signal, valid_until, proposed_transaction')
+        .eq('id', evaluationId)
         .eq('ledger_id', ledger.id)
         .single()
 
-      if (decisionError || !decision) {
-        return errorResponse('Authorization decision not found', 404, req)
-      }
+      if (evaluation && !evalError) {
+        riskEvaluation = {
+          id: evaluation.id,
+          signal: evaluation.signal,
+          valid_until: evaluation.valid_until
+        }
 
-      // Check if decision has expired
-      if (new Date(decision.expires_at) < new Date()) {
-        return errorResponse('Authorization decision has expired', 400, req)
+        // Mark the evaluation as acknowledged (user proceeded despite any risk)
+        if (evaluation.signal === 'high_risk' || evaluation.signal === 'elevated_risk') {
+          await supabase
+            .from('risk_evaluations')
+            .update({
+              acknowledged_at: new Date().toISOString(),
+              acknowledged_by: 'api'
+            })
+            .eq('id', evaluation.id)
+            .catch(() => {})  // Non-critical
+        }
       }
-
-      // Check if decision allows proceeding
-      if (decision.decision === 'blocked') {
-        return errorResponse('Transaction blocked by authorization policy', 403, req)
-      }
-
-      authorizationDecision = {
-        id: decision.id,
-        decision: decision.decision,
-        expires_at: decision.expires_at
-      }
+      // Note: We don't error if evaluation not found - transaction proceeds regardless
     }
 
     // ========================================================================
@@ -422,8 +424,8 @@ Deno.serve(async (req) => {
         authorizing_instrument_id: instrument?.id || null,
         verified: instrumentValidation?.verified ?? null,
         projection_matched: projectionMatch?.projection_id || null,
-        authorization_decision_id: authorizationDecision?.id || null,
-        authorization_decision: authorizationDecision?.decision || null
+        risk_evaluation_id: riskEvaluation?.id || null,
+        risk_signal: riskEvaluation?.signal || null
       }
     }).then(() => {}).catch(() => {})
 
@@ -437,7 +439,7 @@ Deno.serve(async (req) => {
 
     // Include validation result if instrument was provided
     if (instrumentValidation) {
-      response.authorization = {
+      response.instrument_verification = {
         verified: instrumentValidation.verified,
         instrument_id: instrumentValidation.instrument_id,
         external_ref: instrumentValidation.external_ref,
@@ -455,12 +457,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Include preflight authorization if provided (Phase 3)
-    if (authorizationDecision) {
-      response.preflight_authorization = {
-        decision_id: authorizationDecision.id,
-        decision: authorizationDecision.decision,
-        warning: authorizationDecision.decision === 'warn' ? 'Transaction allowed with policy warnings' : undefined
+    // Include risk evaluation if provided (Phase 3.1 - Signal Engine)
+    if (riskEvaluation) {
+      response.risk_evaluation = {
+        evaluation_id: riskEvaluation.id,
+        signal: riskEvaluation.signal,
+        acknowledged: riskEvaluation.signal !== 'within_policy'
       }
     }
 
