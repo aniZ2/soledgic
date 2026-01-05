@@ -12,7 +12,7 @@
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.47.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^0.562.0",
     "next": "^14.2.21",
     "react": "^18",
     "react-dom": "^18",
