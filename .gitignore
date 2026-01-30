@@ -45,3 +45,5 @@ supabase/.temp/
 *.p12
 credentials.json
 service-account.json
+.vercel
+.env*.local
