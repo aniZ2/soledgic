@@ -79,6 +79,16 @@ const features = [
   },
 ]
 
+const comparisonFeatures = [
+    { feature: 'Unified ledger for money movement', soledgic: true, traditional_processors: false, accounting_software: true },
+    { feature: 'Marketplace revenue splits', soledgic: true, traditional_processors: false, accounting_software: false },
+    { feature: 'Managed creator payouts', soledgic: true, traditional_processors: 'Varies', accounting_software: false },
+    { feature: '1099-K data exports for creators', soledgic: true, traditional_processors: false, accounting_software: 'Add-on' },
+    { feature: 'Automated reconciliation', soledgic: true, traditional_processors: false, accounting_software: true },
+    { feature: 'Dispute & risk management holds', soledgic: true, traditional_processors: true, accounting_software: false },
+    { feature: 'Real-time API for orchestration', soledgic: true, traditional_processors: 'Varies', accounting_software: 'Limited' },
+]
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -92,6 +102,7 @@ export default function HomePage() {
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className="text-sm font-medium text-muted-foreground hover:text-foreground">Features</a>
               <a href="#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground">Pricing</a>
+              <a href="#compare" className="text-sm font-medium text-muted-foreground hover:text-foreground">Compare</a>
               <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">Login</Link>
               <Link 
                 href="/signup" 
@@ -256,6 +267,64 @@ export default function HomePage() {
                 </Link>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Comparison */}
+      <section id="compare" className="py-24">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-foreground tracking-tight">
+              Built for Platform Workflows
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              Stop forcing generic tools to fit a marketplace problem.
+            </p>
+          </div>
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="text-left py-4 px-4 font-medium text-foreground">Feature</th>
+                  <th className="text-center py-4 px-4 font-medium text-primary">Soledgic</th>
+                  <th className="text-center py-4 px-4 font-medium text-muted-foreground">Traditional Processors</th>
+                  <th className="text-center py-4 px-4 font-medium text-muted-foreground">Accounting Software</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonFeatures.map((row, index) => (
+                  <tr key={row.feature} className={`border-b border-border ${index % 2 === 1 ? 'bg-muted/20' : ''}`}>
+                    <td className="py-4 px-4 text-foreground">{row.feature}</td>
+                    <td className="py-4 px-4 text-center">
+                      {row.soledgic === true ? (
+                        <Check className="h-5 w-5 text-primary mx-auto" />
+                      ) : (
+                        <span className="text-muted-foreground">{row.soledgic}</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      {row.traditional_processors === true ? (
+                        <Check className="h-5 w-5 text-primary mx-auto" />
+                      ) : row.traditional_processors === false ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">{row.traditional_processors}</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      {row.accounting_software === true ? (
+                        <Check className="h-5 w-5 text-primary mx-auto" />
+                      ) : row.accounting_software === false ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">{row.accounting_software}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
