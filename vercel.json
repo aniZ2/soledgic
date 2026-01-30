@@ -1,12 +1,6 @@
 {
   "version": 2,
-  "public": true,
-  "buildCommand": "echo 'No build needed'",
-  "outputDirectory": "public",
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ]
+  "buildCommand": "cd apps/web && npm install && npm run build",
+  "outputDirectory": "apps/web/.next",
+  "framework": "nextjs"
 }

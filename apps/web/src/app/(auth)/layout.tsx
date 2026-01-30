@@ -26,7 +26,7 @@ export default function AuthLayout({
       {/* Footer */}
       <footer className="border-t border-border py-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-muted-foreground">
-          © 2025 Soledgic. All rights reserved.
+          © 2026 Soledgic. All rights reserved.
         </div>
       </footer>
     </div>

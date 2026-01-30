@@ -12,7 +12,7 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
@@ -81,6 +81,7 @@ export async function requireOrgMembership() {
   if (!userWithOrg) {
     const { redirect } = await import('next/navigation')
     redirect('/login')
+    throw new Error('unreachable')
   }
   if (!userWithOrg.organization) {
     const { redirect } = await import('next/navigation')

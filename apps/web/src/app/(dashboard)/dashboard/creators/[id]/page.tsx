@@ -6,7 +6,7 @@ import { ArrowLeft, User, DollarSign, TrendingUp, FileText, Wallet, Clock } from
 export default async function CreatorDetailPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
   const { id: creatorId } = await params
   const supabase = await createClient()
