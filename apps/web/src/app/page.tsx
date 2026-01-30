@@ -417,13 +417,13 @@ export default function HomePage() {
 
           {/* Pricing Highlight */}
 
-          <div className="text-center mb-16">
+                    <div className="text-center mb-16">
 
-            <div className="text-4xl font-bold text-primary">3.4% + $0.55</div>
+                      <div className="text-4xl font-bold text-primary">3.4% + $0.55</div>
 
-            <p className="text-lg text-muted-foreground">per transaction, payment processing and payouts included on all plans</p>
+                      <p className="text-lg text-muted-foreground">Payment processing fees apply. Payouts managed through the platform.</p>
 
-          </div>
+                    </div>
 
 
 
