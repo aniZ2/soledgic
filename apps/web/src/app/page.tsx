@@ -193,11 +193,11 @@ export default function HomePage() {
 
         <div className="max-w-4xl mx-auto text-center">
 
-          <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-foreground">
+                    <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-foreground">
 
-            Move platform money with clarity
+                      Move marketplace & platform money with clarity
 
-          </h1>
+                    </h1>
 
           <p className="mt-6 text-xl text-muted-foreground max-w-3xl mx-auto">
 
