@@ -79,16 +79,6 @@ const features = [
   },
 ]
 
-const comparisonFeatures = [
-  { feature: 'Audit-ready ledger built in', soledgic: true, stripe: false, quickbooks: true },
-  { feature: 'Marketplace revenue splits', soledgic: true, stripe: 'Connect only', quickbooks: false },
-  { feature: '1099-K data exports', soledgic: true, stripe: 'Limited', quickbooks: 'Add-on' },
-  { feature: 'Automated reconciliation', soledgic: true, stripe: false, quickbooks: true },
-  { feature: 'Dispute and hold controls', soledgic: true, stripe: false, quickbooks: false },
-  { feature: 'Period locking and statements', soledgic: true, stripe: false, quickbooks: 'Manual' },
-  { feature: 'Unified API for money flow', soledgic: true, stripe: true, quickbooks: 'Limited' },
-]
-
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -102,7 +92,6 @@ export default function HomePage() {
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className="text-sm font-medium text-muted-foreground hover:text-foreground">Features</a>
               <a href="#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground">Pricing</a>
-              <a href="#compare" className="text-sm font-medium text-muted-foreground hover:text-foreground">Compare</a>
               <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">Login</Link>
               <Link 
                 href="/signup" 
@@ -267,64 +256,6 @@ export default function HomePage() {
                 </Link>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Comparison */}
-      <section id="compare" className="py-24">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-foreground tracking-tight">
-              Built for platform money
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Stop forcing generic tools to fit a marketplace workflow.
-            </p>
-          </div>
-          <div className="overflow-x-auto border border-border rounded-lg">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left py-4 px-4 font-medium text-foreground">Feature</th>
-                  <th className="text-center py-4 px-4 font-medium text-primary">Soledgic</th>
-                  <th className="text-center py-4 px-4 font-medium text-muted-foreground">Stripe</th>
-                  <th className="text-center py-4 px-4 font-medium text-muted-foreground">QuickBooks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonFeatures.map((row, index) => (
-                  <tr key={row.feature} className={`border-b border-border ${index % 2 === 1 ? 'bg-muted/20' : ''}`}>
-                    <td className="py-4 px-4 text-foreground">{row.feature}</td>
-                    <td className="py-4 px-4 text-center">
-                      {row.soledgic === true ? (
-                        <Check className="h-5 w-5 text-primary mx-auto" />
-                      ) : (
-                        <span className="text-muted-foreground">{row.soledgic}</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      {row.stripe === true ? (
-                        <Check className="h-5 w-5 text-muted-foreground mx-auto" />
-                      ) : row.stripe === false ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">{row.stripe}</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      {row.quickbooks === true ? (
-                        <Check className="h-5 w-5 text-muted-foreground mx-auto" />
-                      ) : row.quickbooks === false ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">{row.quickbooks}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </div>
       </section>
