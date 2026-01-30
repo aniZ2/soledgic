@@ -1,105 +1,52 @@
 # Soledgic
 
-**Double-entry accounting API for any business.**
+**Treasury infrastructure for marketplaces.** Accept payments, manage revenue splits, and pay out sellers and creators — with built-in fraud protection and full double-entry accounting.
 
-Soledgic is financial infrastructure that handles revenue splits, creator payouts, expense tracking, and tax compliance. Works for marketplaces (Booklyverse), SaaS platforms (Vantage Registry), and any business that needs clean books.
+A product of [Osifo Holdings L.L.C.](https://osifoholdings.com)
+
+---
 
 ## Table of Contents
 
+- [Overview](#overview)
 - [Architecture](#architecture)
-- [Two Modes](#two-modes)
+- [How It Works](#how-it-works)
 - [Quick Start](#quick-start)
-- [API Endpoints](#api-endpoints)
+- [API Reference](#api-reference)
 - [Authorizing Instruments](#authorizing-instruments)
-- [Shadow Ledger (Ghost Entries)](#shadow-ledger-ghost-entries)
-- [Breach Alerts](#breach-alerts)
+- [Shadow Ledger](#shadow-ledger)
 - [Preflight Authorization](#preflight-authorization)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Database Schema](#database-schema)
-- [Integrations](#integrations)
+- [Breach Alerts](#breach-alerts)
 - [Web Dashboard](#web-dashboard)
 - [SDK](#sdk)
+- [Database Schema](#database-schema)
+- [Integrations](#integrations)
 - [Security](#security)
-- [Documentation](#documentation)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [Project Structure](#project-structure)
+- [Environment Variables](#environment-variables)
+- [Documentation](#documentation)
 - [License](#license)
 
 ---
 
-## Architecture
+## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         YOUR APP                                │
-│                  (Booklyverse, Vantage, etc.)                   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ API Calls
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        SOLEDGIC API                             │
-│                   (50+ Edge Functions)                          │
-├─────────────────────────────────────────────────────────────────┤
-│  Sales & Income    │ Payouts & Bills   │ Reports & Tax          │
-│  ─────────────     │ ─────────────     │ ─────────────          │
-│  record-sale       │ process-payout    │ profit-loss            │
-│  record-income     │ execute-payout    │ balance-sheet          │
-│  record-refund     │ pay-bill          │ trial-balance          │
-│  record-expense    │ receive-payment   │ generate-report        │
-│  invoices          │ manage-contractors│ generate-tax-summary   │
-├─────────────────────────────────────────────────────────────────┤
-│  Banking           │ Management        │ Integrations           │
-│  ─────────────     │ ─────────────     │ ─────────────          │
-│  reconcile         │ create-ledger     │ stripe                 │
-│  import-bank-stmt  │ list-ledgers      │ stripe-webhook         │
-│  manage-bank-accts │ manage-splits     │ plaid                  │
-│  import-txns       │ manage-budgets    │ webhooks               │
-├─────────────────────────────────────────────────────────────────┤
-│  Authorization     │ Shadow Ledger     │ Alerts & Preflight   │
-│  ─────────────     │ ─────────────     │ ─────────────        │
-│  register-         │ project-intent    │ configure-alerts     │
-│    instrument      │ (snap-to match)   │ preflight-           │
-│  preflight-auth    │                   │   authorization      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     SUPABASE (PostgreSQL)                       │
-├─────────────────────────────────────────────────────────────────┤
-│  ledgers              │ Multi-tenant ledger isolation           │
-│  accounts             │ Chart of accounts per ledger            │
-│  transactions         │ Immutable transaction headers           │
-│  entries              │ Double-entry journal lines              │
-│  invoices             │ AR/AP invoice management                │
-│  payouts              │ Creator/contractor payout tracking      │
-│  authorizing_         │ Ledger-native financial authorization   │
-│    instruments        │   (contracts as proof, not CLM)         │
-│  projected_           │ Shadow Ledger: ghost entries for        │
-│    transactions       │   future obligation projection          │
-│  alert_configurations │ Slack/email/webhook alert settings      │
-│  alert_history        │ Sent alert audit trail                  │
-│  authorization_       │ Preflight authorization policies        │
-│    policies           │   (require_instrument, budget_cap)      │
-│  authorization_       │ Immutable authorization decisions       │
-│    decisions          │   (allowed, warn, blocked)              │
-│  bank_accounts        │ Connected bank account tracking         │
-│  bank_lines           │ Imported bank statement lines           │
-│  reconciliations      │ Bank reconciliation records             │
-│  audit_log            │ Full audit trail (immutable)            │
-└─────────────────────────────────────────────────────────────────┘
-```
+Soledgic is payment and accounting infrastructure for marketplaces, creator platforms, and any business that splits revenue between multiple parties. It handles:
 
----
+- **Payment processing** — accept cards and other methods with PCI compliance and fraud detection
+- **Settlement & escrow** — hold funds during chargeback protection periods before releasing
+- **Revenue splits** — automatically calculate platform fees and seller/creator payouts
+- **Payouts** — pay sellers, vendors, and creators on schedule (daily, weekly, on-demand)
+- **Double-entry accounting** — every transaction recorded with proper debits and credits
+- **Tax compliance** — 1099 generation, W-9 collection, withholding rules
 
-## Two Modes
+### Two Modes
 
-### Marketplace Mode
-For platforms with revenue splits (Booklyverse, Gumroad, etc.)
+**Marketplace Mode** — for platforms with revenue splits (e.g., book marketplaces, creator platforms, B2B vendors):
 
 ```bash
-# Record a sale with automatic revenue split
 curl -X POST "$URL/record-sale" \
   -H "x-api-key: sk_xxx" \
   -d '{
@@ -109,36 +56,91 @@ curl -X POST "$URL/record-sale" \
     "processing_fee": 117
   }'
 
-# Response:
 # { "creator_amount": 23.06, "platform_amount": 5.76, "withheld": 2.31 }
 ```
 
-### Standard Mode
-For traditional businesses (Vantage Registry, consulting, etc.)
+**Standard Mode** — for traditional businesses (consulting, SaaS, services):
 
 ```bash
-# Record income
 curl -X POST "$URL/record-income" \
   -H "x-api-key: sk_xxx" \
   -d '{"reference_id": "inv_001", "amount": 500000, "description": "Consulting"}'
-
-# Record expense
-curl -X POST "$URL/record-expense" \
-  -H "x-api-key: sk_xxx" \
-  -d '{"reference_id": "exp_001", "amount": 15000, "description": "Office supplies"}'
 ```
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         YOUR PLATFORM                           │
+│                (Marketplace, Creator Platform, SaaS)             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ API Calls
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        SOLEDGIC API                              │
+│                    (65+ Edge Functions)                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Payments & Sales  │ Payouts & Bills    │ Reports & Tax          │
+│  ───────────────── │ ────────────────── │ ─────────────          │
+│  record-sale       │ process-payout     │ profit-loss            │
+│  record-income     │ execute-payout     │ balance-sheet          │
+│  record-refund     │ pay-bill           │ trial-balance          │
+│  record-expense    │ receive-payment    │ generate-tax-summary   │
+│  create-checkout   │ release-funds      │ ap-aging / ar-aging    │
+├─────────────────────────────────────────────────────────────────┤
+│  Banking           │ Management         │ Integrations           │
+│  ──────────────    │ ──────────────     │ ─────────────          │
+│  reconcile         │ create-ledger      │ stripe / stripe-webhook│
+│  import-bank-stmt  │ manage-splits      │ plaid                  │
+│  manage-bank-accts │ manage-budgets     │ connected-accounts     │
+│  import-txns       │ manage-contractors │ webhooks               │
+├─────────────────────────────────────────────────────────────────┤
+│  Authorization     │ Shadow Ledger      │ Alerts                 │
+│  ──────────────    │ ──────────────     │ ─────────────          │
+│  register-         │ project-intent     │ configure-alerts       │
+│    instrument      │ (snap-to match)    │ send-breach-alert      │
+│  preflight-auth    │                    │ risk-evaluation        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     SUPABASE (PostgreSQL)                        │
+│  Row-Level Security · Immutable Audit Log · 140+ Migrations     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Stack:**
+- **Backend**: Supabase Edge Functions (Deno/TypeScript) + PostgreSQL
+- **Frontend**: Next.js 14 (App Router) + TailwindCSS
+- **Payments**: Stripe Connect
+- **Banking**: Plaid
+- **Auth**: Supabase Auth + SHA-256 hashed API keys
+- **Testing**: Vitest (unit, integration, stress)
+- **CI/CD**: GitHub Actions (security scanning, CodeQL, secret detection)
+
+---
+
+## How It Works
+
+1. **Customer pays** — payment is processed with PCI compliance and fraud detection
+2. **Funds settle** — payments clear with a settlement period for chargeback protection
+3. **Revenue splits** — platform fees and seller amounts calculated automatically
+4. **Payouts go out** — funds paid to sellers/creators on your schedule
 
 ---
 
 ## Quick Start
 
-### 1. Install SDK
+### Install the SDK
 
 ```bash
 npm install @soledgic/sdk
 ```
 
-### 2. Initialize
+### Initialize
 
 ```typescript
 import Soledgic from '@soledgic/sdk'
@@ -146,10 +148,10 @@ import Soledgic from '@soledgic/sdk'
 const ledger = new Soledgic('sk_live_xxx')
 ```
 
-### 3. Record Transactions
+### Record Transactions
 
 ```typescript
-// Marketplace: Record sale with split
+// Marketplace: record sale with automatic split
 const sale = await ledger.recordSale({
   referenceId: 'stripe_pi_xxx',
   creatorId: 'author_123',
@@ -157,21 +159,44 @@ const sale = await ledger.recordSale({
   processingFee: 117,
 })
 
-// Standard: Record income
+// Standard: record income
 await ledger.recordIncome({
   referenceId: 'inv_001',
   amount: 500000,
   description: 'Consulting - Project Alpha',
 })
 
-// Get reports
-const pnl = await ledger.getProfitLoss('2024-01-01', '2024-12-31')
+// Record expense
+await ledger.recordExpense({
+  referenceId: 'exp_001',
+  amount: 15000,
+  description: 'Office supplies',
+})
+
+// Reports
+const pnl = await ledger.getProfitLoss('2025-01-01', '2025-12-31')
 const balance = await ledger.getTrialBalance()
+```
+
+### Local Development
+
+```bash
+# Start Supabase locally
+npm run supabase:start
+
+# Serve edge functions
+npm run functions:serve
+
+# Run the web dashboard
+cd web && npm run dev
+
+# Run tests
+npm test
 ```
 
 ---
 
-## API Endpoints
+## API Reference
 
 ### Core Transactions
 
@@ -181,6 +206,7 @@ const balance = await ledger.getTrialBalance()
 | `POST /record-income` | Standard | Record business income |
 | `POST /record-expense` | Both | Record business expense |
 | `POST /record-refund` | Marketplace | Process refund with split reversal |
+| `POST /record-bill` | Both | Record accounts payable bill |
 | `POST /record-adjustment` | Both | Manual ledger adjustment |
 | `POST /record-transfer` | Both | Transfer between accounts |
 | `POST /record-opening-balance` | Both | Set opening balances |
@@ -192,9 +218,11 @@ const balance = await ledger.getTrialBalance()
 |----------|-------------|
 | `POST /process-payout` | Initiate creator/contractor payout |
 | `POST /execute-payout` | Execute pending payout |
-| `POST /check-payout-eligibility` | Check if payout can proceed |
+| `POST /check-payout-eligibility` | Verify payout can proceed |
 | `POST /pay-bill` | Pay an accounts payable bill |
 | `POST /receive-payment` | Record payment received |
+| `POST /release-funds` | Release held/escrowed funds |
+| `POST /create-checkout` | Create checkout session |
 
 ### Invoicing (AR/AP)
 
@@ -217,9 +245,9 @@ const balance = await ledger.getTrialBalance()
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /profit-loss` | Income statement (P&L) |
-| `POST /balance-sheet` | Balance sheet report |
-| `POST /trial-balance` | Trial balance report |
+| `POST /profit-loss` | Income statement (P&L) with monthly breakdown |
+| `POST /balance-sheet` | Balance sheet by account type |
+| `POST /trial-balance` | Trial balance verification |
 | `POST /ap-aging` | Accounts payable aging |
 | `POST /ar-aging` | Accounts receivable aging |
 | `POST /generate-report` | Generic report generator |
@@ -228,6 +256,7 @@ const balance = await ledger.getTrialBalance()
 | `POST /submit-tax-info` | Submit W-9/tax info |
 | `POST /export-report` | Export reports (CSV/PDF) |
 | `POST /generate-pdf` | Generate PDF statements |
+| `POST /get-runway` | Cash runway projection (includes shadow obligations) |
 
 ### Period Management
 
@@ -235,7 +264,7 @@ const balance = await ledger.getTrialBalance()
 |----------|-------------|
 | `POST /close-period` | Close accounting period |
 | `POST /frozen-statements` | Get frozen period statements |
-| `POST /get-runway` | Cash runway projection |
+| `POST /manage-recurring` | Recurring transaction management |
 
 ### Ledger Management
 
@@ -245,47 +274,39 @@ const balance = await ledger.getTrialBalance()
 | `POST /list-ledgers` | List all ledgers |
 | `POST /get-balance` | Single account balance |
 | `POST /get-balances` | All account balances |
-| `POST /get-transactions` | Transaction history |
+| `POST /get-transactions` | Transaction history with filtering |
 | `POST /manage-splits` | Configure split tiers/rates |
 | `POST /manage-budgets` | Budget management |
-| `POST /manage-recurring` | Recurring transactions |
 | `POST /manage-contractors` | Contractor management |
+
+### Authorization & Risk
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /register-instrument` | Register financial authorization (PO, contract terms) |
+| `POST /project-intent` | Project future obligations (Shadow Ledger) |
+| `POST /preflight-authorization` | Pre-execution policy evaluation |
+| `POST /configure-risk-policy` | Configure risk policies |
+| `POST /risk-evaluation` | Risk evaluation engine |
+
+### Alerts
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /configure-alerts` | CRUD for Slack/email/webhook alert configurations |
+| `POST /send-breach-alert` | Send breach risk notification |
 
 ### Integrations
 
 | Endpoint | Description |
 |----------|-------------|
 | `POST /stripe` | Stripe Connect integration |
-| `POST /stripe-webhook` | Stripe webhook handler |
-| `POST /stripe-billing-webhook` | Stripe billing webhook |
+| `POST /stripe-webhook` | Stripe payment event handler |
+| `POST /stripe-billing-webhook` | Stripe subscription event handler |
+| `POST /connected-accounts` | Manage connected payment accounts |
 | `POST /plaid` | Plaid bank connection |
 | `POST /webhooks` | Outbound webhook configuration |
 | `POST /process-webhooks` | Process webhook queue |
-
-### Authorizing Instruments
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /register-instrument` | Register financial authorization (PO, contract terms) |
-
-### Shadow Ledger (Projections)
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /project-intent` | Project future obligations from instrument cadence |
-
-### Breach Alerts
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /configure-alerts` | CRUD for Slack/email/webhook alert configurations |
-| `POST /send-breach-alert` | Send breach risk notification to configured channels |
-
-### Preflight Authorization
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /preflight-authorization` | Evaluate if transaction is allowed BEFORE execution |
 
 ### Operations
 
@@ -301,16 +322,13 @@ const balance = await ledger.getTrialBalance()
 
 ## Authorizing Instruments
 
-**Authorizing Instruments** are ledger-native financial authorization records. They are NOT contracts in the CLM sense - they exist solely to:
-- Explain WHY money moved
-- Validate whether a transaction was authorized
-- Support reconciliation-by-proof
+Authorizing Instruments are ledger-native financial authorization records. They are NOT contracts — they exist solely to explain **why** money moved, validate whether a transaction was authorized, and support reconciliation-by-proof.
 
 ### Key Principles
 
 - **Ledger-first**: Instruments are subordinate to the ledger
-- **Immutable**: Cannot be edited after creation (invalidate + replace only)
-- **No money movement**: Instruments never create entries or affect balances
+- **Immutable**: Cannot be edited (invalidate + replace only)
+- **No money movement**: Never create entries or affect balances
 - **Validation only**: Compare transactions against authorized terms
 
 ### Register an Instrument
@@ -327,12 +345,9 @@ curl -X POST "$URL/register-instrument" \
       "counterparty_name": "Acme Corp"
     }
   }'
-
-# Response:
-# { "instrument_id": "uuid", "fingerprint": "sha256...", "external_ref": "PO-2024-001" }
 ```
 
-### Validate Transaction Against Instrument
+### Validate Against Instrument
 
 ```bash
 curl -X POST "$URL/record-expense" \
@@ -345,30 +360,25 @@ curl -X POST "$URL/record-expense" \
     "authorizing_instrument_id": "uuid-of-instrument"
   }'
 
-# Response includes validation:
-# { "authorization": { "verified": true, "instrument_id": "...", "external_ref": "PO-2024-001" } }
+# Response includes: { "authorization": { "verified": true, "instrument_id": "...", "external_ref": "PO-2024-001" } }
 ```
 
-### Extracted Terms Schema
+### Extracted Terms
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `amount` | integer | Amount in cents |
-| `currency` | string | ISO currency code (USD, EUR, etc.) |
-| `cadence` | string | Payment frequency: `one_time`, `weekly`, `monthly`, `quarterly`, `annual` |
+| `currency` | string | ISO currency code |
+| `cadence` | string | `one_time`, `weekly`, `monthly`, `quarterly`, `annual` |
 | `counterparty_name` | string | Vendor/supplier name for matching |
 
 ---
 
-## Shadow Ledger (Ghost Entries)
+## Shadow Ledger
 
-The **Shadow Ledger** projects future financial obligations based on authorizing instruments. Ghost entries are deterministic projections that:
+The Shadow Ledger projects future financial obligations based on authorizing instruments. Ghost entries are deterministic projections that **never** affect the entries table, account balances, or reports.
 
-- **NEVER** affect the `entries` table
-- **NEVER** affect account balances
-- **NEVER** appear in reports (P&L, Balance Sheet, Trial Balance)
-
-They exist only for:
+They exist for:
 - Expressing future intent
 - Snap-to matching when real transactions arrive
 - Balance breach prediction (current cash vs obligations)
@@ -380,62 +390,27 @@ curl -X POST "$URL/project-intent" \
   -H "x-api-key: sk_xxx" \
   -d '{
     "authorizing_instrument_id": "uuid-of-instrument",
-    "until_date": "2025-12-31",
+    "until_date": "2026-12-31",
     "horizon_count": 12
   }'
-
-# Response:
-# {
-#   "projections_created": 12,
-#   "cadence": "monthly",
-#   "projected_dates": ["2025-01-15", "2025-02-15", ...]
-# }
 ```
 
 ### Snap-to Matching
 
-When a real transaction is recorded (`record-expense`, `record-bill`), the system automatically:
-
+When a real transaction is recorded, the system automatically:
 1. Searches for pending projections within ±3 days
-2. Matches on: amount, currency, ledger
-3. If match found:
-   - Links transaction to projection (`projection_id`)
-   - Marks projection as `fulfilled`
-   - Sets `metadata.projection_verified = true`
-
-```json
-// Response from record-expense with snap-to match
-{
-  "success": true,
-  "transaction_id": "uuid",
-  "projection": {
-    "matched": true,
-    "projection_id": "uuid",
-    "expected_date": "2025-01-15"
-  }
-}
-```
+2. Matches on amount, currency, and ledger
+3. Links the transaction to the projection and marks it `fulfilled`
 
 ### Balance Breach Prediction
 
-The `/get-runway` endpoint now includes shadow obligations:
+The `/get-runway` endpoint includes shadow obligations:
 
 ```json
 {
-  "actuals": {
-    "current_state": { "cash_balance": 50000.00 },
-    "runway": { "months": 8 }
-  },
-  "obligations": {
-    "pending_total": 75000.00,
-    "pending_count": 15,
-    "items": [{ "expected_date": "2025-01-15", "amount": 5000 }]
-  },
-  "breach_risk": {
-    "at_risk": true,
-    "shortfall": 25000.00,
-    "coverage_ratio": 0.67
-  }
+  "actuals": { "current_state": { "cash_balance": 50000.00 }, "runway": { "months": 8 } },
+  "obligations": { "pending_total": 75000.00, "pending_count": 15 },
+  "breach_risk": { "at_risk": true, "shortfall": 25000.00, "coverage_ratio": 0.67 }
 }
 ```
 
@@ -447,159 +422,13 @@ The `/get-runway` endpoint now includes shadow obligations:
 | `fulfilled` | Matched to real transaction |
 | `expired` | Instrument was invalidated |
 
-### Instrument Invalidation
-
-When an instrument is invalidated, all linked pending projections are automatically expired:
-
-```sql
--- Trigger automatically sets:
-UPDATE projected_transactions
-SET status = 'expired'
-WHERE authorizing_instrument_id = 'uuid'
-  AND status = 'pending';
-```
-
----
-
-## Breach Alerts
-
-When `project-intent` creates projections that result in a **breach risk** (pending obligations exceed cash balance), the system can automatically notify you via Slack, email, or webhook.
-
-### Configure Slack Alerts
-
-```bash
-curl -X POST "$URL/configure-alerts" \
-  -H "x-api-key: sk_xxx" \
-  -d '{
-    "action": "create",
-    "alert_type": "breach_risk",
-    "channel": "slack",
-    "config": {
-      "webhook_url": "https://hooks.slack.com/services/T.../B.../xxx"
-    },
-    "thresholds": {
-      "coverage_ratio_below": 0.5,
-      "shortfall_above": 10000
-    }
-  }'
-
-# Response:
-# { "success": true, "data": { "id": "uuid", "alert_type": "breach_risk", "channel": "slack" } }
-```
-
-### Alert Thresholds
-
-| Threshold | Default | Description |
-|-----------|---------|-------------|
-| `coverage_ratio_below` | 0.5 | Trigger when cash / obligations < 50% |
-| `shortfall_above` | 0 | Trigger when shortfall exceeds amount |
-
-### Automatic Triggering
-
-Alerts fire automatically when:
-1. `project-intent` creates new projections
-2. The resulting `breach_risk.at_risk = true`
-3. An active alert configuration exists for the ledger
-
-### Slack Message Format
-
-Alerts use Slack Block Kit with severity levels:
-
-| Coverage Ratio | Severity | Color |
-|----------------|----------|-------|
-| < 25% | CRITICAL | Red |
-| 25-50% | WARNING | Orange |
-| > 50% | NOTICE | Blue |
-
-Example Slack notification:
-```
-🚨 Cash Breach Risk Detected
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ledger: Acme Corp
-Severity: CRITICAL
-
-Current Cash:        $50,000
-Pending Obligations: $150,000
-Projected Shortfall: $100,000
-Coverage Ratio:      33%
-
-📋 Triggered by new projections from: PO-2024-001 (12 new obligations)
-```
-
-### Test Alert Configuration
-
-```bash
-curl -X POST "$URL/configure-alerts" \
-  -H "x-api-key: sk_xxx" \
-  -d '{"action": "test", "config_id": "uuid"}'
-
-# Sends a test message to verify webhook connectivity
-```
-
-### List Alert Configurations
-
-```bash
-curl -X POST "$URL/configure-alerts" \
-  -H "x-api-key: sk_xxx" \
-  -d '{"action": "list"}'
-```
-
-### Alert Types
-
-| Type | Description |
-|------|-------------|
-| `breach_risk` | Cash balance insufficient for pending obligations |
-| `projection_created` | New projections added (future) |
-| `instrument_invalidated` | Authorizing instrument invalidated (future) |
-
-### Configure Email Alerts
-
-```bash
-curl -X POST "$URL/configure-alerts" \
-  -H "x-api-key: sk_xxx" \
-  -d '{
-    "action": "create",
-    "alert_type": "breach_risk",
-    "channel": "email",
-    "config": {
-      "recipients": ["cfo@company.com", "finance@company.com"]
-    },
-    "thresholds": {
-      "coverage_ratio_below": 0.5,
-      "shortfall_above": 10000
-    }
-  }'
-```
-
-Email alerts include:
-- HTML-formatted message with severity color-coding
-- Current cash, pending obligations, shortfall, coverage ratio
-- Link to dashboard
-- Triggered via Resend (requires `RESEND_API_KEY` secret)
-
-### Alert Channels
-
-| Channel | Status | Configuration |
-|---------|--------|---------------|
-| `slack` | Supported | `webhook_url` required |
-| `email` | Supported | `recipients` array (max 10) |
-| `webhook` | Planned | Uses existing webhook endpoints |
-
 ---
 
 ## Preflight Authorization
 
-**Preflight Authorization** is a ledger-native policy engine that decides whether a proposed transaction should be allowed **BEFORE** execution.
+A ledger-native policy engine that decides whether a proposed transaction should be **allowed before execution**.
 
-### Key Principles
-
-> Soledgic never touches the money.
-> It touches **truth**, **intent**, and **consequence**.
-
-- **Advisory Only**: Decisions are recommendations, not execution
-- **Time-Bound**: Decisions expire after 2 hours (default)
-- **Idempotent**: Duplicate requests return cached decisions
-- **No Money Movement**: Never creates entries or affects balances
+> Soledgic never touches the money. It touches truth, intent, and consequence.
 
 ### Policy Types
 
@@ -609,7 +438,7 @@ Email alerts include:
 | `budget_cap` | soft | Warn when spending exceeds monthly/quarterly caps |
 | `projection_guard` | hard | Block if transaction would cause breach risk |
 
-### Preflight Request
+### Preflight Check
 
 ```bash
 curl -X POST "$URL/preflight-authorization" \
@@ -618,21 +447,10 @@ curl -X POST "$URL/preflight-authorization" \
     "idempotency_key": "expense-2024-001",
     "amount": 500000,
     "currency": "USD",
-    "counterparty_name": "Acme Corp",
-    "authorizing_instrument_id": "uuid-optional"
+    "counterparty_name": "Acme Corp"
   }'
 
-# Response:
-# {
-#   "success": true,
-#   "cached": false,
-#   "decision": {
-#     "id": "uuid",
-#     "decision": "allowed",
-#     "violated_policies": [],
-#     "expires_at": "2025-01-01T14:00:00Z"
-#   }
-# }
+# { "decision": { "decision": "allowed", "violated_policies": [], "expires_at": "..." } }
 ```
 
 ### Decision Types
@@ -640,233 +458,132 @@ curl -X POST "$URL/preflight-authorization" \
 | Decision | Meaning |
 |----------|---------|
 | `allowed` | Transaction may proceed |
-| `warn` | Transaction allowed with soft policy violations |
-| `blocked` | Transaction should NOT proceed (hard violations) |
+| `warn` | Allowed with soft policy violations |
+| `blocked` | Should NOT proceed (hard violations) |
 
-### Enforcing Decisions
+Decisions are advisory-only, time-bound (2-hour default expiry), and idempotent. Pass the `decision_id` to `record-expense` to enforce the preflight check.
 
-When recording a transaction, pass the decision ID to enforce the preflight check:
+---
+
+## Breach Alerts
+
+When `project-intent` creates projections that result in a breach risk (pending obligations exceed cash balance), alerts fire automatically via Slack, email, or webhook.
+
+### Configure Alerts
 
 ```bash
-curl -X POST "$URL/record-expense" \
+# Slack
+curl -X POST "$URL/configure-alerts" \
   -H "x-api-key: sk_xxx" \
   -d '{
-    "reference_id": "exp-2024-001",
-    "amount": 500000,
-    "description": "Software subscription",
-    "authorization_decision_id": "uuid-from-preflight"
+    "action": "create",
+    "alert_type": "breach_risk",
+    "channel": "slack",
+    "config": { "webhook_url": "https://hooks.slack.com/services/T.../B.../xxx" },
+    "thresholds": { "coverage_ratio_below": 0.5, "shortfall_above": 10000 }
+  }'
+
+# Email
+curl -X POST "$URL/configure-alerts" \
+  -H "x-api-key: sk_xxx" \
+  -d '{
+    "action": "create",
+    "alert_type": "breach_risk",
+    "channel": "email",
+    "config": { "recipients": ["cfo@company.com"] },
+    "thresholds": { "coverage_ratio_below": 0.5 }
   }'
 ```
 
-The transaction will be rejected if:
-- Decision not found
-- Decision expired
-- Decision was `blocked`
+### Severity Levels
 
-### SDK Usage
+| Coverage Ratio | Severity | Color |
+|----------------|----------|-------|
+| < 25% | CRITICAL | Red |
+| 25-50% | WARNING | Orange |
+| > 50% | NOTICE | Blue |
+
+### Alert Channels
+
+| Channel | Status |
+|---------|--------|
+| `slack` | Supported |
+| `email` | Supported (via Resend) |
+| `webhook` | Planned |
+
+---
+
+## Web Dashboard
+
+The Next.js frontend at `/web` provides a marketing site and full management dashboard.
+
+### Marketing Site
+- Landing page with pricing (Starter $0, Growth $499, Scale custom)
+- API documentation at `/docs` with quickstart, guides, and endpoint reference
+- Blog content
+
+### Dashboard
+- **Ledger management** — create, configure, switch between ledgers
+- **Transactions** — browse with filtering by creator, type, status, date
+- **Reports** — P&L, Balance Sheet, Trial Balance
+- **Reconciliation** — bank statement matching interface
+- **Contractors** — manage contractors and 1099s
+- **Settings** — API keys, webhooks, organization, billing
+
+### Authentication
+- Supabase Auth with SSR middleware
+- Session management (JWT, httpOnly cookies, SameSite=Strict)
+- CSRF protection and open redirect prevention
+- Organization-scoped routes with membership verification
+
+---
+
+## SDK
+
+### TypeScript
 
 ```typescript
-// Preflight check
-const preflight = await ledger.preflightAuthorization({
-  idempotencyKey: 'expense-2024-001',
-  amount: 500000,  // cents
-  counterpartyName: 'Acme Corp'
+import Soledgic from '@soledgic/sdk'
+const ledger = new Soledgic('sk_live_xxx')
+
+// Marketplace
+await ledger.recordSale({ referenceId: 'pi_xxx', creatorId: 'author_123', amount: 2999 })
+await ledger.processPayout({ creatorId: 'author_123', amount: 5000 })
+
+// Standard
+await ledger.recordIncome({ referenceId: 'inv_001', amount: 500000, description: 'Consulting' })
+await ledger.recordExpense({ referenceId: 'exp_001', amount: 15000, description: 'Supplies' })
+
+// Reports
+await ledger.getProfitLoss('2025-01-01', '2025-12-31')
+await ledger.getTrialBalance()
+await ledger.get1099Summary(2025)
+await ledger.getAllBalances()
+
+// Authorizing Instruments
+const instrument = await ledger.registerInstrument({
+  externalRef: 'PO-2024-001',
+  extractedTerms: { amount: 500000, currency: 'USD', cadence: 'monthly', counterpartyName: 'Acme Corp' }
 })
 
-if (preflight.decision.decision === 'blocked') {
-  console.log('Transaction blocked:', preflight.decision.violatedPolicies)
-} else {
-  // Proceed with transaction
-  const expense = await ledger.recordExpense({
-    referenceId: 'exp-2024-001',
-    amount: 500000,
-    description: 'Software subscription',
-    authorizationDecisionId: preflight.decision.id
-  })
-}
+// Shadow Ledger
+await ledger.projectIntent({ authorizingInstrumentId: instrument.instrumentId, untilDate: '2026-12-31' })
+const runway = await ledger.getRunway()
 
-// Or use the convenience method
-const result = await ledger.preflightAndRecordExpense(
-  { idempotencyKey: 'expense-2024-001', amount: 500000 },
-  { referenceId: 'exp-2024-001', description: 'Software' }
-)
+// Preflight Authorization
+const preflight = await ledger.preflightAuthorization({
+  idempotencyKey: 'expense-001', amount: 500000, counterpartyName: 'Acme Corp'
+})
+
+// Breach Alerts
+await ledger.createAlert({
+  alertType: 'breach_risk', channel: 'slack',
+  config: { webhookUrl: 'https://hooks.slack.com/...' },
+  thresholds: { coverageRatioBelow: 0.5 }
+})
 ```
 
----
-
-## Features
-
-### Core Accounting
-- **Double-Entry**: Every transaction creates balanced debit/credit entries
-- **Immutable Ledger**: Corrections via reversal transactions, never edits
-- **Multi-Currency**: Support for multiple currencies per ledger
-- **Chart of Accounts**: Flexible account types (asset, liability, revenue, expense)
-
-### Revenue Splits (Marketplace Mode)
-- **5-Tier Split Priority**: Request → Creator → Product → Tier → Default
-- **Auto-Promote**: Creators advance tiers based on earnings thresholds
-- **Withholding**: Tax reserves (1099), refund buffers, custom holds
-- **Processing Fee Pass-through**: Stripe/PayPal fees handled correctly
-
-### Invoicing & AR/AP
-- **Invoice Lifecycle**: Draft → Sent → Paid → Voided
-- **Partial Payments**: Track payments against invoice balances
-- **Aging Reports**: AR/AP aging for collections management
-- **Payment Terms**: Net 30, Net 60, custom terms
-
-### Bank Reconciliation
-- **Import Formats**: CSV, OFX, QFX bank statements
-- **Auto-Matching**: Fuzzy match bank lines to transactions
-- **Reconciliation Status**: Unmatched, matched, reconciled
-- **Period Closing**: Lock reconciled periods
-
-### Tax & Compliance
-- **1099 Generation**: Automatic contractor payment tracking
-- **W-9 Collection**: Tax info submission workflow
-- **Tax Withholding**: Configurable withholding rules
-- **Audit Trail**: Every action logged with user, timestamp, IP
-
-### Multi-Tenant
-- **Ledger Isolation**: Complete data separation per API key
-- **Row-Level Security**: PostgreSQL RLS on all tables
-- **Organization Hierarchy**: Org → Ledgers → Accounts
-
-### Authorizing Instruments (Phase 1)
-- **Ledger-Native Authorization**: Financial proof without CLM complexity
-- **Immutable Records**: Invalidate + replace only, never edit
-- **Transaction Validation**: Compare transactions against authorized terms
-- **Fingerprint Deduplication**: SHA-256 hash prevents duplicate instruments
-- **Audit Integration**: Full trail of instrument registration and validation
-
-### Shadow Ledger (Phase 2)
-- **Ghost Entries**: Deterministic future projections that never affect balances
-- **Cadence-Based Projection**: Weekly, monthly, quarterly, annual schedules
-- **Snap-to Matching**: Automatic linking when real transactions arrive
-- **Balance Breach Prediction**: Current assets vs pending obligations
-- **Automatic Expiration**: Invalidating instruments expires pending projections
-
-### Breach Alerts (Phase 3)
-- **Slack Notifications**: Rich Block Kit messages with severity levels
-- **Configurable Thresholds**: coverage_ratio_below, shortfall_above
-- **Automatic Triggering**: Fires when project-intent detects breach risk
-- **Alert History**: Full audit trail of sent notifications
-- **Test Mode**: Verify webhook connectivity before production use
-
----
-
-## Project Structure
-
-```
-soledgic/
-├── supabase/
-│   ├── functions/           # 50+ Edge Functions
-│   │   ├── _shared/         # Shared utilities
-│   │   ├── record-sale/     # Core sale recording
-│   │   ├── record-income/   # Income recording
-│   │   ├── record-expense/  # Expense recording (+ instrument validation)
-│   │   ├── record-bill/     # Bill recording (+ instrument validation)
-│   │   ├── process-payout/  # Payout initiation
-│   │   ├── invoices/        # Invoice management
-│   │   ├── reconcile/       # Bank reconciliation
-│   │   ├── profit-loss/     # P&L report
-│   │   ├── balance-sheet/   # Balance sheet
-│   │   ├── get-runway/      # Cash runway (+ shadow obligations)
-│   │   ├── register-instrument/  # Authorizing instrument registration
-│   │   ├── project-intent/  # Shadow Ledger projections
-│   │   ├── configure-alerts/# Alert configuration CRUD
-│   │   ├── send-breach-alert/ # Slack/email alert sender
-│   │   ├── stripe/          # Stripe integration
-│   │   ├── plaid/           # Plaid integration
-│   │   └── ...              # 35+ more functions
-│   └── migrations/          # 130+ database migrations
-│
-├── sdk/
-│   └── typescript/          # TypeScript SDK
-│       ├── src/
-│       │   ├── index.ts     # Main SDK class
-│       │   ├── client.ts    # HTTP client
-│       │   └── types.ts     # TypeScript types
-│       └── README.md
-│
-├── api/                     # API client library
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── client.ts
-│   │   └── types.ts
-│   └── examples/
-│       └── booklyverse-integration.ts
-│
-├── web/                     # Marketing site + Dashboard (Next.js)
-│   ├── src/app/
-│   │   ├── (auth)/          # Login, signup, invite
-│   │   ├── (dashboard)/     # Main dashboard
-│   │   │   ├── ledgers/     # Ledger management
-│   │   │   ├── contractors/ # Contractor management
-│   │   │   ├── billing/     # Billing settings
-│   │   │   └── settings/    # Account settings
-│   │   ├── (marketing)/     # Marketing pages
-│   │   │   └── docs/        # API documentation site
-│   │   ├── dashboard/       # Dashboard pages
-│   │   └── api/             # Next.js API routes
-│   ├── content/blog/        # Blog content (MDX)
-│   └── public/
-│
-├── apps/web/                # Alternative web app structure
-│   └── src/
-│       ├── app/             # App router pages
-│       ├── components/      # React components
-│       └── lib/             # Utilities
-│           ├── supabase/    # Supabase client
-│           ├── csrf.ts      # CSRF protection
-│           └── rate-limit.ts# Rate limiting
-│
-├── tests/
-│   ├── stress/              # Stress/load tests
-│   │   ├── volume.test.ts
-│   │   ├── invoicing.test.ts
-│   │   ├── bills-ap.test.ts
-│   │   ├── bank-reconciliation.test.ts
-│   │   └── period-close.test.ts
-│   ├── global-setup.ts
-│   └── test-client.ts
-│
-├── docs/                    # Documentation
-│   ├── API.md               # API reference
-│   ├── ACCOUNTING_RULES.md  # Accounting principles
-│   ├── ARCHITECTURE_PRINCIPLES.md
-│   ├── how-money-flows.md
-│   ├── how-reconciliation-works.md
-│   ├── how-taxes-are-prepared.md
-│   ├── booklyverse-integration.md
-│   ├── technical-whitepaper.md
-│   ├── CUSTOMER_ONBOARDING.md
-│   ├── AUDITOR_DEMO_SCRIPT.md
-│   ├── # Security
-│   ├── SECURITY_BASELINE_V1.md
-│   ├── SECURITY_AUDIT_REPORT.md
-│   ├── SECURITY_HARDENING.md
-│   ├── SECURITY_RUNBOOK.md
-│   ├── SOC2_READINESS_MEMO.md
-│   ├── DDOS_RESPONSE_PLAYBOOK.md
-│   ├── TABLETOP_EXERCISE_API_KEY_COMPROMISE.md
-│   ├── # Policies
-│   ├── policies/
-│   │   ├── BUSINESS_CONTINUITY_PLAN.md
-│   │   ├── INFORMATION_SECURITY_POLICY.md
-│   │   └── VENDOR_SECURITY_ASSESSMENTS.md
-│   └── legal/
-│       ├── terms-of-service.md
-│       ├── privacy-policy.md
-│       └── data-processing-addendum.md
-│
-├── scripts/
-│   └── diagnose_ledger.sql  # Diagnostic queries
-│
-├── SECURITY.md              # Security policy
-├── TODO.md                  # Project status & roadmap
-├── vitest.config.ts         # Test configuration
-└── vitest.stress.config.ts  # Stress test configuration
-```
+Error types: `SoledgicError`, `ValidationError`, `AuthenticationError`, `NotFoundError`, `ConflictError`
 
 ---
 
@@ -876,7 +593,7 @@ soledgic/
 
 | Table | Description |
 |-------|-------------|
-| `ledgers` | Multi-tenant ledger isolation (1 per customer) |
+| `ledgers` | Multi-tenant ledger isolation |
 | `accounts` | Chart of accounts (asset, liability, revenue, expense) |
 | `transactions` | Immutable transaction headers |
 | `entries` | Double-entry journal lines (debit/credit) |
@@ -885,21 +602,19 @@ soledgic/
 
 | Table | Description |
 |-------|-------------|
-| `invoices` | Accounts receivable invoices |
-| `invoice_payments` | Payments applied to invoices |
-| `bills` | Accounts payable bills |
+| `invoices` / `invoice_payments` | Accounts receivable |
+| `bills` | Accounts payable |
 | `payouts` | Creator/contractor payouts |
 | `contractors` | Contractor profiles with tax info |
 
-### Split Configuration
+### Revenue Splits
 
 | Table | Description |
 |-------|-------------|
 | `creator_tiers` | Tiered split percentages by earnings |
 | `creator_splits` | Per-creator split overrides |
 | `product_splits` | Per-product split configuration |
-| `withholding_rules` | Tax/refund withholding config |
-| `held_funds` | Funds held in reserve |
+| `withholding_rules` / `held_funds` | Tax/refund reserves |
 
 ### Banking
 
@@ -910,245 +625,270 @@ soledgic/
 | `reconciliations` | Bank reconciliation records |
 | `plaid_items` | Plaid connection tokens (encrypted) |
 
-### Authorizing Instruments & Shadow Ledger
+### Authorization & Projections
 
 | Table | Description |
 |-------|-------------|
-| `authorizing_instruments` | Ledger-native financial authorization (immutable) |
-| `projected_transactions` | Shadow Ledger: ghost entries for future projections |
+| `authorizing_instruments` | Immutable financial authorization records |
+| `projected_transactions` | Shadow Ledger ghost entries |
+| `authorization_policies` | Preflight authorization rules |
+| `authorization_decisions` | Immutable preflight decisions |
+| `alert_configurations` | Alert settings per ledger |
+| `alert_history` | Sent alert audit trail |
 
-### Breach Alerts
-
-| Table | Description |
-|-------|-------------|
-| `alert_configurations` | Slack/email/webhook alert settings per ledger |
-| `alert_history` | Audit trail of all sent alerts |
-
-### Security & Audit
+### Security & Organizations
 
 | Table | Description |
 |-------|-------------|
 | `audit_log` | Immutable audit trail |
-| `api_keys` | Hashed API keys |
+| `api_keys` | SHA-256 hashed API keys |
 | `rate_limits` | Rate limit tracking |
 | `security_events` | Security event log |
-
-### Organizations
-
-| Table | Description |
-|-------|-------------|
-| `organizations` | Organization/company records |
-| `organization_members` | User membership |
-| `users` | User accounts |
-| `invitations` | Pending invitations |
+| `organizations` / `organization_members` | Org hierarchy |
+| `users` / `invitations` | User accounts and invites |
 
 ---
 
 ## Integrations
 
 ### Stripe
-- **Stripe Connect**: Payout to connected accounts
-- **Webhook Handler**: Payment events (succeeded, failed, refunded)
-- **Billing**: Subscription management for Soledgic itself
+- **Stripe Connect** — payout to connected accounts
+- **Webhook handlers** — payment succeeded/failed/refunded, subscription events
+- **Checkout** — create checkout sessions
+- **Billing** — subscription management for Soledgic itself
 
 ### Plaid
-- **Bank Connection**: Link bank accounts via Plaid Link
-- **Transaction Sync**: Import transactions automatically
-- **Balance Sync**: Real-time balance updates
+- **Bank connection** — link bank accounts via Plaid Link
+- **Transaction sync** — import transactions automatically
+- **Balance sync** — real-time balance updates
 
-### Webhooks (Outbound)
-Configure webhooks to receive real-time notifications:
-- `sale.recorded`
-- `payout.initiated`
-- `payout.completed`
-- `refund.processed`
-- `invoice.sent`
-- `invoice.paid`
-- `balance.threshold`
-
----
-
-## Web Dashboard
-
-The web dashboard (`/web`) provides:
-
-### Marketing Site
-- Landing page with feature overview
-- Pricing page
-- Documentation site with full API reference
-- Blog with accounting best practices
-
-### Dashboard Features
-- **Ledger Management**: Create, configure, switch ledgers
-- **Transaction View**: Browse all transactions with filtering
-- **Reports**: P&L, Balance Sheet, Trial Balance
-- **Reconciliation**: Bank statement matching interface
-- **Contractors**: Manage contractors and 1099s
-- **Settings**: API keys, webhooks, billing
-
-### Documentation Site
-Interactive API documentation at `/docs`:
-- Quickstart guide
-- Authentication
-- API reference for all endpoints
-- Guides: Marketplace, Revenue Splits, Reconciliation, Tax Exports
-
----
-
-## SDK
-
-### TypeScript SDK
-
-```typescript
-import Soledgic from '@soledgic/sdk'
-
-const ledger = new Soledgic('sk_live_xxx')
-
-// Marketplace operations
-await ledger.recordSale({ ... })
-await ledger.processPayout({ ... })
-await ledger.getEffectiveSplit(creatorId)
-
-// Standard operations
-await ledger.recordIncome({ ... })
-await ledger.recordExpense({ ... })
-
-// Reports
-await ledger.getProfitLoss(startDate, endDate)
-await ledger.getTrialBalance()
-await ledger.get1099Summary(year)
-
-// Balances
-await ledger.getAllBalances()
-await ledger.getCreatorBalance(creatorId)
-
-// Authorizing Instruments
-const instrument = await ledger.registerInstrument({
-  externalRef: 'PO-2024-001',
-  extractedTerms: {
-    amount: 500000,
-    currency: 'USD',
-    cadence: 'monthly',
-    counterpartyName: 'Acme Corp'
-  }
-})
-
-// Record expense with authorization validation
-await ledger.recordExpense({
-  referenceId: 'exp_001',
-  amount: 500000,
-  vendorName: 'Acme Corp',
-  authorizingInstrumentId: instrument.instrumentId
-})
-
-// Shadow Ledger: Project future obligations
-await ledger.projectIntent({
-  authorizingInstrumentId: instrument.instrumentId,
-  untilDate: '2025-12-31',
-  horizonCount: 12
-})
-
-// Get runway with shadow obligations
-const runway = await ledger.getRunway()
-// runway.obligations.pending_total
-// runway.breach_risk.at_risk
-
-// Breach Alerts: Configure Slack notifications
-await ledger.createAlert({
-  alertType: 'breach_risk',
-  channel: 'slack',
-  config: {
-    webhookUrl: 'https://hooks.slack.com/services/T.../B.../xxx'
-  },
-  thresholds: {
-    coverageRatioBelow: 0.5,  // Alert when coverage < 50%
-    shortfallAbove: 10000     // Alert when shortfall > $10k
-  }
-})
-
-// Breach Alerts: Configure email notifications
-await ledger.createAlert({
-  alertType: 'breach_risk',
-  channel: 'email',
-  config: {
-    recipients: ['cfo@company.com', 'finance@company.com']
-  },
-  thresholds: {
-    coverageRatioBelow: 0.5
-  }
-})
-
-// List configured alerts
-const alerts = await ledger.listAlerts()
-
-// Test alert (sends test message to Slack)
-await ledger.testAlert(alertId)
-
-// Update thresholds
-await ledger.updateAlert({
-  configId: alertId,
-  thresholds: { coverageRatioBelow: 0.3 }
-})
-
-// Delete alert configuration
-await ledger.deleteAlert(alertId)
-```
-
-See `sdk/typescript/README.md` for full API reference.
+### Outbound Webhooks
+Configure webhooks for real-time notifications:
+`sale.recorded`, `payout.initiated`, `payout.completed`, `refund.processed`, `invoice.sent`, `invoice.paid`, `balance.threshold`
 
 ---
 
 ## Security
 
-### Defense in Depth (7 Layers)
+### Defense in Depth
 
-```
-Layer 1: DDoS Protection (Cloudflare/CDN)
-Layer 2: Rate Limiting (Redis + Database fallback)
-Layer 3: Authentication (Supabase Auth + API Keys)
-Layer 4: Authorization (Row-Level Security)
-Layer 5: Input Validation (Type checking + sanitization)
-Layer 6: Audit Logging (Immutable audit trail)
-Layer 7: Encryption (TLS + at-rest encryption)
-```
+| Layer | Protection |
+|-------|------------|
+| 1 | DDoS protection (Cloudflare/CDN) |
+| 2 | Rate limiting (Redis + database fallback) |
+| 3 | Authentication (Supabase Auth + API keys) |
+| 4 | Authorization (Row-Level Security on all tables) |
+| 5 | Input validation (type checking + sanitization) |
+| 6 | Audit logging (immutable trail) |
+| 7 | Encryption (TLS 1.3 + AES-256 at rest) |
 
-### Key Security Features
-- **API Keys**: SHA-256 hashed, never stored in plaintext
-- **Row-Level Security**: All tables protected by RLS policies
-- **Audit Trail**: Immutable log of all operations
-- **Secret Storage**: Supabase Vault for sensitive tokens
-- **Security Headers**: CSP, HSTS, X-Frame-Options, etc.
+### Security Headers
+CSP, HSTS, X-Frame-Options (DENY), X-Content-Type-Options, Referrer-Policy, Permissions-Policy — all configured in `next.config.js`.
+
+### API Key Security
+- SHA-256 hashed, never stored in plaintext
+- Scoped to specific ledgers
+- Rate-limited per endpoint (5-200 req/min depending on sensitivity)
+- Fail-closed on rate limit for critical endpoints (payouts, webhooks)
 
 ### Compliance
-- **SOC 2**: Type II audit ready (92% compliant)
-- **GDPR**: Data processing agreements available
-- **PCI DSS**: Stripe handles card data (Level 1 certified)
+- **SOC 2** — Type II audit ready (92% compliant)
+- **GDPR** — data processing agreements available
+- **PCI DSS** — Stripe handles card data (Level 1 certified)
 
-See `SECURITY.md` and `docs/SECURITY_*.md` for details.
+### CI/CD Security (GitHub Actions)
+- Dependency audit (`npm audit`)
+- Secret scanning (TruffleHog)
+- CodeQL static analysis
+- Security header verification
+- SQL injection pattern detection
+
+See `SECURITY.md` and `docs/SECURITY_*.md` for full details.
+
+---
+
+## Testing
+
+```bash
+# Unit/integration tests
+npm test
+
+# Watch mode
+npm run test:watch
+
+# Stress tests
+npm run test:stress
+
+# Coverage
+npm run test:coverage
+```
+
+### Stress Test Suite
+| Test | Description |
+|------|-------------|
+| `volume.test.ts` | 50+ transactions in rapid succession |
+| `invoicing.test.ts` | Invoice lifecycle under load |
+| `bills-ap.test.ts` | Accounts payable stress |
+| `bank-reconciliation.test.ts` | Reconciliation performance |
+| `period-close.test.ts` | Period closing under load |
+
+---
+
+## Deployment
+
+### Edge Functions
+
+```bash
+# Deploy all functions
+supabase functions deploy
+
+# Deploy a specific function
+supabase functions deploy record-sale
+```
+
+### Database Migrations
+
+```bash
+supabase db push
+```
+
+### Web Dashboard (Vercel)
+
+The Next.js frontend is deployed to Vercel with:
+- **Root Directory**: `web`
+- **Framework**: Next.js
+- **Domain**: soledgic.com
+
+Pushes to `main` trigger automatic deployments via GitHub integration.
+
+### Cron Jobs
+
+```sql
+SELECT cron.schedule('cleanup-rate-limits', '0 * * * *', 'SELECT cleanup_rate_limits()');
+SELECT cron.schedule('cleanup-audit-log', '0 3 * * *', 'SELECT cleanup_audit_log(90)');
+```
+
+---
+
+## Project Structure
+
+```
+soledgic/
+├── supabase/
+│   ├── functions/              # 65+ Deno edge functions
+│   │   ├── _shared/            # Shared utilities (auth, validation, errors)
+│   │   ├── record-sale/        # Core sale recording with splits
+│   │   ├── record-expense/     # Expense recording + instrument validation
+│   │   ├── process-payout/     # Payout initiation
+│   │   ├── reconcile/          # Bank reconciliation
+│   │   ├── register-instrument/# Authorizing instruments
+│   │   ├── project-intent/     # Shadow Ledger projections
+│   │   ├── preflight-authorization/  # Policy engine
+│   │   ├── configure-alerts/   # Alert CRUD
+│   │   ├── stripe-webhook/     # Stripe event handler
+│   │   └── ...                 # 55+ more functions
+│   └── migrations/             # 140+ database migrations
+│
+├── web/                        # Next.js 14 frontend (marketing + dashboard)
+│   ├── src/app/
+│   │   ├── (auth)/             # Login, signup
+│   │   ├── (dashboard)/        # Ledgers, contractors, billing, settings
+│   │   ├── (marketing)/docs/   # API documentation site
+│   │   ├── dashboard/          # Dashboard views (reports, reconciliation, etc.)
+│   │   └── api/                # 15 Next.js API routes
+│   └── src/components/         # React components
+│
+├── sdk/typescript/             # TypeScript SDK
+│   └── src/                    # Client, types, exports
+│
+├── api/                        # API client library
+│   └── src/                    # HTTP client, types
+│
+├── tests/
+│   ├── stress/                 # Stress/load tests (Vitest)
+│   ├── test-client.ts          # API test client
+│   └── global-setup.ts         # Test setup
+│
+├── docs/                       # Documentation
+│   ├── API.md                  # Endpoint reference
+│   ├── ACCOUNTING_RULES.md     # Double-entry principles
+│   ├── ARCHITECTURE_PRINCIPLES.md
+│   ├── how-money-flows.md
+│   ├── how-reconciliation-works.md
+│   ├── how-taxes-are-prepared.md
+│   ├── technical-whitepaper.md
+│   ├── CUSTOMER_ONBOARDING.md
+│   ├── AUDITOR_DEMO_SCRIPT.md
+│   ├── SECURITY_*.md           # Security documentation (5 docs)
+│   ├── SOC2_READINESS_MEMO.md
+│   ├── policies/               # Business continuity, InfoSec, vendor assessments
+│   └── legal/                  # Terms of service, privacy policy, DPA
+│
+├── scripts/                    # Diagnostic SQL scripts
+├── .github/workflows/          # CI/CD (security scanning)
+├── public/index.html           # Static landing page
+├── SECURITY.md                 # Security policy
+├── vitest.config.ts            # Test config
+└── vitest.stress.config.ts     # Stress test config
+```
+
+---
+
+## Environment Variables
+
+### Supabase Edge Functions (secrets)
+
+```bash
+supabase secrets set STRIPE_SECRET_KEY=sk_xxx
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
+supabase secrets set STRIPE_BILLING_WEBHOOK_SECRET=whsec_xxx
+supabase secrets set PLAID_CLIENT_ID=xxx
+supabase secrets set PLAID_SECRET=xxx
+supabase secrets set RESEND_API_KEY=re_xxx
+supabase secrets set CRON_SECRET=xxx
+supabase secrets set ENVIRONMENT=production
+```
+
+### Web Dashboard (Vercel)
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+CSRF_SECRET=your-csrf-secret
+```
+
+### Local Development
+
+```
+SUPABASE_URL=http://localhost:54321
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
 
 ---
 
 ## Documentation
 
+### Core
 | Document | Description |
 |----------|-------------|
-| `docs/API.md` | API endpoint reference |
+| `docs/API.md` | Full endpoint reference |
 | `docs/ACCOUNTING_RULES.md` | Double-entry accounting principles |
 | `docs/ARCHITECTURE_PRINCIPLES.md` | System design decisions |
 | `docs/how-money-flows.md` | Transaction flow diagrams |
 | `docs/how-reconciliation-works.md` | Bank reconciliation guide |
 | `docs/how-taxes-are-prepared.md` | 1099 generation process |
-| `docs/booklyverse-integration.md` | Example integration |
 | `docs/technical-whitepaper.md` | Technical deep-dive |
 | `docs/CUSTOMER_ONBOARDING.md` | Onboarding checklist |
 | `docs/AUDITOR_DEMO_SCRIPT.md` | Demo script for auditors |
 
-### Security Documentation
+### Security
 | Document | Description |
 |----------|-------------|
 | `docs/SECURITY_BASELINE_V1.md` | Security baseline |
 | `docs/SECURITY_AUDIT_REPORT.md` | Audit findings |
 | `docs/SECURITY_HARDENING.md` | Hardening guide |
+| `docs/SECURITY_RUNBOOK.md` | Operational runbook |
 | `docs/SOC2_READINESS_MEMO.md` | SOC 2 preparation |
 | `docs/DDOS_RESPONSE_PLAYBOOK.md` | Incident response |
 
@@ -1161,67 +901,6 @@ See `SECURITY.md` and `docs/SECURITY_*.md` for details.
 
 ---
 
-## Testing
-
-### Run Tests
-
-```bash
-# Unit/integration tests
-npm test
-
-# Stress tests
-npm run test:stress
-```
-
-### Stress Test Suite
-- `volume.test.ts` - High-volume transaction processing
-- `invoicing.test.ts` - Invoice lifecycle stress
-- `bills-ap.test.ts` - Accounts payable load
-- `bank-reconciliation.test.ts` - Reconciliation performance
-- `period-close.test.ts` - Period closing under load
-
----
-
-## Deployment
-
-### Deploy Edge Functions
-
-```bash
-# Deploy all functions
-supabase functions deploy
-
-# Deploy specific function
-supabase functions deploy record-sale
-```
-
-### Apply Migrations
-
-```bash
-supabase db push
-```
-
-### Environment Variables
-
-```bash
-# Required secrets
-supabase secrets set STRIPE_SECRET_KEY=sk_xxx
-supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
-supabase secrets set PLAID_CLIENT_ID=xxx
-supabase secrets set PLAID_SECRET=xxx
-supabase secrets set RESEND_API_KEY=re_xxx
-supabase secrets set ENVIRONMENT=production
-```
-
-### Cron Jobs (pg_cron)
-
-```sql
--- Enable pg_cron in Supabase Dashboard
-SELECT cron.schedule('cleanup-rate-limits', '0 * * * *', 'SELECT cleanup_rate_limits()');
-SELECT cron.schedule('cleanup-audit-log', '0 3 * * *', 'SELECT cleanup_audit_log(90)');
-```
-
----
-
 ## License
 
-MIT
+Proprietary. Copyright 2026 Osifo Holdings L.L.C.
