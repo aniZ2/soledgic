@@ -4,9 +4,9 @@
 // This is the ENTRY POINT for payment flows - Booklyverse calls this, NOT Stripe directly
 // SECURITY HARDENED VERSION
 
-import { 
-  createHandler, 
-  jsonResponse, 
+import {
+  createHandler,
+  jsonResponse,
   errorResponse,
   validateAmount,
   validateId,
@@ -16,6 +16,7 @@ import {
   createAuditLogAsync,
   sanitizeForAudit
 } from '../_shared/utils.ts'
+import { getStripeSecretKey, getPaymentProvider } from '../_shared/payment-provider.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // ============================================================================
@@ -58,102 +59,7 @@ interface CreateCheckoutResponse {
   }
 }
 
-// ============================================================================
-// STRIPE API HELPERS
-// ============================================================================
-
-async function getStripeSecretKey(
-  supabase: SupabaseClient,
-  ledger: LedgerContext
-): Promise<string | null> {
-  // 1. Try to get from Vault (preferred, secure storage)
-  try {
-    const { data: vaultKey } = await supabase.rpc('get_stripe_secret_key_from_vault', {
-      p_ledger_id: ledger.id
-    })
-    if (vaultKey) return vaultKey
-  } catch {
-    // Vault function might not exist yet, fall through
-  }
-  
-  // 2. Try ledger settings (legacy, for backwards compatibility)
-  const settings = ledger.settings as Record<string, any>
-  if (settings?.stripe_secret_key) {
-    return settings.stripe_secret_key
-  }
-  
-  // 3. Fall back to environment variable (global key)
-  return Deno.env.get('STRIPE_SECRET_KEY') || null
-}
-
-async function createStripePaymentIntent(
-  stripeKey: string,
-  params: {
-    amount: number
-    currency: string
-    metadata: Record<string, string>
-    description?: string
-    receipt_email?: string
-    capture_method?: 'automatic' | 'manual'
-    setup_future_usage?: 'off_session' | 'on_session'
-  }
-): Promise<{ success: boolean; data?: any; error?: string }> {
-  try {
-    const body = new URLSearchParams()
-    body.append('amount', params.amount.toString())
-    body.append('currency', params.currency.toLowerCase())
-    body.append('automatic_payment_methods[enabled]', 'true')
-    
-    if (params.capture_method) {
-      body.append('capture_method', params.capture_method)
-    }
-    
-    if (params.setup_future_usage) {
-      body.append('setup_future_usage', params.setup_future_usage)
-    }
-    
-    if (params.description) {
-      body.append('description', params.description)
-    }
-    
-    if (params.receipt_email) {
-      body.append('receipt_email', params.receipt_email)
-    }
-    
-    // Add metadata
-    for (const [key, value] of Object.entries(params.metadata)) {
-      if (value !== undefined && value !== null) {
-        body.append(`metadata[${key}]`, String(value))
-      }
-    }
-    
-    const response = await fetch('https://api.stripe.com/v1/payment_intents', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${stripeKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Stripe-Version': '2023-10-16',
-      },
-      body: body.toString(),
-    })
-    
-    const data = await response.json()
-    
-    if (data.error) {
-      return { 
-        success: false, 
-        error: data.error.message || 'Stripe API error' 
-      }
-    }
-    
-    return { success: true, data }
-  } catch (err: any) {
-    return { 
-      success: false, 
-      error: `Stripe request failed: ${err.message}` 
-    }
-  }
-}
+// Stripe API helpers moved to _shared/payment-provider.ts
 
 // ============================================================================
 // SPLIT CALCULATION
@@ -281,10 +187,12 @@ const handler = createHandler(
     // GET STRIPE KEY
     // ========================================================================
     
-    const stripeKey = await getStripeSecretKey(supabase, ledger)
+    const stripeKey = await getStripeSecretKey(supabase, ledger.id)
     if (!stripeKey) {
       return errorResponse('Stripe not configured for this ledger', 500, req, requestId)
     }
+
+    const provider = getPaymentProvider('stripe', stripeKey)
     
     // ========================================================================
     // CALCULATE SPLIT (for breakdown in response)
@@ -327,7 +235,7 @@ const handler = createHandler(
       }
     }
     
-    const stripeResult = await createStripePaymentIntent(stripeKey, {
+    const stripeResult = await provider.createPaymentIntent({
       amount,
       currency,
       metadata: stripeMetadata,
@@ -336,13 +244,16 @@ const handler = createHandler(
       capture_method: body.capture_method,
       setup_future_usage: body.setup_future_usage,
     })
-    
-    if (!stripeResult.success || !stripeResult.data) {
+
+    if (!stripeResult.success || !stripeResult.id) {
       console.error(`[${requestId}] Stripe PaymentIntent creation failed:`, stripeResult.error)
       return errorResponse('Failed to create payment', 500, req, requestId)
     }
-    
-    const paymentIntent = stripeResult.data
+
+    const paymentIntent = {
+      id: stripeResult.id,
+      client_secret: stripeResult.client_secret,
+    }
     
     // ========================================================================
     // AUDIT LOG

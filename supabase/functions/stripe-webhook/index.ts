@@ -983,6 +983,23 @@ async function handleDisputeCreated(
     raw_data: dispute,
   }).catch(() => {})
 
+  // DISPUTE BALANCE LOCKING: Insert held_funds to block payout calculations
+  const creatorId = originalTx?.metadata?.creator_id
+  if (creatorId) {
+    await supabase.from('held_funds').insert({
+      ledger_id: ledger.id,
+      transaction_id: transaction.id,
+      withholding_rule_id: null,          // Disputes are event-driven, not rule-based
+      creator_id: creatorId,
+      held_amount: amount,
+      status: 'held',
+      hold_reason: `dispute:${dispute.id}`,
+      release_eligible_at: null,          // Manual release only — resolved via dispute close
+    }).catch((err: any) => {
+      console.error(`Failed to create dispute hold for ${dispute.id}:`, err.message)
+    })
+  }
+
   return { success: true, transaction_id: transaction.id }
 }
 
@@ -1045,6 +1062,37 @@ async function handleDisputeClosed(
     .update({ status: dispute.status })
     .eq('stripe_id', dispute.id)
     .eq('ledger_id', ledger.id)
+
+  // DISPUTE BALANCE LOCKING: Update held_funds based on outcome
+  const holdReason = `dispute:${dispute.id}`
+  if (won) {
+    // Dispute won — release the held funds back to creator
+    await supabase
+      .from('held_funds')
+      .update({
+        status: 'released',
+        released_amount: amount,
+        released_at: new Date().toISOString(),
+        release_reason: 'Dispute won',
+        release_transaction_id: transaction.id,
+      })
+      .eq('ledger_id', ledger.id)
+      .eq('hold_reason', holdReason)
+      .eq('status', 'held')
+  } else {
+    // Dispute lost — forfeit the held funds
+    await supabase
+      .from('held_funds')
+      .update({
+        status: 'forfeited',
+        released_at: new Date().toISOString(),
+        release_reason: 'Dispute lost',
+        release_transaction_id: transaction.id,
+      })
+      .eq('ledger_id', ledger.id)
+      .eq('hold_reason', holdReason)
+      .eq('status', 'held')
+  }
 
   return { success: true, transaction_id: transaction.id }
 }

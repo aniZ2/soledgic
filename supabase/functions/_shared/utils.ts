@@ -68,6 +68,7 @@ const ENDPOINT_BODY_SIZE_LIMITS: Record<string, number> = {
   'receive-payment': 64 * 1024,              // 64KB - payment received
   'create-checkout': 64 * 1024,              // 64KB - checkout creation
   'release-funds': 64 * 1024,                // 64KB - fund release requests
+  'stripe-reconciliation': 64 * 1024,        // 64KB - reconciliation requests
   'default': 512 * 1024,                     // 512KB - default
 }
 
@@ -549,6 +550,7 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'upload-receipt': { requests: 50, windowSeconds: 60 },
   'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (matches Stripe limits)
   'release-funds': { requests: 50, windowSeconds: 60 },    // Fund releases (sensitive financial operation)
+  'stripe-reconciliation': { requests: 5, windowSeconds: 60 },  // Reconciliation runs (heavy operations)
   'default': { requests: 100, windowSeconds: 60 },
 }
 

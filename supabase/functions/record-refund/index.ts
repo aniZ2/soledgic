@@ -3,9 +3,9 @@
 // Records a refund and adjusts creator/platform balances accordingly
 // SECURITY HARDENED VERSION
 
-import { 
-  createHandler, 
-  jsonResponse, 
+import {
+  createHandler,
+  jsonResponse,
   errorResponse,
   validateId,
   validateAmount,
@@ -13,6 +13,7 @@ import {
   LedgerContext,
   getClientIp
 } from '../_shared/utils.ts'
+import { getStripeSecretKey, getPaymentProvider } from '../_shared/payment-provider.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface RefundRequest {
@@ -21,6 +22,7 @@ interface RefundRequest {
   reason: string
   refund_from?: 'both' | 'platform_only' | 'creator_only'
   external_refund_id?: string
+  trigger_stripe_refund?: boolean
   metadata?: Record<string, any>
 }
 
@@ -227,6 +229,42 @@ const handler = createHandler(
       // Transaction already created - log but continue
     }
 
+    // Optionally trigger a Stripe refund on the original payment
+    let stripeRefundResult: { success: boolean; refund_id?: string; error?: string } | null = null
+
+    if (body.trigger_stripe_refund && originalSale.metadata?.stripe_payment_intent_id) {
+      const stripeKey = await getStripeSecretKey(supabase, ledger.id)
+      if (stripeKey) {
+        const provider = getPaymentProvider('stripe', stripeKey)
+        try {
+          stripeRefundResult = await provider.refund({
+            payment_intent_id: originalSale.metadata.stripe_payment_intent_id,
+            amount: refundAmountCents !== null ? refundAmountCents : undefined,
+            reason: 'requested_by_customer',
+          })
+
+          if (stripeRefundResult.success && stripeRefundResult.refund_id) {
+            // Store stripe_refund_id in the refund transaction metadata
+            await supabase
+              .from('transactions')
+              .update({
+                metadata: {
+                  ...((await supabase.from('transactions').select('metadata').eq('id', refundTx.id).single()).data?.metadata || {}),
+                  stripe_refund_id: stripeRefundResult.refund_id,
+                }
+              })
+              .eq('id', refundTx.id)
+          }
+        } catch (err: any) {
+          // Stripe refund failure does NOT roll back ledger entries (can be retried)
+          console.error(`Stripe refund failed for ${originalSale.metadata.stripe_payment_intent_id}:`, err.message)
+          stripeRefundResult = { success: false, error: err.message }
+        }
+      } else {
+        stripeRefundResult = { success: false, error: 'Stripe not configured for this ledger' }
+      }
+    }
+
     // Mark original sale as having a refund
     if (refundAmount >= originalAmount) {
       await supabase
@@ -279,7 +317,15 @@ const handler = createHandler(
       breakdown: {
         from_creator: fromCreator,
         from_platform: fromPlatform
-      }
+      },
+      ...(stripeRefundResult ? {
+        stripe_refund: {
+          triggered: true,
+          success: stripeRefundResult.success,
+          refund_id: stripeRefundResult.refund_id,
+          error: stripeRefundResult.error,
+        }
+      } : {}),
     }, 200, req)
   }
 )
