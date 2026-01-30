@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soledgic - Treasury Infrastructure for Platforms</title>
+  <meta name="description" content="Hold funds, manage disputes, release when ready. Payment processing and escrow for marketplaces and creator platforms.">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --border: #27272a;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --text-dim: #71717a;
+      --accent: #10b981;
+      --accent-dim: #059669;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(9, 9, 11, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+    
+    .nav-logo {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+    
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    
+    .nav-links a:hover {
+      color: var(--text);
+    }
+    
+    .nav-cta {
+      background: var(--text);
+      color: var(--bg);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    
+    .nav-cta:hover {
+      background: var(--text-muted);
+    }
+    
+    /* Hero */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    
+    .hero-badge {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.4rem 1rem;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+    
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+    }
+    
+    .hero h1 span {
+      color: var(--accent);
+    }
+    
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin-bottom: 2.5rem;
+    }
+    
+    .hero-cta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+      padding: 0.875rem 2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    
+    .btn-primary:hover {
+      background: var(--accent-dim);
+    }
+    
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      padding: 0.875rem 2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+    }
+    
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+    }
+    
+    /* How it works */
+    .section {
+      padding: 6rem 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    
+    .section-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+    
+    .section-header h2 {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    
+    .section-header p {
+      color: var(--text-muted);
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+    }
+    
+    .flow-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      position: relative;
+    }
+    
+    .flow-step-number {
+      position: absolute;
+      top: -12px;
+      left: 24px;
+      background: var(--accent);
+      color: var(--bg);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .flow-step h3 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .flow-step p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    
+    /* Problem/Solution */
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-top: 3rem;
+    }
+    
+    .comparison-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    
+    .comparison-card.problem {
+      border-color: #7f1d1d;
+    }
+    
+    .comparison-card.solution {
+      border-color: var(--accent-dim);
+    }
+    
+    .comparison-card h3 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+      color: var(--text-dim);
+    }
+    
+    .comparison-card.problem h3 { color: #f87171; }
+    .comparison-card.solution h3 { color: var(--accent); }
+    
+    .comparison-card ul {
+      list-style: none;
+    }
+    
+    .comparison-card li {
+      padding: 0.5rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    
+    .comparison-card.problem li::before {
+      content: "✕";
+      position: absolute;
+      left: 0;
+      color: #f87171;
+    }
+    
+    .comparison-card.solution li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+    
+    /* Pricing */
+    .pricing-section {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .pricing-intro {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    
+    .pricing-intro .rate {
+      font-size: 3rem;
+      font-weight: 700;
+      margin: 1rem 0;
+    }
+    
+    .pricing-intro .rate span {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    
+    .pricing-intro .includes {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+    
+    .pricing-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      position: relative;
+    }
+    
+    .pricing-card.featured {
+      border-color: var(--accent);
+    }
+    
+    .pricing-card.featured::before {
+      content: "POPULAR";
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: var(--bg);
+      padding: 0.25rem 0.75rem;
+      border-radius: 100px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    
+    .pricing-card h3 {
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+    
+    .pricing-card .price {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    
+    .pricing-card .price span {
+      font-size: 1rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    
+    .pricing-card .rate-info {
+      color: var(--accent);
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .pricing-card .description {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .pricing-card ul {
+      list-style: none;
+      margin-bottom: 2rem;
+    }
+    
+    .pricing-card li {
+      padding: 0.4rem 0;
+      padding-left: 1.5rem;
+      position: relative;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    
+    .pricing-card li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+    }
+    
+    .pricing-card .btn {
+      display: block;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    
+    .pricing-card .btn:hover {
+      background: var(--border);
+    }
+    
+    .pricing-card.featured .btn {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg);
+    }
+    
+    .pricing-card.featured .btn:hover {
+      background: var(--accent-dim);
+    }
+    
+    .pricing-note {
+      text-align: center;
+      margin-top: 2rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+    
+    /* Features */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+    
+    .feature {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    
+    .feature h3 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .feature p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    
+    /* CTA */
+    .cta-section {
+      text-align: center;
+      padding: 6rem 2rem;
+      background: linear-gradient(to bottom, var(--bg), var(--surface));
+    }
+    
+    .cta-section h2 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+    
+    .cta-section p {
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+    
+    /* Footer */
+    footer {
+      padding: 3rem 2rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+    
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    
+    footer a:hover {
+      color: var(--text);
+    }
+    
+    /* Mobile */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .hero h1 { font-size: 2rem; }
+      .pricing-card .price { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-logo">Soledgic</a>
+    <ul class="nav-links">
+      <li><a href="#how-it-works">How it works</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#features">Features</a></li>
+    </ul>
+    <a href="mailto:ani@osifoholdings.com" class="nav-cta">Get Started</a>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">Payment infrastructure for marketplaces</div>
+    <h1>Payments and payouts. <span>Simplified</span>.</h1>
+    <p>Accept payments, manage revenue splits, and pay out your sellers and creators—all with built-in fraud protection and full accounting.</p>
+    <div class="hero-cta">
+      <a href="mailto:ani@osifoholdings.com" class="btn-primary">Get Started</a>
+      <a href="#how-it-works" class="btn-secondary">See how it works</a>
+    </div>
+  </section>
+
+  <section class="section" id="how-it-works">
+    <div class="section-header">
+      <h2>How it works</h2>
+      <p>From payment to payout, we handle the complexity.</p>
+    </div>
+    
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-step-number">1</div>
+        <h3>Customer pays</h3>
+        <p>We process the payment and handle all the compliance so you don't have to.</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-number">2</div>
+        <h3>Funds settle</h3>
+        <p>Payments clear through our system with a settlement period for chargeback protection.</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-number">3</div>
+        <h3>Revenue splits</h3>
+        <p>We automatically calculate your platform's cut and what's owed to each seller.</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-number">4</div>
+        <h3>Sellers get paid</h3>
+        <p>Funds are paid out to your sellers on your schedule—daily, weekly, or on-demand.</p>
+      </div>
+    </div>
+    
+    <div class="comparison">
+      <div class="comparison-card problem">
+        <h3>Building it yourself</h3>
+        <ul>
+          <li>Payment processor integration</li>
+          <li>Building payout infrastructure</li>
+          <li>Managing seller onboarding & KYC</li>
+          <li>Handling chargebacks & disputes</li>
+          <li>Tracking who's owed what</li>
+        </ul>
+      </div>
+      <div class="comparison-card solution">
+        <h3>With Soledgic</h3>
+        <ul>
+          <li>One API for payments & payouts</li>
+          <li>Seller onboarding handled</li>
+          <li>Built-in chargeback protection</li>
+          <li>Automatic revenue splits</li>
+          <li>Full double-entry accounting</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section pricing-section" id="pricing">
+    <div class="section-header">
+      <h2>Simple, transparent pricing</h2>
+      <p>Pay for what you use. No hidden fees.</p>
+    </div>
+    
+    <div class="pricing-intro">
+      <div class="rate">3.4% + $0.55 <span>per transaction</span></div>
+      <p class="includes">Includes payment processing, settlement, payouts, and full double-entry accounting.</p>
+    </div>
+    
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <h3>Starter</h3>
+        <div class="price">$0<span>/mo</span></div>
+        <div class="rate-info">3.4% + $0.55 per transaction</div>
+        <p class="description">For platforms just getting started.</p>
+        <ul>
+          <li>Up to $25K/month volume</li>
+          <li>1 ledger</li>
+          <li>7-day settlement period</li>
+          <li>Scheduled payouts</li>
+          <li>Email support</li>
+        </ul>
+        <a href="mailto:ani@osifoholdings.com" class="btn">Get Started</a>
+      </div>
+      
+      <div class="pricing-card featured">
+        <h3>Growth</h3>
+        <div class="price">$499<span>/mo</span></div>
+        <div class="rate-info">3.2% + $0.50 per transaction</div>
+        <p class="description">For growing platforms with multiple revenue streams.</p>
+        <ul>
+          <li>Up to $250K/month volume</li>
+          <li>5 ledgers</li>
+          <li>Configurable settlement</li>
+          <li>Flexible payout schedules</li>
+          <li>Webhooks</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="mailto:ani@osifoholdings.com" class="btn">Get Started</a>
+      </div>
+      
+      <div class="pricing-card">
+        <h3>Scale</h3>
+        <div class="price">Custom</div>
+        <div class="rate-info">Volume-based pricing</div>
+        <p class="description">For high-volume platforms with complex needs.</p>
+        <ul>
+          <li>Unlimited volume</li>
+          <li>Unlimited ledgers</li>
+          <li>Custom settlement rules</li>
+          <li>Bank reconciliation</li>
+          <li>Dedicated support</li>
+          <li>SLA guarantee</li>
+        </ul>
+        <a href="mailto:ani@osifoholdings.com" class="btn">Contact Sales</a>
+      </div>
+    </div>
+    
+    <p class="pricing-note">All plans include a 14-day free trial. Volume overages billed at tier rate.</p>
+  </section>
+
+  <section class="section" id="features">
+    <div class="section-header">
+      <h2>Everything you need</h2>
+      <p>Treasury control with full accounting underneath.</p>
+    </div>
+    
+    <div class="features-grid">
+      <div class="feature">
+        <h3>Payment Processing</h3>
+        <p>Accept cards and other payment methods. We handle the compliance, PCI, and fraud detection.</p>
+      </div>
+      <div class="feature">
+        <h3>Seller Payouts</h3>
+        <p>Pay your sellers on your schedule—daily, weekly, or on-demand. We handle the money movement.</p>
+      </div>
+      <div class="feature">
+        <h3>Revenue Splits</h3>
+        <p>Automatically split payments between sellers and your platform. Configure default splits or override per transaction.</p>
+      </div>
+      <div class="feature">
+        <h3>Double-Entry Ledger</h3>
+        <p>Every transaction is recorded with proper debits and credits. Your books are always balanced.</p>
+      </div>
+      <div class="feature">
+        <h3>Chargeback Protection</h3>
+        <p>Settlement periods protect you from paying out funds before disputes can occur.</p>
+      </div>
+      <div class="feature">
+        <h3>Multi-Platform Support</h3>
+        <p>Run multiple platforms from one account. Each gets its own ledger with separate seller pools.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <h2>Ready to simplify your payments?</h2>
+    <p>Focus on your platform. We'll handle the money.</p>
+    <a href="mailto:ani@osifoholdings.com" class="btn-primary">Get Started</a>
+  </section>
+
+  <footer>
+    <p>© 2026 Soledgic. A product of <a href="https://osifoholdings.com">Osifo Holdings L.L.C.</a></p>
+  </footer>
+</body>
+</html>

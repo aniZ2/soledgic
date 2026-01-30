@@ -195,23 +195,24 @@ const handler = createHandler(
     }
 
     // Get or create expense account
-    let expenseAccountName = 'Operating Expenses'
-    if (category) {
-      expenseAccountName = category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' ')
-    }
-
+    // First, check if ANY expense account exists (due to unique constraint on ledger_id + account_type)
     const { data: expenseAccounts } = await supabase
       .from('accounts')
-      .select('id')
+      .select('id, name')
       .eq('ledger_id', ledger.id)
       .eq('account_type', 'expense')
-      .ilike('name', expenseAccountName)
       .limit(1)
 
     let expenseAccount = expenseAccounts?.[0]
 
+    // Only create if no expense account exists at all
     if (!expenseAccount) {
-      const { data: newExpense } = await supabase
+      let expenseAccountName = 'Operating Expenses'
+      if (category) {
+        expenseAccountName = category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' ')
+      }
+
+      const { data: newExpense, error: createExpenseError } = await supabase
         .from('accounts')
         .insert({
           ledger_id: ledger.id,
@@ -222,6 +223,11 @@ const handler = createHandler(
         })
         .select('id')
         .single()
+
+      if (createExpenseError) {
+        console.error('Failed to create expense account:', createExpenseError)
+        return errorResponse('Failed to create expense account', 500, req)
+      }
       expenseAccount = newExpense
     }
 

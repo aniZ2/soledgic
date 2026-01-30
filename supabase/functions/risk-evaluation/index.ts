@@ -373,18 +373,23 @@ const handler = createHandler(
     for (const policy of policies as RiskPolicy[]) {
       let factor: RiskFactor | null = null
 
-      switch (policy.policy_type) {
-        case 'require_instrument':
-          factor = await evaluateRequireInstrument(supabase, ledger.id, policy, body)
-          break
-        case 'budget_cap':
-          factor = await evaluateBudgetCap(supabase, ledger.id, policy, body)
-          break
-        case 'projection_guard':
-          factor = await evaluateProjectionGuard(supabase, ledger.id, policy, body)
-          break
-        default:
-          console.warn(`[${context.requestId}] Unknown policy type: ${policy.policy_type}`)
+      try {
+        switch (policy.policy_type) {
+          case 'require_instrument':
+            factor = await evaluateRequireInstrument(supabase, ledger.id, policy, body)
+            break
+          case 'budget_cap':
+            factor = await evaluateBudgetCap(supabase, ledger.id, policy, body)
+            break
+          case 'projection_guard':
+            factor = await evaluateProjectionGuard(supabase, ledger.id, policy, body)
+            break
+          default:
+            console.warn(`[${context.requestId}] Unknown policy type: ${policy.policy_type}`)
+        }
+      } catch (evalError: any) {
+        console.error(`[${context.requestId}] Policy evaluation error for ${policy.policy_type}:`, evalError.message)
+        // Continue with other policies - don't fail the entire evaluation
       }
 
       if (factor) {
@@ -423,23 +428,26 @@ const handler = createHandler(
       riskFactors
     )
 
-    // Log high_risk evaluations as security events (for awareness, not blocking)
+    // Log high_risk evaluations as security alerts (for awareness, not blocking)
     if (signal === 'high_risk') {
-      await supabase.from('security_events').insert({
-        ledger_id: ledger.id,
-        event_type: 'high_risk_evaluation',
-        severity: 'medium',
-        details: {
+      // Fire and forget - don't await, don't block on failure
+      supabase.from('security_alerts').insert({
+        severity: 'warning',
+        alert_type: 'high_risk_evaluation',
+        title: 'High risk transaction evaluation',
+        description: `Risk evaluation ${evaluation.id} returned high_risk signal for proposed transaction of ${formatCurrency(body.amount)}`,
+        metadata: {
+          ledger_id: ledger.id,
           evaluation_id: evaluation.id,
           risk_factors: riskFactors,
-          proposed_amount: body.amount
-        },
-        ip_address: getClientIp(req)
-      }).catch(() => {})  // Non-critical
+          proposed_amount: body.amount,
+          ip_address: getClientIp(req)
+        }
+      }).then(() => {}).catch(() => {})  // Non-critical
     }
 
-    // Audit log
-    await supabase.from('audit_log').insert({
+    // Audit log - fire and forget
+    supabase.from('audit_log').insert({
       ledger_id: ledger.id,
       action: 'risk_evaluation',
       entity_type: 'risk_evaluation',
@@ -452,7 +460,7 @@ const handler = createHandler(
         signal: signal,
         risk_factors_count: riskFactors.length
       }
-    }).catch(() => {})  // Non-critical
+    }).then(() => {}).catch(() => {})  // Non-critical
 
     return jsonResponse({
       success: true,

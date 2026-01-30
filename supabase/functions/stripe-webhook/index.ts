@@ -498,6 +498,10 @@ async function handleChargeSucceeded(
   }
 
   // Create entries
+  // ESCROW CONTROL: Calculate hold_until date (default 7 days for dispute window)
+  const holdDays = ledger.settings?.default_hold_days ?? 7
+  const holdUntil = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000).toISOString()
+
   const entries = [
     { transaction_id: transaction.id, account_id: accounts.cash.id, entry_type: 'debit', amount: grossAmount },
     { transaction_id: transaction.id, account_id: accounts.fees.id, entry_type: 'debit', amount: stripeFee },
@@ -511,8 +515,17 @@ async function handleChargeSucceeded(
     const platformAmount = netAmount - creatorAmount
 
     entries.pop()
+    // ESCROW: Creator balance entries are HELD until manually released or auto-release
     entries.push(
-      { transaction_id: transaction.id, account_id: accounts.creator.id, entry_type: 'credit', amount: creatorAmount },
+      { 
+        transaction_id: transaction.id, 
+        account_id: accounts.creator.id, 
+        entry_type: 'credit', 
+        amount: creatorAmount,
+        release_status: 'held',
+        hold_reason: 'dispute_window',
+        hold_until: holdUntil
+      },
       { transaction_id: transaction.id, account_id: accounts.platformRevenue.id, entry_type: 'credit', amount: platformAmount },
     )
   }
@@ -621,12 +634,25 @@ async function handlePaymentIntentSucceeded(
     { transaction_id: transaction.id, account_id: accounts.fees.id, entry_type: 'debit', amount: stripeFee },
   ]
 
+  // ESCROW CONTROL: Calculate hold_until date (default 7 days for dispute window)
+  const holdDays = ledger.settings?.default_hold_days ?? 7
+  const holdUntil = new Date(Date.now() + holdDays * 24 * 60 * 60 * 1000).toISOString()
+
   if (creatorId && accounts.creator) {
     const splitPercent = ledger.settings?.default_split_percent || 80
     const creatorAmount = Math.round(netAmount * (splitPercent / 100) * 100) / 100
     const platformAmount = netAmount - creatorAmount
+    // ESCROW: Creator balance entries are HELD until manually released or auto-release
     entries.push(
-      { transaction_id: transaction.id, account_id: accounts.creator.id, entry_type: 'credit', amount: creatorAmount },
+      { 
+        transaction_id: transaction.id, 
+        account_id: accounts.creator.id, 
+        entry_type: 'credit', 
+        amount: creatorAmount,
+        release_status: 'held',
+        hold_reason: 'dispute_window',
+        hold_until: holdUntil
+      },
       { transaction_id: transaction.id, account_id: accounts.platformRevenue.id, entry_type: 'credit', amount: platformAmount },
     )
   } else {

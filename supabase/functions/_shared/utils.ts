@@ -66,6 +66,8 @@ const ENDPOINT_BODY_SIZE_LIMITS: Record<string, number> = {
   'record-bill': 64 * 1024,                  // 64KB - single bill
   'pay-bill': 64 * 1024,                     // 64KB - bill payment
   'receive-payment': 64 * 1024,              // 64KB - payment received
+  'create-checkout': 64 * 1024,              // 64KB - checkout creation
+  'release-funds': 64 * 1024,                // 64KB - fund release requests
   'default': 512 * 1024,                     // 512KB - default
 }
 
@@ -89,6 +91,8 @@ const FAIL_CLOSED_ENDPOINTS = [
   'send-statements',    // Prevent email spam
   'import-transactions', // Prevent data flooding
   'import-bank-statement',
+  'create-checkout',    // Prevent checkout spam / Stripe rate limit exhaustion
+  'release-funds',      // Critical: Prevent unauthorized fund releases
 ]
 
 // ============================================================================
@@ -231,6 +235,10 @@ const ALLOWED_ORIGINS = [
   'https://www.soledgic.com',
   'https://app.soledgic.com',
   'https://dashboard.soledgic.com',
+  // Booklyverse
+  'https://booklyverse.com',
+  'https://www.booklyverse.com',
+  'https://app.booklyverse.com',
   // Supabase Studio
   'https://ocjrcsmoeikxfooeglkt.supabase.co',
   // Local development - ONLY in non-production
@@ -539,6 +547,8 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'send-statements': { requests: 20, windowSeconds: 60 },
   'create-ledger': { requests: 10, windowSeconds: 3600 },  // Per hour
   'upload-receipt': { requests: 50, windowSeconds: 60 },
+  'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (matches Stripe limits)
+  'release-funds': { requests: 50, windowSeconds: 60 },    // Fund releases (sensitive financial operation)
   'default': { requests: 100, windowSeconds: 60 },
 }
 
