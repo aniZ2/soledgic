@@ -1,320 +1,369 @@
-import type { Metadata } from 'next'
-import s from './landing.module.css'
-import { CodeTabs } from './code-tabs'
+import Link from 'next/link'
+import { Check, ShieldCheck, Zap, BookLock } from 'lucide-react'
 
-export const metadata: Metadata = {
-  title: 'Soledgic - Payments, Splits, and Ledger for Platforms',
-  description:
-    'Accept payments, split revenue, pay out sellers, and track every dollar with a built-in double-entry ledger. The financial backend for platforms.',
-  openGraph: {
-    title: 'Soledgic - Payments, Splits, and Ledger for Platforms',
-    description:
-      'Accept payments, split revenue, pay out sellers, and track every dollar with a built-in double-entry ledger.',
-    url: 'https://soledgic.com',
-    siteName: 'Soledgic',
-    type: 'website',
+const plans = [
+  {
+    name: 'Starter',
+    price: 49,
+    description: 'For new platforms that need payments, payouts, and visibility.',
+    features: [
+      '1 Ledger',
+      'Up to 1,000 transactions/mo',
+      'Full API & Webhook Access',
+      'Creator Payouts',
+      'Standard Reporting',
+    ],
+    cta: 'Start Free Trial',
+    popular: false,
   },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Soledgic - Payments, Splits, and Ledger for Platforms',
-    description:
-      'Accept payments, split revenue, pay out sellers, and track every dollar with a built-in double-entry ledger.',
+  {
+    name: 'Growth',
+    price: 199,
+    description: 'For teams managing splits, compliance, and higher volume.',
+    features: [
+      '3 Ledgers',
+      'Up to 10,000 transactions/mo',
+      'Team Members (up to 5)',
+      'Bank Reconciliation',
+      '1099-K Data Exports',
+      'Priority Support',
+    ],
+    cta: 'Start Free Trial',
+    popular: true,
   },
-}
+  {
+    name: 'Enterprise',
+    price: 499,
+    description: 'For platforms at scale needing custom workflows and support.',
+    features: [
+      'Unlimited Ledgers',
+      'Unlimited Transactions',
+      'Unlimited Team Members',
+      'Dedicated Support & SLA',
+      'Custom Integrations',
+      'Dispute & Escrow Management',
+    ],
+    cta: 'Contact Sales',
+    popular: false,
+  },
+]
 
-export default function LandingPage() {
+const features = [
+  {
+    icon: <BookLock className="h-6 w-6 text-primary" />,
+    title: 'Audit-Ready Ledger',
+    description: 'Every movement of money is recorded in a double-entry ledger so finance can close faster and trust the numbers.',
+  },
+  {
+    icon: <Zap className="h-6 w-6 text-primary" />,
+    title: 'Payments + Payouts in One Flow',
+    description: 'Accept payments, issue refunds, and pay sellers from one system while your team sees the full lifecycle.',
+  },
+  {
+    icon: <Check className="h-6 w-6 text-primary" />,
+    title: 'Flexible Revenue Splits',
+    description: 'Set platform fees, creator earnings, and partner commissions once and apply them across every transaction.',
+  },
+  {
+    icon: <ShieldCheck className="h-6 w-6 text-primary" />,
+    title: 'Compliance and Tax Reporting',
+    description: 'Use Stripe Connect for KYC/KYB and export 1099-K data with verified, consistent numbers.',
+  },
+  {
+    title: 'Automated Reconciliation',
+    description: 'Match payouts and deposits to ledger entries so ops and finance can answer questions quickly.',
+  },
+  {
+    title: 'Developer Tooling',
+    description: 'Clean REST APIs, a TypeScript SDK, and webhooks so engineering can ship fast and stay in control.',
+  },
+]
+
+const comparisonFeatures = [
+  { feature: 'Audit-ready ledger built in', soledgic: true, stripe: false, quickbooks: true },
+  { feature: 'Marketplace revenue splits', soledgic: true, stripe: 'Connect only', quickbooks: false },
+  { feature: '1099-K data exports', soledgic: true, stripe: 'Limited', quickbooks: 'Add-on' },
+  { feature: 'Automated reconciliation', soledgic: true, stripe: false, quickbooks: true },
+  { feature: 'Dispute and hold controls', soledgic: true, stripe: false, quickbooks: false },
+  { feature: 'Period locking and statements', soledgic: true, stripe: false, quickbooks: 'Manual' },
+  { feature: 'Unified API for money flow', soledgic: true, stripe: true, quickbooks: 'Limited' },
+]
+
+export default function HomePage() {
   return (
-    <div className={s.page}>
-      <div className={s.bgOrbs} />
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Navigation */}
+      <nav className="border-b border-border sticky top-0 bg-background/80 backdrop-blur-lg z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <div className="flex items-center">
+              <span className="text-2xl font-bold text-primary">Soledgic</span>
+            </div>
+            <div className="hidden md:flex items-center space-x-8">
+              <a href="#features" className="text-sm font-medium text-muted-foreground hover:text-foreground">Features</a>
+              <a href="#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground">Pricing</a>
+              <a href="#compare" className="text-sm font-medium text-muted-foreground hover:text-foreground">Compare</a>
+              <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">Login</Link>
+              <Link 
+                href="/signup" 
+                className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 text-sm font-medium"
+              >
+                Start Free Trial
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
 
-      <div className={s.content}>
-        {/* ── Nav ──────────────────────────────────────────── */}
-        <nav className={s.nav}>
-          <a href="/" className={s.navLogo}>Soledgic</a>
-          <ul className={s.navLinks}>
-            <li><a href="#capabilities">Capabilities</a></li>
-            <li><a href="#built-for">Use Cases</a></li>
-            <li><a href="#how-it-works">How it works</a></li>
-            <li><a href="#pricing">Pricing</a></li>
-          </ul>
-          <a href="/signup" className={s.navCta}>Get Started</a>
-        </nav>
+      {/* Hero */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-foreground">
+            Move platform money with clarity
+          </h1>
+          <p className="mt-6 text-xl text-muted-foreground max-w-3xl mx-auto">
+            Accept payments, split revenue, hold funds, and pay sellers while keeping an audit-ready ledger. Ops and finance get visibility; developers get a clean API.
+          </p>
+          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+            <Link 
+              href="/signup" 
+              className="bg-primary text-primary-foreground px-8 py-3 rounded-md text-lg font-medium hover:bg-primary/90"
+            >
+              Start 14-Day Free Trial
+            </Link>
+            <a 
+              href="#features" 
+              className="border border-border px-8 py-3 rounded-md text-lg font-medium hover:bg-accent"
+            >
+              Explore Features
+            </a>
+          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            No credit card required. Talk to us if you need a custom rollout.
+          </p>
+        </div>
+      </section>
 
-        {/* ── Hero ─────────────────────────────────────────── */}
-        <section className={s.hero}>
-          <div className={s.heroInner}>
+      {/* Features */}
+      <section id="features" className="py-24 bg-muted/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-foreground tracking-tight">
+              The platform finance system
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              Everything you need to move money and answer questions fast.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {features.slice(0, 3).map((feature) => (
+              <div key={feature.title} className="bg-card p-6 rounded-lg border border-border">
+                <div className="mb-4">{feature.icon}</div>
+                <h3 className="text-lg font-semibold text-foreground">{feature.title}</h3>
+                <p className="mt-2 text-muted-foreground">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mt-8">
+            {features.slice(3).map((feature) => (
+              <div key={feature.title} className="bg-card p-6 rounded-lg border border-border">
+                <div className="mb-4">{feature.icon || <Check className="h-6 w-6 text-primary" />}</div>
+                <h3 className="text-lg font-semibold text-foreground">{feature.title}</h3>
+                <p className="mt-2 text-muted-foreground">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      
+      {/* Security Section */}
+      <section className="py-24">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <div className={`${s.heroBadge} ${s.reveal}`}>Platform finance stack</div>
-              <h1 className={`${s.heroTitle} ${s.reveal} ${s.delay1}`}>
-                Payments, splits, and payouts{' '}
-                <span className={s.highlight}>with a ledger that never misses</span>
-              </h1>
-              <p className={`${s.heroSub} ${s.reveal} ${s.delay2}`}>
-                Accept payments, split revenue, pay out sellers, and know exactly where every
-                dollar is. The financial backend for platforms that move money.
-              </p>
-              <div className={`${s.heroCta} ${s.reveal} ${s.delay3}`}>
-                <a href="/signup" className={s.btnPrimary}>Get Started</a>
-                <a href="#how-it-works" className={s.btnSecondary}>See how it works</a>
-              </div>
-              <div className={`${s.heroProof} ${s.reveal} ${s.delay4}`}>
-                <span>SOC 2 ready</span>
-                <span>Double-entry ledger</span>
-                <span>99.9% uptime</span>
-              </div>
+                <h2 className="text-3xl font-bold text-foreground">Secure by design, compliant by partnership</h2>
+                <p className="mt-4 text-muted-foreground">
+                    We protect the ledger while Stripe Connect handles sensitive identity checks and onboarding flows.
+                </p>
+                <ul className="mt-6 space-y-4">
+                    <li className="flex items-start gap-3">
+                        <ShieldCheck className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                            <h4 className="font-semibold">Vault-Encrypted Secrets</h4>
+                            <p className="text-muted-foreground text-sm">API keys and secrets are stored in an encrypted vault, isolated per ledger.</p>
+                        </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                        <ShieldCheck className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                            <h4 className="font-semibold">Per-Ledger Security</h4>
+                            <p className="text-muted-foreground text-sm">Each customer's data is isolated using Postgres Row-Level Security and per-ledger webhook secrets.</p>
+                        </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                        <ShieldCheck className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                            <h4 className="font-semibold">Stripe-Managed Compliance</h4>
+                            <p className="text-muted-foreground text-sm">Identity checks and creator onboarding are handled by Stripe's secure UI.</p>
+                        </div>
+                    </li>
+                </ul>
             </div>
+            <div className="bg-gradient-to-br from-primary/10 to-background border border-border p-8 rounded-lg">
+                <blockquote className="text-lg">
+                    "We finally have a single source of truth for payouts, balances, and platform fees. Support can answer questions without engineering."
+                </blockquote>
+                <p className="mt-4 font-semibold">- Operations lead, marketplace platform</p>
+            </div>
+        </div>
+      </section>
 
-            {/* ── Hero panel ───────────────────────────────── */}
-            <div className={`${s.heroPanel} ${s.reveal} ${s.delay2}`}>
-              <div className={s.panelHeader}>
-                <div className={s.panelTitle}>Live ledger view</div>
-                <div className={s.panelPill}>Balanced</div>
-              </div>
-              <div className={s.panelStats}>
-                <div className={s.panelStat}>
-                  <span className={s.statValue}>$8.4k</span>
-                  <span className={s.statLabel}>Payout ready</span>
+      {/* Pricing */}
+      <section id="pricing" className="py-24 bg-muted/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-foreground tracking-tight">
+              Simple, Transparent Pricing
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              A predictable platform fee plus usage-based transaction fees.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {plans.map((plan) => (
+              <div 
+                key={plan.name} 
+                className={`bg-card p-8 rounded-lg border flex flex-col ${
+                  plan.popular ? 'border-primary ring-2 ring-primary' : 'border-border'
+                }`}
+              >
+                {plan.popular && (
+                  <span className="self-center bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full mb-4">
+                    Most Popular
+                  </span>
+                )}
+                <h3 className="text-2xl font-bold text-foreground text-center">{plan.name}</h3>
+                <p className="text-muted-foreground mt-2 text-center h-12">{plan.description}</p>
+                <div className="mt-6 text-center">
+                  <span className="text-4xl font-bold text-foreground">${plan.price}</span>
+                  <span className="text-muted-foreground">/month</span>
                 </div>
-                <div className={s.panelStat}>
-                  <span className={s.statValue}>7 days</span>
-                  <span className={s.statLabel}>Hold period</span>
-                </div>
-                <div className={s.panelStat}>
-                  <span className={s.statValue}>3 splits</span>
-                  <span className={s.statLabel}>Per charge</span>
-                </div>
+                <ul className="mt-8 space-y-3 flex-grow">
+                  {plan.features.map((feature) => (
+                    <li key={feature} className="flex items-center gap-3">
+                      <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                      <span className="text-muted-foreground">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href="/signup"
+                  className={`mt-8 block text-center py-3 rounded-md font-medium ${
+                    plan.popular 
+                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                      : 'border border-border hover:bg-accent'
+                  }`}
+                >
+                  {plan.cta}
+                </Link>
               </div>
-
-              <CodeTabs />
-            </div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          {/* ── Stats bar ──────────────────────────────────── */}
-          <div className={s.statsBar}>
-            <div className={s.stat}>
-              <span className={s.statBarValue}>65+</span>
-              <span className={s.statBarLabel}>API Endpoints</span>
-            </div>
-            <div className={s.stat}>
-              <span className={s.statBarValue}>Double-entry</span>
-              <span className={s.statBarLabel}>Ledger</span>
-            </div>
-            <div className={s.stat}>
-              <span className={s.statBarValue}>SOC 2</span>
-              <span className={s.statBarLabel}>Ready</span>
-            </div>
-            <div className={s.stat}>
-              <span className={s.statBarValue}>99.9%</span>
-              <span className={s.statBarLabel}>Uptime</span>
-            </div>
+      {/* Comparison */}
+      <section id="compare" className="py-24">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-foreground tracking-tight">
+              Built for platform money
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground">
+              Stop forcing generic tools to fit a marketplace workflow.
+            </p>
           </div>
-        </section>
-
-        {/* ── Capabilities ─────────────────────────────────── */}
-        <section className={s.section} id="capabilities">
-          <div className={`${s.sectionHeader} ${s.reveal}`}>
-            <div className={s.sectionLabel}>Capabilities</div>
-            <h2 className={s.sectionTitle}>Everything you need to move money</h2>
-            <p className={s.sectionDesc}>Payments, revenue splits, payouts, and a ledger that always balances.</p>
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border bg-muted/50">
+                  <th className="text-left py-4 px-4 font-medium text-foreground">Feature</th>
+                  <th className="text-center py-4 px-4 font-medium text-primary">Soledgic</th>
+                  <th className="text-center py-4 px-4 font-medium text-muted-foreground">Stripe</th>
+                  <th className="text-center py-4 px-4 font-medium text-muted-foreground">QuickBooks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonFeatures.map((row, index) => (
+                  <tr key={row.feature} className={`border-b border-border ${index % 2 === 1 ? 'bg-muted/20' : ''}`}>
+                    <td className="py-4 px-4 text-foreground">{row.feature}</td>
+                    <td className="py-4 px-4 text-center">
+                      {row.soledgic === true ? (
+                        <Check className="h-5 w-5 text-primary mx-auto" />
+                      ) : (
+                        <span className="text-muted-foreground">{row.soledgic}</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      {row.stripe === true ? (
+                        <Check className="h-5 w-5 text-muted-foreground mx-auto" />
+                      ) : row.stripe === false ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">{row.stripe}</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-center">
+                      {row.quickbooks === true ? (
+                        <Check className="h-5 w-5 text-muted-foreground mx-auto" />
+                      ) : row.quickbooks === false ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">{row.quickbooks}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        </div>
+      </section>
 
-          <div className={s.capabilitiesGrid}>
-            <div className={`${s.capability} ${s.reveal}`}>
-              <div className={s.capabilityIcon}>$</div>
-              <h3 className={s.capabilityTitle}>Accept Payments</h3>
-              <p className={s.capabilityDesc}>Charge cards and bank accounts. Soledgic handles processing, receipts, and failed payment recovery.</p>
+      {/* CTA */}
+      <section className="py-24 bg-primary/5">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl font-bold text-foreground tracking-tight">
+            Stop stitching together financial tools.
+          </h2>
+          <p className="mt-4 text-lg text-muted-foreground">
+            Give every team a clear view of money flow.
+          </p>
+          <Link
+            href="/signup"
+            className="mt-8 inline-block bg-primary text-primary-foreground px-8 py-3 rounded-md text-lg font-medium hover:bg-primary/90"
+          >
+            Start Your 14-Day Free Trial
+          </Link>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-border py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+            <span className="text-xl font-bold text-primary">Soledgic</span>
+            <div className="flex gap-8 text-sm text-muted-foreground">
+              <a href="/docs" className="hover:text-foreground">Documentation</a>
+              <a href="/privacy" className="hover:text-foreground">Privacy</a>
+              <a href="/terms" className="hover:text-foreground">Terms</a>
+              <a href="mailto:support@soledgic.com" className="hover:text-foreground">Support</a>
             </div>
-            <div className={`${s.capability} ${s.reveal} ${s.delay1}`}>
-              <div className={s.capabilityIcon}>&harr;</div>
-              <h3 className={s.capabilityTitle}>Split Revenue</h3>
-              <p className={s.capabilityDesc}>Define who gets paid from every transaction. Platform fees, seller payouts, referral cuts &mdash; set it once or per charge.</p>
-            </div>
-            <div className={`${s.capability} ${s.reveal} ${s.delay2}`}>
-              <div className={s.capabilityIcon}>&#9719;</div>
-              <h3 className={s.capabilityTitle}>Hold Funds</h3>
-              <p className={s.capabilityDesc}>Hold funds until orders are fulfilled, disputes are resolved, or your release conditions are met.</p>
-            </div>
-            <div className={`${s.capability} ${s.reveal}`}>
-              <div className={s.capabilityIcon}>&uarr;</div>
-              <h3 className={s.capabilityTitle}>Pay Out</h3>
-              <p className={s.capabilityDesc}>Send earnings to sellers and creators. Daily, weekly, or on-demand. Every payout hits the ledger automatically.</p>
-            </div>
-            <div className={`${s.capability} ${s.reveal} ${s.delay1}`}>
-              <div className={s.capabilityIcon}>&equiv;</div>
-              <h3 className={s.capabilityTitle}>Real-Time Ledger</h3>
-              <p className={s.capabilityDesc}>Every transaction is double-entry recorded. Balances are always accurate, always auditable, always in sync.</p>
-            </div>
-            <div className={`${s.capability} ${s.reveal} ${s.delay2}`}>
-              <div className={s.capabilityIcon}>&#9632;</div>
-              <h3 className={s.capabilityTitle}>Tax &amp; Compliance</h3>
-              <p className={s.capabilityDesc}>Automatic 1099 generation, W-9 collection, and withholding rules. Stay compliant without extra tools.</p>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              © {new Date().getFullYear()} Soledgic. All rights reserved.
+            </p>
           </div>
-        </section>
-
-        {/* ── Built for ────────────────────────────────────── */}
-        <section className={s.builtForSection} id="built-for">
-          <div className={`${s.sectionHeader} ${s.reveal}`}>
-            <div className={s.sectionLabel}>Built for</div>
-            <h2 className={s.sectionTitle}>Platforms that move money</h2>
-            <p className={s.sectionDesc}>If your product collects and distributes funds, Soledgic handles the flow.</p>
-          </div>
-
-          <div className={s.builtForGrid}>
-            <div className={`${s.useCase} ${s.reveal}`}>
-              <div className={s.useCaseLabel}>Marketplaces</div>
-              <h3 className={s.useCaseTitle}>Multi-sided commerce</h3>
-              <div className={s.useCaseTags}>
-                <span className={s.useCaseTag}>Sellers</span>
-                <span className={s.useCaseTag}>Buyers</span>
-                <span className={s.useCaseTag}>Platform fees</span>
-                <span className={s.useCaseTag}>Settlement</span>
-              </div>
-            </div>
-            <div className={`${s.useCase} ${s.reveal} ${s.delay1}`}>
-              <div className={s.useCaseLabel}>Creator Platforms</div>
-              <h3 className={s.useCaseTitle}>Royalties and payouts</h3>
-              <div className={s.useCaseTags}>
-                <span className={s.useCaseTag}>Royalties</span>
-                <span className={s.useCaseTag}>Splits</span>
-                <span className={s.useCaseTag}>Payouts</span>
-                <span className={s.useCaseTag}>Tax compliance</span>
-              </div>
-            </div>
-            <div className={`${s.useCase} ${s.reveal} ${s.delay2}`}>
-              <div className={s.useCaseLabel}>Service Platforms</div>
-              <h3 className={s.useCaseTitle}>Contractor payments</h3>
-              <div className={s.useCaseTags}>
-                <span className={s.useCaseTag}>Contractors</span>
-                <span className={s.useCaseTag}>Invoicing</span>
-                <span className={s.useCaseTag}>Scheduled payouts</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── How it works ─────────────────────────────────── */}
-        <section className={s.section} id="how-it-works">
-          <div className={`${s.sectionHeader} ${s.reveal}`}>
-            <div className={s.sectionLabel}>How it works</div>
-            <h2 className={s.sectionTitle}>From charge to payout</h2>
-            <p className={s.sectionDesc}>One integration, complete money flow control.</p>
-          </div>
-
-          <div className={s.flowContainer}>
-            <div className={s.flowStep}>
-              <div className={s.flowNumber}>1</div>
-              <div>
-                <h3 className={s.flowTitle}>Charge</h3>
-                <p className={s.flowDesc}>Your customer pays. Soledgic processes the payment and records it to your ledger with the splits you defined.</p>
-              </div>
-            </div>
-            <div className={s.flowStep}>
-              <div className={s.flowNumber}>2</div>
-              <div>
-                <h3 className={s.flowTitle}>Hold</h3>
-                <p className={s.flowDesc}>Funds are held until you&apos;re ready. Disputes and chargebacks are resolved before anyone gets paid.</p>
-              </div>
-            </div>
-            <div className={s.flowStep}>
-              <div className={s.flowNumber}>3</div>
-              <div>
-                <h3 className={s.flowTitle}>Split</h3>
-                <p className={s.flowDesc}>Revenue is divided by your rules. Seller balances, platform fees, referral commissions &mdash; all updated instantly.</p>
-              </div>
-            </div>
-            <div className={s.flowStep}>
-              <div className={s.flowNumber}>4</div>
-              <div>
-                <h3 className={s.flowTitle}>Pay Out</h3>
-                <p className={s.flowDesc}>Sellers get paid on your schedule. Every payout is recorded, reconciled, and ready for tax season.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Pricing ──────────────────────────────────────── */}
-        <section className={s.pricingSection} id="pricing">
-          <div className={s.pricingSectionHeader}>
-            <div className={s.sectionLabel}>Pricing</div>
-            <h2 className={s.sectionTitle}>Simple, transparent pricing</h2>
-            <p className={s.sectionDesc}>Monthly platform fee for ledger and tools. Transaction fees on payments processed.</p>
-          </div>
-
-          <div className={s.pricingHighlight}>
-            <div className={s.pricingRate}>3.4% + $0.55 <span>per transaction</span></div>
-            <p className={s.pricingNote}>Payment processing and payouts included on all plans</p>
-          </div>
-
-          <div className={s.pricingGrid}>
-            {/* Pro */}
-            <div className={s.pricingCard}>
-              <h3 className={s.pricingCardTier}>Pro</h3>
-              <div className={s.pricingCardPrice}>$49<span>/mo</span></div>
-              <div className={s.pricingCardRateInfo}>+ 3.4% + $0.55 per transaction</div>
-              <p className={s.pricingCardDesc}>For solo founders who need payments and a ledger.</p>
-              <ul className={s.pricingCardList}>
-                <li>3 ledgers</li>
-                <li>1 team member</li>
-                <li>7-day settlement</li>
-                <li>Weekly payouts</li>
-                <li>Email support</li>
-                <li>$20/ledger overage</li>
-              </ul>
-              <a href="/signup" className={s.pricingCardBtn}>Start Free Trial</a>
-            </div>
-
-            {/* Business (featured) */}
-            <div className={`${s.pricingCard} ${s.pricingCardFeatured}`}>
-              <h3 className={s.pricingCardTier}>Business</h3>
-              <div className={s.pricingCardPrice}>$249<span>/mo</span></div>
-              <div className={s.pricingCardRateInfo}>+ 3.4% + $0.55 per transaction</div>
-              <p className={s.pricingCardDesc}>For growing platforms with splits, payouts, and multiple team members.</p>
-              <ul className={s.pricingCardList}>
-                <li>10 ledgers</li>
-                <li>10 team members</li>
-                <li>Configurable settlement</li>
-                <li>Daily or on-demand payouts</li>
-                <li>Webhooks &amp; full API access</li>
-                <li>Priority support</li>
-                <li>$20/ledger overage</li>
-              </ul>
-              <a href="/signup" className={`${s.pricingCardBtn} ${s.pricingCardBtnFeatured}`}>Start Free Trial</a>
-            </div>
-
-            {/* Scale */}
-            <div className={s.pricingCard}>
-              <h3 className={s.pricingCardTier}>Scale</h3>
-              <div className={s.pricingCardPrice}>$999<span>/mo</span></div>
-              <div className={s.pricingCardRateInfo}>+ 3.4% + $0.55 per transaction</div>
-              <p className={s.pricingCardDesc}>For high-volume platforms that need custom rules and dedicated support.</p>
-              <ul className={s.pricingCardList}>
-                <li>Unlimited ledgers</li>
-                <li>Unlimited team members</li>
-                <li>Custom settlement rules</li>
-                <li>Dedicated support</li>
-                <li>SLA guarantee</li>
-                <li>Custom integrations</li>
-              </ul>
-              <a href="mailto:ani@osifoholdings.com" className={s.pricingCardBtn}>Contact Sales</a>
-            </div>
-          </div>
-
-          <p className={s.pricingFootnote}>14-day free trial &middot; 50% off first month &middot; No credit card required</p>
-        </section>
-
-        {/* ── CTA ──────────────────────────────────────────── */}
-        <section className={s.ctaSection}>
-          <h2 className={s.ctaTitle}>Ready to stop stitching together payment tools?</h2>
-          <p className={s.ctaDesc}>Payments, splits, payouts, and a ledger &mdash; one platform.</p>
-          <a href="/signup" className={`${s.btnPrimary} ${s.ctaBtn}`}>Get Started</a>
-        </section>
-
-        {/* ── Footer ───────────────────────────────────────── */}
-        <footer className={s.footer}>
-          <p>&copy; 2026 Soledgic. A product of <a href="https://osifoholdings.com">Osifo Holdings L.L.C.</a></p>
-        </footer>
-      </div>
+        </div>
+      </footer>
     </div>
   )
 }
