@@ -162,7 +162,7 @@ export class Soledgic {
 
       clearTimeout(timeoutId)
 
-      const data = await response.json()
+      const data: any = await response.json()
 
       // Handle errors
       if (!response.ok || data.success === false) {
