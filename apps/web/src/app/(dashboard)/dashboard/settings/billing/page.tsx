@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useSearchParams } from 'next/navigation'
-import { 
+import {
   CreditCard, Receipt, BarChart3, Check, AlertTriangle,
   ExternalLink, Loader2, ChevronRight, Calendar
 } from 'lucide-react'
@@ -79,107 +78,54 @@ export default function BillingPage() {
     }
   }, [searchParams])
 
-  const loadBillingData = async () => {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+  const billingFetch = async (action: string) => {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+    return res.json()
+  }
 
+  const loadBillingData = async () => {
     try {
-      // Get subscription & usage
-      const subRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/billing`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action: 'get_subscription' }),
-        }
-      )
-      const subData = await subRes.json()
+      const [subData, invData, pmData, plansData] = await Promise.all([
+        billingFetch('get_subscription'),
+        billingFetch('get_invoices'),
+        billingFetch('get_payment_methods'),
+        billingFetch('get_plans'),
+      ])
+
       if (subData.success) {
         setSubscription(subData.data.subscription)
         setOrganization(subData.data.organization)
         setUsage(subData.data.usage)
       }
-
-      // Get invoices
-      const invRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/billing`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action: 'get_invoices' }),
-        }
-      )
-      const invData = await invRes.json()
       if (invData.success) {
         setInvoices(invData.data)
       }
-
-      // Get payment methods
-      const pmRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/billing`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action: 'get_payment_methods' }),
-        }
-      )
-      const pmData = await pmRes.json()
       if (pmData.success) {
         setPaymentMethods(pmData.data)
       }
-
-      // Get plans
-      const plansRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/billing`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action: 'get_plans' }),
-        }
-      )
-      const plansData = await plansRes.json()
       if (plansData.success) {
         setPlans(plansData.data)
       }
-
     } catch (error) {
       console.error('Error loading billing data:', error)
     }
-    
+
     setLoading(false)
   }
 
   const handleAction = async (action: string, data: any = {}) => {
     setActionLoading(action)
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/billing`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ action, ...data }),
-        }
-      )
+      const res = await fetch('/api/billing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...data }),
+      })
       const result = await res.json()
 
       if (result.success) {

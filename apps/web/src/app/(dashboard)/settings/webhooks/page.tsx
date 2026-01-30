@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
+import { pickActiveLedger } from '@/lib/active-ledger'
 import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, Clock, Eye, EyeOff, Copy } from 'lucide-react'
 
 interface WebhookEndpoint {
@@ -38,6 +40,8 @@ const EVENT_TYPES = [
 ]
 
 export default function WebhooksPage() {
+  const livemode = useLivemode()
+  const activeLedgerGroupId = useActiveLedgerGroupId()
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([])
   const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,7 +54,7 @@ export default function WebhooksPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [livemode])
 
   const loadData = async () => {
     const supabase = createClient()
@@ -69,12 +73,12 @@ export default function WebhooksPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key')
+      .select('id, api_key, ledger_group_id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
-      .limit(1)
+      .eq('livemode', livemode)
 
-    const ledger = ledgers?.[0]
+    const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return
 
     setApiKey(ledger.api_key)

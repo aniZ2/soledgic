@@ -2,10 +2,14 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Download, Scale } from 'lucide-react'
+import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
+import { pickActiveLedger } from '@/lib/active-ledger'
 
 export default async function TrialBalancePage() {
   const supabase = await createClient()
-  
+  const livemode = await getLivemode()
+  const activeLedgerGroupId = await getActiveLedgerGroupId()
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -19,12 +23,12 @@ export default async function TrialBalancePage() {
 
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, api_key')
+    .select('id, business_name, api_key, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
-    .limit(1)
+    .eq('livemode', livemode)
 
-  const ledger = ledgers?.[0]
+  const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
 
   if (!ledger) {
     return (

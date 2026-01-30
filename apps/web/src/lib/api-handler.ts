@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { validateCsrf } from './csrf'
 import { checkRateLimit, getRateLimitKey, getRouteLimit } from './rate-limit'
+import { getReadonly } from './livemode-server'
 
 export interface ApiContext {
   user: { id: string; email?: string } | null
@@ -23,6 +24,8 @@ export interface ApiHandlerOptions {
   maxBodySize?: number
   // Route path for rate limiting
   routePath?: string
+  // Exempt this endpoint from read-only mode enforcement (default: false)
+  readonlyExempt?: boolean
 }
 
 type ApiHandler = (
@@ -77,7 +80,8 @@ export function createApiHandler(
     rateLimit = true,
     csrfProtection = true,
     maxBodySize = 1024 * 1024, // 1MB default
-    routePath = '/api'
+    routePath = '/api',
+    readonlyExempt = false,
   } = options
   
   return async (request: Request): Promise<NextResponse> => {
@@ -149,7 +153,22 @@ export function createApiHandler(
           { status: 413 }
         )
       }
-      
+
+      // 4.5. Read-only mode enforcement
+      // Block write operations (POST/PUT/PATCH/DELETE) unless the endpoint is exempt
+      if (!readonlyExempt) {
+        const method = request.method.toUpperCase()
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+          const isReadonly = await getReadonly()
+          if (isReadonly) {
+            return NextResponse.json(
+              { error: 'Read-only mode is enabled. Write operations are disabled.', request_id: requestId },
+              { status: 403 }
+            )
+          }
+        }
+      }
+
       // 5. Execute Handler
       const response = await handler(request, { user, requestId, startTime })
       

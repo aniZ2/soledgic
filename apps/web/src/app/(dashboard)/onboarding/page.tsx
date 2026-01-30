@@ -65,22 +65,29 @@ export default function OnboardingPage() {
 
       if (memberError) throw memberError
 
-      // Create first ledger
-      const apiKey = `sk_${selectedPlan === 'enterprise' ? 'live' : 'test'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
-      
+      // Create paired test + live ledgers
+      const ledgerGroupId = crypto.randomUUID()
+      const testApiKey = `sk_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+      const liveApiKey = `sk_live_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+
+      const sharedFields = {
+        organization_id: org.id,
+        business_name: ledgerName,
+        ledger_mode: ledgerMode,
+        status: 'active' as const,
+        ledger_group_id: ledgerGroupId,
+        settings: {
+          currency: 'USD',
+          fiscal_year_start: 1,
+        },
+      }
+
       const { error: ledgerError } = await supabase
         .from('ledgers')
-        .insert({
-          organization_id: org.id,
-          business_name: ledgerName,
-          ledger_mode: ledgerMode,
-          api_key: apiKey,
-          status: 'active',
-          settings: {
-            currency: 'USD',
-            fiscal_year_start: 1,
-          },
-        })
+        .insert([
+          { ...sharedFields, api_key: testApiKey, livemode: false },
+          { ...sharedFields, api_key: liveApiKey, livemode: true },
+        ])
 
       if (ledgerError) throw ledgerError
 

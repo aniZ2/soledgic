@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import Link from 'next/link'
 import { Check, CreditCard, AlertTriangle } from 'lucide-react'
+import { PLANS } from '@/lib/stripe'
+import { PlanSelectButton } from '@/components/plan-select-button'
+import { getLivemode } from '@/lib/livemode-server'
 
 const plans = [
   {
@@ -10,6 +12,8 @@ const plans = [
     ledgers: 3,
     team: 1,
     features: ['3 ledgers', 'API access', 'Receipts & reconciliation', 'Email support'],
+    priceId: PLANS.pro.stripe_price_id,
+    contactSales: false,
   },
   {
     id: 'business',
@@ -19,20 +23,24 @@ const plans = [
     team: 10,
     features: ['10 ledgers', 'Team members (up to 10)', 'Priority support', 'Everything in Pro'],
     popular: true,
+    priceId: PLANS.business.stripe_price_id,
+    contactSales: false,
   },
   {
     id: 'scale',
     name: 'Scale',
-    price: 999,
+    price: null,
     ledgers: -1,
     team: -1,
     features: ['Unlimited ledgers', 'Unlimited team members', 'Dedicated support', 'SLA guarantee'],
+    priceId: null,
+    contactSales: true,
   },
 ]
 
 export default async function BillingPage() {
   const supabase = await createClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
 
   // Get user's organization
@@ -51,11 +59,19 @@ export default async function BillingPage() {
 
   const isTrialing = org?.plan === 'trial'
   const trialEndsAt = org?.trial_ends_at ? new Date(org.trial_ends_at) : null
-  const daysLeft = trialEndsAt 
+  const daysLeft = trialEndsAt
     ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0
 
   const currentPlan = plans.find(p => p.id === org?.plan) || plans[0]
+
+  // Count only live ledgers for billing usage
+  const { count: liveLedgerCount } = await supabase
+    .from('ledgers')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', org?.id)
+    .eq('status', 'active')
+    .eq('livemode', true)
 
   return (
     <div>
@@ -70,7 +86,7 @@ export default async function BillingPage() {
           <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0" />
           <div className="flex-1">
             <p className="font-medium text-foreground">
-              {daysLeft > 0 
+              {daysLeft > 0
                 ? `Your trial ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`
                 : 'Your trial has ended'}
             </p>
@@ -88,20 +104,20 @@ export default async function BillingPage() {
             <div>
               <h2 className="text-lg font-semibold text-foreground">Current Plan</h2>
               <p className="mt-1 text-muted-foreground">
-                {currentPlan.name} - ${currentPlan.price}/month
+                {currentPlan.name} - {currentPlan.price ? `$${currentPlan.price}/month` : 'Custom pricing'}
               </p>
             </div>
             <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-500/10 text-green-500">
               Active
             </span>
           </div>
-          
+
           <div className="mt-4 pt-4 border-t border-border">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-muted-foreground">Ledgers used</span>
+                <span className="text-muted-foreground">Ledgers used (live only)</span>
                 <p className="font-medium text-foreground">
-                  {org?.current_ledger_count || 0} / {currentPlan.ledgers === -1 ? '∞' : currentPlan.ledgers}
+                  {liveLedgerCount ?? 0} / {currentPlan.ledgers === -1 ? '∞' : currentPlan.ledgers}
                 </p>
               </div>
               <div>
@@ -120,7 +136,7 @@ export default async function BillingPage() {
         <h2 className="text-xl font-semibold text-foreground mb-4">
           {isTrialing ? 'Choose a plan' : 'Change plan'}
         </h2>
-        
+
         <div className="grid gap-6 md:grid-cols-3">
           {plans.map((plan) => (
             <div
@@ -136,10 +152,16 @@ export default async function BillingPage() {
               )}
               <h3 className="text-xl font-bold text-foreground">{plan.name}</h3>
               <div className="mt-2">
-                <span className="text-3xl font-bold text-foreground">${plan.price}</span>
-                <span className="text-muted-foreground">/month</span>
+                {plan.price ? (
+                  <>
+                    <span className="text-3xl font-bold text-foreground">${plan.price}</span>
+                    <span className="text-muted-foreground">/month</span>
+                  </>
+                ) : (
+                  <span className="text-3xl font-bold text-foreground">Custom</span>
+                )}
               </div>
-              
+
               <ul className="mt-6 space-y-3">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex items-center gap-2 text-sm">
@@ -149,18 +171,14 @@ export default async function BillingPage() {
                 ))}
               </ul>
 
-              <button
-                disabled={!isOwner || plan.id === org?.plan}
-                className={`mt-6 w-full py-3 rounded-md font-medium ${
-                  plan.id === org?.plan
-                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                    : plan.popular
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'border border-border hover:bg-accent'
-                } disabled:opacity-50`}
-              >
-                {plan.id === org?.plan ? 'Current plan' : 'Select plan'}
-              </button>
+              <PlanSelectButton
+                planId={plan.id}
+                priceId={plan.priceId}
+                isCurrentPlan={plan.id === org?.plan}
+                isOwner={isOwner}
+                contactSales={plan.contactSales}
+                popular={plan.popular}
+              />
             </div>
           ))}
         </div>
@@ -176,7 +194,7 @@ export default async function BillingPage() {
           <div>
             <h2 className="text-lg font-semibold text-foreground">Payment Method</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {org?.stripe_customer_id 
+              {org?.stripe_customer_id
                 ? 'Your payment method is on file.'
                 : 'No payment method on file.'}
             </p>

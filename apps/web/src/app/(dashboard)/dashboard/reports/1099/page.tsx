@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
+import { pickActiveLedger } from '@/lib/active-ledger'
 import Link from 'next/link'
 import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, AlertCircle, Clock, Info } from 'lucide-react'
 
@@ -28,6 +30,8 @@ interface Stats {
 }
 
 export default function TaxDocumentsPage() {
+  const livemode = useLivemode()
+  const activeLedgerGroupId = useActiveLedgerGroupId()
   const [documents, setDocuments] = useState<TaxDocument[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -38,7 +42,7 @@ export default function TaxDocumentsPage() {
 
   useEffect(() => {
     loadData()
-  }, [taxYear])
+  }, [taxYear, livemode])
 
   const loadData = async () => {
     setLoading(true)
@@ -57,12 +61,12 @@ export default function TaxDocumentsPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key')
+      .select('id, api_key, ledger_group_id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
-      .limit(1)
+      .eq('livemode', livemode)
 
-    const ledger = ledgers?.[0]
+    const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return
     setApiKey(ledger.api_key)
 

@@ -1,18 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Users, 
+import {
+  DollarSign,
+  TrendingUp,
+  Users,
   CreditCard,
   ArrowUpRight,
   ArrowDownRight
 } from 'lucide-react'
+import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
+import { pickActiveLedger } from '@/lib/active-ledger'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-  
+  const livemode = await getLivemode()
+  const activeLedgerGroupId = await getActiveLedgerGroupId()
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -28,11 +32,12 @@ export default async function DashboardPage() {
   // Get ledgers for this organization
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, ledger_mode, status, created_at')
+    .select('id, business_name, ledger_mode, status, created_at, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
+    .eq('livemode', livemode)
 
-  const ledger = ledgers?.[0]
+  const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
 
   // Get summary stats if we have a ledger
   let stats = {

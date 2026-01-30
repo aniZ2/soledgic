@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, User, DollarSign, TrendingUp, FileText, Wallet, Clock } from 'lucide-react'
+import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
+import { pickActiveLedger } from '@/lib/active-ledger'
 
 export default async function CreatorDetailPage({
   params,
@@ -10,7 +12,9 @@ export default async function CreatorDetailPage({
 }) {
   const { id: creatorId } = await params
   const supabase = await createClient()
-  
+  const livemode = await getLivemode()
+  const activeLedgerGroupId = await getActiveLedgerGroupId()
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -24,12 +28,12 @@ export default async function CreatorDetailPage({
 
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name')
+    .select('id, business_name, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
-    .limit(1)
+    .eq('livemode', livemode)
 
-  const ledger = ledgers?.[0]
+  const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
   if (!ledger) notFound()
 
   // Get creator account

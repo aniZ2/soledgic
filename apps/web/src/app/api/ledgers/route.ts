@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { getLivemode } from '@/lib/livemode-server'
+import { ACTIVE_LEDGER_GROUP_COOKIE } from '@/lib/livemode'
 
-// POST /api/ledgers - Create a new ledger
+// POST /api/ledgers - Create a new ledger (paired test + live)
 export const POST = createApiHandler(
   async (request, { user, requestId }) => {
     const supabase = await createClient()
@@ -61,26 +63,49 @@ export const POST = createApiHandler(
     // Scale plan has unlimited (-1)
     if (org.max_ledgers !== -1 && org.current_ledger_count >= org.max_ledgers) {
       // Allow overage, but flag it
-      // In production, you'd check if they're okay with overage billing
     }
 
-    // Create ledger
-    const { data: ledger, error: ledgerError } = await supabase
+    // Cap test ledgers per org to prevent spam (test ledgers don't count toward billing)
+    const MAX_TEST_LEDGERS_PER_ORG = 50
+    const { count: testLedgerCount } = await supabase
       .from('ledgers')
-      .insert({
-        platform_name,
-        organization_id,
-        owner_email: user!.email,
-        status: 'active',
-        settings: {
-          default_platform_fee_percent: 20,
-          tax_withholding_percent: 0,
-          min_payout_amount: 10,
-          payout_schedule: 'manual',
-        },
-      })
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organization_id)
+      .eq('livemode', false)
+
+    if ((testLedgerCount ?? 0) >= MAX_TEST_LEDGERS_PER_ORG) {
+      return NextResponse.json(
+        { error: `Maximum of ${MAX_TEST_LEDGERS_PER_ORG} test ledgers per organization.` },
+        { status: 429 }
+      )
+    }
+
+    // Create paired test + live ledgers
+    const ledgerGroupId = crypto.randomUUID()
+    const testApiKey = `sk_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+    const liveApiKey = `sk_live_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+
+    const sharedFields = {
+      platform_name,
+      organization_id,
+      owner_email: user!.email,
+      status: 'active' as const,
+      ledger_group_id: ledgerGroupId,
+      settings: {
+        default_platform_fee_percent: 20,
+        tax_withholding_percent: 0,
+        min_payout_amount: 10,
+        payout_schedule: 'manual',
+      },
+    }
+
+    const { data: ledgers, error: ledgerError } = await supabase
+      .from('ledgers')
+      .insert([
+        { ...sharedFields, api_key: testApiKey, livemode: false },
+        { ...sharedFields, api_key: liveApiKey, livemode: true },
+      ])
       .select()
-      .single()
 
     if (ledgerError) {
       console.error(`[${requestId}] Ledger creation failed:`, ledgerError.code)
@@ -90,7 +115,21 @@ export const POST = createApiHandler(
       )
     }
 
-    return NextResponse.json({ success: true, ledger })
+    // Return the ledger matching the current mode and set its group as active
+    const livemode = await getLivemode()
+    const ledger = ledgers?.find(l => l.livemode === livemode) || ledgers?.[0]
+
+    const response = NextResponse.json({ success: true, ledger })
+
+    response.cookies.set(ACTIVE_LEDGER_GROUP_COOKIE, ledgerGroupId, {
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 365,
+      httpOnly: true,
+    })
+
+    return response
   },
   {
     requireAuth: true,
@@ -104,6 +143,7 @@ export const POST = createApiHandler(
 export const GET = createApiHandler(
   async (request, { user }) => {
     const supabase = await createClient()
+    const livemode = await getLivemode()
 
     // Get user's organizations
     const { data: memberships } = await supabase
@@ -118,11 +158,12 @@ export const GET = createApiHandler(
 
     const orgIds = memberships.map(m => m.organization_id)
 
-    // Get ledgers for those organizations
+    // Get ledgers for those organizations, filtered by mode
     const { data: ledgers, error } = await supabase
       .from('ledgers')
       .select('*')
       .in('organization_id', orgIds)
+      .eq('livemode', livemode)
       .order('created_at', { ascending: false })
 
     if (error) {

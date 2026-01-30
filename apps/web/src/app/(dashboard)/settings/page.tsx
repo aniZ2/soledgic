@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Key, CreditCard, Building, Users, Bell, Shield } from 'lucide-react'
+import { Key, CreditCard, Building, Users, Bell, Shield, Wrench } from 'lucide-react'
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -58,6 +58,17 @@ export default async function SettingsPage() {
           description: 'Two-factor authentication and security settings',
           href: '/settings/security',
           icon: Shield,
+        },
+      ],
+    },
+    {
+      title: 'Developer Tools',
+      items: [
+        {
+          name: 'Data Repair',
+          description: 'Repair orphaned ledger groups and reset test environments',
+          href: '/settings/developer-tools',
+          icon: Wrench,
         },
       ],
     },

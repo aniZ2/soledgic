@@ -1,18 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  LayoutDashboard, 
-  BookOpen, 
+import {
+  LayoutDashboard,
+  BookOpen,
   ArrowLeftRight,
-  FileText, 
-  Settings, 
+  FileText,
+  Settings,
   LogOut,
   CreditCard,
   Users,
   Wallet,
   Scale
 } from 'lucide-react'
+import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
+import { LiveModeToggle } from '@/components/livemode-toggle'
+import { LivemodeProvider } from '@/components/livemode-provider'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -61,6 +64,9 @@ export default async function DashboardLayout({
 
   const org = membership.organization as any
   const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
+  const livemode = await getLivemode()
+  const activeLedgerGroupId = await getActiveLedgerGroupId()
+  const readonly = await getReadonly()
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,6 +75,9 @@ export default async function DashboardLayout({
         <div className="flex h-16 items-center px-6 border-b border-border">
           <Link href="/dashboard" className="text-2xl font-bold text-primary">
             Soledgic
+            {!livemode && (
+              <span className="ml-1.5 text-sm font-medium text-amber-500">(Test)</span>
+            )}
           </Link>
         </div>
 
@@ -86,7 +95,12 @@ export default async function DashboardLayout({
             </div>
           </div>
         </div>
-        
+
+        {/* Test / Live Toggle */}
+        <div className="px-4 py-2 border-b border-border">
+          <LiveModeToggle initialLivemode={livemode} activeLedgerGroupId={activeLedgerGroupId} />
+        </div>
+
         <nav className="p-4 space-y-1">
           {navigation.map((item) => (
             <Link
@@ -128,8 +142,20 @@ export default async function DashboardLayout({
 
       {/* Main content */}
       <main className="pl-64">
+        {readonly && (
+          <div className="sticky top-0 z-20 bg-slate-700 text-white text-center text-sm font-medium py-2 px-4">
+            READ-ONLY MODE — You are viewing a preview. All write operations are disabled.
+          </div>
+        )}
+        {!livemode && (
+          <div className={`sticky ${readonly ? 'top-9' : 'top-0'} z-10 bg-amber-500 text-white text-center text-sm font-medium py-2 px-4`}>
+            TEST MODE — Data shown here is for testing only and won&apos;t affect your live environment.
+          </div>
+        )}
         <div className="p-8">
-          {children}
+          <LivemodeProvider livemode={livemode} activeLedgerGroupId={activeLedgerGroupId} readonly={readonly}>
+            {children}
+          </LivemodeProvider>
         </div>
       </main>
     </div>
