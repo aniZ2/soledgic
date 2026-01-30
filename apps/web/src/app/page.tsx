@@ -2,99 +2,53 @@ import Link from 'next/link'
 import { Check, ShieldCheck, Zap, BookLock } from 'lucide-react'
 
 const plans = [
-
   {
-
     name: 'Pro',
-
     price: 49,
-
     description: 'For solo founders who need payments and a ledger.',
-
     features: [
-
       '3 ledgers',
-
       '1 team member',
-
       '7-day settlement',
-
       'Weekly payouts',
-
       'Email support',
-
       '$20/ledger overage',
-
     ],
-
     cta: 'Start Free Trial',
-
     popular: false,
-
   },
-
   {
-
     name: 'Business',
-
     price: 249,
-
     description: 'For growing platforms with splits, payouts, and multiple team members.',
-
     features: [
-
       '10 ledgers',
-
       '10 team members',
-
       'Configurable settlement',
-
       'Daily or on-demand payouts',
-
       'Webhooks & full API access',
-
       'Priority support',
-
       '$20/ledger overage',
-
     ],
-
     cta: 'Start Free Trial',
-
     popular: true,
-
   },
-
   {
-
     name: 'Scale',
-
-    price: 999,
-
+    // price: 999, // Removed price
     description: 'For high-volume platforms that need custom rules and dedicated support.',
-
     features: [
-
       'Unlimited ledgers',
-
+      'Unlimited transactions',
       'Unlimited team members',
-
       'Custom settlement rules',
-
       'Dedicated support',
-
       'SLA guarantee',
-
       'Custom integrations',
-
     ],
-
     cta: 'Contact Sales',
-
     popular: false,
-
   },
-
 ]
 
 
@@ -503,13 +457,25 @@ export default function HomePage() {
 
                 <p className="text-muted-foreground mt-2 text-center h-12">{plan.description}</p>
 
-                <div className="mt-6 text-center">
+                                <div className="mt-6 text-center">
 
-                  <span className="text-4xl font-bold text-foreground">${plan.price}</span>
+                                  {plan.price ? (
 
-                  <span className="text-muted-foreground">/month</span>
+                                    <>
 
-                </div>
+                                      <span className="text-4xl font-bold text-foreground">${plan.price}</span>
+
+                                      <span className="text-muted-foreground">/month</span>
+
+                                    </>
+
+                                  ) : (
+
+                                    <span className="text-2xl font-bold text-foreground">Custom Pricing</span>
+
+                                  )}
+
+                                </div>
 
                 <ul className="mt-8 space-y-3 flex-grow">
 
