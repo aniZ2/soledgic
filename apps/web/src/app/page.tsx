@@ -37,7 +37,7 @@ export default function LandingPage() {
             <li><a href="#how-it-works">How it works</a></li>
             <li><a href="#pricing">Pricing</a></li>
           </ul>
-          <a href="mailto:ani@osifoholdings.com" className={s.navCta}>Get Started</a>
+          <a href="/signup" className={s.navCta}>Get Started</a>
         </nav>
 
         {/* ── Hero ─────────────────────────────────────────── */}
@@ -54,7 +54,7 @@ export default function LandingPage() {
                 dollar is. The financial backend for platforms that move money.
               </p>
               <div className={`${s.heroCta} ${s.reveal} ${s.delay3}`}>
-                <a href="mailto:ani@osifoholdings.com" className={s.btnPrimary}>Get Started</a>
+                <a href="/signup" className={s.btnPrimary}>Get Started</a>
                 <a href="#how-it-works" className={s.btnSecondary}>See how it works</a>
               </div>
               <div className={`${s.heroProof} ${s.reveal} ${s.delay4}`}>
@@ -261,7 +261,7 @@ export default function LandingPage() {
                 <li>Email support</li>
                 <li>$20/ledger overage</li>
               </ul>
-              <a href="mailto:ani@osifoholdings.com" className={s.pricingCardBtn}>Start Free Trial</a>
+              <a href="/signup" className={s.pricingCardBtn}>Start Free Trial</a>
             </div>
 
             {/* Business (featured) */}
@@ -279,7 +279,7 @@ export default function LandingPage() {
                 <li>Priority support</li>
                 <li>$20/ledger overage</li>
               </ul>
-              <a href="mailto:ani@osifoholdings.com" className={`${s.pricingCardBtn} ${s.pricingCardBtnFeatured}`}>Start Free Trial</a>
+              <a href="/signup" className={`${s.pricingCardBtn} ${s.pricingCardBtnFeatured}`}>Start Free Trial</a>
             </div>
 
             {/* Scale */}
@@ -307,7 +307,7 @@ export default function LandingPage() {
         <section className={s.ctaSection}>
           <h2 className={s.ctaTitle}>Ready to stop stitching together payment tools?</h2>
           <p className={s.ctaDesc}>Payments, splits, payouts, and a ledger &mdash; one platform.</p>
-          <a href="mailto:ani@osifoholdings.com" className={`${s.btnPrimary} ${s.ctaBtn}`}>Get Started</a>
+          <a href="/signup" className={`${s.btnPrimary} ${s.ctaBtn}`}>Get Started</a>
         </section>
 
         {/* ── Footer ───────────────────────────────────────── */}
