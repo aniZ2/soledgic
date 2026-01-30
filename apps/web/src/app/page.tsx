@@ -80,13 +80,13 @@ const features = [
 ]
 
 const comparisonFeatures = [
-    { feature: 'Unified ledger for money movement', soledgic: true, traditional_processors: false, accounting_software: true },
-    { feature: 'Marketplace revenue splits', soledgic: true, traditional_processors: false, accounting_software: false },
-    { feature: 'Managed creator payouts', soledgic: true, traditional_processors: 'Varies', accounting_software: false },
-    { feature: '1099-K data exports for creators', soledgic: true, traditional_processors: false, accounting_software: 'Add-on' },
-    { feature: 'Automated reconciliation', soledgic: true, traditional_processors: false, accounting_software: true },
-    { feature: 'Dispute & risk management holds', soledgic: true, traditional_processors: true, accounting_software: false },
-    { feature: 'Real-time API for orchestration', soledgic: true, traditional_processors: 'Varies', accounting_software: 'Limited' },
+  { feature: 'Audit-ready ledger', soledgic: true, traditional_processors: 'External or limited', accounting_software: true },
+  { feature: 'Marketplace revenue splits', soledgic: true, traditional_processors: 'Partial / add-ons', accounting_software: false },
+  { feature: '1099-K data exports', soledgic: true, traditional_processors: 'Limited', accounting_software: 'Add-on' },
+  { feature: 'Automated reconciliation', soledgic: true, traditional_processors: 'Partial', accounting_software: true },
+  { feature: 'Dispute & hold controls', soledgic: true, traditional_processors: 'Processor-level', accounting_software: false },
+  { feature: 'Period locking & statements', soledgic: true, traditional_processors: false, accounting_software: 'Manual' },
+  { feature: 'Unified money-flow API', soledgic: true, traditional_processors: 'Payments only', accounting_software: 'Limited' },
 ]
 
 export default function HomePage() {
