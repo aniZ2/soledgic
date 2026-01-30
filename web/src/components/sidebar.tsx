@@ -3,15 +3,16 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  Receipt, 
-  FileText, 
-  Settings, 
+import {
+  LayoutDashboard,
+  BookOpen,
+  Receipt,
+  FileText,
+  Settings,
   LogOut,
   CreditCard,
   Users,
+  Link2,
   Menu,
   X
 } from 'lucide-react'
@@ -20,6 +21,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
   { name: 'Contractors', href: '/contractors', icon: Users },
+  { name: 'Connected Accounts', href: '/connected-accounts', icon: Link2 },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

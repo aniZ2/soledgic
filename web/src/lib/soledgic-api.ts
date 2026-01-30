@@ -338,3 +338,26 @@ export async function uploadReceipt(apiKey: string, data: {
 }) {
   return callFunction('upload-receipt', { apiKey }, data)
 }
+
+// ============================================================================
+// CONNECTED ACCOUNTS
+// ============================================================================
+
+export async function manageConnectedAccounts(apiKey: string, data: {
+  action: 'create' | 'get' | 'list' | 'create_onboarding_link' | 'create_login_link'
+  entity_type?: 'creator' | 'venture' | 'merchant'
+  entity_id?: string
+  email?: string
+  display_name?: string
+  country?: string
+  connected_account_id?: string
+  stripe_account_id?: string
+  entity_type_filter?: string
+  status_filter?: string
+  return_url?: string
+  refresh_url?: string
+  limit?: number
+  offset?: number
+}) {
+  return callFunction('connected-accounts', { apiKey }, data)
+}
