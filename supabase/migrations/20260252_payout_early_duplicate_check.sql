@@ -1,7 +1,7 @@
--- Atomic payout processing function
--- Eliminates TOCTOU race condition by locking the creator account row
--- and performing balance check + transaction insert in a single transaction.
--- Follows the same pattern as record_sale_atomic.
+-- Add explicit duplicate reference_id check BEFORE balance check in process_payout_atomic.
+-- Without this, a duplicate payout submitted after the balance is drained returns
+-- 'insufficient_balance' instead of 'duplicate' — semantically incorrect.
+-- The unique_violation EXCEPTION handler remains as a last-resort safety net.
 
 CREATE OR REPLACE FUNCTION process_payout_atomic(
   p_ledger_id      UUID,
@@ -55,6 +55,7 @@ BEGIN
   END IF;
 
   -- 1b. Check for duplicate reference_id (under lock, before balance check).
+  --     Returns 'duplicate' regardless of current balance state.
   SELECT id INTO v_tx_id
     FROM public.transactions
    WHERE ledger_id = p_ledger_id

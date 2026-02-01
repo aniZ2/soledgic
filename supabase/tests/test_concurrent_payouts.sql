@@ -10,10 +10,13 @@
 CREATE OR REPLACE FUNCTION test_concurrent_payouts()
 RETURNS JSONB
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
 AS $$
 DECLARE
   v_test_ledger_id UUID;
   v_test_org_id UUID;
+  v_test_owner_id UUID;
   v_creator_account_id UUID;
   v_cash_account_id UUID;
   v_result1 JSONB;
@@ -29,14 +32,20 @@ BEGIN
   -- SETUP: Create a test ledger with a known creator balance of $100.00
   -- =========================================================================
 
+  -- Create a minimal test user to satisfy owner_id FK
+  v_test_owner_id := gen_random_uuid();
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token)
+  VALUES (v_test_owner_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+          '__test_concurrent_' || v_test_owner_id::text || '@test.local', '', NOW(), NOW(), NOW(), '', '');
+
   -- Create test org
-  INSERT INTO organizations (name, plan, status, max_ledgers, current_ledger_count, max_team_members, current_member_count)
-  VALUES ('__test_concurrent_org__', 'trial', 'active', 10, 0, 5, 1)
+  INSERT INTO organizations (name, slug, owner_id, plan, status, max_ledgers, current_ledger_count, max_team_members, current_member_count)
+  VALUES ('__test_concurrent_org__', '__test_concurrent_slug_' || gen_random_uuid()::text, v_test_owner_id, 'trial', 'active', 10, 0, 5, 1)
   RETURNING id INTO v_test_org_id;
 
   -- Create test ledger
-  INSERT INTO ledgers (organization_id, name, currency, livemode, status)
-  VALUES (v_test_org_id, '__test_concurrent_ledger__', 'USD', false, 'active')
+  INSERT INTO ledgers (organization_id, business_name, api_key_hash, ledger_group_id, livemode, status)
+  VALUES (v_test_org_id, '__test_concurrent_ledger__', encode(gen_random_bytes(32), 'hex'), gen_random_uuid(), false, 'active')
   RETURNING id INTO v_test_ledger_id;
 
   -- Create accounts
@@ -199,6 +208,7 @@ BEGIN
   DELETE FROM accounts WHERE ledger_id = v_test_ledger_id;
   DELETE FROM ledgers WHERE id = v_test_ledger_id;
   DELETE FROM organizations WHERE id = v_test_org_id;
+  DELETE FROM auth.users WHERE id = v_test_owner_id;
 
   -- =========================================================================
   -- RESULT
