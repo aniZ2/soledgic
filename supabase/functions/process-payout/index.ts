@@ -134,6 +134,14 @@ const handler = createHandler(
     }
 
     if (result.status === 'duplicate') {
+      // Track: the RPC deflected a concurrent/duplicate payout attempt
+      supabase.from('race_condition_events').insert({
+        ledger_id: ledger.id,
+        event_type: 'payout_duplicate',
+        endpoint: 'process-payout',
+        details: { reference_id: referenceId, creator_id: creatorId, amount, transaction_id: result.transaction_id },
+      }).catch(() => {})
+
       return jsonResponse({
         success: false,
         error: 'Duplicate reference_id',

@@ -717,6 +717,14 @@ async function handleChargeRefunded(
       .single()
 
     if (existingRefundTx) {
+      // Track: fast-path caught a duplicate refund event
+      supabase.from('race_condition_events').insert({
+        ledger_id: ledger.id,
+        event_type: 'refund_duplicate_fast_path',
+        endpoint: 'stripe-webhook',
+        details: { reference_id: referenceId, refund_id: refundId, charge_id: charge.id },
+      }).catch(() => {})
+
       return { success: true, transaction_id: existingRefundTx.id }
     }
   }
@@ -788,10 +796,26 @@ async function handleChargeRefunded(
   }
 
   if (result.status === 'blocked') {
+    // Track: the RPC blocked an over-refund attempt
+    supabase.from('race_condition_events').insert({
+      ledger_id: ledger.id,
+      event_type: 'refund_over_limit',
+      endpoint: 'stripe-webhook',
+      details: { reference_id: referenceId, charge_id: charge.id, amount: refundAmount, already_refunded: result.already_refunded },
+    }).catch(() => {})
+
     return { success: true, skipped: true, reason: 'over_refund_guard' }
   }
 
   if (result.status === 'duplicate') {
+    // Track: the RPC caught a concurrent duplicate refund insert
+    supabase.from('race_condition_events').insert({
+      ledger_id: ledger.id,
+      event_type: 'refund_duplicate_rpc',
+      endpoint: 'stripe-webhook',
+      details: { reference_id: referenceId, charge_id: charge.id, transaction_id: result.transaction_id },
+    }).catch(() => {})
+
     return { success: true, transaction_id: result.transaction_id }
   }
 
