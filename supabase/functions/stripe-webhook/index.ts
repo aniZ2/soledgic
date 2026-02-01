@@ -1061,21 +1061,89 @@ async function handleDisputeCreated(
     raw_data: dispute,
   }).catch(() => {})
 
-  // DISPUTE BALANCE LOCKING: Insert held_funds to block payout calculations
+  // DISPUTE BALANCE LOCKING: Insert held_funds to block payout calculations.
+  // The hold is always created even if the creator's balance is insufficient —
+  // it represents an obligation, not a balance transfer. We enrich the record
+  // with the balance snapshot so operators can see undercollateralized holds.
   const creatorId = originalTx?.metadata?.creator_id
   if (creatorId) {
+    // Snapshot the creator's available balance at time of hold
+    let balanceSnapshot: { ledger_balance?: number; held_amount?: number; available?: number } = {}
+    try {
+      const { data: creatorAcct } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('ledger_id', ledger.id)
+        .eq('account_type', 'creator_balance')
+        .eq('entity_id', creatorId)
+        .single()
+
+      if (creatorAcct) {
+        const { data: entries } = await supabase
+          .from('entries')
+          .select('entry_type, amount, transactions!inner(status)')
+          .eq('account_id', creatorAcct.id)
+          .not('transactions.status', 'in', '("voided","reversed")')
+
+        let credits = 0, debits = 0
+        for (const e of entries || []) {
+          if (e.entry_type === 'credit') credits += Number(e.amount)
+          else debits += Number(e.amount)
+        }
+        const ledgerBalance = credits - debits
+
+        const { data: holds } = await supabase
+          .from('held_funds')
+          .select('held_amount, released_amount')
+          .eq('ledger_id', ledger.id)
+          .eq('creator_id', creatorId)
+          .in('status', ['held', 'partial'])
+
+        let totalHeld = 0
+        for (const hf of holds || []) {
+          totalHeld += Number(hf.held_amount) - Number(hf.released_amount)
+        }
+
+        balanceSnapshot = {
+          ledger_balance: ledgerBalance,
+          held_amount: totalHeld,
+          available: ledgerBalance - totalHeld,
+        }
+      }
+    } catch {
+      // Non-critical — the hold still gets created
+    }
+
+    const isUndercollateralized = balanceSnapshot.available !== undefined && balanceSnapshot.available < amount
+
     await supabase.from('held_funds').insert({
       ledger_id: ledger.id,
       transaction_id: transaction.id,
-      withholding_rule_id: null,          // Disputes are event-driven, not rule-based
+      withholding_rule_id: null,
       creator_id: creatorId,
       held_amount: amount,
       status: 'held',
       hold_reason: `dispute:${dispute.id}`,
-      release_eligible_at: null,          // Manual release only — resolved via dispute close
+      release_eligible_at: null,
     }).catch((err: any) => {
       console.error(`Failed to create dispute hold for ${dispute.id}:`, err.message)
     })
+
+    // Flag undercollateralized holds for operator visibility
+    if (isUndercollateralized) {
+      supabase.from('race_condition_events').insert({
+        ledger_id: ledger.id,
+        event_type: 'dispute_undercollateralized_hold',
+        endpoint: 'stripe-webhook',
+        details: {
+          dispute_id: dispute.id,
+          charge_id: dispute.charge,
+          hold_amount: amount,
+          creator_id: creatorId,
+          ...balanceSnapshot,
+        },
+      }).catch(() => {})
+    }
   }
 
   return { success: true, transaction_id: transaction.id }
