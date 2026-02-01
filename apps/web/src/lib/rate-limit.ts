@@ -100,6 +100,7 @@ export const ROUTE_LIMITS: Record<string, RateLimitConfig> = {
   // Standard API routes
   '/api/ledgers': { requests: 100, windowMs: 60000 },
   '/api/organizations': { requests: 50, windowMs: 60000 },
+  '/api/team': { requests: 30, windowMs: 60000 },
   
   // Default
   'default': { requests: 100, windowMs: 60000 }

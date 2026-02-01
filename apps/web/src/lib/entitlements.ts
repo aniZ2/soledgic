@@ -26,6 +26,16 @@ export type EntitlementCode =
   | 'payment_past_due'
   | 'subscription_canceled'
   | 'ledger_limit_reached'
+  | 'team_member_limit_reached'
+  | 'team_member_limit_reached'
+
+/** Extended org shape for team member entitlement checks. */
+export interface TeamEntitlementOrg {
+  status: OrgBillingStatus | string
+  plan: string
+  max_team_members: number       // -1 = unlimited (Scale)
+  current_member_count: number
+}
 
 // ── Checks ───────────────────────────────────────────────────────────
 
@@ -79,4 +89,54 @@ export function canCreateLiveLedger(org: EntitlementOrg): EntitlementResult {
  */
 export function isOverLedgerLimit(org: EntitlementOrg): boolean {
   return org.max_ledgers !== -1 && org.current_ledger_count > org.max_ledgers
+}
+
+/**
+ * Can this org add a new team member (via invitation)?
+ *
+ * Blocks when:
+ * - `past_due`  — payment failed, no new paid resources
+ * - `canceled`  — subscription ended
+ * - over plan limit (max_team_members !== -1 && count >= max)
+ */
+export function canAddTeamMember(org: TeamEntitlementOrg): EntitlementResult {
+  if (org.status === 'past_due') {
+    return {
+      allowed: false,
+      code: 'payment_past_due',
+      httpStatus: 402,
+      message:
+        'Your last payment didn\u2019t go through. Please update your payment method before inviting team members.',
+    }
+  }
+
+  if (org.status === 'canceled') {
+    return {
+      allowed: false,
+      code: 'subscription_canceled',
+      httpStatus: 403,
+      message:
+        'Your subscription has ended. Choose a plan on the Billing page to invite team members.',
+    }
+  }
+
+  if (org.max_team_members !== -1 && org.current_member_count >= org.max_team_members) {
+    return {
+      allowed: false,
+      code: 'team_member_limit_reached',
+      httpStatus: 403,
+      message:
+        `You\u2019ve reached your plan\u2019s limit of ${org.max_team_members} team member${org.max_team_members === 1 ? '' : 's'}. Upgrade your plan to invite more people.`,
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Is this org over its team member limit? (for UI banners — uses > not >=
+ * because the org may have been downgraded after adding members)
+ */
+export function isOverTeamMemberLimit(org: TeamEntitlementOrg): boolean {
+  return org.max_team_members !== -1 && org.current_member_count > org.max_team_members
 }
