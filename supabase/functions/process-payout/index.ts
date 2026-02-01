@@ -63,199 +63,105 @@ const handler = createHandler(
       return errorResponse('Invalid fees_paid_by: must be platform or creator', 400, req)
     }
 
-    // Check duplicate
-    const { data: existingTx } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('ledger_id', ledger.id)
-      .eq('reference_id', referenceId)
-      .single()
-
-    if (existingTx) {
-      return jsonResponse({ 
-        success: false, 
-        error: 'Duplicate reference_id', 
-        transaction_id: existingTx.id 
-      }, 409, req)
+    // Build sanitized metadata for the RPC
+    const sanitizedMetadata: Record<string, any> = {}
+    if (body.metadata?.external_id) {
+      sanitizedMetadata.external_id = body.metadata.external_id
+    }
+    if (body.metadata?.notes) {
+      sanitizedMetadata.notes = validateString(body.metadata.notes, 500)
     }
 
-    // Get creator account
-    const { data: creatorAccounts } = await supabase
-      .from('accounts')
-      .select('id, name')
-      .eq('ledger_id', ledger.id)
-      .eq('account_type', 'creator_balance')
-      .eq('entity_id', creatorId)
-      .limit(1)
+    // Atomic payout processing via RPC: locks the creator account row
+    // (FOR UPDATE), calculates available balance, checks sufficiency,
+    // and inserts transaction + entries in a single DB transaction.
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'process_payout_atomic',
+      {
+        p_ledger_id: ledger.id,
+        p_reference_id: referenceId,
+        p_creator_id: creatorId,
+        p_amount: amount,
+        p_fees: fees,
+        p_fees_paid_by: body.fees_paid_by || 'platform',
+        p_payout_method: payoutMethod,
+        p_description: description,
+        p_reference_type: body.reference_type || 'manual',
+        p_metadata: sanitizedMetadata,
+      }
+    )
 
-    const creatorAccount = creatorAccounts?.[0]
-    if (!creatorAccount) {
-      return errorResponse('Creator account not found', 404, req)
+    if (rpcError) {
+      console.error('Payout RPC error:', rpcError)
+      return errorResponse('Failed to process payout', 500, req)
     }
 
-    // Calculate balance - EXCLUDE voided/reversed transactions
-    const { data: entries } = await supabase
-      .from('entries')
-      .select('entry_type, amount, transactions!inner(status)')
-      .eq('account_id', creatorAccount.id)
-      .not('transactions.status', 'in', '("voided","reversed")')
-
-    let totalCredits = 0
-    let totalDebits = 0
-    for (const e of entries || []) {
-      if (e.entry_type === 'credit') totalCredits += Number(e.amount)
-      else totalDebits += Number(e.amount)
-    }
-    const ledgerBalance = totalCredits - totalDebits
-
-    // Get held funds
-    const { data: heldFunds } = await supabase
-      .from('held_funds')
-      .select('held_amount, released_amount')
-      .eq('ledger_id', ledger.id)
-      .eq('creator_id', creatorId)
-      .in('status', ['held', 'partial'])
-
-    let totalHeld = 0
-    for (const hf of heldFunds || []) {
-      totalHeld += Number(hf.held_amount) - Number(hf.released_amount)
+    const result = rpcResult as {
+      status: string
+      transaction_id?: string
+      error?: string
+      gross_payout?: number
+      fees?: number
+      net_to_creator?: number
+      previous_balance?: number
+      new_balance?: number
+      ledger_balance?: number
+      held_amount?: number
+      available?: number
+      requested?: number
     }
 
-    const availableBalance = ledgerBalance - totalHeld
-    const payoutAmount = amount / 100
-    const feesAmount = fees / 100
+    if (result.status === 'error') {
+      const errorMap: Record<string, { msg: string; code: number }> = {
+        creator_not_found: { msg: 'Creator account not found', code: 404 },
+        cash_account_not_found: { msg: 'Cash account not found - ledger not initialized', code: 500 },
+        amount_must_be_positive: { msg: 'Amount must be positive', code: 400 },
+      }
+      const mapped = errorMap[result.error || ''] || { msg: result.error || 'Unknown error', code: 500 }
+      return errorResponse(mapped.msg, mapped.code, req)
+    }
 
-    // Check sufficient balance
-    if (availableBalance < payoutAmount) {
+    if (result.status === 'insufficient_balance') {
       return jsonResponse({
         success: false,
-        error: `Insufficient balance. Available: $${availableBalance.toFixed(2)}, Requested: $${payoutAmount.toFixed(2)}`,
-        details: { 
-          ledger_balance: ledgerBalance, 
-          held_amount: totalHeld, 
-          available: availableBalance 
+        error: `Insufficient balance. Available: $${Number(result.available).toFixed(2)}, Requested: $${Number(result.requested).toFixed(2)}`,
+        details: {
+          ledger_balance: result.ledger_balance,
+          held_amount: result.held_amount,
+          available: result.available,
         }
       }, 400, req)
     }
 
-    // Calculate net amounts
-    let netToCreator = payoutAmount
-    let feesPaidByPlatform = 0
-    if (feesAmount > 0 && body.fees_paid_by !== 'creator') {
-      feesPaidByPlatform = feesAmount
-    } else if (feesAmount > 0) {
-      netToCreator = payoutAmount - feesAmount
+    if (result.status === 'duplicate') {
+      return jsonResponse({
+        success: false,
+        error: 'Duplicate reference_id',
+        transaction_id: result.transaction_id,
+      }, 409, req)
     }
 
-    // Get cash account
-    const { data: cashAccounts } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('ledger_id', ledger.id)
-      .eq('account_type', 'cash')
-      .limit(1)
-
-    const cashAccount = cashAccounts?.[0]
-    if (!cashAccount) {
-      return errorResponse('Cash account not found - ledger not initialized', 500, req)
-    }
-
-    // Create transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'payout',
-        reference_id: referenceId,
-        reference_type: body.reference_type || 'manual',
-        description: description || `Payout to ${creatorId}`,
-        amount: payoutAmount,
-        currency: 'USD',
-        status: 'completed',
-        metadata: { 
-          creator_id: creatorId, 
-          payout_method: payoutMethod, 
-          fees: feesAmount, 
-          net_to_creator: netToCreator,
-          // Don't blindly copy user metadata - be selective
-          external_id: body.metadata?.external_id,
-          notes: body.metadata?.notes ? validateString(body.metadata.notes, 500) : undefined,
-        }
-      })
-      .select('id')
-      .single()
-
-    if (txError) {
-      console.error('Failed to create payout transaction:', txError)
-      return errorResponse('Failed to create payout transaction', 500, req)
-    }
-
-    // Create entries
-    const entryList: any[] = [
-      { 
-        transaction_id: transaction.id, 
-        account_id: creatorAccount.id, 
-        entry_type: 'debit', 
-        amount: payoutAmount 
-      },
-      { 
-        transaction_id: transaction.id, 
-        account_id: cashAccount.id, 
-        entry_type: 'credit', 
-        amount: payoutAmount + feesPaidByPlatform 
-      },
-    ]
-
-    // Handle fees
-    if (feesPaidByPlatform > 0) {
-      const { data: feeAccounts } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('ledger_id', ledger.id)
-        .eq('account_type', 'processing_fees')
-        .limit(1)
-
-      let feeAccount = feeAccounts?.[0]
-      if (!feeAccount) {
-        const { data: newFee } = await supabase
-          .from('accounts')
-          .insert({ 
-            ledger_id: ledger.id, 
-            account_type: 'processing_fees', 
-            entity_type: 'platform', 
-            name: 'Payout Fees' 
-          })
-          .select('id')
-          .single()
-        feeAccount = newFee
-      }
-      if (feeAccount) {
-        entryList.push({ 
-          transaction_id: transaction.id, 
-          account_id: feeAccount.id, 
-          entry_type: 'debit', 
-          amount: feesPaidByPlatform 
-        })
-      }
-    }
-
-    await supabase.from('entries').insert(entryList)
-
-    const newBalance = availableBalance - payoutAmount
+    // Success — audit log and webhook
+    const transactionId = result.transaction_id!
+    const payoutAmount = result.gross_payout!
+    const feesAmount = result.fees!
+    const netToCreator = result.net_to_creator!
+    const previousBalance = result.previous_balance!
+    const newBalance = result.new_balance!
 
     // Audit log with IP
     await supabase.from('audit_log').insert({
       ledger_id: ledger.id,
       action: 'process_payout',
       entity_type: 'transaction',
-      entity_id: transaction.id,
+      entity_id: transactionId,
       actor_type: 'api',
       ip_address: getClientIp(req),
-      request_body: { 
-        creator_id: creatorId, 
-        amount: payoutAmount, 
-        previous_balance: availableBalance, 
-        new_balance: newBalance 
+      request_body: {
+        creator_id: creatorId,
+        amount: payoutAmount,
+        previous_balance: previousBalance,
+        new_balance: newBalance,
       }
     })
 
@@ -266,12 +172,12 @@ const handler = createHandler(
       p_payload: {
         event: 'payout.created',
         data: {
-          transaction_id: transaction.id,
+          transaction_id: transactionId,
           creator_id: creatorId,
           gross_payout: payoutAmount,
           fees: feesAmount,
           net_to_creator: netToCreator,
-          previous_balance: availableBalance,
+          previous_balance: previousBalance,
           new_balance: newBalance,
           created_at: new Date().toISOString(),
         }
@@ -280,14 +186,14 @@ const handler = createHandler(
 
     return jsonResponse({
       success: true,
-      transaction_id: transaction.id,
-      breakdown: { 
-        gross_payout: payoutAmount, 
-        fees: feesAmount, 
-        net_to_creator: netToCreator 
+      transaction_id: transactionId,
+      breakdown: {
+        gross_payout: payoutAmount,
+        fees: feesAmount,
+        net_to_creator: netToCreator,
       },
-      previous_balance: availableBalance,
-      new_balance: newBalance
+      previous_balance: previousBalance,
+      new_balance: newBalance,
     }, 200, req)
   }
 )
