@@ -43,6 +43,8 @@ export const POST = createApiHandler(
       'create_portal_session',
       'cancel_subscription',
       'resume_subscription',
+      'get_invoices',
+      'get_payment_methods',
     ]
     if (ownerActions.includes(action) && !isOwner) {
       return NextResponse.json(

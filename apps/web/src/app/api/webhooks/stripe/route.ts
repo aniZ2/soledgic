@@ -138,13 +138,71 @@ export async function POST(request: Request) {
 
       case 'invoice.paid': {
         const invoice = event.data.object as Stripe.Invoice
-        console.log(`Invoice paid: ${invoice.id} for customer ${invoice.customer}`)
+        const customerId = typeof invoice.customer === 'string'
+          ? invoice.customer
+          : (invoice.customer as Stripe.Customer | null)?.id
+
+        if (customerId) {
+          const { data: org } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+
+          if (org) {
+            await supabase.from('billing_events').insert({
+              organization_id: org.id,
+              stripe_event_id: event.id,
+              stripe_event_type: event.type,
+              amount: invoice.total,
+              currency: invoice.currency,
+              description: `Invoice ${invoice.number || invoice.id} paid`,
+              stripe_data: {
+                invoice_id: invoice.id,
+                number: invoice.number,
+                total: invoice.total,
+                currency: invoice.currency,
+                hosted_invoice_url: invoice.hosted_invoice_url,
+                invoice_pdf: invoice.invoice_pdf,
+              },
+            })
+          }
+        }
         break
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice
-        console.error(`Invoice payment failed: ${invoice.id} for customer ${invoice.customer}`)
+        const customerId = typeof invoice.customer === 'string'
+          ? invoice.customer
+          : (invoice.customer as Stripe.Customer | null)?.id
+
+        if (customerId) {
+          const { data: org } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .single()
+
+          if (org) {
+            await supabase.from('billing_events').insert({
+              organization_id: org.id,
+              stripe_event_id: event.id,
+              stripe_event_type: event.type,
+              amount: invoice.total,
+              currency: invoice.currency,
+              description: `Invoice ${invoice.number || invoice.id} payment failed`,
+              stripe_data: {
+                invoice_id: invoice.id,
+                number: invoice.number,
+                total: invoice.total,
+                currency: invoice.currency,
+                hosted_invoice_url: invoice.hosted_invoice_url,
+                invoice_pdf: invoice.invoice_pdf,
+              },
+            })
+          }
+        }
         break
       }
     }

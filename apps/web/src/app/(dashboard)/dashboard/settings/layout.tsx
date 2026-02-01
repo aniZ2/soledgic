@@ -8,7 +8,7 @@ import {
 
 const settingsNav = [
   { href: '/dashboard/settings', label: 'General', icon: Building },
-  { href: '/dashboard/settings/billing', label: 'Billing', icon: CreditCard },
+  { href: '/billing', label: 'Billing', icon: CreditCard },
   { href: '/dashboard/settings/api-keys', label: 'API Keys', icon: Key },
   { href: '/dashboard/settings/team', label: 'Team', icon: Users },
   { href: '/dashboard/settings/notifications', label: 'Notifications', icon: Bell },

@@ -412,8 +412,8 @@ function BillingContent() {
         </div>
       )}
 
-      {/* Payment Methods */}
-      <div className="bg-card border border-border rounded-lg p-6 mb-6">
+      {/* Payment Methods — owner only */}
+      {isOwner && <div className="bg-card border border-border rounded-lg p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
@@ -454,10 +454,10 @@ function BillingContent() {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
-      {/* Invoices */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden mb-6">
+      {/* Invoices — owner only */}
+      {isOwner && <div className="bg-card border border-border rounded-lg overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Receipt className="w-5 h-5" />
@@ -505,7 +505,7 @@ function BillingContent() {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Non-owner notice */}
       {!isOwner && (

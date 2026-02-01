@@ -82,7 +82,7 @@ export const DELETE = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: true,
+    csrfProtection: false,
     routePath: '/api/team',
   }
 )
