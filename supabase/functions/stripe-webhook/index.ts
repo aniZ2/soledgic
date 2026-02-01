@@ -687,8 +687,35 @@ async function handleChargeRefunded(
   event: StripeEvent
 ): Promise<HandlerResult> {
   const charge = event.data.object
-  const refundAmount = charge.amount_refunded / 100
   const currency = charge.currency.toUpperCase()
+
+  // Extract the individual refund that triggered this event from charge.refunds.data.
+  // Each Stripe refund has a stable ID (re_xxx) — use it for idempotency instead of
+  // the cumulative charge.amount_refunded which is incorrect for per-refund tracking.
+  const refunds: any[] = charge.refunds?.data || []
+  const latestRefund = refunds.length > 0
+    ? refunds.reduce((latest: any, r: any) => r.created > latest.created ? r : latest, refunds[0])
+    : null
+
+  const refundId = latestRefund?.id as string | null
+  const refundAmount = latestRefund
+    ? latestRefund.amount / 100
+    : charge.amount_refunded / 100
+
+  // Per-refund idempotency: if we have a refund ID, check if already processed.
+  // This catches duplicates before any DB writes.
+  if (refundId) {
+    const { data: existingRefundTx } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('ledger_id', ledger.id)
+      .eq('reference_id', `stripe_refund_${refundId}`)
+      .single()
+
+    if (existingRefundTx) {
+      return { success: true, transaction_id: existingRefundTx.id }
+    }
+  }
 
   const { data: originalTx } = await supabase
     .from('transactions')
@@ -700,7 +727,7 @@ async function handleChargeRefunded(
   if (!originalTx) {
     await supabase.from('stripe_transactions').insert({
       ledger_id: ledger.id,
-      stripe_id: `refund_${charge.id}`,
+      stripe_id: refundId ? `refund_${refundId}` : `refund_${charge.id}`,
       stripe_type: 'refund',
       amount: -refundAmount,
       currency,
@@ -712,20 +739,46 @@ async function handleChargeRefunded(
     return { success: false, error: 'Original transaction not found' }
   }
 
+  // Over-refund guard: sum all existing refund transactions for this charge.
+  // Prevents concurrent events from collectively exceeding the original amount.
+  const { data: existingRefunds } = await supabase
+    .from('transactions')
+    .select('amount')
+    .eq('ledger_id', ledger.id)
+    .eq('transaction_type', 'refund')
+    .filter('metadata->stripe_charge_id', 'eq', charge.id)
+
+  const alreadyRefunded = (existingRefunds || []).reduce(
+    (sum: number, r: any) => sum + (r.amount || 0), 0
+  )
+
+  if (alreadyRefunded + refundAmount > originalTx.amount * 1.005) {
+    return { success: true, skipped: true, reason: 'over_refund_guard' }
+  }
+
   const creatorId = originalTx.metadata?.creator_id
   const accounts = await getOrCreateAccounts(supabase, ledger.id, creatorId)
 
-  const isFullRefund = refundAmount >= originalTx.amount
+  const totalRefundedAfter = alreadyRefunded + refundAmount
+  const isFullRefund = totalRefundedAfter >= originalTx.amount
   const refundType = isFullRefund ? 'refund' : 'partial_refund'
+
+  // Use a stable reference_id based on the Stripe refund ID so the DB unique
+  // constraint on (ledger_id, reference_id) prevents concurrent duplicates.
+  const referenceId = refundId
+    ? `stripe_refund_${refundId}`
+    : `stripe_refund_${charge.id}_${event.id}`
 
   const { data: transaction, error: txError } = await supabase
     .from('transactions')
     .insert({
       ledger_id: ledger.id,
       transaction_type: 'refund',
-      reference_id: `stripe_refund_${charge.id}_${Date.now()}`,
+      reference_id: referenceId,
       reference_type: 'stripe_refund',
-      description: `Refund: ${charge.id}`,
+      description: refundId
+        ? `Refund ${refundId}: ${charge.id}`
+        : `Refund: ${charge.id}`,
       amount: refundAmount,
       currency,
       status: 'completed',
@@ -733,6 +786,7 @@ async function handleChargeRefunded(
       metadata: {
         source: 'stripe',
         stripe_charge_id: charge.id,
+        stripe_refund_id: refundId,
         original_transaction_id: originalTx.id,
         refund_type: refundType,
         creator_id: creatorId,
@@ -742,6 +796,19 @@ async function handleChargeRefunded(
     .single()
 
   if (txError) {
+    // Unique constraint violation (23505) means a concurrent handler already
+    // created this refund — treat as idempotent success.
+    if (txError.code === '23505') {
+      const { data: existing } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('ledger_id', ledger.id)
+        .eq('reference_id', referenceId)
+        .single()
+      return existing
+        ? { success: true, transaction_id: existing.id }
+        : { success: true, skipped: true, reason: 'concurrent_duplicate' }
+    }
     return { success: false, error: 'Refund transaction creation failed' }
   }
 
@@ -774,7 +841,7 @@ async function handleChargeRefunded(
 
   await supabase.from('stripe_transactions').insert({
     ledger_id: ledger.id,
-    stripe_id: `refund_${charge.id}`,
+    stripe_id: refundId ? `refund_${refundId}` : `refund_${charge.id}`,
     stripe_type: 'refund',
     amount: -refundAmount,
     currency,
