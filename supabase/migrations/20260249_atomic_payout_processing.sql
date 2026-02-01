@@ -174,8 +174,3 @@ EXCEPTION
     );
 END;
 $$;
-
-COMMENT ON FUNCTION process_payout_atomic IS
-  'Atomically processes a creator payout: locks the creator account row, '
-  'calculates available balance (entries minus held funds), checks sufficiency, '
-  'inserts the payout transaction + entries. Eliminates TOCTOU race conditions.';
