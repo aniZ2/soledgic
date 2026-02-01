@@ -702,14 +702,18 @@ async function handleChargeRefunded(
     ? latestRefund.amount / 100
     : charge.amount_refunded / 100
 
-  // Per-refund idempotency: if we have a refund ID, check if already processed.
-  // This catches duplicates before any DB writes.
+  // Per-refund idempotency fast-path: if we have a refund ID, check if already
+  // processed before doing any heavier work.
+  const referenceId = refundId
+    ? `stripe_refund_${refundId}`
+    : `stripe_refund_${charge.id}_${event.id}`
+
   if (refundId) {
     const { data: existingRefundTx } = await supabase
       .from('transactions')
       .select('id')
       .eq('ledger_id', ledger.id)
-      .eq('reference_id', `stripe_refund_${refundId}`)
+      .eq('reference_id', referenceId)
       .single()
 
     if (existingRefundTx) {
@@ -717,6 +721,7 @@ async function handleChargeRefunded(
     }
   }
 
+  // Find the original sale transaction for this charge.
   const { data: originalTx } = await supabase
     .from('transactions')
     .select('id, metadata, amount')
@@ -739,81 +744,69 @@ async function handleChargeRefunded(
     return { success: false, error: 'Original transaction not found' }
   }
 
-  // Over-refund guard: sum all existing refund transactions for this charge.
-  // Prevents concurrent events from collectively exceeding the original amount.
-  const { data: existingRefunds } = await supabase
-    .from('transactions')
-    .select('amount')
-    .eq('ledger_id', ledger.id)
-    .eq('transaction_type', 'refund')
-    .filter('metadata->stripe_charge_id', 'eq', charge.id)
+  const creatorId = originalTx.metadata?.creator_id
 
-  const alreadyRefunded = (existingRefunds || []).reduce(
-    (sum: number, r: any) => sum + (r.amount || 0), 0
+  // Atomic refund processing via RPC: locks the original transaction row
+  // (FOR UPDATE), sums existing refunds, checks the over-refund guard,
+  // and inserts the refund transaction in a single DB transaction.
+  const description = refundId
+    ? `Refund ${refundId}: ${charge.id}`
+    : `Refund: ${charge.id}`
+
+  const metadata = {
+    source: 'stripe',
+    stripe_charge_id: charge.id,
+    stripe_refund_id: refundId,
+    original_transaction_id: originalTx.id,
+    creator_id: creatorId,
+  }
+
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    'process_stripe_refund',
+    {
+      p_ledger_id: ledger.id,
+      p_original_tx_id: originalTx.id,
+      p_charge_id: charge.id,
+      p_reference_id: referenceId,
+      p_description: description,
+      p_amount: refundAmount,
+      p_currency: currency,
+      p_metadata: metadata,
+    }
   )
 
-  if (alreadyRefunded + refundAmount > originalTx.amount * 1.005) {
+  if (rpcError) {
+    return { success: false, error: `Refund RPC failed: ${rpcError.message}` }
+  }
+
+  const result = rpcResult as {
+    status: string
+    transaction_id?: string
+    already_refunded?: number
+    is_full_refund?: boolean
+    error?: string
+  }
+
+  if (result.status === 'blocked') {
     return { success: true, skipped: true, reason: 'over_refund_guard' }
   }
 
-  const creatorId = originalTx.metadata?.creator_id
-  const accounts = await getOrCreateAccounts(supabase, ledger.id, creatorId)
-
-  const totalRefundedAfter = alreadyRefunded + refundAmount
-  const isFullRefund = totalRefundedAfter >= originalTx.amount
-  const refundType = isFullRefund ? 'refund' : 'partial_refund'
-
-  // Use a stable reference_id based on the Stripe refund ID so the DB unique
-  // constraint on (ledger_id, reference_id) prevents concurrent duplicates.
-  const referenceId = refundId
-    ? `stripe_refund_${refundId}`
-    : `stripe_refund_${charge.id}_${event.id}`
-
-  const { data: transaction, error: txError } = await supabase
-    .from('transactions')
-    .insert({
-      ledger_id: ledger.id,
-      transaction_type: 'refund',
-      reference_id: referenceId,
-      reference_type: 'stripe_refund',
-      description: refundId
-        ? `Refund ${refundId}: ${charge.id}`
-        : `Refund: ${charge.id}`,
-      amount: refundAmount,
-      currency,
-      status: 'completed',
-      reverses: originalTx.id,
-      metadata: {
-        source: 'stripe',
-        stripe_charge_id: charge.id,
-        stripe_refund_id: refundId,
-        original_transaction_id: originalTx.id,
-        refund_type: refundType,
-        creator_id: creatorId,
-      }
-    })
-    .select('id')
-    .single()
-
-  if (txError) {
-    // Unique constraint violation (23505) means a concurrent handler already
-    // created this refund — treat as idempotent success.
-    if (txError.code === '23505') {
-      const { data: existing } = await supabase
-        .from('transactions')
-        .select('id')
-        .eq('ledger_id', ledger.id)
-        .eq('reference_id', referenceId)
-        .single()
-      return existing
-        ? { success: true, transaction_id: existing.id }
-        : { success: true, skipped: true, reason: 'concurrent_duplicate' }
-    }
-    return { success: false, error: 'Refund transaction creation failed' }
+  if (result.status === 'duplicate') {
+    return { success: true, transaction_id: result.transaction_id }
   }
 
+  if (result.status === 'error') {
+    return { success: false, error: result.error || 'RPC returned error' }
+  }
+
+  // Transaction created — now insert the ledger entries (these reference the
+  // transaction ID so they're safe even without the row lock).
+  const transactionId = result.transaction_id!
+  const isFullRefund = result.is_full_refund || false
+  const accounts = await getOrCreateAccounts(supabase, ledger.id, creatorId)
+
   const entries = [
-    { transaction_id: transaction.id, account_id: accounts.cash.id, entry_type: 'credit', amount: refundAmount },
+    { transaction_id: transactionId, account_id: accounts.cash.id, entry_type: 'credit', amount: refundAmount },
   ]
 
   if (creatorId && accounts.creator) {
@@ -821,24 +814,18 @@ async function handleChargeRefunded(
     const creatorRefund = Math.round(refundAmount * (splitPercent / 100) * 100) / 100
     const platformRefund = refundAmount - creatorRefund
     entries.push(
-      { transaction_id: transaction.id, account_id: accounts.creator.id, entry_type: 'debit', amount: creatorRefund },
-      { transaction_id: transaction.id, account_id: accounts.platformRevenue.id, entry_type: 'debit', amount: platformRefund },
+      { transaction_id: transactionId, account_id: accounts.creator.id, entry_type: 'debit', amount: creatorRefund },
+      { transaction_id: transactionId, account_id: accounts.platformRevenue.id, entry_type: 'debit', amount: platformRefund },
     )
   } else {
     entries.push(
-      { transaction_id: transaction.id, account_id: accounts.revenue.id, entry_type: 'debit', amount: refundAmount },
+      { transaction_id: transactionId, account_id: accounts.revenue.id, entry_type: 'debit', amount: refundAmount },
     )
   }
 
   await supabase.from('entries').insert(entries)
 
-  if (isFullRefund) {
-    await supabase
-      .from('transactions')
-      .update({ reversed_by: transaction.id })
-      .eq('id', originalTx.id)
-  }
-
+  // Record in stripe_transactions for reconciliation.
   await supabase.from('stripe_transactions').insert({
     ledger_id: ledger.id,
     stripe_id: refundId ? `refund_${refundId}` : `refund_${charge.id}`,
@@ -847,12 +834,12 @@ async function handleChargeRefunded(
     currency,
     status: 'succeeded',
     description: `Refund for ${charge.id}`,
-    transaction_id: transaction.id,
+    transaction_id: transactionId,
     match_status: 'auto_matched',
     raw_data: charge,
   }).catch(() => {})
 
-  return { success: true, transaction_id: transaction.id }
+  return { success: true, transaction_id: transactionId }
 }
 
 async function handlePayoutPaid(
