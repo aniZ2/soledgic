@@ -16,6 +16,7 @@ import {
 import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
 import { LiveModeToggle } from '@/components/livemode-toggle'
 import { LivemodeProvider } from '@/components/livemode-provider'
+import { isOverLedgerLimit } from '@/lib/entitlements'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -51,7 +52,11 @@ export default async function DashboardLayout({
         id,
         name,
         slug,
-        plan
+        plan,
+        status,
+        trial_ends_at,
+        max_ledgers,
+        current_ledger_count
       )
     `)
     .eq('user_id', user.id)
@@ -150,6 +155,33 @@ export default async function DashboardLayout({
         {!livemode && (
           <div className={`sticky ${readonly ? 'top-9' : 'top-0'} z-10 bg-amber-500 text-white text-center text-sm font-medium py-2 px-4`}>
             TEST MODE — Data shown here is for testing only and won&apos;t affect your live environment.
+          </div>
+        )}
+        {org.status === 'past_due' && (
+          <div className="sticky top-0 z-[9] bg-amber-600 text-white text-center text-sm font-medium py-2 px-4">
+            Your last payment didn&apos;t go through — we&apos;ll retry automatically.{' '}
+            <Link href="/billing" className="underline hover:no-underline">
+              Update your payment method
+            </Link>{' '}
+            to avoid any interruption.
+          </div>
+        )}
+        {org.status === 'canceled' && (
+          <div className="sticky top-0 z-[9] bg-slate-700 text-white text-center text-sm font-medium py-2 px-4">
+            Your subscription has ended. Your data is safe — {' '}
+            <Link href="/billing" className="underline hover:no-underline">
+              choose a plan
+            </Link>{' '}
+            to pick up where you left off.
+          </div>
+        )}
+        {isOverLedgerLimit(org) && (
+          <div className="sticky top-0 z-[9] bg-amber-600 text-white text-center text-sm font-medium py-2 px-4">
+            You have {org.current_ledger_count} of {org.max_ledgers} ledgers — new ledger creation is paused.{' '}
+            <Link href="/billing" className="underline hover:no-underline">
+              Upgrade your plan
+            </Link>{' '}
+            or archive a ledger to continue.
           </div>
         )}
         <div className="p-8">

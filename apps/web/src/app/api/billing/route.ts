@@ -53,7 +53,7 @@ export const POST = createApiHandler(
 
     switch (action) {
       case 'get_subscription': {
-        return handleGetSubscription(org)
+        return handleGetSubscription(org, isOwner)
       }
       case 'get_plans': {
         return handleGetPlans()
@@ -94,7 +94,9 @@ export const POST = createApiHandler(
 
 // ── Action handlers ───────────────────────────────────────────────────
 
-async function handleGetSubscription(org: Record<string, any>) {
+async function handleGetSubscription(org: Record<string, any>, isOwner: boolean) {
+  const supabase = await createClient()
+
   let subscription = null
 
   if (org.stripe_subscription_id) {
@@ -114,6 +116,54 @@ async function handleGetSubscription(org: Record<string, any>) {
     }
   }
 
+  // Query real usage stats
+  const { data: ledgers } = await supabase
+    .from('ledgers')
+    .select('id')
+    .eq('organization_id', org.id)
+    .eq('livemode', true)
+    .eq('status', 'active')
+
+  const ledgerIds = (ledgers || []).map((l: any) => l.id)
+
+  let creators = 0
+  let transactions = 0
+  let apiCalls = 0
+
+  if (ledgerIds.length > 0) {
+    // Count creator balance accounts across live ledgers
+    const { count: creatorCount } = await supabase
+      .from('accounts')
+      .select('id', { count: 'exact', head: true })
+      .in('ledger_id', ledgerIds)
+      .eq('account_type', 'creator_balance')
+
+    creators = creatorCount || 0
+
+    // Count transactions across live ledgers
+    const { count: txCount } = await supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .in('ledger_id', ledgerIds)
+
+    transactions = txCount || 0
+
+    // Count audit_log entries within the billing period
+    let auditQuery = supabase
+      .from('audit_log')
+      .select('id', { count: 'exact', head: true })
+      .in('ledger_id', ledgerIds)
+
+    if (subscription) {
+      auditQuery = auditQuery
+        .gte('created_at', subscription.current_period_start)
+        .lte('created_at', subscription.current_period_end)
+    }
+
+    const { count: auditCount } = await auditQuery
+    apiCalls = auditCount || 0
+  }
+
   return NextResponse.json({
     success: true,
     data: {
@@ -124,15 +174,18 @@ async function handleGetSubscription(org: Record<string, any>) {
         plan: org.plan,
         trial_ends_at: org.trial_ends_at,
         status: org.status,
+        max_ledgers: org.max_ledgers,
+        current_ledger_count: ledgerIds.length,
       },
       usage: {
-        ledgers: org.current_ledger_count || 0,
-        creators: 0,
-        transactions: 0,
-        api_calls: 0,
+        ledgers: ledgerIds.length,
+        creators,
+        transactions,
+        api_calls: apiCalls,
         period_start: subscription?.current_period_start || null,
         period_end: subscription?.current_period_end || null,
       },
+      is_owner: isOwner,
     },
   })
 }
@@ -243,8 +296,8 @@ async function handleCreateCheckout(
     customer: customerId,
     mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${appUrl}/dashboard/settings/billing?success=true`,
-    cancel_url: `${appUrl}/dashboard/settings/billing?canceled=true`,
+    success_url: `${appUrl}/billing?success=true`,
+    cancel_url: `${appUrl}/billing?canceled=true`,
     consent_collection: {
       terms_of_service: 'required',
     },
@@ -272,7 +325,7 @@ async function handleCreatePortal(org: Record<string, any>) {
 
   const session = await getStripe().billingPortal.sessions.create({
     customer: org.stripe_customer_id,
-    return_url: `${appUrl}/dashboard/settings/billing`,
+    return_url: `${appUrl}/billing`,
   })
 
   return NextResponse.json({

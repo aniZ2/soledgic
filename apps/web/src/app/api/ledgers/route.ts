@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { getLivemode } from '@/lib/livemode-server'
 import { ACTIVE_LEDGER_GROUP_COOKIE } from '@/lib/livemode'
+import { canCreateLiveLedger } from '@/lib/entitlements'
 
 // POST /api/ledgers - Create a new ledger (paired test + live)
 export const POST = createApiHandler(
@@ -49,7 +50,7 @@ export const POST = createApiHandler(
     // Check plan limits
     const { data: org } = await supabase
       .from('organizations')
-      .select('max_ledgers, current_ledger_count, plan')
+      .select('max_ledgers, current_ledger_count, plan, status')
       .eq('id', organization_id)
       .single()
 
@@ -60,9 +61,13 @@ export const POST = createApiHandler(
       )
     }
 
-    // Scale plan has unlimited (-1)
-    if (org.max_ledgers !== -1 && org.current_ledger_count >= org.max_ledgers) {
-      // Allow overage, but flag it
+    // Enforce billing status + plan limits for live ledger creation
+    const entitlement = canCreateLiveLedger(org)
+    if (!entitlement.allowed) {
+      return NextResponse.json(
+        { error: entitlement.message, code: entitlement.code },
+        { status: entitlement.httpStatus }
+      )
     }
 
     // Cap test ledgers per org to prevent spam (test ledgers don't count toward billing)
