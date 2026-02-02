@@ -30,11 +30,11 @@
   "author": "Soledgic",
   "license": "UNLICENSED",
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.0.16",
+    "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.2.3",
     "vitest": "^4.0.16"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.93.3"
   }
 }
