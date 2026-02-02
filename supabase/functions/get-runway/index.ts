@@ -64,8 +64,8 @@ const handler = createHandler(
       const month = tx.created_at.substring(0, 7)
       revenueByMonth[month] = (revenueByMonth[month] || 0) + Number(tx.amount)
     })
-    const monthsWithRevenue = Object.keys(revenueByMonth).length || 1
-    const avgRevenue = Object.values(revenueByMonth).reduce((a, b) => a + b, 0) / monthsWithRevenue
+    const totalRevenue = Object.values(revenueByMonth).reduce((a, b) => a + b, 0)
+    const avgRevenue = totalRevenue / 3  // Always divide by the full 3-month window
 
     const { data: expenseData } = await supabase
       .from('transactions')
@@ -80,8 +80,8 @@ const handler = createHandler(
       const month = tx.created_at.substring(0, 7)
       expenseByMonth[month] = (expenseByMonth[month] || 0) + Number(tx.amount)
     })
-    const monthsWithExpenses = Object.keys(expenseByMonth).length || 1
-    const avgExpenses = Object.values(expenseByMonth).reduce((a, b) => a + b, 0) / monthsWithExpenses
+    const totalExpenses = Object.values(expenseByMonth).reduce((a, b) => a + b, 0)
+    const avgExpenses = totalExpenses / 3  // Always divide by the full 3-month window
 
     const netBurn = avgExpenses - avgRevenue
 
