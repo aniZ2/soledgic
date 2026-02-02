@@ -6,6 +6,7 @@ import {
   UserPlus, X, ChevronDown, Check, AlertTriangle,
   Mail, Clock, Trash2,
 } from 'lucide-react'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface Member {
   id: string
@@ -103,9 +104,8 @@ export default function TeamSettingsPage() {
     setSuccessMessage(null)
 
     try {
-      const res = await fetch('/api/team', {
+      const res = await fetchWithCsrf('/api/team', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       })
       const json = await res.json()
@@ -136,9 +136,8 @@ export default function TeamSettingsPage() {
     setSuccessMessage(null)
 
     try {
-      const res = await fetch(`/api/team/${memberId}`, {
+      const res = await fetchWithCsrf(`/api/team/${memberId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
       })
       const json = await res.json()
@@ -165,7 +164,7 @@ export default function TeamSettingsPage() {
     setSuccessMessage(null)
 
     try {
-      const res = await fetch(`/api/team/${memberId}`, {
+      const res = await fetchWithCsrf(`/api/team/${memberId}`, {
         method: 'DELETE',
       })
       const json = await res.json()
@@ -191,7 +190,7 @@ export default function TeamSettingsPage() {
     setSuccessMessage(null)
 
     try {
-      const res = await fetch(`/api/team/invitations/${inviteId}`, {
+      const res = await fetchWithCsrf(`/api/team/invitations/${inviteId}`, {
         method: 'DELETE',
       })
       const json = await res.json()

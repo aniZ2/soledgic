@@ -39,17 +39,29 @@ BEGIN
           '__test_concurrent_' || v_test_owner_id::text || '@test.local', '', NOW(), NOW(), NOW(), '', '');
 
   -- Create test org (disable triggers to avoid missing trigger functions on remote)
+  -- Wrapped in BEGIN...EXCEPTION so triggers are always re-enabled even if the
+  -- insert errors mid-way.
   ALTER TABLE public.organizations DISABLE TRIGGER USER;
-  INSERT INTO public.organizations (name, slug, owner_id, plan, status, max_ledgers, current_ledger_count, max_team_members, current_member_count)
-  VALUES ('__test_concurrent_org__', 'test-concurrent-' || replace(v_test_owner_id::text, '-', ''), v_test_owner_id, 'trial', 'active', 10, 0, 5, 1)
-  RETURNING id INTO v_test_org_id;
+  BEGIN
+    INSERT INTO public.organizations (name, slug, owner_id, plan, status, max_ledgers, current_ledger_count, max_team_members, current_member_count)
+    VALUES ('__test_concurrent_org__', 'test-concurrent-' || replace(v_test_owner_id::text, '-', ''), v_test_owner_id, 'trial', 'active', 10, 0, 5, 1)
+    RETURNING id INTO v_test_org_id;
+  EXCEPTION WHEN OTHERS THEN
+    ALTER TABLE public.organizations ENABLE TRIGGER USER;
+    RAISE;
+  END;
   ALTER TABLE public.organizations ENABLE TRIGGER USER;
 
   -- Create test ledger (disable triggers to avoid missing trigger functions)
   ALTER TABLE public.ledgers DISABLE TRIGGER USER;
-  INSERT INTO public.ledgers (organization_id, business_name, api_key_hash, status)
-  VALUES (v_test_org_id, '__test_concurrent_ledger__', encode(extensions.gen_random_bytes(32), 'hex'), 'active')
-  RETURNING id INTO v_test_ledger_id;
+  BEGIN
+    INSERT INTO public.ledgers (organization_id, business_name, api_key_hash, status)
+    VALUES (v_test_org_id, '__test_concurrent_ledger__', encode(extensions.gen_random_bytes(32), 'hex'), 'active')
+    RETURNING id INTO v_test_ledger_id;
+  EXCEPTION WHEN OTHERS THEN
+    ALTER TABLE public.ledgers ENABLE TRIGGER USER;
+    RAISE;
+  END;
   ALTER TABLE public.ledgers ENABLE TRIGGER USER;
 
   -- Create accounts

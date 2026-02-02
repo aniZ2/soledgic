@@ -101,7 +101,7 @@ export const GET = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: false,
+    csrfProtection: true,
     routePath: '/api/team',
   }
 )
@@ -303,7 +303,7 @@ export const POST = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: false,
+    csrfProtection: true,
     routePath: '/api/team',
   }
 )

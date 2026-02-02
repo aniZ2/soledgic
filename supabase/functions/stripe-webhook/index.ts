@@ -133,13 +133,16 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Invalid signature' }, 401, req)
     }
 
-    // SECURITY: Replay protection - check timestamp age
-    const eventAge = Math.floor(Date.now() / 1000) - event.created
-    if (eventAge > MAX_TIMESTAMP_AGE) {
+    // SECURITY: Replay protection - check signature timestamp age
+    // Uses the t= timestamp from the stripe-signature header (when Stripe
+    // signed and sent the payload), NOT event.created (when the event object
+    // was created, which can be minutes earlier due to retries/queueing).
+    const signatureAge = Math.floor(Date.now() / 1000) - (signatureResult.timestamp ?? 0)
+    if (signatureAge > MAX_TIMESTAMP_AGE) {
       await logSecurityEvent(supabase, ledger.id, 'webhook_replay_attempt', {
         ip: clientIp,
         event_id: event.id,
-        event_age_seconds: eventAge,
+        signature_age_seconds: signatureAge,
         risk_score: 70,
       })
       return jsonResponse({ error: 'Event too old' }, 400, req)
@@ -236,12 +239,12 @@ async function verifyStripeSignature(
   payload: string,
   signature: string,
   secret: string
-): Promise<{ valid: boolean; reason?: string }> {
+): Promise<{ valid: boolean; reason?: string; timestamp?: number }> {
   try {
     const parts = signature.split(',')
     const timestampPart = parts.find(p => p.startsWith('t='))
     const v1Part = parts.find(p => p.startsWith('v1='))
-    
+
     if (!timestampPart || !v1Part) {
       return { valid: false, reason: 'missing_parts' }
     }
@@ -254,9 +257,11 @@ async function verifyStripeSignature(
       return { valid: false, reason: 'invalid_timestamp' }
     }
 
+    const parsedTimestamp = parseInt(timestamp, 10)
+
     const signedPayload = `${timestamp}.${payload}`
     const encoder = new TextEncoder()
-    
+
     const key = await crypto.subtle.importKey(
       'raw',
       encoder.encode(secret),
@@ -264,7 +269,7 @@ async function verifyStripeSignature(
       false,
       ['sign']
     )
-    
+
     const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(signedPayload))
     const computed = Array.from(new Uint8Array(sig))
       .map(b => b.toString(16).padStart(2, '0'))
@@ -272,7 +277,7 @@ async function verifyStripeSignature(
 
     // SECURITY: Constant-time comparison to prevent timing attacks
     if (computed.length !== expectedSig.length) {
-      return { valid: false, reason: 'length_mismatch' }
+      return { valid: false, reason: 'length_mismatch', timestamp: parsedTimestamp }
     }
 
     let result = 0
@@ -280,7 +285,11 @@ async function verifyStripeSignature(
       result |= computed.charCodeAt(i) ^ expectedSig.charCodeAt(i)
     }
 
-    return { valid: result === 0, reason: result === 0 ? undefined : 'signature_mismatch' }
+    return {
+      valid: result === 0,
+      reason: result === 0 ? undefined : 'signature_mismatch',
+      timestamp: parsedTimestamp,
+    }
   } catch (err) {
     console.error('Signature verification error:', err)
     return { valid: false, reason: 'verification_error' }

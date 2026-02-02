@@ -1,8 +1,23 @@
 import { type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
+const CSRF_COOKIE = '__csrf_token'
+
 export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+  const response = await updateSession(request)
+
+  // Set CSRF cookie if not already present (double-submit cookie pattern)
+  if (!request.cookies.get(CSRF_COOKIE)) {
+    response.cookies.set(CSRF_COOKIE, crypto.randomUUID(), {
+      httpOnly: false, // must be JS-readable for double-submit
+      sameSite: 'strict',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 86400, // 24 hours
+    })
+  }
+
+  return response
 }
 
 export const config = {

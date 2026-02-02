@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { PlanSelectButton } from '@/components/plan-select-button'
 import { isOverLedgerLimit } from '@/lib/entitlements'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface Subscription {
   id: string
@@ -82,9 +83,8 @@ function BillingContent() {
   }, [searchParams])
 
   const billingFetch = async (action: string) => {
-    const res = await fetch('/api/billing', {
+    const res = await fetchWithCsrf('/api/billing', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action }),
     })
     return res.json()
@@ -119,9 +119,8 @@ function BillingContent() {
     setActionLoading(action)
 
     try {
-      const res = await fetch('/api/billing', {
+      const res = await fetchWithCsrf('/api/billing', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...data }),
       })
       const result = await res.json()

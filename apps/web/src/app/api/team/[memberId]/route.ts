@@ -135,7 +135,7 @@ export const PATCH = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: false,
+    csrfProtection: true,
     routePath: '/api/team',
   }
 )
@@ -237,7 +237,7 @@ export const DELETE = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: false,
+    csrfProtection: true,
     routePath: '/api/team',
   }
 )

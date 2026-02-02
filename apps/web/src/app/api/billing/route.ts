@@ -89,7 +89,7 @@ export const POST = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: false,
+    csrfProtection: true,
     routePath: '/api/billing',
   }
 )

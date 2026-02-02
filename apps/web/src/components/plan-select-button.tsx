@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface PlanSelectButtonProps {
   planId: string
@@ -34,9 +35,8 @@ export function PlanSelectButton({
 
     setLoading(true)
     try {
-      const res = await fetch('/api/billing', {
+      const res = await fetchWithCsrf('/api/billing', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'create_checkout_session',
           price_id: priceId,
