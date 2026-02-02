@@ -24,7 +24,7 @@ COMMENT ON TABLE audit_log_archive IS 'Archived audit_log records for long-term 
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS dispute_lifecycle AS
 SELECT
-  t_open.stripe_dispute_id,
+  t_open.metadata->>'stripe_dispute_id' AS stripe_dispute_id,
   t_open.ledger_id,
   t_open.created_at AS opened_at,
   t_resolved.created_at AS resolved_at,
@@ -70,19 +70,19 @@ SELECT
         OR (al.action LIKE '%dispute%'
             AND al.entity_id IN (
               SELECT id FROM transactions
-              WHERE stripe_dispute_id = t_open.stripe_dispute_id
+              WHERE metadata->>'stripe_dispute_id' = t_open.metadata->>'stripe_dispute_id'
             ))
     ),
     '[]'::jsonb
   ) AS audit_events
 FROM transactions t_open
 LEFT JOIN transactions t_resolved
-  ON t_resolved.stripe_dispute_id = t_open.stripe_dispute_id
+  ON t_resolved.metadata->>'stripe_dispute_id' = t_open.metadata->>'stripe_dispute_id'
   AND t_resolved.id != t_open.id
   AND t_resolved.transaction_type IN ('reversal', 'adjustment')
-WHERE t_open.stripe_dispute_id IS NOT NULL
-  AND t_open.transaction_type = 'sale'
-GROUP BY t_open.id, t_open.stripe_dispute_id, t_open.ledger_id,
+WHERE t_open.metadata->>'stripe_dispute_id' IS NOT NULL
+  AND t_open.reference_type = 'stripe_dispute'
+GROUP BY t_open.id, t_open.metadata->>'stripe_dispute_id', t_open.ledger_id,
          t_open.created_at, t_open.amount, t_open.currency,
          t_resolved.id, t_resolved.created_at, t_resolved.status,
          t_resolved.transaction_type

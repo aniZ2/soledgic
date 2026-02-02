@@ -78,7 +78,12 @@ CREATE TRIGGER trg_audit_log_chain_hash
 -- ============================================================================
 -- IMMUTABILITY TRIGGER (BEFORE UPDATE OR DELETE)
 -- ============================================================================
--- Blocks all modifications to audit_log except by postgres / supabase_admin.
+-- Replaces the old unconditional audit_log_no_update / audit_log_no_delete
+-- triggers from 20260130 with a version that allows superuser bypass for
+-- emergency maintenance and backfill operations.
+
+DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log;
+DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log;
 
 CREATE OR REPLACE FUNCTION trg_audit_log_immutable_fn()
 RETURNS TRIGGER
@@ -256,9 +261,10 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Temporarily disable the chain-hash trigger to avoid conflicts
-  ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_chain_hash;
-  ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable;
+  -- Temporarily disable USER triggers on audit_log for backfill
+  -- (covers both new triggers and any remaining legacy triggers;
+  -- USER avoids system/FK constraint triggers that require true superuser)
+  ALTER TABLE audit_log DISABLE TRIGGER USER;
 
   FOR v_rec IN
     SELECT id, action, entity_id, created_at, ledger_id, actor_id, ip_address
@@ -294,9 +300,8 @@ BEGIN
     RAISE NOTICE 'Backfilled % audit_log records with chain hashes', v_seq;
   END IF;
 
-  -- Re-enable triggers
-  ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_chain_hash;
-  ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable;
+  -- Re-enable USER triggers
+  ALTER TABLE audit_log ENABLE TRIGGER USER;
 END;
 $$;
 
