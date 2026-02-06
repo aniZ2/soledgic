@@ -789,7 +789,7 @@ soledgic/
 │   │   └── ...                 # 55+ more functions
 │   └── migrations/             # 140+ database migrations
 │
-├── web/                        # Next.js 14 frontend (marketing + dashboard)
+├── apps/web/                   # Next.js 14 frontend (marketing + dashboard)
 │   ├── src/app/
 │   │   ├── (auth)/             # Login, signup
 │   │   ├── (dashboard)/        # Ledgers, contractors, billing, settings

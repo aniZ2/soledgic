@@ -11,7 +11,8 @@ import {
   CreditCard,
   Users,
   Wallet,
-  Scale
+  Scale,
+  Rocket
 } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
 import { LiveModeToggle } from '@/components/livemode-toggle'
@@ -20,6 +21,7 @@ import { isOverLedgerLimit } from '@/lib/entitlements'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Getting Started', href: '/getting-started', icon: Rocket },
   { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
   { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
   { name: 'Creators', href: '/dashboard/creators', icon: Users },

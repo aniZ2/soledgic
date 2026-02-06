@@ -91,8 +91,8 @@ export default function OnboardingPage() {
 
       if (ledgerError) throw ledgerError
 
-      // Redirect to dashboard
-      router.push('/dashboard')
+      // Redirect to getting-started for new users
+      router.push('/getting-started')
       router.refresh()
 
     } catch (err: any) {
