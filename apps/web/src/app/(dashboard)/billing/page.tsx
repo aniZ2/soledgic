@@ -80,6 +80,24 @@ function BillingContent() {
       setSuccessMessage('Your subscription has been updated!')
       window.history.replaceState({}, '', '/billing')
     }
+
+    // Handle redirect from onboarding with action=subscribe
+    const action = searchParams.get('action')
+    const planId = searchParams.get('plan')
+    if (action === 'subscribe' && planId) {
+      // Auto-trigger checkout after data loads
+      const triggerCheckout = async () => {
+        const plansRes = await billingFetch('get_plans')
+        if (plansRes.success) {
+          const plan = plansRes.data.find((p: Plan) => p.id === planId)
+          if (plan?.stripe_price_id_monthly) {
+            handleAction('create_checkout_session', { price_id: plan.stripe_price_id_monthly })
+          }
+        }
+        window.history.replaceState({}, '', '/billing')
+      }
+      triggerCheckout()
+    }
   }, [searchParams])
 
   const billingFetch = async (action: string) => {

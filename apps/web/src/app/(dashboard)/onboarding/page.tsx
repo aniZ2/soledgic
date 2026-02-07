@@ -3,13 +3,37 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Check } from 'lucide-react'
 
 type LedgerMode = 'standard' | 'marketplace'
 
 const plans = [
-  { id: 'pro', name: 'Pro', price: 49, ledgers: 3, transactions: 5000 },
-  { id: 'business', name: 'Business', price: 249, ledgers: 10, transactions: 50000 },
-  { id: 'scale', name: 'Scale', price: null, ledgers: -1, transactions: -1 },
+  {
+    id: 'pro',
+    name: 'Pro',
+    price: 49,
+    ledgers: 3,
+    team_members: 1,
+    features: ['3 ledgers', 'API access', 'Receipts & reconciliation', 'Email support'],
+  },
+  {
+    id: 'business',
+    name: 'Business',
+    price: 249,
+    ledgers: 10,
+    team_members: 10,
+    features: ['10 ledgers', 'Team members (up to 10)', 'Priority support', 'Everything in Pro'],
+    popular: true,
+  },
+  {
+    id: 'scale',
+    name: 'Scale',
+    price: null,
+    ledgers: -1,
+    team_members: -1,
+    features: ['Unlimited ledgers', 'Unlimited team members', 'Dedicated support', 'SLA guarantee'],
+    contact_sales: true,
+  },
 ]
 
 export default function OnboardingPage() {
@@ -24,7 +48,9 @@ export default function OnboardingPage() {
   const [ledgerMode, setLedgerMode] = useState<LedgerMode>('marketplace')
   const [selectedPlan, setSelectedPlan] = useState('pro')
 
-  const handleCreateOrganization = async () => {
+  const selectedPlanData = plans.find(p => p.id === selectedPlan)
+
+  const handleCreateOrganization = async (skipTrial = false) => {
     setError(null)
     setLoading(true)
 
@@ -37,17 +63,34 @@ export default function OnboardingPage() {
       return
     }
 
+    // Handle Scale plan - contact sales
+    if (selectedPlan === 'scale') {
+      window.location.href = 'mailto:sales@soledgic.com?subject=Scale%20Plan%20Inquiry&body=Organization:%20' + encodeURIComponent(orgName)
+      setLoading(false)
+      return
+    }
+
     try {
-      // Create organization
+      // Create organization with proper trial settings
       const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      
+      const planData = plans.find(p => p.id === selectedPlan) || plans[0]
+
+      // 14-day trial
+      const trialEndsAt = new Date()
+      trialEndsAt.setDate(trialEndsAt.getDate() + 14)
+
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .insert({
           name: orgName,
           slug: slug,
           plan: selectedPlan,
-          limits: plans.find(p => p.id === selectedPlan) || plans[0],
+          status: 'trialing',
+          trial_ends_at: trialEndsAt.toISOString(),
+          max_ledgers: planData.ledgers,
+          max_team_members: planData.team_members,
+          current_ledger_count: 0,
+          current_member_count: 1,
         })
         .select()
         .single()
@@ -91,8 +134,19 @@ export default function OnboardingPage() {
 
       if (ledgerError) throw ledgerError
 
-      // Redirect to getting-started for new users
-      router.push('/getting-started')
+      // Update ledger count
+      await supabase
+        .from('organizations')
+        .update({ current_ledger_count: 1 })
+        .eq('id', org.id)
+
+      // If user wants to skip trial and pay now, redirect to billing
+      if (skipTrial) {
+        router.push('/billing?action=subscribe&plan=' + selectedPlan)
+      } else {
+        // Redirect to getting-started for trial users
+        router.push('/getting-started')
+      }
       router.refresh()
 
     } catch (err: any) {
@@ -250,7 +304,7 @@ export default function OnboardingPage() {
                 Choose your plan
               </h1>
               <p className="text-muted-foreground mb-8">
-                Start with a 14-day free trial. No credit card required.
+                Start with a 14-day free trial. Cancel anytime.
               </p>
 
               {error && (
@@ -265,23 +319,42 @@ export default function OnboardingPage() {
                     key={plan.id}
                     type="button"
                     onClick={() => setSelectedPlan(plan.id)}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
+                    className={`w-full p-4 rounded-lg border-2 text-left transition-colors relative ${
                       selectedPlan === plan.id
                         ? 'border-primary bg-primary/5'
                         : 'border-border hover:border-primary/50'
                     }`}
                   >
+                    {plan.popular && (
+                      <span className="absolute -top-2 right-4 bg-primary text-primary-foreground text-xs font-medium px-2 py-0.5 rounded-full">
+                        Popular
+                      </span>
+                    )}
                     <div className="flex justify-between items-start">
-                      <div>
+                      <div className="flex-1">
                         <div className="font-medium text-foreground">{plan.name}</div>
                         <div className="text-sm text-muted-foreground mt-1">
                           {plan.ledgers === -1 ? 'Unlimited' : plan.ledgers} ledger{plan.ledgers !== 1 ? 's' : ''} •{' '}
-                          {plan.transactions === -1 ? 'Unlimited' : plan.transactions.toLocaleString()} transactions/mo
+                          {plan.team_members === -1 ? 'Unlimited' : plan.team_members} team member{plan.team_members !== 1 ? 's' : ''}
                         </div>
+                        <ul className="mt-2 space-y-1">
+                          {plan.features.slice(0, 2).map((feature) => (
+                            <li key={feature} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <Check className="w-3 h-3 text-primary" />
+                              {feature}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-foreground">${plan.price}</div>
-                        <div className="text-xs text-muted-foreground">/month</div>
+                      <div className="text-right ml-4">
+                        {plan.price ? (
+                          <>
+                            <div className="font-bold text-foreground text-lg">${plan.price}</div>
+                            <div className="text-xs text-muted-foreground">/month</div>
+                          </>
+                        ) : (
+                          <div className="font-medium text-foreground">Custom</div>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -291,18 +364,33 @@ export default function OnboardingPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep(2)}
-                  className="flex-1 border border-border rounded-md py-2.5 px-4 font-medium hover:bg-accent transition-colors"
+                  disabled={loading}
+                  className="flex-1 border border-border rounded-md py-2.5 px-4 font-medium hover:bg-accent transition-colors disabled:opacity-50"
                 >
                   Back
                 </button>
                 <button
-                  onClick={handleCreateOrganization}
+                  onClick={() => handleCreateOrganization(false)}
                   disabled={loading}
                   className="flex-1 bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Creating...' : 'Start free trial'}
+                  {loading ? 'Creating...' : selectedPlanData?.contact_sales ? 'Contact Sales' : 'Start free trial'}
                 </button>
               </div>
+
+              {selectedPlanData && !selectedPlanData.contact_sales && (
+                <p className="text-center text-xs text-muted-foreground mt-4">
+                  No credit card required for trial.{' '}
+                  <button
+                    type="button"
+                    onClick={() => handleCreateOrganization(true)}
+                    disabled={loading}
+                    className="text-primary hover:underline"
+                  >
+                    Skip trial and subscribe now
+                  </button>
+                </p>
+              )}
             </>
           )}
         </div>
