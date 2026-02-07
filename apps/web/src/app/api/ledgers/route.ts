@@ -4,6 +4,7 @@ import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { getLivemode } from '@/lib/livemode-server'
 import { ACTIVE_LEDGER_GROUP_COOKIE } from '@/lib/livemode'
 import { canCreateLiveLedger } from '@/lib/entitlements'
+import { sendSecurityAlertEmail } from '@/lib/email'
 
 // POST /api/ledgers - Create a new ledger (paired test + live)
 export const POST = createApiHandler(
@@ -118,6 +119,19 @@ export const POST = createApiHandler(
         { error: 'Failed to create ledger. Please try again.' },
         { status: 500 }
       )
+    }
+
+    // Send security alert for new API keys (non-blocking)
+    if (user?.email) {
+      sendSecurityAlertEmail({
+        to: user.email,
+        alertType: 'api_key_created',
+        details: `New API keys were created for ledger "${platform_name}". Both test and live keys are now active.`,
+        timestamp: new Date().toLocaleString('en-US', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }),
+      }).catch(console.error)
     }
 
     // Return the ledger matching the current mode and set its group as active

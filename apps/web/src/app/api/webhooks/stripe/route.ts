@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { getStripe } from '@/lib/stripe'
 import { planFromPriceId } from '@/lib/stripe-helpers'
+import { sendPaymentFailedEmail } from '@/lib/email'
 import type Stripe from 'stripe'
 
 // Use service role key to bypass RLS — no user session in webhooks
@@ -180,7 +181,7 @@ export async function POST(request: Request) {
         if (customerId) {
           const { data: org } = await supabase
             .from('organizations')
-            .select('id')
+            .select('id, name')
             .eq('stripe_customer_id', customerId)
             .single()
 
@@ -201,6 +202,40 @@ export async function POST(request: Request) {
                 invoice_pdf: invoice.invoice_pdf,
               },
             })
+
+            // Get owner's email to notify them
+            const { data: owner } = await supabase
+              .from('organization_members')
+              .select('user_id')
+              .eq('organization_id', org.id)
+              .eq('role', 'owner')
+              .single()
+
+            if (owner) {
+              const { data: userData } = await supabase.auth.admin.getUserById(owner.user_id)
+              if (userData?.user?.email) {
+                const amount = new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: invoice.currency?.toUpperCase() || 'USD',
+                }).format((invoice.total || 0) / 100)
+
+                // Calculate next retry date (Stripe retries after 3 days typically)
+                const nextRetry = invoice.next_payment_attempt
+                  ? new Date(invoice.next_payment_attempt * 1000).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                  : undefined
+
+                sendPaymentFailedEmail({
+                  to: userData.user.email,
+                  orgName: org.name,
+                  amount,
+                  nextRetry,
+                }).catch(console.error)
+              }
+            }
           }
         }
         break

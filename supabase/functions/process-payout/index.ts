@@ -192,6 +192,65 @@ const handler = createHandler(
       }
     }).catch(() => {})
 
+    // Send payout notification email to creator (non-blocking)
+    // Fetch creator's email from creator_accounts
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
+    if (RESEND_API_KEY) {
+      supabase
+        .from('creator_accounts')
+        .select('email, display_name')
+        .eq('ledger_id', ledger.id)
+        .eq('creator_id', creatorId)
+        .single()
+        .then(async ({ data: creator }) => {
+          if (creator?.email) {
+            const formattedAmount = new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+            }).format(netToCreator / 100)
+
+            const formattedFees = feesAmount > 0
+              ? new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: 'USD',
+                }).format(feesAmount / 100)
+              : null
+
+            const emailHtml = `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #10b981;">Payout Processed</h2>
+                <p>Hi ${creator.display_name || 'there'},</p>
+                <p>Great news! A payout has been processed for your account.</p>
+                <div style="background: #f9fafb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                  <p style="margin: 0 0 10px 0;"><strong>Amount:</strong> ${formattedAmount}</p>
+                  ${formattedFees ? `<p style="margin: 0 0 10px 0;"><strong>Fees:</strong> ${formattedFees}</p>` : ''}
+                  <p style="margin: 0;"><strong>Transaction ID:</strong> ${transactionId}</p>
+                </div>
+                <p>The funds should arrive in your account according to your payout method's processing time.</p>
+                <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+                  — The ${ledger.platform_name} Team via Soledgic
+                </p>
+              </div>
+            `
+
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from: 'Soledgic <noreply@soledgic.com>',
+                to: [creator.email],
+                subject: `Payout of ${formattedAmount} processed`,
+                html: emailHtml,
+              }),
+            }).catch(console.error)
+          }
+        })
+        .catch(() => {})
+    }
+
     return jsonResponse({
       success: true,
       transaction_id: transactionId,

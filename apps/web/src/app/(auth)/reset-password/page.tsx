@@ -78,6 +78,9 @@ export default function ResetPasswordPage() {
       return
     }
 
+    // Send security alert email (non-blocking)
+    fetch('/api/auth/password-changed', { method: 'POST' }).catch(() => {})
+
     setSuccess(true)
   }
 
