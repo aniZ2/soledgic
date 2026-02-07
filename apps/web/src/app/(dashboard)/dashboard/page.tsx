@@ -196,10 +196,17 @@ export default async function DashboardPage() {
                 View all
               </Link>
             </div>
-            
+
             {recentTransactions.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                No transactions yet. Use the API to record your first sale.
+              <div className="p-8 text-center">
+                <DollarSign className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
+                <p className="text-muted-foreground mb-4">No transactions yet</p>
+                <Link
+                  href="/dashboard/transactions"
+                  className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 text-sm"
+                >
+                  Record Your First Transaction
+                </Link>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -244,25 +251,61 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* API Key Section */}
+          {/* Quick Actions */}
           <div className="mt-8 bg-card border border-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Quick Start</h2>
-            <p className="text-muted-foreground mb-4">
-              Use the API to record sales, process payouts, and generate reports.
-            </p>
-            <div className="bg-muted rounded-lg p-4">
-              <code className="text-sm text-foreground">
-                curl -X POST https://soledgic.supabase.co/functions/v1/record-sale \<br />
-                &nbsp;&nbsp;-H &quot;x-api-key: YOUR_API_KEY&quot; \<br />
-                &nbsp;&nbsp;-d &apos;&#123;&quot;reference_id&quot;: &quot;sale_1&quot;, &quot;creator_id&quot;: &quot;creator_1&quot;, &quot;amount&quot;: 1000&#125;&apos;
-              </code>
+            <h2 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Link
+                href="/dashboard/creators/new"
+                className="flex items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/50 transition-colors"
+              >
+                <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                  <Users className="w-5 h-5 text-purple-500" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Add Creator</p>
+                  <p className="text-xs text-muted-foreground">Register a new payee</p>
+                </div>
+              </Link>
+              <Link
+                href="/dashboard/transactions"
+                className="flex items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/50 transition-colors"
+              >
+                <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-500" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Record Transaction</p>
+                  <p className="text-xs text-muted-foreground">Log income or expense</p>
+                </div>
+              </Link>
+              <Link
+                href="/dashboard/payouts"
+                className="flex items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/50 transition-colors"
+              >
+                <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Process Payout</p>
+                  <p className="text-xs text-muted-foreground">Pay out earnings</p>
+                </div>
+              </Link>
             </div>
-            <Link
-              href="/settings/api-keys"
-              className="inline-block mt-4 text-sm text-primary hover:underline"
-            >
-              View your API keys →
-            </Link>
+            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-sm">
+              <Link
+                href="/getting-started"
+                className="text-primary hover:underline"
+              >
+                View setup guide
+              </Link>
+              <Link
+                href="/settings/api-keys"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                API integration →
+              </Link>
+            </div>
           </div>
         </>
       )}

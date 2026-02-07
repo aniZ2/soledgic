@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { User, Mail, DollarSign } from 'lucide-react'
+import { User, Mail, DollarSign, Plus } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 
@@ -110,18 +110,29 @@ export default async function CreatorsPage() {
             {creatorsWithBalances.length} creators in {ledger.business_name}
           </p>
         </div>
+        <Link
+          href="/dashboard/creators/new"
+          className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Add Creator
+        </Link>
       </div>
 
       {creatorsWithBalances.length === 0 ? (
         <div className="bg-card border border-border rounded-lg p-12 text-center">
           <User className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">No creators yet</h2>
-          <p className="text-muted-foreground mb-4">
-            Creators are automatically created when you record a sale via the API
+          <p className="text-muted-foreground mb-6">
+            Add your first creator to start tracking their sales and payouts.
           </p>
-          <code className="text-sm bg-muted px-4 py-2 rounded inline-block">
-            POST /record-sale &#123; &quot;creator_id&quot;: &quot;creator_1&quot;, ... &#125;
-          </code>
+          <Link
+            href="/dashboard/creators/new"
+            className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-md hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add Your First Creator
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

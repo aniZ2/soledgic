@@ -75,7 +75,14 @@ export default function ConnectStripePage() {
     if (fetchError) {
       setError(fetchError.message)
     } else {
-      setConnectedAccounts(accounts || [])
+      // Transform the data to match the interface (ledger comes as array from join)
+      const transformedAccounts = (accounts || []).map(a => ({
+        ...a,
+        ledger: Array.isArray(a.ledger) && a.ledger.length > 0
+          ? a.ledger[0]
+          : { business_name: 'Unknown' }
+      })) as ConnectedAccount[]
+      setConnectedAccounts(transformedAccounts)
     }
 
     setLoading(false)
