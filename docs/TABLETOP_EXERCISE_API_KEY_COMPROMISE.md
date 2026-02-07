@@ -169,7 +169,7 @@ WHERE key LIKE '%0a885204%'
 
 2. **Verify the block is working:**
 ```bash
-curl -X GET "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/get-balance" \
+curl -X GET "https://YOUR_PROJECT.supabase.co/functions/v1/get-balance" \
   -H "x-api-key: sk_live_test" \
   -H "X-Forwarded-For: 203.0.113.42"
 # Should return 403 Forbidden

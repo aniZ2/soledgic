@@ -12,11 +12,14 @@ Soledgic provides a complete accounting backend for platforms that need to:
 
 ## Authentication
 
-All API calls require an API key passed in the `x-api-key` header:
+All API calls require:
+- `Authorization: Bearer <ANON_KEY>` (Supabase anon or service key)
+- `x-api-key: <LEDGER_API_KEY>` (Soledgic ledger API key)
 
 ```bash
-curl -X POST https://your-project.supabase.co/functions/v1/record-sale \
-  -H "x-api-key: your_api_key_here" \
+curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/record-sale \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"creator_id": "123", "amount": 1999, "reference_id": "sale_abc"}'
 ```

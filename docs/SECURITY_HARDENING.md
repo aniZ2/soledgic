@@ -99,7 +99,7 @@ UPSTASH_REDIS_TOKEN=your-token-here
 # Test rate limiting is working
 for i in {1..15}; do 
   curl -s -o /dev/null -w "%{http_code}\n" \
-    "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/health-check" \
+    "https://YOUR_PROJECT.supabase.co/functions/v1/health-check" \
     -H "x-api-key: YOUR_API_KEY"
 done
 # Expected: 200 for first 10, 429 for remaining 5

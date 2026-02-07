@@ -115,7 +115,7 @@ supabase secrets set ENVIRONMENT=production
 
 ```bash
 # Test invalid API key (should fail)
-curl -X POST "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/record-sale" \
   -H "x-api-key: invalid" \
   -H "Content-Type: application/json" \
   -d '{"reference_id": "test", "creator_id": "c1", "amount": 1000}'

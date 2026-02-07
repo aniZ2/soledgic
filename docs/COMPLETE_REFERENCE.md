@@ -1,6 +1,6 @@
 # Soledgic - Complete System Reference
 
-> **Soledgic is an internal accounting and audit ledger that records transactional events reported by third-party payment processors. It does not custody funds, perform payouts, collect tax identification information, or issue tax documents.**
+> **Soledgic is a platform finance system that records transactions and can initiate payouts via external processors. It does not custody funds, and compliance remains with the payment rail.**
 
 ---
 
@@ -20,12 +20,11 @@
 
 | Does NOT | Why |
 |----------|-----|
-| Move money | Stripe does this |
-| Block/authorize payouts | Would make us a decision layer |
-| Collect SSN/EIN | Stripe handles tax identity |
-| Issue 1099s | Stripe handles tax forms |
-| Hold/custody funds | Would require money transmitter license |
-| Create "pending" states | Only records final states from processors |
+| Custody funds | Requires money transmitter obligations |
+| Replace payment rails | Stripe or other rails execute settlement |
+| Store raw tax IDs | High-risk PII should remain with processor |
+| Bypass compliance | KYC/KYB and tax identity stay with rail |
+| Claim outcomes not executed | We only record completed processor events |
 
 **Recording ≠ deciding.** Soledgic is an evidence layer, not a compliance authority.
 
@@ -36,13 +35,13 @@
 ### Supabase Project
 - **Project**: Soledgic
 - **Region**: West US (Oregon)
-- **Ref**: `ocjrcsmoeikxfooeglkt`
-- **URL**: `https://ocjrcsmoeikxfooeglkt.supabase.co`
+- **Ref**: `<redacted>`
+- **URL**: `https://YOUR_PROJECT.supabase.co`
 
-### Booklyverse Ledger (Test Customer)
-- **Ledger ID**: `e642627c-bc08-4881-a039-77c14d1c6874`
-- **API Key**: `4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498`
-- **Anon Key**: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA`
+### Example Ledger (Test Customer)
+- **Ledger ID**: `<redacted>`
+- **API Key**: `<redacted>`
+- **Anon Key**: `<redacted>`
 
 ---
 
@@ -89,7 +88,7 @@ When a ledger is created, these accounts are auto-created:
 
 ### Base URL
 ```
-https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1
+https://YOUR_PROJECT.supabase.co/functions/v1
 ```
 
 ### Authentication
@@ -408,21 +407,21 @@ soledgic/
 
 ```bash
 # Record a sale
-curl -X POST "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/record-sale" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"reference_id": "test_002", "creator_id": "author_123", "amount": 999}'
 
 # Get balance
-curl "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/get-balance?creator_id=author_123" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/get-balance?creator_id=author_123" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>"
 
 # Export transactions
-curl -X POST "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/export-report" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/export-report" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"report_type": "transaction_detail", "format": "json"}'
 ```
@@ -440,6 +439,6 @@ curl -X POST "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/export-repor
 
 ## The One Rule
 
-> **Soledgic never blocks, authorizes, delays, or conditions payouts. It only records facts reported by external processors.**
+> **Soledgic never custodies funds. It can initiate payouts via external processors and records outcomes reported by those rails.**
 
 Recording ≠ deciding. Keep that line bright red.

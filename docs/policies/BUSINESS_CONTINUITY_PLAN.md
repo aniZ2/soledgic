@@ -438,7 +438,7 @@ supabase secrets set ALLOWED_API_KEYS=sk_live_xxx
 supabase db execute "SELECT rotate_api_key('ledger-uuid'::UUID)"
 
 # Check system health
-curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/health-check \
+curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/health-check \
   -H "x-api-key: $SOLEDGIC_API_KEY" \
   -d '{"action": "status"}'
 

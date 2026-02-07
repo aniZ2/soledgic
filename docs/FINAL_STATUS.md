@@ -16,7 +16,7 @@ SELECT initialize_tax_buckets('e642627c-bc08-4881-a039-77c14d1c6874');
 
 ---
 
-## Complete Endpoint List (27 Total)
+## Representative Endpoint List (See /supabase/functions for the full set)
 
 ### Revenue (6)
 | Endpoint | Method | Purpose |
@@ -134,14 +134,14 @@ SELECT initialize_tax_buckets('e642627c-bc08-4881-a039-77c14d1c6874');
 
 ---
 
-## Verification Tests
+## Verification Tests (Example)
 
 Run these to confirm everything works:
 
 ```bash
-BASE="https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1"
-AUTH="Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA"
-KEY="x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498"
+BASE="https://YOUR_PROJECT.supabase.co/functions/v1"
+AUTH="Authorization: Bearer <ANON_OR_SERVICE_KEY>"
+KEY="x-api-key: <LEDGER_API_KEY>"
 
 # 1. Trial balance
 curl "$BASE/trial-balance" -H "$AUTH" -H "$KEY"
@@ -229,6 +229,6 @@ curl "$BASE/manage-budgets" -H "$AUTH" -H "$KEY"
 
 ## The One Rule
 
-> **Soledgic never blocks, authorizes, delays, or conditions payouts. It only records facts reported by external processors.**
+> **Soledgic never custodies funds. It can initiate payouts via external processors and records outcomes reported by those rails.**
 
 Recording ≠ deciding.

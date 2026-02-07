@@ -215,7 +215,7 @@ Add to your cron configuration (Supabase or external):
 ```bash
 # Run security check every 15 minutes
 */15 * * * * curl -X POST \
-  "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/security-alerts" \
+  "https://YOUR_PROJECT.supabase.co/functions/v1/security-alerts" \
   -H "x-cron-secret: YOUR_CRON_SECRET" \
   -H "Content-Type: application/json"
 ```
@@ -229,7 +229,7 @@ SELECT cron.schedule(
   '*/15 * * * *',
   $$
   SELECT net.http_post(
-    url := 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/security-alerts',
+    url := 'https://YOUR_PROJECT.supabase.co/functions/v1/security-alerts',
     headers := '{"x-cron-secret": "YOUR_CRON_SECRET"}'::jsonb
   );
   $$

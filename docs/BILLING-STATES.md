@@ -66,7 +66,7 @@ All "can the org do X?" logic lives here:
 - `canCreateLiveLedger(org)` — returns `{ allowed: true }` or `{ allowed: false, code, message, httpStatus }`
 - `isOverLedgerLimit(org)` — boolean for UI banners
 
-API routes call `canCreateLiveLedger()` and return the result directly. This keeps enforcement consistent and makes it easy to add new checks (e.g., `canAddTeamMember(org)` when team management ships).
+API routes call `canCreateLiveLedger()` and return the result directly. This keeps enforcement consistent and makes it easy to add new checks (e.g., `canAddTeamMember(org)` for team invitations).
 
 ### API route: `src/app/api/ledgers/route.ts`
 
@@ -110,7 +110,7 @@ All error responses include a `code` field (e.g., `payment_past_due`, `subscript
 - **No auto-deletion on downgrade.** Ledgers are financial records. We block forward motion, never prune.
 - **No volume limits yet.** Transaction count, creator count, and API call volume are tracked but not enforced. Defer until pricing evidence justifies it.
 - **No `suspended` status.** Not in current scope. If added, it would block all writes (not just creation).
-- **No team member gating.** Team management isn't built yet. When it ships, add `canAddTeamMember(org)` to `entitlements.ts`.
+- **Team member gating is enforced.** Invitations are blocked when past due, canceled, or over the plan limit via `canAddTeamMember(org)` in `src/lib/entitlements.ts`.
 
 ---
 

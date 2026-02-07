@@ -95,38 +95,38 @@
 
 ```bash
 # 1. Trial Balance - verify books balance
-curl "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/trial-balance" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/trial-balance" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>"
 
 # 2. Get Transactions - verify history
-curl "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/get-transactions" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/get-transactions" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>"
 
 # 3. Idempotency test - should return existing, not create new
-curl -X POST "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/record-sale" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"reference_id": "test_sale_001", "creator_id": "author_123", "amount": 1499}'
 
 # 4. Export report - verify CSV/JSON output
-curl -X POST "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/export-report" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/export-report" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"report_type": "transaction_detail", "format": "json"}'
 
 # 5. Monthly P&L breakdown
-curl "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/profit-loss?year=2025&breakdown=monthly" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/profit-loss?year=2025&breakdown=monthly" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>"
 
 # 6. List ledgers (multi-business)
-curl "https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/list-ledgers" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA" \
-  -H "x-api-key: 4cb0cf383eeb3a7d621849c4bea5f6b416fc351e1054a6b04e1e27822e9f7498"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/list-ledgers" \
+  -H "Authorization: Bearer <ANON_KEY>" \
+  -H "x-api-key: <LEDGER_API_KEY>"
 ```
 
 ---

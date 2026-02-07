@@ -2,7 +2,7 @@
 
 ## The One Rule That Cannot Be Broken
 
-> **Soledgic never blocks, authorizes, delays, or conditions payouts. It only records facts reported by external processors.**
+> **Soledgic never custodies funds. Money movement is executed by external processors. Soledgic can initiate payouts and record outcomes, but rails handle compliance and settlement.**
 
 Recording ≠ deciding. Keep that line bright red.
 
@@ -10,7 +10,7 @@ Recording ≠ deciding. Keep that line bright red.
 
 ## What Soledgic Is
 
-Soledgic is an internal accounting and audit ledger that records transactional events reported by third-party payment processors. It does not custody funds, perform payouts, collect tax identification information, or issue tax documents.
+Soledgic is a platform finance system: a double-entry ledger plus payment orchestration. It does not custody funds. Payouts and compliance (KYC/KYB, tax identity) are handled by external processors; Soledgic can initiate payouts and record outcomes, and may generate exports for tax workflows.
 
 ---
 
@@ -24,6 +24,7 @@ Soledgic is an internal accounting and audit ledger that records transactional e
 | Generate reports | "Export earnings report" → generate |
 | Verify consistency | "Reconcile Stripe vs ledger" → verify |
 | Track history | "Show all transactions for creator" → query |
+| Initiate payout | "Execute payout via Stripe" → instruct |
 
 ---
 
@@ -31,15 +32,12 @@ Soledgic is an internal accounting and audit ledger that records transactional e
 
 | Action | Why It's Dangerous |
 |--------|-------------------|
-| Block payout until X | You become part of money flow decisions |
-| Hold funds internally | Implies custody |
-| Release payout when admin approves | Authorization = liability |
-| Maintain "user wallet balance" | Custody territory |
-| Track "pending earnings" not in Stripe | Simulating what processor hasn't done |
-| Require tax info before recording | Recording ≠ compliance enforcement |
-| Enforce payout thresholds | That's Stripe's job |
+| Custody funds | Requires money transmitter obligations |
+| Override processor compliance | KYC/KYB and tax identity must remain with processor |
+| Store raw tax IDs | High-risk PII outside processor scope |
+| Bypass processor settlement rules | Settlement is the rail's responsibility |
 
-**If Stripe hasn't done it, Soledgic shouldn't simulate it.**
+**If a processor hasn't executed it, Soledgic shouldn't claim it happened.**
 
 ---
 
@@ -50,22 +48,22 @@ Soledgic is an internal accounting and audit ledger that records transactional e
 │                         STRIPE                               │
 │  • Moves money                                               │
 │  • Collects tax info (W-9)                                   │
-│  • Issues 1099s                                              │
+│  • Issues 1099s (or provides source data)                    │
 │  • Enforces payout thresholds                                │
 │  • KYC/AML compliance                                        │
-│  • Blocks/approves payouts                                   │
+│  • Final settlement                                          │
 └─────────────────────────────────────────────────────────────┘
                             │
                             │ Events (webhooks)
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                        SOLEDGIC                              │
-│  • Records what happened                                     │
+│  • Initiates payouts and records outcomes                    │
 │  • Maintains audit trail                                     │
-│  • Generates reports                                         │
+│  • Generates reports and exports                             │
 │  • Reconciles with Stripe                                    │
 │  • Proves history                                            │
-│  • NEVER decides, blocks, or holds                           │
+│  • NEVER custodies funds                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,21 +72,21 @@ Soledgic is an internal accounting and audit ledger that records transactional e
 ## Why This Architecture Protects You
 
 1. **No custody** → No money transmitter license needed
-2. **No tax collection** → No PII breach risk
-3. **No payout control** → No compliance obligations
-4. **Pure recording** → Clean audit trail without liability
+2. **Processor compliance** → KYC/KYB and tax identity stay with the rail
+3. **Separation of concerns** → Clear audit trail and reliable settlement
+4. **Single source of truth** → Finance and ops see accurate, reconcilable data
 
 If an auditor asks:
 > "Who controls payouts?"
 
 Your answer:
-> "Stripe. We record what they report."
+> "Stripe executes payouts. We initiate and record them."
 
 If a regulator asks:
 > "Where is tax information stored?"
 
 Your answer:
-> "With Stripe, our payment processor and merchant of record."
+> "With Stripe (or the configured rail). We do not store raw tax IDs."
 
 ---
 
@@ -109,7 +107,7 @@ These add trust, not obligation.
 
 For docs, audits, investor decks, legal reviews:
 
-> **Soledgic is an internal accounting and audit ledger that records transactional events reported by third-party payment processors. It does not custody funds, perform payouts, collect tax identification information, or issue tax documents.**
+> **Soledgic is a platform finance system that records transactions and can initiate payouts via external processors. It does not custody funds, and compliance remains with the payment rail.**
 
 ---
 

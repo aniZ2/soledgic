@@ -108,7 +108,7 @@ WHERE tgname IN ('enforce_double_entry', 'trigger_update_balance');
 ## Test the Atomic Sale
 
 ```bash
-curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale \
+curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/record-sale \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
