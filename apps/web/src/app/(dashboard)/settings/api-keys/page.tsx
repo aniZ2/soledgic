@@ -183,7 +183,7 @@ export default function ApiKeysPage() {
         <h3 className="font-semibold text-foreground mb-4">Usage Example</h3>
         <div className="bg-muted rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-foreground">
-{`curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale \\
+{`curl -X POST https://soledgic.supabase.co/functions/v1/record-sale \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: YOUR_API_KEY" \\
   -d '{

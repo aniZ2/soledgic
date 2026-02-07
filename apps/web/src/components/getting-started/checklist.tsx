@@ -124,7 +124,7 @@ export const defaultSteps: Omit<ChecklistStep, 'completed'>[] = [
     title: 'Create your first creator',
     description: 'Add a creator/payee to track earnings and payouts',
     icon: Users,
-    codeExample: `curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/create-creator \\
+    codeExample: `curl -X POST https://soledgic.supabase.co/functions/v1/create-creator \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: YOUR_API_KEY" \\
   -d '{
@@ -138,7 +138,7 @@ export const defaultSteps: Omit<ChecklistStep, 'completed'>[] = [
     title: 'Record your first transaction',
     description: 'Record a sale to see the double-entry accounting in action',
     icon: ArrowLeftRight,
-    codeExample: `curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale \\
+    codeExample: `curl -X POST https://soledgic.supabase.co/functions/v1/record-sale \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: YOUR_API_KEY" \\
   -d '{
@@ -153,7 +153,7 @@ export const defaultSteps: Omit<ChecklistStep, 'completed'>[] = [
     title: 'Set up webhooks',
     description: 'Get real-time notifications when events occur in your ledger',
     icon: Bell,
-    codeExample: `curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/configure-webhook \\
+    codeExample: `curl -X POST https://soledgic.supabase.co/functions/v1/configure-webhook \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: YOUR_API_KEY" \\
   -d '{

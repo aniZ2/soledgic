@@ -252,7 +252,7 @@ export default async function DashboardPage() {
             </p>
             <div className="bg-muted rounded-lg p-4">
               <code className="text-sm text-foreground">
-                curl -X POST https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/record-sale \<br />
+                curl -X POST https://soledgic.supabase.co/functions/v1/record-sale \<br />
                 &nbsp;&nbsp;-H &quot;x-api-key: YOUR_API_KEY&quot; \<br />
                 &nbsp;&nbsp;-d &apos;&#123;&quot;reference_id&quot;: &quot;sale_1&quot;, &quot;creator_id&quot;: &quot;creator_1&quot;, &quot;amount&quot;: 1000&#125;&apos;
               </code>

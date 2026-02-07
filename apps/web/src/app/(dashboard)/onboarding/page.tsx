@@ -7,9 +7,9 @@ import { createClient } from '@/lib/supabase/client'
 type LedgerMode = 'standard' | 'marketplace'
 
 const plans = [
-  { id: 'starter', name: 'Starter', price: 49, ledgers: 1, transactions: 1000 },
-  { id: 'growth', name: 'Growth', price: 199, ledgers: 3, transactions: 10000 },
-  { id: 'enterprise', name: 'Enterprise', price: 499, ledgers: -1, transactions: -1 },
+  { id: 'pro', name: 'Pro', price: 49, ledgers: 3, transactions: 5000 },
+  { id: 'business', name: 'Business', price: 249, ledgers: 10, transactions: 50000 },
+  { id: 'scale', name: 'Scale', price: null, ledgers: -1, transactions: -1 },
 ]
 
 export default function OnboardingPage() {
@@ -22,7 +22,7 @@ export default function OnboardingPage() {
   const [orgName, setOrgName] = useState('')
   const [ledgerName, setLedgerName] = useState('')
   const [ledgerMode, setLedgerMode] = useState<LedgerMode>('marketplace')
-  const [selectedPlan, setSelectedPlan] = useState('starter')
+  const [selectedPlan, setSelectedPlan] = useState('pro')
 
   const handleCreateOrganization = async () => {
     setError(null)
