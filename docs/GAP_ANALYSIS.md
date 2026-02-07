@@ -111,74 +111,74 @@ Features ready:
 
 ### 1. Authentication & User Management
 **Priority: CRITICAL for SaaS**
-**Estimated Effort: 2-3 days**
+**Status: Implemented in apps/web (as of 2026-02-01)**
 
-Currently missing:
-- [ ] User signup/login flow
-- [ ] Email verification
-- [ ] Password reset
-- [ ] Session management
-- [ ] User → Organization relationship
-- [ ] Role-based access (owner, admin, member, viewer)
+Now present:
+- Signup/login/forgot password routes under `/apps/web/src/app/(auth)/`
+- Supabase session handling and auth callbacks
+- User → Organization membership
+- Role-based access (owner, admin, member, viewer)
 
-The web app has auth routes but they're not implemented:
-- `/apps/web/src/app/(auth)/` - Empty scaffolding
-- `/apps/web/src/app/auth/` - Callback routes
-
-**Recommendation:** Use Supabase Auth with:
-```typescript
-// In apps/web
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-```
+**Note:** Verify email verification settings in Supabase and confirm password reset templates.
 
 ### 2. Billing & Subscription
 **Priority: CRITICAL for monetization**
-**Estimated Effort: 3-4 days**
+**Status: Implemented in apps/web + /api/billing (as of 2026-02-01)**
 
-Currently missing:
-- [ ] Stripe subscription integration
-- [ ] Plan enforcement (Starter/Growth/Enterprise limits)
-- [ ] Usage metering (transactions, API calls)
-- [ ] Billing portal
-- [ ] Invoice generation
-- [ ] Payment failure handling
-
-Database tables exist but not wired:
-- `organizations` - Has plan column
-- `usage_metrics` - Has daily tracking
-- `api_keys` - Has rate limit fields
+Now present:
+- Stripe subscription integration and billing portal
+- Plan enforcement for ledger and team member limits
+- Usage metering (transactions, API calls) surfaced in billing UI
+- Invoices and payment method management
+- Past-due handling and cancel/resume flows
 
 ### 3. Dashboard UI
 **Priority: HIGH for usability**
-**Estimated Effort: 5-7 days**
+**Status: Implemented (as of 2026-02-07)**
 
-Current state:
-- Landing page complete ✅
-- Dashboard layout exists
-- Actual dashboard pages are **empty shells**
-
-Missing pages:
-- [ ] `/dashboard` - Overview with charts
-- [ ] `/dashboard/transactions` - Transaction list
-- [ ] `/dashboard/creators` - Creator management
-- [ ] `/dashboard/reports` - Report generation
-- [ ] `/dashboard/reconciliation` - Bank matching UI
-- [ ] `/dashboard/settings` - Ledger configuration
-- [ ] `/dashboard/api-keys` - Key management
+Now present:
+- `/dashboard` overview with stats grid
+- `/dashboard/transactions` - transaction list
+- `/dashboard/creators` - creator management
+- `/dashboard/reports` - P&L, trial balance, 1099
+- `/dashboard/reconciliation` - bank matching
+- `/dashboard/payouts` - payout management
+- `/getting-started` - interactive onboarding checklist with API tester
+- `/settings` - settings hub
+- `/settings/api-keys` - API key management
+- `/settings/team` - team member list, invite dialog, role management
+- `/settings/organization` - org name, timezone, danger zone
+- `/settings/webhooks` - endpoint config, test webhooks, delivery logs
+- `/settings/security` - security settings
+- `/billing` - Stripe subscription management
 
 ### 4. Webhook Delivery
 **Priority: MEDIUM**
-**Estimated Effort: 1-2 days**
+**Status: Implemented (as of 2026-02-07)**
 
-Currently missing:
-- [ ] Outbound webhook delivery to customers
-- [ ] Webhook retry logic
-- [ ] Webhook signature verification
-- [ ] Webhook logs/debugging UI
+Now present:
+- [x] Outbound webhook delivery to customers (via edge function)
+- [x] Webhook retry logic (with exponential backoff)
+- [x] Webhook signature verification (HMAC-SHA256)
+- [x] Webhook logs/debugging UI (`/settings/webhooks`)
+- [x] Test webhook button
+- [x] Enable/disable endpoints
 
-Database table exists: `webhook_events`
+### 5. Email Notifications
+**Priority: HIGH for user experience**
+**Status: Implemented (as of 2026-02-07)**
 
-### 5. Bank Feed Integration
+Now present:
+- [x] Resend integration (`lib/email.ts`)
+- [x] Welcome email on signup
+- [x] Team invitation emails
+- [x] Payment failed notifications
+- [x] Password changed security alerts
+- [x] API key created alerts
+- [x] Payout processed notifications (edge function)
+- [x] Trial ending reminders (template ready)
+
+### 6. Bank Feed Integration
 **Priority: MEDIUM**
 **Estimated Effort: 2-3 days**
 
@@ -191,7 +191,7 @@ Missing:
 - [ ] Real-time bank feed updates
 - [ ] Auto-categorization ML
 
-### 6. Tax Features
+### 7. Tax Features
 **Priority: MEDIUM (seasonal)**
 **Estimated Effort: 2-3 days**
 
@@ -206,7 +206,7 @@ Missing:
 - [ ] State tax nexus tracking
 - [ ] Tax document delivery
 
-### 7. Multi-Currency Support
+### 8. Multi-Currency Support
 **Priority: LOW (unless international)**
 **Estimated Effort: 3-4 days**
 
