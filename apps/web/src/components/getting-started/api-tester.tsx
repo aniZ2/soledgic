@@ -13,13 +13,13 @@ const COMMANDS = {
   creator: {
     title: 'Create a Creator',
     description: 'Register a creator who will receive payouts from your platform.',
-    endpoint: '/functions/v1/manage-contractors',
+    endpoint: '/functions/v1/create-creator',
     method: 'POST',
     body: {
-      action: 'create',
       creator_id: 'creator_demo_1',
       display_name: 'Demo Creator',
       email: 'demo@example.com',
+      default_split_percent: 80,
     },
   },
   transaction: {

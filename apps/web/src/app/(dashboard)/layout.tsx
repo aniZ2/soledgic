@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import Link from 'next/link'
 import {
   LayoutDashboard,
@@ -18,6 +19,8 @@ import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode
 import { LiveModeToggle } from '@/components/livemode-toggle'
 import { LivemodeProvider } from '@/components/livemode-provider'
 import { isOverLedgerLimit } from '@/lib/entitlements'
+import { NotificationBell } from '@/components/notifications/notification-bell'
+import { MobileNav } from '@/components/mobile-nav'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -64,9 +67,20 @@ export default async function DashboardLayout({
     .eq('user_id', user.id)
     .single()
 
-  // If no organization, redirect to onboarding
+  // If no organization, redirect to onboarding (unless already there)
   if (!membership?.organization) {
-    redirect('/onboarding')
+    const headersList = await headers()
+    const pathname = headersList.get('x-pathname') || headersList.get('x-invoke-path') || ''
+    // Don't redirect if already on onboarding to avoid loop
+    if (!pathname.includes('/onboarding')) {
+      redirect('/onboarding')
+    }
+    // Return minimal layout for onboarding
+    return (
+      <div className="min-h-screen bg-background">
+        <main className="p-8">{children}</main>
+      </div>
+    )
   }
 
   const org = membership.organization as any
@@ -77,15 +91,24 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 w-64 border-r border-border bg-card">
-        <div className="flex h-16 items-center px-6 border-b border-border">
+      {/* Mobile Navigation */}
+      <MobileNav
+        orgName={org.name}
+        userName={userName}
+        userEmail={user.email || ''}
+        livemode={livemode}
+      />
+
+      {/* Desktop Sidebar - Hidden on mobile */}
+      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64 border-r border-border bg-card">
+        <div className="flex h-16 items-center justify-between px-6 border-b border-border">
           <Link href="/dashboard" className="text-2xl font-bold text-primary">
             Soledgic
             {!livemode && (
               <span className="ml-1.5 text-sm font-medium text-amber-500">(Test)</span>
             )}
           </Link>
+          <NotificationBell />
         </div>
 
         {/* Organization Selector */}
@@ -148,7 +171,7 @@ export default async function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="pl-64">
+      <main className="pt-16 lg:pt-0 lg:pl-64">
         {readonly && (
           <div className="sticky top-0 z-20 bg-slate-700 text-white text-center text-sm font-medium py-2 px-4">
             READ-ONLY MODE — You are viewing a preview. All write operations are disabled.
@@ -186,7 +209,7 @@ export default async function DashboardLayout({
             or archive a ledger to continue.
           </div>
         )}
-        <div className="p-8">
+        <div className="p-4 lg:p-8">
           <LivemodeProvider livemode={livemode} activeLedgerGroupId={activeLedgerGroupId} readonly={readonly}>
             {children}
           </LivemodeProvider>

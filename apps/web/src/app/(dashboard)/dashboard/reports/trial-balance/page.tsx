@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Download, Scale } from 'lucide-react'
+import { ArrowLeft, Scale } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { ExportButton } from '@/components/reports/export-button'
 
 export default async function TrialBalancePage() {
   const supabase = await createClient()
@@ -119,14 +120,10 @@ export default async function TrialBalancePage() {
               {ledger.business_name} • As of {new Date().toLocaleDateString()}
             </p>
           </div>
-          <a
-            href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-pdf?report_type=trial_balance&api_key=${ledger.api_key}`}
-            target="_blank"
-            className="flex items-center gap-2 border border-border px-4 py-2 rounded-md hover:bg-accent transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export PDF
-          </a>
+          <ExportButton
+            reportType="trial-balance"
+            ledgerId={ledger.id}
+          />
         </div>
       </div>
 

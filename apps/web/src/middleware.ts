@@ -6,6 +6,9 @@ const CSRF_COOKIE = '__csrf_token'
 export async function middleware(request: NextRequest) {
   const response = await updateSession(request)
 
+  // Set pathname header for server components to read
+  response.headers.set('x-pathname', request.nextUrl.pathname)
+
   // Set CSRF cookie if not already present (double-submit cookie pattern)
   if (!request.cookies.get(CSRF_COOKIE)) {
     response.cookies.set(CSRF_COOKIE, crypto.randomUUID(), {

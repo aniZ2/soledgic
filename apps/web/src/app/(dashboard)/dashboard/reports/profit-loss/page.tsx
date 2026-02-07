@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Download, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowLeft, TrendingUp, TrendingDown } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { ExportButton } from '@/components/reports/export-button'
 
 export default async function ProfitLossPage() {
   const supabase = await createClient()
@@ -156,14 +157,11 @@ export default async function ProfitLossPage() {
               {ledger.business_name} • Year to Date {year}
             </p>
           </div>
-          <a
-            href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-pdf?report_type=profit_loss&api_key=${ledger.api_key}`}
-            target="_blank"
-            className="flex items-center gap-2 border border-border px-4 py-2 rounded-md hover:bg-accent transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export PDF
-          </a>
+          <ExportButton
+            reportType="profit-loss"
+            ledgerId={ledger.id}
+            year={year}
+          />
         </div>
       </div>
 

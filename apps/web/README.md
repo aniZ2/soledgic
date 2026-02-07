@@ -9,18 +9,18 @@ supabase db push
 ```
 
 ### 2. Enable OAuth providers in Supabase
-Go to: https://supabase.com/dashboard/project/ocjrcsmoeikxfooeglkt/auth/providers
+Go to: https://supabase.com/dashboard/project/soledgic/auth/providers
 
 **Google OAuth:**
 1. Go to Google Cloud Console
 2. Create OAuth 2.0 credentials
-3. Add redirect URI: `https://ocjrcsmoeikxfooeglkt.supabase.co/auth/v1/callback`
+3. Add redirect URI: `https://soledgic.supabase.co/auth/v1/callback`
 4. Copy Client ID and Secret to Supabase
 
 **GitHub OAuth:**
 1. Go to GitHub Settings > Developer Settings > OAuth Apps
 2. Create new app
-3. Set callback URL: `https://ocjrcsmoeikxfooeglkt.supabase.co/auth/v1/callback`
+3. Set callback URL: `https://soledgic.supabase.co/auth/v1/callback`
 4. Copy Client ID and Secret to Supabase
 
 ### 3. Install dependencies
