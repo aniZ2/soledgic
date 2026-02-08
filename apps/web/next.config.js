@@ -5,7 +5,19 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
-  
+
+  // Redirect www to non-www to prevent cookie domain issues
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.soledgic.com' }],
+        destination: 'https://soledgic.com/:path*',
+        permanent: true,
+      },
+    ]
+  },
+
   // Security headers for all routes
   async headers() {
     return [

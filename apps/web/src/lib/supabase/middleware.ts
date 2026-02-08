@@ -1,10 +1,21 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Get cookie domain - use root domain to work across www and non-www
+function getCookieDomain(host: string): string | undefined {
+  // In development, don't set domain (use default)
+  if (host.includes('localhost')) return undefined
+  // For production, use root domain with leading dot
+  if (host.includes('soledgic.com')) return '.soledgic.com'
+  return undefined
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
+
+  const cookieDomain = getCookieDomain(request.headers.get('host') || '')
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +31,11 @@ export async function updateSession(request: NextRequest) {
             request,
           })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              // Set domain to root so cookies work across www and non-www
+              ...(cookieDomain && { domain: cookieDomain }),
+            })
           )
         },
       },
@@ -28,7 +43,6 @@ export async function updateSession(request: NextRequest) {
   )
 
   // Just refresh the session - let pages handle their own auth redirects
-  // This prevents middleware from causing redirect loops
   await supabase.auth.getUser()
 
   return supabaseResponse
