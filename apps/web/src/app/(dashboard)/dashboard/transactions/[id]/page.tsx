@@ -15,7 +15,7 @@ export default async function TransactionDetailPage({
   const supabase = await createClient()
   
   const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  if (!user) return null
+  // Auth handled by layout
 
   // Get transaction with entries
   const { data: transaction } = await supabase

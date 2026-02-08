@@ -7,7 +7,7 @@ export default async function SettingsPage() {
   const supabase = await createClient()
   
   const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  if (!user) return null
+  // Auth handled by layout
 
   const settingsGroups = [
     {

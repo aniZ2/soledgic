@@ -20,6 +20,8 @@ export async function POST(request: Request) {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
+          // Use Supabase's default options - don't override httpOnly
+          // This allows client-side JS to read the session
           cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options)
           })

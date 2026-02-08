@@ -19,21 +19,10 @@ export async function login(formData: FormData) {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, {
-                ...options,
-                // Ensure cookies are accessible across the site
-                path: '/',
-                // Set httpOnly and secure appropriately
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-              })
-            })
-          } catch (error) {
-            console.error('Error setting cookies:', error)
-          }
+          // Use Supabase's default options - allows client JS to read session
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
         },
       },
     }
@@ -52,7 +41,6 @@ export async function login(formData: FormData) {
     return { error: 'Login failed - no session created' }
   }
 
-  // Return success - let client handle redirect to ensure cookies are set first
   return { success: true, redirectTo }
 }
 
@@ -71,19 +59,10 @@ export async function signup(formData: FormData) {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, {
-                ...options,
-                path: '/',
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-              })
-            })
-          } catch (error) {
-            console.error('Error setting cookies:', error)
-          }
+          // Use Supabase's default options
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
         },
       },
     }

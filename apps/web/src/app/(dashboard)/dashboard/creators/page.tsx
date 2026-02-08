@@ -11,13 +11,13 @@ export default async function CreatorsPage() {
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
   const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  if (!user) return null
+  // Auth handled by layout
 
   // Get user's organization
   const { data: membership } = await supabase
     .from('organization_members')
     .select('organization_id')
-    .eq('user_id', user.id)
+    .eq('user_id', user?.id ?? '')
     .single()
 
   if (!membership) redirect('/onboarding')

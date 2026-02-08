@@ -11,14 +11,14 @@ export default async function GettingStartedPage() {
 
   // Use getSession (reads from cookie) instead of getUser (validates with server)
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return null
-  const user = session.user
+  // Auth handled by layout
+  const user = session?.user
 
   // Get user's organization
   const { data: membership } = await supabase
     .from('organization_members')
     .select('organization_id')
-    .eq('user_id', user.id)
+    .eq('user_id', user?.id ?? '')
     .single()
 
   if (!membership) redirect('/onboarding')
@@ -54,7 +54,7 @@ export default async function GettingStartedPage() {
     .eq('transaction_type', 'payout')
 
   // Check user preference from metadata
-  const userMode = user.user_metadata?.onboarding_mode as 'dashboard' | 'developer' | undefined
+  const userMode = user?.user_metadata?.onboarding_mode as 'dashboard' | 'developer' | undefined
 
   return (
     <GettingStartedClient
