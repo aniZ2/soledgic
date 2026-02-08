@@ -27,41 +27,9 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired
-  const { data: { user } } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
-
-  // Public routes that don't require auth
-  const publicRoutes = [
-    '/',
-    '/login',
-    '/signup',
-    '/forgot-password',
-    '/reset-password',
-    '/docs',
-    '/privacy',
-    '/terms',
-    '/refund-policy',
-  ]
-  const isPublicRoute = publicRoutes.some(route => pathname === route) ||
-    pathname.startsWith('/auth/') ||
-    pathname.startsWith('/docs/')
-
-  // If user is not logged in and trying to access protected route
-  if (!user && !isPublicRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(url)
-  }
-
-  // If user is logged in and trying to access login/signup
-  if (user && (pathname === '/login' || pathname === '/signup')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
+  // Just refresh the session - let pages handle their own auth redirects
+  // This prevents middleware from causing redirect loops
+  await supabase.auth.getUser()
 
   return supabaseResponse
 }
