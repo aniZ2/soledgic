@@ -44,14 +44,17 @@ export async function POST(request: Request) {
   })
 
   if (error) {
+    // Use 303 to force GET method on redirect
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent(error.message)}&redirect=${encodeURIComponent(redirectTo)}`
+      `${origin}/login?error=${encodeURIComponent(error.message)}&redirect=${encodeURIComponent(redirectTo)}`,
+      { status: 303 }
     )
   }
 
   if (!data.session) {
     return NextResponse.redirect(
-      `${origin}/login?error=Login failed - no session created&redirect=${encodeURIComponent(redirectTo)}`
+      `${origin}/login?error=Login failed - no session created&redirect=${encodeURIComponent(redirectTo)}`,
+      { status: 303 }
     )
   }
 
@@ -65,8 +68,8 @@ export async function POST(request: Request) {
   // Determine redirect URL
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
 
-  // Create response
-  const response = NextResponse.redirect(finalRedirect)
+  // Create response with 303 to force GET method
+  const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
   // Set all Supabase auth cookies on the response with httpOnly: false
   for (const { name, value, options } of responseCookies) {
