@@ -1,56 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { signup } from '../login/actions'
 
 export default function SignupPage() {
-  const router = useRouter()
-  
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const [success, setSuccess] = useState(false)
 
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (formData: FormData) => {
     setError(null)
-    setLoading(true)
+    const emailValue = formData.get('email') as string
+    const password = formData.get('password') as string
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters')
-      setLoading(false)
       return
     }
 
-    const supabase = createClient()
+    setEmail(emailValue)
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        data: {
-          full_name: fullName,
-        },
-      },
+    startTransition(async () => {
+      const result = await signup(formData)
+      if (result?.error) {
+        setError(result.error)
+      } else if (result?.success) {
+        setSuccess(true)
+      }
     })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
-    }
-
-    setSuccess(true)
   }
 
   const handleGoogleSignup = async () => {
     const supabase = createClient()
-    
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -135,7 +120,7 @@ export default function SignupPage() {
         </div>
 
         {/* Email/Password Form */}
-        <form onSubmit={handleSignup} className="space-y-4">
+        <form action={handleSubmit} className="space-y-4">
           {error && (
             <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-md p-3">
               {error}
@@ -148,9 +133,8 @@ export default function SignupPage() {
             </label>
             <input
               id="name"
+              name="name"
               type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
               required
               className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="John Doe"
@@ -163,9 +147,8 @@ export default function SignupPage() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="you@example.com"
@@ -178,9 +161,8 @@ export default function SignupPage() {
             </label>
             <input
               id="password"
+              name="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
               className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -193,10 +175,10 @@ export default function SignupPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isPending}
             className="w-full bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Creating account...' : 'Create account'}
+            {isPending ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 

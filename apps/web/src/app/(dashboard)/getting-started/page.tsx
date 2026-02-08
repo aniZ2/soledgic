@@ -11,7 +11,7 @@ export default async function GettingStartedPage() {
 
   // Use getSession (reads from cookie) instead of getUser (validates with server)
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) redirect('/login')
+  if (!session) return null
   const user = session.user
 
   // Get user's organization

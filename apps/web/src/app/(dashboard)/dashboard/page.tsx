@@ -17,8 +17,14 @@ export default async function DashboardPage() {
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
-  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  if (!user) redirect('/login')
+  // Auth check handled by layout - just get session for user data
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
+
+  // If no user, layout would have already redirected, but handle gracefully
+  if (!user) {
+    return null
+  }
 
   // Get user's organization
   const { data: membership } = await supabase

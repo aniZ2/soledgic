@@ -2,41 +2,16 @@
 
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/dashboard'
+  const redirectPath = searchParams.get('redirect') || '/dashboard'
+  const errorParam = searchParams.get('error')
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(errorParam)
   const [loading, setLoading] = useState(false)
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-
-    const supabase = createClient()
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-      return
-    }
-
-    router.push(redirect)
-    router.refresh()
-  }
 
   const handleGoogleLogin = async () => {
     const supabase = createClient()
@@ -44,7 +19,7 @@ function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?redirect=${redirect}`,
+        redirectTo: `${window.location.origin}/auth/callback?redirect=${redirectPath}`,
       },
     })
 
@@ -98,8 +73,16 @@ function LoginForm() {
           </div>
         </div>
 
-        {/* Email/Password Form */}
-        <form onSubmit={handleLogin} className="space-y-4">
+        {/* Email/Password Form - submits directly to route handler */}
+        <form
+          action="/auth/sign-in"
+          method="POST"
+          className="space-y-4"
+          onSubmit={() => setLoading(true)}
+        >
+          {/* Hidden redirect field */}
+          <input type="hidden" name="redirect" value={redirectPath} />
+
           {error && (
             <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-md p-3">
               {error}
@@ -112,9 +95,8 @@ function LoginForm() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="you@example.com"
@@ -132,9 +114,8 @@ function LoginForm() {
             </div>
             <input
               id="password"
+              name="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               required
               className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               placeholder="••••••••"
@@ -144,9 +125,9 @@ function LoginForm() {
           <div className="flex items-center">
             <input
               id="remember-me"
+              name="remember"
               type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
+              defaultChecked
               className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
             />
             <label htmlFor="remember-me" className="ml-2 block text-sm text-muted-foreground">

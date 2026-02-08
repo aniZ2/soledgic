@@ -15,7 +15,7 @@ export default async function CreatorDetailPage({
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
   const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const { data: membership } = await supabase
     .from('organization_members')
