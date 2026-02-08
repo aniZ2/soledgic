@@ -62,13 +62,14 @@ export async function POST(request: Request) {
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
   // Set each cookie on the response
+  const isSecure = origin.startsWith('https://')
   for (const { name, value, options } of responseCookies) {
     response.cookies.set(name, value, {
       ...options,
       // Ensure cookies are accessible
       path: '/',
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
     })
   }
 
