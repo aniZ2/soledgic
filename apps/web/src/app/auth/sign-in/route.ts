@@ -11,9 +11,6 @@ export async function POST(request: Request) {
   const { origin } = new URL(request.url)
   const cookieStore = await cookies()
 
-  // Collect cookies to set on the response
-  const responseCookies: { name: string; value: string; options: Record<string, unknown> }[] = []
-
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -23,8 +20,15 @@ export async function POST(request: Request) {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          // Collect cookies - we'll set them on the response object
-          responseCookies.push(...cookiesToSet)
+          // Set cookies directly on the cookie store
+          // This is the pattern that works for OAuth callback
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          } catch {
+            // Ignore errors in read-only contexts
+          }
         },
       },
     }
@@ -49,32 +53,14 @@ export async function POST(request: Request) {
     )
   }
 
-  // Check if user has an organization
+  // Check if user has an active organization membership
   const { data: membership } = await supabase
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', data.user.id)
+    .eq('status', 'active')
     .single()
 
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
-
-  // Create redirect response and set cookies directly on it
-  const response = NextResponse.redirect(finalRedirect, { status: 303 })
-
-  // Set each cookie on the response
-  // Extract domain for cookie (handles www and non-www)
-  const host = new URL(finalRedirect).hostname
-  const cookieDomain = host.startsWith('www.') ? host.slice(4) : host
-
-  for (const { name, value, options } of responseCookies) {
-    response.cookies.set(name, value, {
-      path: '/',
-      domain: cookieDomain.includes('.') ? `.${cookieDomain}` : undefined,
-      maxAge: (options.maxAge as number) || 34560000,
-      sameSite: 'lax',
-      httpOnly: false, // Allow JS access for client-side Supabase
-    })
-  }
-
-  return response
+  return NextResponse.redirect(finalRedirect, { status: 303 })
 }
