@@ -82,6 +82,7 @@ export default function OnboardingPage() {
       // Use RPC function to create org + membership + ledgers atomically
       // This bypasses RLS chicken-and-egg issues
       const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
+        p_user_id: user.id,
         p_org_name: orgName,
         p_org_slug: slug,
         p_plan: selectedPlan,
