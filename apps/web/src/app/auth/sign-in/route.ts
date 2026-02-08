@@ -59,8 +59,12 @@ export async function POST(request: Request) {
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
+  // Debug: log cookies being set
+  console.log('Setting cookies:', responseCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
+
   // Set cookies on response with httpOnly: false so client JS can read them
   for (const { name, value, options } of responseCookies) {
+    console.log(`Setting cookie: ${name}, httpOnly: false`)
     response.cookies.set(name, value, {
       ...options,
       httpOnly: false,
