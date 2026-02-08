@@ -8,7 +8,7 @@ export default async function LedgersPage() {
   const supabase = await createClient()
   const livemode = await getLivemode()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
 
   // Get user's organizations
   const { data: memberships } = await supabase

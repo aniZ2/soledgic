@@ -11,7 +11,7 @@ export default async function ProfitLossPage() {
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
   if (!user) redirect('/login')
 
   const { data: membership } = await supabase

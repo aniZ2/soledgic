@@ -35,7 +35,7 @@ export default function SecuritySettingsPage() {
 
   const loadSecurityData = async () => {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
 
     if (!user) return
 

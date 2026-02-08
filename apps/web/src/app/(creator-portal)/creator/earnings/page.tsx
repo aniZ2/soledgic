@@ -5,7 +5,7 @@ import { ArrowDownRight, ArrowUpRight, Filter } from 'lucide-react'
 export default async function CreatorEarningsPage() {
   const supabase = await createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
   if (!user) redirect('/creator/login')
 
   const creatorEmail = user.email

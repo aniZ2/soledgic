@@ -6,7 +6,7 @@ import { Key, CreditCard, Building, Users, Bell, Shield, Wrench } from 'lucide-r
 export default async function SettingsPage() {
   const supabase = await createClient()
   
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
   if (!user) redirect('/login')
 
   const settingsGroups = [

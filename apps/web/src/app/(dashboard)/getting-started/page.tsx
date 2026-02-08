@@ -9,8 +9,10 @@ export default async function GettingStartedPage() {
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  // Use getSession (reads from cookie) instead of getUser (validates with server)
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) redirect('/login')
+  const user = session.user
 
   // Get user's organization
   const { data: membership } = await supabase
