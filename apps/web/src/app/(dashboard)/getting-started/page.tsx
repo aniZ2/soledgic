@@ -19,6 +19,7 @@ export default async function GettingStartedPage() {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user?.id ?? '')
+    .eq('status', 'active')
     .single()
 
   if (!membership) redirect('/onboarding')

@@ -52,7 +52,7 @@ export default async function DashboardLayout({
 
   const user = session.user
 
-  // Get user's organization membership
+  // Get user's organization membership (only active memberships)
   const { data: membership } = await supabase
     .from('organization_members')
     .select(`
@@ -69,6 +69,7 @@ export default async function DashboardLayout({
       )
     `)
     .eq('user_id', user.id)
+    .eq('status', 'active')
     .single()
 
   // If no organization, redirect to onboarding (unless already there)

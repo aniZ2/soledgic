@@ -26,9 +26,17 @@ export default async function DashboardPage() {
     .from('organization_members')
     .select('organization_id')
     .eq('user_id', user?.id ?? '')
+    .eq('status', 'active')
     .single()
 
-  if (!membership) redirect('/onboarding')
+  // Layout handles auth - if no membership found, just show empty state
+  if (!membership) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Unable to load dashboard. Please try refreshing the page.</p>
+      </div>
+    )
+  }
 
   // Get ledgers for this organization
   const { data: ledgers } = await supabase
