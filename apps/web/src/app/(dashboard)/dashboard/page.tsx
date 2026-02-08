@@ -29,13 +29,9 @@ export default async function DashboardPage() {
     .eq('status', 'active')
     .single()
 
-  // Layout handles auth - if no membership found, just show empty state
+  // If no active membership, redirect to onboarding to create/join an organization
   if (!membership) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">Unable to load dashboard. Please try refreshing the page.</p>
-      </div>
-    )
+    redirect('/onboarding')
   }
 
   // Get ledgers for this organization

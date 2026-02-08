@@ -1,15 +1,24 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { sendWelcomeEmail } from '@/lib/email'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const redirect = searchParams.get('redirect') || '/dashboard'
 
+  // Detect if we're on HTTPS (Vercel/proxies use x-forwarded-proto)
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const isSecure = forwardedProto === 'https' || request.url.startsWith('https')
+  const host = request.headers.get('host') || new URL(request.url).host
+  const origin = `${isSecure ? 'https' : 'http'}://${host}`
+
   if (code) {
     const cookieStore = await cookies()
+
+    // Collect cookies that Supabase wants to set
+    const cookiesToSet: { name: string; value: string; options: CookieOptions }[] = []
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,10 +28,8 @@ export async function GET(request: Request) {
           getAll() {
             return cookieStore.getAll()
           },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
+          setAll(cookies) {
+            cookiesToSet.push(...cookies)
           },
         },
       }
@@ -31,17 +38,20 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      // Check if user has an organization
+      // Check if user has an active organization membership
       const { data: { user } } = await supabase.auth.getUser()
+
+      let redirectUrl = `${origin}${redirect}`
 
       if (user) {
         const { data: membership } = await supabase
           .from('organization_members')
           .select('organization_id')
           .eq('user_id', user.id)
+          .eq('status', 'active')
           .single()
 
-        // If no organization, this is a new user - send welcome email
+        // If no active membership, this is a new user - send welcome email
         if (!membership) {
           // Send welcome email (non-blocking)
           const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'there'
@@ -50,11 +60,24 @@ export async function GET(request: Request) {
             name: userName,
           }).catch(console.error)
 
-          return NextResponse.redirect(`${origin}/onboarding`)
+          redirectUrl = `${origin}/onboarding`
         }
       }
 
-      return NextResponse.redirect(`${origin}${redirect}`)
+      const response = NextResponse.redirect(redirectUrl, { status: 303 })
+
+      // Set cookies directly on the response
+      for (const { name, value, options } of cookiesToSet) {
+        response.cookies.set(name, value, {
+          path: options.path ?? '/',
+          maxAge: options.maxAge,
+          httpOnly: options.httpOnly ?? true,
+          sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
+          secure: isSecure,
+        })
+      }
+
+      return response
     }
   }
 

@@ -8,8 +8,15 @@ export async function POST(request: Request) {
   const password = formData.get('password') as string
   const redirectTo = formData.get('redirect') as string || '/dashboard'
 
-  const { origin } = new URL(request.url)
   const cookieStore = await cookies()
+
+  // Detect if we're on HTTPS (Vercel/proxies use x-forwarded-proto)
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const isSecure = forwardedProto === 'https' || request.url.startsWith('https')
+
+  // Build origin from headers for proper redirect (handles proxy correctly)
+  const host = request.headers.get('host') || new URL(request.url).host
+  const origin = `${isSecure ? 'https' : 'http'}://${host}`
 
   // Collect cookies that Supabase wants to set
   const cookiesToSet: { name: string; value: string; options: CookieOptions }[] = []
@@ -59,14 +66,14 @@ export async function POST(request: Request) {
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
-  // Set cookies directly on the response
+  // Set cookies directly on the response, preserving Supabase's options
   for (const { name, value, options } of cookiesToSet) {
     response.cookies.set(name, value, {
       path: options.path ?? '/',
       maxAge: options.maxAge,
-      httpOnly: options.httpOnly ?? false,
+      httpOnly: options.httpOnly ?? true, // Default to true for security
       sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
-      secure: options.secure ?? request.url.startsWith('https'),
+      secure: isSecure,
     })
   }
 
