@@ -11,9 +11,6 @@ export async function POST(request: Request) {
   const { origin } = new URL(request.url)
   const cookieStore = await cookies()
 
-  // Collect cookies to set on response
-  const responseCookies: { name: string; value: string; options: any }[] = []
-
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -23,8 +20,11 @@ export async function POST(request: Request) {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          // ONLY collect for response - don't use cookieStore.set()
-          responseCookies.push(...cookiesToSet)
+          // Use cookieStore.set() directly - same pattern as OAuth callback
+          // This works because Next.js route handlers can modify cookies
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
         },
       },
     }
@@ -57,19 +57,5 @@ export async function POST(request: Request) {
     .single()
 
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
-  const response = NextResponse.redirect(finalRedirect, { status: 303 })
-
-  // Debug: log cookies being set
-  console.log('Setting cookies:', responseCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
-
-  // Set cookies on response with httpOnly: false so client JS can read them
-  for (const { name, value, options } of responseCookies) {
-    console.log(`Setting cookie: ${name}, httpOnly: false`)
-    response.cookies.set(name, value, {
-      ...options,
-      httpOnly: false,
-    })
-  }
-
-  return response
+  return NextResponse.redirect(finalRedirect, { status: 303 })
 }
