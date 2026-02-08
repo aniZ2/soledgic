@@ -61,12 +61,14 @@ export async function POST(request: Request) {
   // Create redirect response and set cookies directly on it
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
-  // Set each cookie on the response using raw Set-Cookie header
-  // to ensure Secure flag is properly set (Next.js may filter it)
+  // Set each cookie on the response
   for (const { name, value, options } of responseCookies) {
-    const maxAge = options.maxAge || 34560000
-    const cookieString = `${name}=${value}; Path=/; Max-Age=${maxAge}; SameSite=Lax; Secure`
-    response.headers.append('Set-Cookie', cookieString)
+    response.cookies.set(name, value, {
+      path: '/',
+      maxAge: (options.maxAge as number) || 34560000,
+      sameSite: 'lax',
+      httpOnly: false, // Allow JS access for client-side Supabase
+    })
   }
 
   return response
