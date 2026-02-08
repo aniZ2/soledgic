@@ -61,15 +61,12 @@ export async function POST(request: Request) {
   // Create redirect response and set cookies directly on it
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
-  // Set each cookie on the response
+  // Set each cookie on the response using raw Set-Cookie header
+  // to ensure Secure flag is properly set (Next.js may filter it)
   for (const { name, value, options } of responseCookies) {
-    response.cookies.set(name, value, {
-      ...options,
-      path: '/',
-      sameSite: 'lax',
-      // Always secure in production - localhost will work without it
-      secure: true,
-    })
+    const maxAge = options.maxAge || 34560000
+    const cookieString = `${name}=${value}; Path=/; Max-Age=${maxAge}; SameSite=Lax; Secure`
+    response.headers.append('Set-Cookie', cookieString)
   }
 
   return response
