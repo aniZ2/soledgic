@@ -62,14 +62,15 @@ export async function POST(request: Request) {
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
   // Set each cookie on the response
-  const isSecure = origin.startsWith('https://')
+  // Always use secure cookies on soledgic.com (production HTTPS)
+  const isProduction = origin.includes('soledgic.com') || origin.includes('vercel.app')
+
   for (const { name, value, options } of responseCookies) {
     response.cookies.set(name, value, {
       ...options,
-      // Ensure cookies are accessible
       path: '/',
       sameSite: 'lax',
-      secure: isSecure,
+      secure: isProduction,
     })
   }
 
