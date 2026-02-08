@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -8,9 +9,10 @@ export async function POST(request: Request) {
   const redirectTo = formData.get('redirect') as string || '/dashboard'
 
   const { origin } = new URL(request.url)
+  const cookieStore = await cookies()
 
-  // Collect cookies to set on the response
-  const cookiesToSet: { name: string; value: string; options: any }[] = []
+  // Track cookies that need to be set on the response
+  const responseCookies: { name: string; value: string; options: any }[] = []
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,14 +20,19 @@ export async function POST(request: Request) {
     {
       cookies: {
         getAll() {
-          return request.headers.get('cookie')?.split('; ').map(c => {
-            const [name, ...rest] = c.split('=')
-            return { name, value: rest.join('=') }
-          }) || []
+          return cookieStore.getAll()
         },
-        setAll(cookies) {
-          // Collect cookies to set later on the response
-          cookiesToSet.push(...cookies)
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            // Store for setting on response later
+            responseCookies.push({ name, value, options })
+            // Also try to set via cookieStore
+            try {
+              cookieStore.set(name, value, options)
+            } catch (e) {
+              // Ignore - we'll set on response
+            }
+          })
         },
       },
     }
@@ -58,12 +65,15 @@ export async function POST(request: Request) {
   // Determine redirect URL
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
 
-  // Create response and set cookies on it
+  // Create response
   const response = NextResponse.redirect(finalRedirect)
 
-  // Set all cookies on the response
-  for (const { name, value, options } of cookiesToSet) {
-    response.cookies.set(name, value, options)
+  // Set all Supabase auth cookies on the response with httpOnly: false
+  for (const { name, value, options } of responseCookies) {
+    response.cookies.set(name, value, {
+      ...options,
+      httpOnly: false, // CRITICAL: Allow client-side JS to read
+    })
   }
 
   return response
