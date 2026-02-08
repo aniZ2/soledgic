@@ -62,9 +62,14 @@ export async function POST(request: Request) {
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
   // Set each cookie on the response
+  // Extract domain for cookie (handles www and non-www)
+  const host = new URL(finalRedirect).hostname
+  const cookieDomain = host.startsWith('www.') ? host.slice(4) : host
+
   for (const { name, value, options } of responseCookies) {
     response.cookies.set(name, value, {
       path: '/',
+      domain: cookieDomain.includes('.') ? `.${cookieDomain}` : undefined,
       maxAge: (options.maxAge as number) || 34560000,
       sameSite: 'lax',
       httpOnly: false, // Allow JS access for client-side Supabase
