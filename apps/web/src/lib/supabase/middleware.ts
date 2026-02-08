@@ -1,9 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// 30 days in seconds
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 30
-
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -23,12 +20,7 @@ export async function updateSession(request: NextRequest) {
             request,
           })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, {
-              ...options,
-              maxAge: COOKIE_MAX_AGE,
-              sameSite: 'lax',
-              secure: process.env.NODE_ENV === 'production',
-            })
+            supabaseResponse.cookies.set(name, value, options)
           )
         },
       },
@@ -41,8 +33,20 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public routes that don't require auth
-  const publicRoutes = ['/', '/login', '/signup', '/forgot-password', '/reset-password', '/auth/callback', '/auth/confirm']
-  const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith('/auth/'))
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/signup',
+    '/forgot-password',
+    '/reset-password',
+    '/docs',
+    '/privacy',
+    '/terms',
+    '/refund-policy',
+  ]
+  const isPublicRoute = publicRoutes.some(route => pathname === route) ||
+    pathname.startsWith('/auth/') ||
+    pathname.startsWith('/docs/')
 
   // If user is not logged in and trying to access protected route
   if (!user && !isPublicRoute) {
