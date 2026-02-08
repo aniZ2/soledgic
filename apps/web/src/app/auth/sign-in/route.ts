@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const { origin } = new URL(request.url)
   const cookieStore = await cookies()
 
-  // Track cookies that need to be set on the response
+  // Collect cookies to set on response
   const responseCookies: { name: string; value: string; options: any }[] = []
 
   const supabase = createServerClient(
@@ -23,16 +23,8 @@ export async function POST(request: Request) {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            // Store for setting on response later
-            responseCookies.push({ name, value, options })
-            // Also try to set via cookieStore
-            try {
-              cookieStore.set(name, value, options)
-            } catch (e) {
-              // Ignore - we'll set on response
-            }
-          })
+          // ONLY collect for response - don't use cookieStore.set()
+          responseCookies.push(...cookiesToSet)
         },
       },
     }
@@ -44,7 +36,6 @@ export async function POST(request: Request) {
   })
 
   if (error) {
-    // Use 303 to force GET method on redirect
     return NextResponse.redirect(
       `${origin}/login?error=${encodeURIComponent(error.message)}&redirect=${encodeURIComponent(redirectTo)}`,
       { status: 303 }
@@ -53,7 +44,7 @@ export async function POST(request: Request) {
 
   if (!data.session) {
     return NextResponse.redirect(
-      `${origin}/login?error=Login failed - no session created&redirect=${encodeURIComponent(redirectTo)}`,
+      `${origin}/login?error=Login failed&redirect=${encodeURIComponent(redirectTo)}`,
       { status: 303 }
     )
   }
@@ -65,17 +56,14 @@ export async function POST(request: Request) {
     .eq('user_id', data.user.id)
     .single()
 
-  // Determine redirect URL
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
-
-  // Create response with 303 to force GET method
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
-  // Set all Supabase auth cookies on the response with httpOnly: false
+  // Set cookies on response with httpOnly: false so client JS can read them
   for (const { name, value, options } of responseCookies) {
     response.cookies.set(name, value, {
       ...options,
-      httpOnly: false, // CRITICAL: Allow client-side JS to read
+      httpOnly: false,
     })
   }
 
