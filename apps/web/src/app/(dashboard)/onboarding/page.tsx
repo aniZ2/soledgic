@@ -79,66 +79,20 @@ export default function OnboardingPage() {
       const trialEndsAt = new Date()
       trialEndsAt.setDate(trialEndsAt.getDate() + 14)
 
-      const { data: org, error: orgError } = await supabase
-        .from('organizations')
-        .insert({
-          name: orgName,
-          slug: slug,
-          plan: selectedPlan,
-          status: 'trialing',
-          trial_ends_at: trialEndsAt.toISOString(),
-          max_ledgers: planData.ledgers,
-          max_team_members: planData.team_members,
-          current_ledger_count: 0,
-          current_member_count: 1,
-        })
-        .select()
-        .single()
+      // Use RPC function to create org + membership + ledgers atomically
+      // This bypasses RLS chicken-and-egg issues
+      const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
+        p_org_name: orgName,
+        p_org_slug: slug,
+        p_plan: selectedPlan,
+        p_trial_ends_at: trialEndsAt.toISOString(),
+        p_max_ledgers: planData.ledgers,
+        p_max_team_members: planData.team_members,
+        p_ledger_name: ledgerName,
+        p_ledger_mode: ledgerMode,
+      })
 
-      if (orgError) throw orgError
-
-      // Add user as owner
-      const { error: memberError } = await supabase
-        .from('organization_members')
-        .insert({
-          organization_id: org.id,
-          user_id: user.id,
-          role: 'owner',
-        })
-
-      if (memberError) throw memberError
-
-      // Create paired test + live ledgers
-      const ledgerGroupId = crypto.randomUUID()
-      const testApiKey = `sk_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
-      const liveApiKey = `sk_live_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
-
-      const sharedFields = {
-        organization_id: org.id,
-        business_name: ledgerName,
-        ledger_mode: ledgerMode,
-        status: 'active' as const,
-        ledger_group_id: ledgerGroupId,
-        settings: {
-          currency: 'USD',
-          fiscal_year_start: 1,
-        },
-      }
-
-      const { error: ledgerError } = await supabase
-        .from('ledgers')
-        .insert([
-          { ...sharedFields, api_key: testApiKey, livemode: false },
-          { ...sharedFields, api_key: liveApiKey, livemode: true },
-        ])
-
-      if (ledgerError) throw ledgerError
-
-      // Update ledger count
-      await supabase
-        .from('organizations')
-        .update({ current_ledger_count: 1 })
-        .eq('id', org.id)
+      if (rpcError) throw rpcError
 
       // If user wants to skip trial and pay now, redirect to billing
       if (skipTrial) {
