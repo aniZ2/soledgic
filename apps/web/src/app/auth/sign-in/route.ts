@@ -1,4 +1,4 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
@@ -11,6 +11,9 @@ export async function POST(request: Request) {
   const { origin } = new URL(request.url)
   const cookieStore = await cookies()
 
+  // Collect cookies that Supabase wants to set
+  const cookiesToSet: { name: string; value: string; options: CookieOptions }[] = []
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -19,16 +22,8 @@ export async function POST(request: Request) {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
-          // Set cookies directly on the cookie store
-          // This is the pattern that works for OAuth callback
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          } catch {
-            // Ignore errors in read-only contexts
-          }
+        setAll(cookies) {
+          cookiesToSet.push(...cookies)
         },
       },
     }
@@ -62,5 +57,18 @@ export async function POST(request: Request) {
     .single()
 
   const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
-  return NextResponse.redirect(finalRedirect, { status: 303 })
+  const response = NextResponse.redirect(finalRedirect, { status: 303 })
+
+  // Set cookies directly on the response
+  for (const { name, value, options } of cookiesToSet) {
+    response.cookies.set(name, value, {
+      path: options.path ?? '/',
+      maxAge: options.maxAge,
+      httpOnly: options.httpOnly ?? false,
+      sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
+      secure: options.secure ?? request.url.startsWith('https'),
+    })
+  }
+
+  return response
 }
