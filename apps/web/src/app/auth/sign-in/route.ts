@@ -1,5 +1,4 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -9,7 +8,9 @@ export async function POST(request: Request) {
   const redirectTo = formData.get('redirect') as string || '/dashboard'
 
   const { origin } = new URL(request.url)
-  const cookieStore = await cookies()
+
+  // Collect cookies to set on the response
+  const cookiesToSet: { name: string; value: string; options: any }[] = []
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,14 +18,14 @@ export async function POST(request: Request) {
     {
       cookies: {
         getAll() {
-          return cookieStore.getAll()
+          return request.headers.get('cookie')?.split('; ').map(c => {
+            const [name, ...rest] = c.split('=')
+            return { name, value: rest.join('=') }
+          }) || []
         },
-        setAll(cookiesToSet) {
-          // Use Supabase's default options - don't override httpOnly
-          // This allows client-side JS to read the session
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
+        setAll(cookies) {
+          // Collect cookies to set later on the response
+          cookiesToSet.push(...cookies)
         },
       },
     }
@@ -36,7 +37,6 @@ export async function POST(request: Request) {
   })
 
   if (error) {
-    // Redirect back to login with error
     return NextResponse.redirect(
       `${origin}/login?error=${encodeURIComponent(error.message)}&redirect=${encodeURIComponent(redirectTo)}`
     )
@@ -55,11 +55,16 @@ export async function POST(request: Request) {
     .eq('user_id', data.user.id)
     .single()
 
-  // If no organization, redirect to onboarding
-  if (!membership) {
-    return NextResponse.redirect(`${origin}/onboarding`)
+  // Determine redirect URL
+  const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
+
+  // Create response and set cookies on it
+  const response = NextResponse.redirect(finalRedirect)
+
+  // Set all cookies on the response
+  for (const { name, value, options } of cookiesToSet) {
+    response.cookies.set(name, value, options)
   }
 
-  // Success - redirect to dashboard (or requested page)
-  return NextResponse.redirect(`${origin}${redirectTo}`)
+  return response
 }
