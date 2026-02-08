@@ -39,6 +39,5 @@ CREATE INDEX idx_payout_schedule_runs_date ON payout_schedule_runs(run_at DESC);
 -- Grant permissions
 GRANT SELECT, INSERT ON payout_schedule_runs TO service_role;
 
--- Add payout settings to ledger metadata schema comment
-COMMENT ON COLUMN ledgers.metadata IS
-  'Contains settings including payout_settings: { schedule: manual|weekly|biweekly|monthly, day_of_week: 0-6, day_of_month: 1-28, minimum_amount: cents }';
+-- Note: Payout settings stored in ledger.settings JSONB field
+-- { payout_settings: { schedule: manual|weekly|biweekly|monthly, day_of_week: 0-6, day_of_month: 1-28, minimum_amount: cents } }
