@@ -9,13 +9,16 @@ export async function createOrganizationWithLedger(input: {
   ledgerMode: 'standard' | 'marketplace'
 }) {
   const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  const { orgName, selectedPlan, ledgerName, ledgerMode } = input
 
-  if (authError || !user) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) {
+    return { error: sessionError.message }
+  }
+  if (!session?.user?.id) {
     return { error: 'Not authenticated' }
   }
-
-  const { orgName, selectedPlan, ledgerName, ledgerMode } = input
+  const userId = session.user.id
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
@@ -31,7 +34,7 @@ export async function createOrganizationWithLedger(input: {
   trialEndsAt.setDate(trialEndsAt.getDate() + 14)
 
   const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
-    p_user_id: user.id,
+    p_user_id: userId,
     p_org_name: orgName,
     p_org_slug: slug,
     p_plan: selectedPlan,
