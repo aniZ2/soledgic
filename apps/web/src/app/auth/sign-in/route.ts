@@ -63,19 +63,45 @@ export async function POST(request: Request) {
     .eq('status', 'active')
     .single()
 
-  const finalRedirect = membership ? `${origin}${redirectTo}` : `${origin}/onboarding`
-  const response = NextResponse.redirect(finalRedirect, { status: 303 })
+  const finalRedirect = membership ? redirectTo : '/onboarding'
 
-  // Set cookies directly on the response, preserving Supabase's options
-  // Note: httpOnly must be false (Supabase default) so client SDK can read session
+  // Build Set-Cookie headers manually to ensure they're sent correctly
+  // Some browsers don't handle Set-Cookie on redirect responses well
+  const cookieHeaders: string[] = []
   for (const { name, value, options } of cookiesToSet) {
-    response.cookies.set(name, value, {
-      path: options.path ?? '/',
-      maxAge: options.maxAge,
-      httpOnly: options.httpOnly ?? false,
-      sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
-      secure: isSecure,
-    })
+    const parts = [`${name}=${value}`]
+    parts.push(`Path=${options.path ?? '/'}`)
+    if (options.maxAge) parts.push(`Max-Age=${options.maxAge}`)
+    if (isSecure) parts.push('Secure')
+    parts.push(`SameSite=${options.sameSite ?? 'Lax'}`)
+    // Note: NOT setting HttpOnly so client JS can read the session
+    cookieHeaders.push(parts.join('; '))
+  }
+
+  // Return an HTML page that sets cookies via headers and redirects via meta refresh
+  // This ensures cookies are set before the browser navigates away
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="refresh" content="0;url=${finalRedirect}">
+  <title>Redirecting...</title>
+</head>
+<body>
+  <p>Redirecting to ${finalRedirect}...</p>
+  <script>window.location.href = "${finalRedirect}";</script>
+</body>
+</html>`
+
+  const response = new NextResponse(html, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html',
+    },
+  })
+
+  // Set all cookies on the response
+  for (const cookieHeader of cookieHeaders) {
+    response.headers.append('Set-Cookie', cookieHeader)
   }
 
   return response
