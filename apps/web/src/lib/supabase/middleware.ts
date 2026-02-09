@@ -2,9 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  // Keep the original response — if getUser() fails we return this
+  // instead of a response that might clear auth cookies
+  const originalResponse = NextResponse.next({ request })
+  let supabaseResponse = originalResponse
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,14 +16,10 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // First update the request cookies (for downstream middleware/routes)
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          // Create new response with updated request
           supabaseResponse = NextResponse.next({
             request,
           })
-          // Set cookies on the response (this goes back to browser)
-          // Explicitly keep httpOnly: false so client JS can read session cookies
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, {
               ...options,
@@ -34,13 +31,13 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: This refreshes the session and triggers setAll if token needs updating
-  // getUser() validates with Supabase server and refreshes expired tokens
   const { data: { user }, error } = await supabase.auth.getUser()
 
-  // Log for debugging (remove in production)
   if (error) {
     console.log('Middleware auth error:', error.message)
+    // Don't return supabaseResponse — it may contain Set-Cookie headers
+    // that clear the auth cookies. Return the original passthrough instead.
+    return originalResponse
   }
 
   return supabaseResponse
