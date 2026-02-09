@@ -29,10 +29,28 @@ export async function POST(request: Request) {
     }
   )
 
+  // Log cookie state for debugging
+  const allCookies = cookieStore.getAll()
+  const authCookies = allCookies.filter(c => c.name.startsWith('sb-') || c.name.includes('auth'))
+  console.log('[onboarding] cookies:', allCookies.map(c => c.name))
+  console.log('[onboarding] auth cookies:', authCookies.map(c => ({ name: c.name, len: c.value?.length })))
+
   const { data: { user }, error: authError } = await supabase.auth.getUser()
 
+  if (authError) {
+    console.log('[onboarding] auth error:', authError.message, authError.status)
+  }
+
   if (authError || !user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    return NextResponse.json({
+      error: 'Not authenticated',
+      debug: {
+        authError: authError?.message,
+        authStatus: authError?.status,
+        cookieCount: allCookies.length,
+        authCookieNames: authCookies.map(c => c.name),
+      }
+    }, { status: 401 })
   }
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
