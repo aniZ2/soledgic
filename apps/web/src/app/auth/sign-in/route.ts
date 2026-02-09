@@ -65,21 +65,7 @@ export async function POST(request: Request) {
 
   const finalRedirect = membership ? redirectTo : '/onboarding'
 
-  // Build Set-Cookie headers manually to ensure they're sent correctly
-  // Some browsers don't handle Set-Cookie on redirect responses well
-  const cookieHeaders: string[] = []
-  for (const { name, value, options } of cookiesToSet) {
-    const parts = [`${name}=${value}`]
-    parts.push(`Path=${options.path ?? '/'}`)
-    if (options.maxAge) parts.push(`Max-Age=${options.maxAge}`)
-    if (isSecure) parts.push('Secure')
-    parts.push(`SameSite=${options.sameSite ?? 'Lax'}`)
-    // Note: NOT setting HttpOnly so client JS can read the session
-    cookieHeaders.push(parts.join('; '))
-  }
-
-  // Return an HTML page that sets cookies via headers and redirects via meta refresh
-  // This ensures cookies are set before the browser navigates away
+  // Return an HTML page that sets cookies and redirects
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -99,9 +85,15 @@ export async function POST(request: Request) {
     },
   })
 
-  // Set all cookies on the response
-  for (const cookieHeader of cookieHeaders) {
-    response.headers.append('Set-Cookie', cookieHeader)
+  // Use Next.js cookies API to set cookies properly
+  for (const { name, value, options } of cookiesToSet) {
+    response.cookies.set(name, value, {
+      path: options.path ?? '/',
+      maxAge: options.maxAge,
+      httpOnly: false, // Must be false so client JS can read session
+      sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
+      secure: isSecure,
+    })
   }
 
   return response
