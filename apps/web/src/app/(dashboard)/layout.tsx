@@ -42,15 +42,12 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient()
 
-  // Use getSession first (reads from cookie, no server validation)
-  // Then getUser only if session exists (validates with server)
-  const { data: { session } } = await supabase.auth.getSession()
+  // getUser() validates with Supabase Auth server (reads httpOnly cookies server-side)
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (!session) {
+  if (!user) {
     redirect('/login')
   }
-
-  const user = session.user
 
   // Get user's organization membership (only active memberships)
   const { data: membership } = await supabase

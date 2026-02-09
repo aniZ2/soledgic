@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Check } from 'lucide-react'
+import { createOrganizationWithLedger } from './actions'
 
 type LedgerMode = 'standard' | 'marketplace'
 
@@ -54,15 +54,6 @@ export default function OnboardingPage() {
     setError(null)
     setLoading(true)
 
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-
-    if (!user) {
-      setError('Not authenticated')
-      setLoading(false)
-      return
-    }
-
     // Handle Scale plan - contact sales
     if (selectedPlan === 'scale') {
       window.location.href = 'mailto:sales@soledgic.com?subject=Scale%20Plan%20Inquiry&body=Organization:%20' + encodeURIComponent(orgName)
@@ -71,29 +62,19 @@ export default function OnboardingPage() {
     }
 
     try {
-      // Create organization with proper trial settings
-      const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-      const planData = plans.find(p => p.id === selectedPlan) || plans[0]
-
-      // 14-day trial
-      const trialEndsAt = new Date()
-      trialEndsAt.setDate(trialEndsAt.getDate() + 14)
-
-      // Use RPC function to create org + membership + ledgers atomically
-      // This bypasses RLS chicken-and-egg issues
-      const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
-        p_user_id: user.id,
-        p_org_name: orgName,
-        p_org_slug: slug,
-        p_plan: selectedPlan,
-        p_trial_ends_at: trialEndsAt.toISOString(),
-        p_max_ledgers: planData.ledgers,
-        p_max_team_members: planData.team_members,
-        p_ledger_name: ledgerName,
-        p_ledger_mode: ledgerMode,
+      // Server action handles auth + org creation server-side
+      const result = await createOrganizationWithLedger({
+        orgName,
+        selectedPlan,
+        ledgerName,
+        ledgerMode,
       })
 
-      if (rpcError) throw rpcError
+      if (result.error) {
+        setError(result.error)
+        setLoading(false)
+        return
+      }
 
       // If user wants to skip trial and pay now, redirect to billing
       if (skipTrial) {

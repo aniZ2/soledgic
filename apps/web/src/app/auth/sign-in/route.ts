@@ -65,32 +65,14 @@ export async function POST(request: Request) {
 
   const finalRedirect = membership ? redirectTo : '/onboarding'
 
-  // Return an HTML page that sets cookies and redirects
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="refresh" content="0;url=${finalRedirect}">
-  <title>Redirecting...</title>
-</head>
-<body>
-  <p>Redirecting to ${finalRedirect}...</p>
-  <script>window.location.href = "${finalRedirect}";</script>
-</body>
-</html>`
+  const response = NextResponse.redirect(`${origin}${finalRedirect}`, { status: 303 })
 
-  const response = new NextResponse(html, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html',
-    },
-  })
-
-  // Use Next.js cookies API to set cookies properly
+  // Set cookies on the redirect response
   for (const { name, value, options } of cookiesToSet) {
     response.cookies.set(name, value, {
       path: options.path ?? '/',
       maxAge: options.maxAge,
-      httpOnly: false, // Must be false so client JS can read session
+      httpOnly: false,
       sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
       secure: isSecure,
     })

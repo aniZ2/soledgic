@@ -22,8 +22,12 @@ export async function updateSession(request: NextRequest) {
             request,
           })
           // Set cookies on the response (this goes back to browser)
+          // Explicitly keep httpOnly: false so client JS can read session cookies
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              httpOnly: false,
+            })
           )
         },
       },

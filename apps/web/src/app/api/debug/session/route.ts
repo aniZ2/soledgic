@@ -29,12 +29,12 @@ export async function GET(request: Request) {
     }
   )
 
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+  // getUser() validates with Supabase Auth server (works with httpOnly cookies)
   const { data: { user }, error: userError } = await supabase.auth.getUser()
 
-  // Find auth-related cookies
+  // Find auth-related cookies (chunked cookies use .0, .1 suffixes)
   const authCookies = allCookies.filter(c =>
-    c.name.includes('auth') || c.name.includes('sb-')
+    c.name.includes('auth-token') || c.name.startsWith('sb-')
   )
 
   return NextResponse.json({
@@ -53,13 +53,6 @@ export async function GET(request: Request) {
         valueLength: c.value?.length || 0,
         valuePreview: c.value?.substring(0, 50) + '...',
       })),
-    },
-    session: {
-      exists: !!session,
-      userId: session?.user?.id,
-      email: session?.user?.email,
-      expiresAt: session?.expires_at,
-      error: sessionError?.message,
     },
     user: {
       exists: !!user,
