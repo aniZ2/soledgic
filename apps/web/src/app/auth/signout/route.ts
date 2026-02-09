@@ -32,11 +32,12 @@ async function handleSignOut(request: Request) {
   const response = NextResponse.redirect(`${origin}/login`, { status: 303 })
 
   // Set cookies (including deletions) directly on the response
+  // Note: httpOnly must be false (Supabase default) so client SDK can read session
   for (const { name, value, options } of cookiesToSet) {
     response.cookies.set(name, value, {
       path: options.path ?? '/',
       maxAge: options.maxAge,
-      httpOnly: options.httpOnly ?? true,
+      httpOnly: options.httpOnly ?? false,
       sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
       secure: isSecure,
     })

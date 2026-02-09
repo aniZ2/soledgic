@@ -67,11 +67,12 @@ export async function POST(request: Request) {
   const response = NextResponse.redirect(finalRedirect, { status: 303 })
 
   // Set cookies directly on the response, preserving Supabase's options
+  // Note: httpOnly must be false (Supabase default) so client SDK can read session
   for (const { name, value, options } of cookiesToSet) {
     response.cookies.set(name, value, {
       path: options.path ?? '/',
       maxAge: options.maxAge,
-      httpOnly: options.httpOnly ?? true, // Default to true for security
+      httpOnly: options.httpOnly ?? false,
       sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
       secure: isSecure,
     })

@@ -14,13 +14,14 @@ export async function GET(request: Request) {
   const origin = `${isSecure ? 'https' : 'http'}://${host}`
 
   // Helper to create redirect with cookies
+  // Note: httpOnly must be false (Supabase default) so client SDK can read session
   const createRedirectWithCookies = (url: string, cookiesToSet: { name: string; value: string; options: CookieOptions }[]) => {
     const response = NextResponse.redirect(url, { status: 303 })
     for (const { name, value, options } of cookiesToSet) {
       response.cookies.set(name, value, {
         path: options.path ?? '/',
         maxAge: options.maxAge,
-        httpOnly: options.httpOnly ?? true,
+        httpOnly: options.httpOnly ?? false,
         sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
         secure: isSecure,
       })

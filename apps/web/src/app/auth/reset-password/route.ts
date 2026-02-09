@@ -44,11 +44,12 @@ export async function GET(request: Request) {
       const response = NextResponse.redirect(`${origin}/reset-password`, { status: 303 })
 
       // Set cookies directly on the response
+      // Note: httpOnly must be false (Supabase default) so client SDK can read session
       for (const { name, value, options } of cookiesToSet) {
         response.cookies.set(name, value, {
           path: options.path ?? '/',
           maxAge: options.maxAge,
-          httpOnly: options.httpOnly ?? true,
+          httpOnly: options.httpOnly ?? false,
           sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
           secure: isSecure,
         })
