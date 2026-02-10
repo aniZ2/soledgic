@@ -3,19 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createApiHandler } from '@/lib/api-handler'
 
 export const GET = createApiHandler(
-  async (request: Request) => {
+  async (request: Request, { user }) => {
     const supabase = await createClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Get user's organization
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
-      .eq('user_id', user.id)
+      .eq('user_id', user!.id)
       .single()
 
     if (!membership) {
@@ -27,7 +22,7 @@ export const GET = createApiHandler(
       .from('notifications')
       .select('*')
       .eq('organization_id', membership.organization_id)
-      .or(`user_id.is.null,user_id.eq.${user.id}`)
+      .or(`user_id.is.null,user_id.eq.${user!.id}`)
       .is('dismissed_at', null)
       .order('created_at', { ascending: false })
       .limit(20)
@@ -47,13 +42,8 @@ export const GET = createApiHandler(
 )
 
 export const PATCH = createApiHandler(
-  async (request: Request) => {
+  async (request: Request, { user }) => {
     const supabase = await createClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     const body = await request.json()
     const { action, notificationId, notificationIds } = body
@@ -62,7 +52,7 @@ export const PATCH = createApiHandler(
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
-      .eq('user_id', user.id)
+      .eq('user_id', user!.id)
       .single()
 
     if (!membership) {
@@ -88,7 +78,7 @@ export const PATCH = createApiHandler(
         .from('notifications')
         .update({ read_at: new Date().toISOString() })
         .eq('organization_id', membership.organization_id)
-        .or(`user_id.is.null,user_id.eq.${user.id}`)
+        .or(`user_id.is.null,user_id.eq.${user!.id}`)
         .is('read_at', null)
     } else if (action === 'dismiss') {
       if (notificationId) {

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createApiHandler } from '@/lib/api-handler'
 
 export const GET = createApiHandler(
-  async (request: Request) => {
+  async (request: Request, { user }) => {
     const { searchParams } = new URL(request.url)
     const ledgerId = searchParams.get('ledger_id')
     const referenceId = searchParams.get('reference_id')
@@ -13,11 +13,6 @@ export const GET = createApiHandler(
     }
 
     const supabase = await createClient()
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
 
     // Verify user has access to this ledger
     const { data: ledger } = await supabase
@@ -33,7 +28,7 @@ export const GET = createApiHandler(
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
-      .eq('user_id', user.id)
+      .eq('user_id', user!.id)
       .eq('organization_id', ledger.organization_id)
       .single()
 
