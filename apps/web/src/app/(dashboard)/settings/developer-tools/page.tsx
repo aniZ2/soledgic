@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Wrench, Trash2, AlertTriangle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useReadonly } from '@/components/livemode-provider'
+import { setReadonlyAction } from '@/lib/livemode-server'
 
 export default function DeveloperToolsPage() {
   const router = useRouter()
@@ -81,11 +82,7 @@ export default function DeveloperToolsPage() {
   const handleToggleReadonly = async () => {
     setTogglingReadonly(true)
     try {
-      await fetch('/api/readonly', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ readonly: !currentReadonly }),
-      })
+      await setReadonlyAction(!currentReadonly)
       router.refresh()
     } finally {
       setTogglingReadonly(false)

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { BookOpen } from 'lucide-react'
+import { setActiveLedgerGroupAction } from '@/lib/livemode-server'
 
 interface LedgerCardProps {
   ledger: {
@@ -19,11 +20,7 @@ export function LedgerCard({ ledger }: LedgerCardProps) {
 
   const handleClick = async () => {
     // Set this ledger's group as the active group before navigating
-    await fetch('/api/active-ledger-group', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ledgerGroupId: ledger.ledger_group_id }),
-    })
+    await setActiveLedgerGroupAction(ledger.ledger_group_id)
     router.push(`/ledgers/${ledger.id}`)
     router.refresh()
   }

@@ -2,6 +2,8 @@
 // Includes: CSRF protection, rate limiting, error sanitization, audit logging
 
 import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { validateCsrf } from './csrf'
 import { checkRateLimit, getRateLimitKey, getRouteLimit } from './rate-limit'
@@ -103,19 +105,38 @@ export function createApiHandler(
       }
       
       // 2. Authentication
+      // Track cookies set by Supabase during auth (e.g. token refresh)
+      // so we can merge them into the final response. Without this,
+      // a token refresh would consume the old refresh token but the new
+      // tokens would be lost — logging the user out on the next request.
       let user: { id: string; email?: string } | null = null
-      
+      const pendingAuthCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }> = []
+
       if (requireAuth) {
-        const supabase = await createClient()
+        const cookieStore = await cookies()
+        const supabase = createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            cookies: {
+              getAll() {
+                return cookieStore.getAll()
+              },
+              setAll(cookiesToSet) {
+                pendingAuthCookies.push(...cookiesToSet)
+              },
+            },
+          }
+        )
         const { data: { user: authUser } } = await supabase.auth.getUser()
-        
+
         if (!authUser) {
           return NextResponse.json(
             { error: 'Unauthorized', request_id: requestId },
             { status: 401 }
           )
         }
-        
+
         user = { id: authUser.id, email: authUser.email }
       }
       
@@ -171,18 +192,18 @@ export function createApiHandler(
 
       // 5. Execute Handler
       const response = await handler(request, { user, requestId, startTime })
-      
-      // 6. Add security headers to response
-      const headers = new Headers(response.headers)
-      headers.set('X-Request-Id', requestId)
-      headers.set('X-Content-Type-Options', 'nosniff')
-      headers.set('X-Frame-Options', 'DENY')
-      
-      return new NextResponse(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers
-      })
+
+      // 6. Merge any auth cookies from Supabase token refresh
+      for (const { name, value, options } of pendingAuthCookies) {
+        response.cookies.set(name, value, options as any)
+      }
+
+      // 7. Add security headers directly (no re-wrapping to preserve cookies)
+      response.headers.set('X-Request-Id', requestId)
+      response.headers.set('X-Content-Type-Options', 'nosniff')
+      response.headers.set('X-Frame-Options', 'DENY')
+
+      return response
       
     } catch (error: any) {
       console.error(`[${requestId}] API error:`, error.message)

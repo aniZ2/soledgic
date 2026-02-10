@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { setLivemodeAction } from '@/lib/livemode-server'
 
 export function LiveModeToggle({
   initialLivemode,
@@ -20,18 +21,11 @@ export function LiveModeToggle({
 
     const next = !livemode
     try {
-      await fetch('/api/livemode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          livemode: next,
-          // Preserve active ledger group so the user stays on the
-          // same logical ledger after switching modes
-          activeLedgerGroupId,
-        }),
-      })
-      setLivemode(next)
-      router.refresh()
+      const result = await setLivemodeAction(next, activeLedgerGroupId)
+      if (result.success) {
+        setLivemode(next)
+        router.refresh()
+      }
     } finally {
       setSwitching(false)
     }
