@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check } from 'lucide-react'
+import { createOrganizationWithLedger } from './actions'
 
 type LedgerMode = 'standard' | 'marketplace'
 
@@ -61,15 +62,15 @@ export default function OnboardingForm() {
     }
 
     try {
-      const res = await fetch('/api/onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgName, selectedPlan, ledgerName, ledgerMode }),
+      const result = await createOrganizationWithLedger({
+        orgName,
+        selectedPlan,
+        ledgerName,
+        ledgerMode,
       })
-      const result = await res.json()
 
-      if (!res.ok || result.error) {
-        setError(result.error || 'Failed to create organization')
+      if (result.error) {
+        setError(result.error)
         setLoading(false)
         return
       }

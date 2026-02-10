@@ -11,14 +11,11 @@ export async function createOrganizationWithLedger(input: {
   const supabase = await createClient()
   const { orgName, selectedPlan, ledgerName, ledgerMode } = input
 
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-  if (sessionError) {
-    return { error: sessionError.message }
-  }
-  if (!session?.user?.id) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
     return { error: 'Not authenticated' }
   }
-  const userId = session.user.id
+  const userId = user.id
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
