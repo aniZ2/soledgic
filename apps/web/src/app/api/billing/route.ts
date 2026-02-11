@@ -45,6 +45,7 @@ export const POST = createApiHandler(
       'resume_subscription',
       'get_invoices',
       'get_payment_methods',
+      'activate_free_plan',
     ]
     if (ownerActions.includes(action) && !isOwner) {
       return NextResponse.json(
@@ -77,6 +78,9 @@ export const POST = createApiHandler(
       }
       case 'resume_subscription': {
         return handleResumeSubscription(org)
+      }
+      case 'activate_free_plan': {
+        return handleActivateFreePlan(org, body.plan_id)
       }
       default: {
         return NextResponse.json(
@@ -364,4 +368,42 @@ async function handleResumeSubscription(org: Record<string, any>) {
   })
 
   return NextResponse.json({ success: true, data: { resumed: true } })
+}
+
+async function handleActivateFreePlan(org: Record<string, any>, planId?: string) {
+  if (!planId) {
+    return NextResponse.json(
+      { error: 'plan_id is required' },
+      { status: 400 }
+    )
+  }
+
+  const plan = PLANS[planId]
+  if (!plan) {
+    return NextResponse.json(
+      { error: 'Invalid plan_id' },
+      { status: 400 }
+    )
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('organizations')
+    .update({
+      plan: planId,
+      status: 'active',
+      trial_ends_at: null,
+      max_ledgers: plan.max_ledgers,
+      max_team_members: plan.max_team_members,
+    })
+    .eq('id', org.id)
+
+  if (error) {
+    return NextResponse.json(
+      { error: 'Failed to activate free plan' },
+      { status: 500 }
+    )
+  }
+
+  return NextResponse.json({ success: true, data: { activated: true, plan: planId } })
 }

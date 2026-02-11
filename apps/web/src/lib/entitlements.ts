@@ -25,8 +25,6 @@ export type EntitlementResult =
 export type EntitlementCode =
   | 'payment_past_due'
   | 'subscription_canceled'
-  | 'ledger_limit_reached'
-  | 'team_member_limit_reached'
   | 'team_member_limit_reached'
 
 /** Extended org shape for team member entitlement checks. */
@@ -45,7 +43,8 @@ export interface TeamEntitlementOrg {
  * Blocks when:
  * - `past_due`  — payment failed, no new paid resources
  * - `canceled`  — subscription ended
- * - over plan limit (max_ledgers !== -1 && count >= max)
+ * Ledger overages are allowed and billed at $20/month per additional ledger.
+ * We intentionally do not block at max_ledgers in app-level enforcement.
  *
  * Test ledgers are not gated here (separate spam cap in the route).
  */
@@ -67,16 +66,6 @@ export function canCreateLiveLedger(org: EntitlementOrg): EntitlementResult {
       httpStatus: 403,
       message:
         'Your subscription has ended. Choose a plan on the Billing page to start creating ledgers again.',
-    }
-  }
-
-  if (org.max_ledgers !== -1 && org.current_ledger_count >= org.max_ledgers) {
-    return {
-      allowed: false,
-      code: 'ledger_limit_reached',
-      httpStatus: 403,
-      message:
-        `You\u2019ve reached your plan\u2019s limit of ${org.max_ledgers} ledger${org.max_ledgers === 1 ? '' : 's'}. Upgrade your plan or archive an existing ledger to make room.`,
     }
   }
 

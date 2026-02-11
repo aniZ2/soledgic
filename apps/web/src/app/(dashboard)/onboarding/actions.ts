@@ -22,11 +22,8 @@ export async function createOrganizationWithLedger(input: {
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
   const effectivePlan = 'pro'
-  const planData = { ledgers: 3, team_members: 1 }
-
-  // 14-day trial
+  const planData = { ledgers: 1, team_members: 1 }
   const trialEndsAt = new Date()
-  trialEndsAt.setDate(trialEndsAt.getDate() + 14)
 
   const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
     p_user_id: userId,

@@ -4,19 +4,19 @@ import { Check, ShieldCheck, Zap, BookLock } from 'lucide-react'
 const plans = [
   {
     name: 'Pro + Payment Processing',
-    price: 49,
-    description: 'For teams that need payment processing plus everything in Pro.',
+    price: 0,
+    description: 'Start free with payment processing plus everything in Pro.',
     features: [
       'Payment processing',
       'Everything in Pro',
-      '3 ledgers',
+      '1 ledger included',
+      '$20/month per additional ledger',
       '1 team member',
       '7-day settlement',
       'Weekly payouts',
       'Email support',
-      '$20/ledger overage',
     ],
-    cta: 'Start Free Trial',
+    cta: 'Start Free',
     popular: false,
   },
 ]
@@ -143,7 +143,7 @@ export default function HomePage() {
 
               >
 
-                Start Free Trial
+                Start Free
 
               </Link>
 
@@ -185,7 +185,7 @@ export default function HomePage() {
 
             >
 
-              Start 14-Day Free Trial
+              Start Free
 
             </Link>
 
@@ -377,7 +377,7 @@ export default function HomePage() {
 
             <p className="mt-4 text-lg text-muted-foreground">
 
-              A predictable platform fee plus usage-based transaction fees.
+              Start free, then pay payment processing plus $20/month for each additional ledger.
 
             </p>
 
@@ -391,7 +391,7 @@ export default function HomePage() {
 
                       <div className="text-4xl font-bold text-primary">3.4% + $0.55</div>
 
-                      <p className="text-lg text-muted-foreground">Payment processing fees apply. Payouts managed through the platform.</p>
+                      <p className="text-lg text-muted-foreground">Payment processing fees apply. 1 ledger included, then $20/month per additional ledger.</p>
 
                     </div>
 
@@ -429,7 +429,7 @@ export default function HomePage() {
 
                                 <div className="mt-6 text-center">
 
-                                  {plan.price ? (
+                                  {plan.price > 0 ? (
 
                                     <>
 
@@ -441,7 +441,7 @@ export default function HomePage() {
 
                                   ) : (
 
-                                    <span className="text-2xl font-bold text-foreground">Custom Pricing</span>
+                                    <span className="text-2xl font-bold text-foreground">Free</span>
 
                                   )}
 

@@ -31,7 +31,26 @@ export function PlanSelectButton({
       return
     }
 
-    if (!priceId) return
+    if (!priceId) {
+      setLoading(true)
+      try {
+        const res = await fetchWithCsrf('/api/billing', {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'activate_free_plan',
+            plan_id: planId,
+          }),
+        })
+        const result = await res.json()
+        if (result.success) {
+          window.location.reload()
+        }
+      } catch (error) {
+        console.error('Plan activation error:', error)
+      }
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
     try {
@@ -59,6 +78,8 @@ export function PlanSelectButton({
     ? 'Current plan'
     : contactSales
     ? 'Contact Sales'
+    : !priceId
+    ? 'Switch to Free Plan'
     : 'Select plan'
 
   return (

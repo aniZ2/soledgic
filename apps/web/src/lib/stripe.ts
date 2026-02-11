@@ -70,14 +70,15 @@ export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
 export const PLANS: Record<string, PlanConfig> = {
   pro: {
     name: 'Pro + Payment Processing',
-    stripe_price_id: process.env.STRIPE_PRICE_PRO_MONTHLY || null,
-    price_monthly: 4900,
-    max_ledgers: 3,
+    stripe_price_id: null,
+    price_monthly: 0,
+    max_ledgers: 1,
     max_team_members: 1,
     features: [
       'Payment processing',
       'Everything in Pro',
-      '3 ledgers',
+      '1 ledger included',
+      '$20/month per additional ledger',
       'API access',
       'Receipts & reconciliation',
       'Email support',
@@ -85,8 +86,6 @@ export const PLANS: Record<string, PlanConfig> = {
   },
 }
 
-// Lookup map used for webhook compatibility with legacy price IDs.
-export const PLAN_LOOKUP: Record<string, PlanConfig> = {
-  ...FUTURE_PRICING_SUGGESTION,
-  ...PLANS,
+export function getPlanConfig(planId: string): PlanConfig | undefined {
+  return PLANS[planId] ?? FUTURE_PRICING_SUGGESTION[planId]
 }

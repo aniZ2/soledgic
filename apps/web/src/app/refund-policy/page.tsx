@@ -31,14 +31,14 @@ export default function RefundPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mt-8 mb-3">2. Free Trial</h2>
+            <h2 className="text-xl font-semibold mt-8 mb-3">2. Free Start</h2>
             <p>
-              All new accounts include a 14-day free trial at no charge. We encourage you to fully evaluate the Service during this period before subscribing. No payment is required during the trial, so no refund situation arises from trial usage.
+              All new accounts start free with one included ledger. Because no base subscription fee is charged to start, there is no refund scenario for free-plan usage.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mt-8 mb-3">3. Subscription Cancellation</h2>
+            <h2 className="text-xl font-semibold mt-8 mb-3">3. Paid Subscription Cancellation</h2>
             <p>
               You may cancel your subscription at any time from your account billing settings. When you cancel:
             </p>

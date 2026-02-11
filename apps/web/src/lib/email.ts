@@ -156,7 +156,7 @@ export async function sendWelcomeEmail({
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Trial Ending Reminder Email
+// Free Plan Billing Reminder Email
 // ════════════════════════════════════════════════════════════════════════════
 
 interface SendTrialEndingEmailParams {
@@ -172,16 +172,16 @@ export async function sendTrialEndingEmail({
 }: SendTrialEndingEmailParams): Promise<EmailResult> {
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
-      Your trial ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}
+      Billing reminder for ${orgName}
     </h1>
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
-      Your free trial for <strong>${orgName}</strong> is almost over. Subscribe now to keep using Soledgic without interruption.
+      Soledgic starts free with one included ledger. Additional ledgers are billed at $20/month each, and payment processing fees apply.
     </p>
     <a href="${APP_URL}/billing" style="${buttonStyle}">
-      Choose a Plan
+      View Billing
     </a>
     <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">
-      After your trial ends, you'll still be able to view your data but won't be able to create new transactions or ledgers.
+      Current pricing details can be reviewed at any time from your billing page.
     </p>
   `
 
@@ -189,7 +189,7 @@ export async function sendTrialEndingEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `Your Soledgic trial ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`,
+      subject: `Soledgic billing reminder`,
       html: emailTemplate(content),
     })
     return { success: true }

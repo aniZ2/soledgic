@@ -61,17 +61,17 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold mt-8 mb-3">5. Subscriptions and Billing</h2>
             <h3 className="text-lg font-medium mt-4 mb-2">5.1 Plans and Pricing</h3>
             <p>
-              The Service is offered under subscription plans as described on our pricing page. The current plan is Pro + Payment Processing ($49/month), with payment processing fees applied separately. We reserve the right to modify pricing with 30 days&apos; written notice to active subscribers.
+              The Service is offered under pricing plans as described on our pricing page. The current offering starts free with one included ledger. Payment processing fees apply separately, and each additional ledger is billed at $20/month. We reserve the right to modify pricing with 30 days&apos; written notice to active customers.
             </p>
 
-            <h3 className="text-lg font-medium mt-4 mb-2">5.2 Free Trial</h3>
+            <h3 className="text-lg font-medium mt-4 mb-2">5.2 Free Start</h3>
             <p>
-              New accounts receive a 14-day free trial. At the end of the trial period, you must subscribe to a paid plan to continue using the Service. If you do not subscribe, your access to the Service will be restricted.
+              New accounts start on the free plan automatically. No subscription is required to begin using the Service.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.3 Payment</h3>
             <p>
-              Subscriptions are billed monthly in advance via Stripe. By subscribing, you authorize us to charge your payment method on a recurring basis. All fees are quoted in US Dollars. You are responsible for all applicable taxes.
+              Any paid charges (including overage charges and other paid features) are billed via Stripe. By adding a payment method and using paid features, you authorize us to charge your payment method on a recurring basis where applicable. All fees are quoted in US Dollars. You are responsible for all applicable taxes.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.4 Overage Charges</h3>
@@ -81,7 +81,7 @@ export default function TermsPage() {
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.5 Cancellation</h3>
             <p>
-              You may cancel your subscription at any time from your account settings. Cancellation takes effect at the end of the current billing period. No partial refunds are issued for unused time within a billing period. See our <Link href="/refund-policy" className="text-primary hover:underline">Refund Policy</Link> for details.
+              If you have an active paid subscription, you may cancel it at any time from your account settings. Cancellation takes effect at the end of the current billing period. No partial refunds are issued for unused time within a billing period. See our <Link href="/refund-policy" className="text-primary hover:underline">Refund Policy</Link> for details.
             </p>
           </section>
 

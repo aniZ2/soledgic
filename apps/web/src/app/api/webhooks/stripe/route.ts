@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { getStripe } from '@/lib/stripe'
+import { getStripe, getPlanConfig } from '@/lib/stripe'
 import { planFromPriceId } from '@/lib/stripe-helpers'
 import { sendPaymentFailedEmail } from '@/lib/email'
 import type Stripe from 'stripe'
@@ -72,8 +72,7 @@ export async function POST(request: Request) {
 
           // Also update limits based on plan
           if (planName && planName !== 'scale') {
-            const { PLAN_LOOKUP } = await import('@/lib/stripe')
-            const planConfig = PLAN_LOOKUP[planName]
+            const planConfig = getPlanConfig(planName)
             if (planConfig) {
               await supabase
                 .from('organizations')
@@ -102,8 +101,7 @@ export async function POST(request: Request) {
 
         if (planName) {
           updateData.plan = planName
-          const { PLAN_LOOKUP } = await import('@/lib/stripe')
-          const planConfig = PLAN_LOOKUP[planName]
+          const planConfig = getPlanConfig(planName)
           if (planConfig && planName !== 'scale') {
             updateData.max_ledgers = planConfig.max_ledgers
             updateData.max_team_members = planConfig.max_team_members

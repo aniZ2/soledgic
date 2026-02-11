@@ -11,13 +11,14 @@ const plans = [
   {
     id: 'pro',
     name: 'Pro + Payment Processing',
-    price: 49,
-    ledgers: 3,
+    price: 0,
+    ledgers: 1,
     team_members: 1,
     features: [
       'Payment processing',
       'Everything in Pro',
-      '3 ledgers',
+      '1 ledger included',
+      '$20/month per additional ledger',
       'API access',
       'Receipts & reconciliation',
       'Email support',
@@ -38,9 +39,7 @@ export default function OnboardingForm() {
   const [ledgerMode, setLedgerMode] = useState<LedgerMode>('marketplace')
   const [selectedPlan, setSelectedPlan] = useState('pro')
 
-  const selectedPlanData = plans.find(p => p.id === selectedPlan)
-
-  const handleCreateOrganization = async (skipTrial = false) => {
+  const handleCreateOrganization = async () => {
     setError(null)
     setLoading(true)
 
@@ -58,13 +57,7 @@ export default function OnboardingForm() {
         return
       }
 
-      // If user wants to skip trial and pay now, redirect to billing
-      if (skipTrial) {
-        router.push('/billing?action=subscribe&plan=' + selectedPlan)
-      } else {
-        // Redirect to getting-started for trial users
-        router.push('/getting-started')
-      }
+      router.push('/getting-started')
       router.refresh()
 
     } catch (err: any) {
@@ -222,7 +215,7 @@ export default function OnboardingForm() {
                 Choose your plan
               </h1>
               <p className="text-muted-foreground mb-8">
-                Start with a 14-day free trial. Cancel anytime.
+                Start free with one included ledger. Additional ledgers are $20/month each.
               </p>
 
               {error && (
@@ -265,13 +258,13 @@ export default function OnboardingForm() {
                         </ul>
                       </div>
                       <div className="text-right ml-4">
-                        {plan.price ? (
+                        {plan.price > 0 ? (
                           <>
                             <div className="font-bold text-foreground text-lg">${plan.price}</div>
                             <div className="text-xs text-muted-foreground">/month</div>
                           </>
                         ) : (
-                          <div className="font-medium text-foreground">Custom</div>
+                          <div className="font-medium text-foreground">Free</div>
                         )}
                       </div>
                     </div>
@@ -288,27 +281,13 @@ export default function OnboardingForm() {
                   Back
                 </button>
                 <button
-                  onClick={() => handleCreateOrganization(false)}
+                  onClick={handleCreateOrganization}
                   disabled={loading}
                   className="flex-1 bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Creating...' : 'Start free trial'}
+                  {loading ? 'Creating...' : 'Start free'}
                 </button>
               </div>
-
-              {selectedPlanData && (
-                <p className="text-center text-xs text-muted-foreground mt-4">
-                  No credit card required for trial.{' '}
-                  <button
-                    type="button"
-                    onClick={() => handleCreateOrganization(true)}
-                    disabled={loading}
-                    className="text-primary hover:underline"
-                  >
-                    Skip trial and subscribe now
-                  </button>
-                </p>
-              )}
             </>
           )}
         </div>

@@ -249,7 +249,7 @@ function BillingContent() {
                 : 'Your trial has ended'}
             </p>
             <p className="text-sm text-muted-foreground">
-              Choose a plan below to continue using Soledgic.
+              Switch to the free plan below to continue. Additional ledgers are $20/month each.
             </p>
           </div>
         </div>
@@ -262,7 +262,7 @@ function BillingContent() {
             <h2 className="text-lg font-semibold text-foreground">Current Plan</h2>
             <div className="flex items-center gap-3 mt-2">
               <span className="text-3xl font-bold text-foreground capitalize">
-                {organization?.plan || 'Trial'}
+                {organization?.plan || 'Free'}
               </span>
               {isTrialing && trialEndsAt && (
                 <span className="px-2 py-1 bg-yellow-500/10 text-yellow-600 text-xs rounded-full">
@@ -286,7 +286,7 @@ function BillingContent() {
               </p>
             )}
           </div>
-          {isOwner && (
+          {isOwner && (subscription || organization?.stripe_customer_id) && (
             <div className="flex gap-2">
               {isCanceling ? (
                 <button
@@ -304,7 +304,7 @@ function BillingContent() {
                   disabled={!!actionLoading}
                   className="px-4 py-2 border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  Manage Subscription
+                  Manage Billing
                 </button>
               )}
             </div>
@@ -328,7 +328,7 @@ function BillingContent() {
               You have {currentLedgerCount} of {maxLedgers} ledgers on the {organization?.plan} plan
             </p>
             <p className="text-sm text-muted-foreground">
-              Your existing ledgers still work normally. To create new ones, upgrade your plan or archive a ledger you no longer need.
+              Your existing ledgers still work normally. Additional ledgers are billed at $20/month each.
             </p>
           </div>
         </div>
@@ -424,7 +424,7 @@ function BillingContent() {
             })}
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            Additional ledgers: $20/month each. Payment processing fees apply. Includes a 14-day free trial.
+            Additional ledgers: $20/month each. Payment processing fees apply. Starts free with 1 included ledger.
           </p>
         </div>
       )}

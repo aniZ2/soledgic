@@ -81,7 +81,7 @@ export default function SignupPage() {
           Create your account
         </h1>
         <p className="text-muted-foreground text-center mb-8">
-          Start your 14-day free trial
+          Start free with 1 included ledger
         </p>
 
         {/* Google Sign Up */}
