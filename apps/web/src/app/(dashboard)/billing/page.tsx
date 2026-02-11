@@ -373,9 +373,9 @@ function BillingContent() {
           <h2 className="text-xl font-semibold text-foreground mb-4">
             {isTrialing ? 'Choose a plan' : 'Change plan'}
           </h2>
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid gap-6 max-w-xl">
             {plans.map((plan) => {
-              const isPopular = plan.id === 'business'
+              const isPopular = plans.length > 1 && plan.id === 'pro'
               return (
                 <div
                   key={plan.id}
@@ -424,7 +424,7 @@ function BillingContent() {
             })}
           </div>
           <p className="mt-4 text-sm text-muted-foreground">
-            Additional ledgers: $20/month each. All plans include a 14-day free trial.
+            Additional ledgers: $20/month each. Payment processing fees apply. Includes a 14-day free trial.
           </p>
         </div>
       )}

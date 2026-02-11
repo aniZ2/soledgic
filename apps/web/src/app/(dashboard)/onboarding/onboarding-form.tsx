@@ -10,29 +10,19 @@ type LedgerMode = 'standard' | 'marketplace'
 const plans = [
   {
     id: 'pro',
-    name: 'Pro',
+    name: 'Pro + Payment Processing',
     price: 49,
     ledgers: 3,
     team_members: 1,
-    features: ['3 ledgers', 'API access', 'Receipts & reconciliation', 'Email support'],
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    price: 249,
-    ledgers: 10,
-    team_members: 10,
-    features: ['10 ledgers', 'Team members (up to 10)', 'Priority support', 'Everything in Pro'],
-    popular: true,
-  },
-  {
-    id: 'scale',
-    name: 'Scale',
-    price: null,
-    ledgers: -1,
-    team_members: -1,
-    features: ['Unlimited ledgers', 'Unlimited team members', 'Dedicated support', 'SLA guarantee'],
-    contact_sales: true,
+    features: [
+      'Payment processing',
+      'Everything in Pro',
+      '3 ledgers',
+      'API access',
+      'Receipts & reconciliation',
+      'Email support',
+    ],
+    popular: false,
   },
 ]
 
@@ -53,13 +43,6 @@ export default function OnboardingForm() {
   const handleCreateOrganization = async (skipTrial = false) => {
     setError(null)
     setLoading(true)
-
-    // Handle Scale plan - contact sales
-    if (selectedPlan === 'scale') {
-      window.location.href = 'mailto:sales@soledgic.com?subject=Scale%20Plan%20Inquiry&body=Organization:%20' + encodeURIComponent(orgName)
-      setLoading(false)
-      return
-    }
 
     try {
       const result = await createOrganizationWithLedger({
@@ -309,11 +292,11 @@ export default function OnboardingForm() {
                   disabled={loading}
                   className="flex-1 bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Creating...' : selectedPlanData?.contact_sales ? 'Contact Sales' : 'Start free trial'}
+                  {loading ? 'Creating...' : 'Start free trial'}
                 </button>
               </div>
 
-              {selectedPlanData && !selectedPlanData.contact_sales && (
+              {selectedPlanData && (
                 <p className="text-center text-xs text-muted-foreground mt-4">
                   No credit card required for trial.{' '}
                   <button

@@ -61,7 +61,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold mt-8 mb-3">5. Subscriptions and Billing</h2>
             <h3 className="text-lg font-medium mt-4 mb-2">5.1 Plans and Pricing</h3>
             <p>
-              The Service is offered under subscription plans as described on our pricing page. Current plans include Pro ($49/month), Business ($249/month), and Scale (custom pricing). We reserve the right to modify pricing with 30 days&apos; written notice to active subscribers.
+              The Service is offered under subscription plans as described on our pricing page. The current plan is Pro + Payment Processing ($49/month), with payment processing fees applied separately. We reserve the right to modify pricing with 30 days&apos; written notice to active subscribers.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.2 Free Trial</h3>

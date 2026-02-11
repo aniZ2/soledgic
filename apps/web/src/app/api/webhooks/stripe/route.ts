@@ -72,8 +72,8 @@ export async function POST(request: Request) {
 
           // Also update limits based on plan
           if (planName && planName !== 'scale') {
-            const { PLANS } = await import('@/lib/stripe')
-            const planConfig = PLANS[planName]
+            const { PLAN_LOOKUP } = await import('@/lib/stripe')
+            const planConfig = PLAN_LOOKUP[planName]
             if (planConfig) {
               await supabase
                 .from('organizations')
@@ -102,8 +102,8 @@ export async function POST(request: Request) {
 
         if (planName) {
           updateData.plan = planName
-          const { PLANS } = await import('@/lib/stripe')
-          const planConfig = PLANS[planName]
+          const { PLAN_LOOKUP } = await import('@/lib/stripe')
+          const planConfig = PLAN_LOOKUP[planName]
           if (planConfig && planName !== 'scale') {
             updateData.max_ledgers = planConfig.max_ledgers
             updateData.max_team_members = planConfig.max_team_members

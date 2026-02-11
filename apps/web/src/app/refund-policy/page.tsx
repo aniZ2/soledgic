@@ -106,7 +106,7 @@ export default function RefundPolicyPage() {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-3">8. Plan Downgrades</h2>
             <p>
-              If you downgrade your plan (e.g., from Business to Pro), the new pricing takes effect at the start of your next billing period. No refund or credit is issued for the difference in the current period.
+              If plan options change in the future and you move to a different plan, the new pricing takes effect at the start of your next billing period. No refund or credit is issued for the difference in the current period.
             </p>
           </section>
 

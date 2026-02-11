@@ -1,4 +1,4 @@
-import { getStripe, PLANS } from './stripe'
+import { getStripe, PLAN_LOOKUP } from './stripe'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -43,7 +43,7 @@ export async function getOrCreateStripeCustomer(
  * Reverse-lookup plan name from a Stripe price ID.
  */
 export function planFromPriceId(priceId: string): string | null {
-  for (const [planId, config] of Object.entries(PLANS)) {
+  for (const [planId, config] of Object.entries(PLAN_LOOKUP)) {
     if (config.stripe_price_id === priceId) {
       return planId
     }

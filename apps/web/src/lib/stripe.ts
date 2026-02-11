@@ -22,7 +22,8 @@ export interface PlanConfig {
   contact_sales?: boolean
 }
 
-export const PLANS: Record<string, PlanConfig> = {
+// Snapshot of the prior multi-tier pricing model. Kept for future experiments.
+export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
   pro: {
     name: 'Pro',
     stripe_price_id: process.env.STRIPE_PRICE_PRO_MONTHLY || null,
@@ -63,4 +64,29 @@ export const PLANS: Record<string, PlanConfig> = {
       'SLA guarantee',
     ],
   },
+}
+
+// Active plans shown to customers today.
+export const PLANS: Record<string, PlanConfig> = {
+  pro: {
+    name: 'Pro + Payment Processing',
+    stripe_price_id: process.env.STRIPE_PRICE_PRO_MONTHLY || null,
+    price_monthly: 4900,
+    max_ledgers: 3,
+    max_team_members: 1,
+    features: [
+      'Payment processing',
+      'Everything in Pro',
+      '3 ledgers',
+      'API access',
+      'Receipts & reconciliation',
+      'Email support',
+    ],
+  },
+}
+
+// Lookup map used for webhook compatibility with legacy price IDs.
+export const PLAN_LOOKUP: Record<string, PlanConfig> = {
+  ...FUTURE_PRICING_SUGGESTION,
+  ...PLANS,
 }

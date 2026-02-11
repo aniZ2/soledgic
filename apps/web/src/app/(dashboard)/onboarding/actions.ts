@@ -10,7 +10,7 @@ export async function createOrganizationWithLedger(input: {
 }) {
   const supabase = await createClient()
 
-  const { orgName, selectedPlan, ledgerName, ledgerMode } = input
+  const { orgName, ledgerName, ledgerMode } = input
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
@@ -21,12 +21,8 @@ export async function createOrganizationWithLedger(input: {
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-  const plans: Record<string, { ledgers: number; team_members: number }> = {
-    pro: { ledgers: 3, team_members: 1 },
-    business: { ledgers: 10, team_members: 10 },
-    scale: { ledgers: -1, team_members: -1 },
-  }
-  const planData = plans[selectedPlan] || plans.pro
+  const effectivePlan = 'pro'
+  const planData = { ledgers: 3, team_members: 1 }
 
   // 14-day trial
   const trialEndsAt = new Date()
@@ -36,7 +32,7 @@ export async function createOrganizationWithLedger(input: {
     p_user_id: userId,
     p_org_name: orgName,
     p_org_slug: slug,
-    p_plan: selectedPlan,
+    p_plan: effectivePlan,
     p_trial_ends_at: trialEndsAt.toISOString(),
     p_max_ledgers: planData.ledgers,
     p_max_team_members: planData.team_members,

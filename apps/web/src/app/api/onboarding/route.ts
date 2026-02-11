@@ -4,9 +4,9 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const { orgName, selectedPlan, ledgerName, ledgerMode } = body
+  const { orgName, ledgerName, ledgerMode } = body
 
-  if (!orgName || !selectedPlan || !ledgerName || !ledgerMode) {
+  if (!orgName || !ledgerName || !ledgerMode) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -29,38 +29,16 @@ export async function POST(request: Request) {
     }
   )
 
-  // Log cookie state for debugging
-  const allCookies = cookieStore.getAll()
-  const authCookies = allCookies.filter(c => c.name.startsWith('sb-') || c.name.includes('auth'))
-  console.log('[onboarding] cookies:', allCookies.map(c => c.name))
-  console.log('[onboarding] auth cookies:', authCookies.map(c => ({ name: c.name, len: c.value?.length })))
-
   const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (authError) {
-    console.log('[onboarding] auth error:', authError.message, authError.status)
-  }
-
   if (authError || !user) {
-    return NextResponse.json({
-      error: 'Not authenticated',
-      debug: {
-        authError: authError?.message,
-        authStatus: authError?.status,
-        cookieCount: allCookies.length,
-        authCookieNames: authCookies.map(c => c.name),
-      }
-    }, { status: 401 })
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-  const plans: Record<string, { ledgers: number; team_members: number }> = {
-    pro: { ledgers: 3, team_members: 1 },
-    business: { ledgers: 10, team_members: 10 },
-    scale: { ledgers: -1, team_members: -1 },
-  }
-  const planData = plans[selectedPlan] || plans.pro
+  const effectivePlan = 'pro'
+  const planData = { ledgers: 3, team_members: 1 }
 
   const trialEndsAt = new Date()
   trialEndsAt.setDate(trialEndsAt.getDate() + 14)
@@ -69,7 +47,7 @@ export async function POST(request: Request) {
     p_user_id: user.id,
     p_org_name: orgName,
     p_org_slug: slug,
-    p_plan: selectedPlan,
+    p_plan: effectivePlan,
     p_trial_ends_at: trialEndsAt.toISOString(),
     p_max_ledgers: planData.ledgers,
     p_max_team_members: planData.team_members,
