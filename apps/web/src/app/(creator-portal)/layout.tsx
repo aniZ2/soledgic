@@ -27,7 +27,7 @@ export default async function CreatorPortalLayout({
 }) {
   const supabase = await createClient()
 
-  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+  const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
     redirect('/creator/login')
@@ -77,13 +77,15 @@ export default async function CreatorPortalLayout({
               </p>
             </div>
           </div>
-          <Link
-            href="/auth/signout"
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Link>
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </form>
         </div>
       </aside>
 

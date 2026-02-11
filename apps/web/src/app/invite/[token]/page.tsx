@@ -12,7 +12,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
   const supabase = await createClient()
 
   // Check if user is logged in
-  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+  const { data: { user } } = await supabase.auth.getUser()
 
   // Fetch invitation details
   const { data: invitation, error } = await supabase

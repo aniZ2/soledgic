@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     response.cookies.set(name, value, {
       path: options.path ?? '/',
       maxAge: options.maxAge,
-      httpOnly: false,
+      httpOnly: options.httpOnly ?? false,
       sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
       secure: isSecure,
     })

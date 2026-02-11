@@ -4,6 +4,17 @@ import { NextResponse } from 'next/server'
 
 // Debug endpoint to see what cookies would be set on login
 export async function POST(request: Request) {
+  const debugSecret = process.env.DEBUG_SECRET
+  const providedSecret =
+    request.headers.get('x-debug-secret') ||
+    new URL(request.url).searchParams.get('secret')
+
+  if (process.env.NODE_ENV === 'production') {
+    if (!debugSecret || providedSecret !== debugSecret) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+  }
+
   const formData = await request.formData()
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -43,7 +54,8 @@ export async function POST(request: Request) {
   // Build what the Set-Cookie headers would look like
   const setCookieHeaders: string[] = []
   for (const { name, value, options } of cookiesToSet) {
-    const parts = [`${name}=${value.substring(0, 50)}...`]
+    // Never return cookie values (or even partial values) in a debug endpoint.
+    const parts = [`${name}=[redacted]`]
     parts.push(`Path=${options.path ?? '/'}`)
     if (options.maxAge) parts.push(`Max-Age=${options.maxAge}`)
     if (options.domain) parts.push(`Domain=${options.domain}`)

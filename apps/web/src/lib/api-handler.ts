@@ -112,10 +112,28 @@ export function createApiHandler(
       let user: { id: string; email?: string } | null = null
       const pendingAuthCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }> = []
 
+      function isLikelyCookieDeletion(cookie: { name: string; value: string; options?: Record<string, unknown> }): boolean {
+        if (!cookie.value) return true
+        const opts = (cookie.options ?? {}) as any
+        if (typeof opts.maxAge === 'number' && opts.maxAge <= 0) return true
+        if (opts.expires) {
+          const exp = opts.expires instanceof Date ? opts.expires : new Date(opts.expires)
+          if (!Number.isNaN(exp.getTime()) && exp.getTime() <= Date.now()) return true
+        }
+        return false
+      }
+
       if (requireAuth) {
         const cookieStore = await cookies()
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const projectRef = new URL(supabaseUrl).hostname.split('.')[0]
+        const authCookieBase = `sb-${projectRef}-auth-token`
+        const matchedAuthCookies = cookieStore
+          .getAll()
+          .filter(c => c.name === authCookieBase || c.name.startsWith(`${authCookieBase}.`))
+
         const supabase = createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          supabaseUrl,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
           {
             cookies: {
@@ -128,13 +146,57 @@ export function createApiHandler(
             },
           }
         )
-        const { data: { user: authUser } } = await supabase.auth.getUser()
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
 
         if (!authUser) {
-          return NextResponse.json(
-            { error: 'Unauthorized', request_id: requestId },
+          const exposeAuthDebug =
+            process.env.AUTH_DEBUG === '1' || process.env.NODE_ENV !== 'production'
+
+          const unauthorizedPayload: Record<string, unknown> = {
+            error: 'Unauthorized',
+            request_id: requestId,
+          }
+
+          if (exposeAuthDebug) {
+            unauthorizedPayload.auth_debug = {
+              // Safe to expose: no secrets, helps debug why getUser() failed.
+              message: authError ? sanitizeError(authError.message) : null,
+              status: (authError as any)?.status ?? null,
+              hasAuthCookies: matchedAuthCookies.length > 0,
+              matchedAuthCookieNames: matchedAuthCookies.map(c => c.name),
+              cookieMutations: pendingAuthCookies.map(c => ({
+                name: c.name,
+                likelyDeletion: isLikelyCookieDeletion(c),
+              })),
+            }
+          }
+
+          // CRITICAL: Never set auth cookies on unauthorized responses.
+          //
+          // Supabase may attempt a refresh and, on failure (including refresh-token rotation races),
+          // enqueue cookie deletions via setAll(). If we propagate those deletions, a single transient
+          // 401 (e.g. /api/notifications polling) hard-logs the user out.
+          //
+          // Successful refreshes are merged into *successful* responses below.
+          const response = NextResponse.json(
+            unauthorizedPayload,
             { status: 401 }
           )
+
+          response.headers.set('X-Request-Id', requestId)
+          response.headers.set('X-Content-Type-Options', 'nosniff')
+          response.headers.set('X-Frame-Options', 'DENY')
+
+          console.warn(
+            `[${requestId}] Unauthorized:`,
+            request.method,
+            routePath,
+            authError?.message ?? '(no auth error)',
+            `matchedAuthCookies=${matchedAuthCookies.length}`,
+            `cookiesToSet=${pendingAuthCookies.length}`
+          )
+
+          return response
         }
 
         user = { id: authUser.id, email: authUser.email }

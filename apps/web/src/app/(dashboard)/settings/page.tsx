@@ -1,14 +1,7 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Key, CreditCard, Building, Users, Bell, Shield, Wrench } from 'lucide-react'
 
 export default async function SettingsPage() {
-  const supabase = await createClient()
-  
-  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  // Auth handled by layout
-
   const settingsGroups = [
     {
       title: 'API',

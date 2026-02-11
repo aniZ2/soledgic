@@ -9,10 +9,12 @@ export async function createOrganizationWithLedger(input: {
   ledgerMode: 'standard' | 'marketplace'
 }) {
   const supabase = await createClient()
+
   const { orgName, selectedPlan, ledgerName, ledgerMode } = input
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
+    console.log('[onboarding action] auth error:', authError?.message, authError?.status)
     return { error: 'Not authenticated' }
   }
   const userId = user.id

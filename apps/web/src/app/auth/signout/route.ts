@@ -50,6 +50,16 @@ export async function POST(request: Request) {
   return handleSignOut(request)
 }
 
-export async function GET(request: Request) {
-  return handleSignOut(request)
+export async function GET() {
+  // Never sign out on GET. Next.js may prefetch GET links (including RSC
+  // prefetches), which would accidentally log users out.
+  return NextResponse.json(
+    { error: 'Method not allowed. Use POST to sign out.' },
+    {
+      status: 405,
+      headers: {
+        Allow: 'POST',
+      },
+    }
+  )
 }

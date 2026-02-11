@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, BookOpen } from 'lucide-react'
 import { getLivemode } from '@/lib/livemode-server'
@@ -8,13 +9,14 @@ export default async function LedgersPage() {
   const supabase = await createClient()
   const livemode = await getLivemode()
 
-  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  // Get user's organizations
+  // Get organizations visible to current user.
   const { data: memberships } = await supabase
     .from('organization_members')
     .select('organization_id')
-    .eq('user_id', user?.id)
+    .eq('user_id', user.id)
     .eq('status', 'active')
 
   const orgIds = memberships?.map(m => m.organization_id) || []

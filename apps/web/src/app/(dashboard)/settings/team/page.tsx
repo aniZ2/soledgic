@@ -6,6 +6,7 @@ import { MemberList, TeamMember, Invitation } from '@/components/team/member-lis
 import { InviteMemberDialog } from '@/components/team/invite-member-dialog'
 import { Users, UserPlus, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface TeamData {
   members: TeamMember[]
@@ -30,19 +31,15 @@ export default function TeamSettingsPage() {
   const loadTeamData = useCallback(async () => {
     try {
       const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { user } } = await supabase.auth.getUser()
 
-      if (!session) {
+      if (!user) {
         setError('Not authenticated')
         setLoading(false)
         return
       }
 
-      const res = await fetch('/api/team', {
-        headers: {
-          'x-csrf-token': 'client',
-        },
-      })
+      const res = await fetchWithCsrf('/api/team')
 
       if (!res.ok) {
         const data = await res.json()
@@ -64,12 +61,8 @@ export default function TeamSettingsPage() {
 
   const handleInvite = async (email: string, role: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const res = await fetch('/api/team', {
+      const res = await fetchWithCsrf('/api/team', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': 'client',
-        },
         body: JSON.stringify({ email, role }),
       })
 
@@ -89,11 +82,8 @@ export default function TeamSettingsPage() {
 
   const handleRemoveMember = async (memberId: string) => {
     try {
-      const res = await fetch(`/api/team/${memberId}`, {
+      const res = await fetchWithCsrf(`/api/team/${memberId}`, {
         method: 'DELETE',
-        headers: {
-          'x-csrf-token': 'client',
-        },
       })
 
       if (!res.ok) {
@@ -109,11 +99,8 @@ export default function TeamSettingsPage() {
 
   const handleRevokeInvitation = async (inviteId: string) => {
     try {
-      const res = await fetch(`/api/team/invitations/${inviteId}`, {
+      const res = await fetchWithCsrf(`/api/team/invitations/${inviteId}`, {
         method: 'DELETE',
-        headers: {
-          'x-csrf-token': 'client',
-        },
       })
 
       if (!res.ok) {

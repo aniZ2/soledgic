@@ -10,14 +10,13 @@ export default async function TransactionsPage() {
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
-  const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-  // Auth handled by layout
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  // Get user's organization
   const { data: membership } = await supabase
     .from('organization_members')
     .select('organization_id')
-    .eq('user_id', user?.id ?? '')
+    .eq('user_id', user.id)
     .eq('status', 'active')
     .single()
 

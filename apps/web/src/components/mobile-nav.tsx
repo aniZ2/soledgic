@@ -121,14 +121,15 @@ export function MobileNav({ orgName, userName, userEmail, livemode }: MobileNavP
               <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
             </div>
           </div>
-          <Link
-            href="/auth/signout"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Link>
+          <form action="/auth/signout" method="post" onSubmit={() => setIsOpen(false)}>
+            <button
+              type="submit"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </form>
         </div>
       </nav>
     </>

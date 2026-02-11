@@ -17,19 +17,16 @@ export default async function DashboardPage() {
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
 
-  // Auth handled by layout - get session for user data
-  const { data: { session } } = await supabase.auth.getSession()
-  const user = session?.user
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  // Get user's organization (user guaranteed by layout auth check)
   const { data: membership } = await supabase
     .from('organization_members')
     .select('organization_id')
-    .eq('user_id', user?.id ?? '')
+    .eq('user_id', user.id)
     .eq('status', 'active')
     .single()
 
-  // If no active membership, redirect to onboarding to create/join an organization
   if (!membership) {
     redirect('/onboarding')
   }
