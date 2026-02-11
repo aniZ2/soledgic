@@ -872,7 +872,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 ### Core
 | Document | Description |
 |----------|-------------|
-| `docs/API.md` | Full endpoint reference |
+| `https://soledgic.com/docs/api` | Full endpoint reference (generated from source) |
 | `docs/ACCOUNTING_RULES.md` | Double-entry accounting principles |
 | `docs/ARCHITECTURE_PRINCIPLES.md` | System design decisions |
 | `docs/how-money-flows.md` | Transaction flow diagrams |

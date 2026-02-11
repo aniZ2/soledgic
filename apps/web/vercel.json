@@ -1,0 +1,15 @@
+{
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "docs.soledgic.com"
+        }
+      ],
+      "destination": "/docs",
+      "permanent": false
+    }
+  ]
+}
