@@ -112,17 +112,6 @@ export function createApiHandler(
       let user: { id: string; email?: string } | null = null
       const pendingAuthCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }> = []
 
-      function isLikelyCookieDeletion(cookie: { name: string; value: string; options?: Record<string, unknown> }): boolean {
-        if (!cookie.value) return true
-        const opts = (cookie.options ?? {}) as any
-        if (typeof opts.maxAge === 'number' && opts.maxAge <= 0) return true
-        if (opts.expires) {
-          const exp = opts.expires instanceof Date ? opts.expires : new Date(opts.expires)
-          if (!Number.isNaN(exp.getTime()) && exp.getTime() <= Date.now()) return true
-        }
-        return false
-      }
-
       if (requireAuth) {
         const cookieStore = await cookies()
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -149,28 +138,6 @@ export function createApiHandler(
         const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
 
         if (!authUser) {
-          const exposeAuthDebug =
-            process.env.AUTH_DEBUG === '1' || process.env.NODE_ENV !== 'production'
-
-          const unauthorizedPayload: Record<string, unknown> = {
-            error: 'Unauthorized',
-            request_id: requestId,
-          }
-
-          if (exposeAuthDebug) {
-            unauthorizedPayload.auth_debug = {
-              // Safe to expose: no secrets, helps debug why getUser() failed.
-              message: authError ? sanitizeError(authError.message) : null,
-              status: (authError as any)?.status ?? null,
-              hasAuthCookies: matchedAuthCookies.length > 0,
-              matchedAuthCookieNames: matchedAuthCookies.map(c => c.name),
-              cookieMutations: pendingAuthCookies.map(c => ({
-                name: c.name,
-                likelyDeletion: isLikelyCookieDeletion(c),
-              })),
-            }
-          }
-
           // CRITICAL: Never set auth cookies on unauthorized responses.
           //
           // Supabase may attempt a refresh and, on failure (including refresh-token rotation races),
@@ -179,7 +146,10 @@ export function createApiHandler(
           //
           // Successful refreshes are merged into *successful* responses below.
           const response = NextResponse.json(
-            unauthorizedPayload,
+            {
+              error: 'Unauthorized',
+              request_id: requestId,
+            },
             { status: 401 }
           )
 
