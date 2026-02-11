@@ -48,8 +48,14 @@ export async function updateSession(request: NextRequest) {
   const { data: { user }, error } = await supabase.auth.getUser()
 
   if (error) {
-    if (!error.message.toLowerCase().includes('auth session missing')) {
-      console.log('Middleware auth error:', request.nextUrl.pathname, error.message)
+    if (
+      !error.message.toLowerCase().includes('auth session missing') &&
+      process.env.AUTH_DEBUG_LOGS === 'true'
+    ) {
+      console.warn('Middleware auth refresh failed', {
+        path: request.nextUrl.pathname,
+        code: (error as any)?.code ?? null,
+      })
     }
     // Never propagate cookie-clearing headers on refresh failure.
     // Clearing cookies is correct when the session is truly invalid, but it is

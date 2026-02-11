@@ -1,39 +1,40 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 import {
-  CreditCard, Building, Wallet, Check, ExternalLink,
-  Loader2, AlertCircle, Plus,
+  Building,
+  CreditCard,
+  Check,
+  ExternalLink,
+  Loader2,
+  AlertCircle,
+  Plus,
 } from 'lucide-react'
 
 interface PaymentRail {
   id: string
-  type: 'stripe' | 'plaid' | 'paypal' | 'manual'
+  type: 'finix' | 'manual'
   name: string
   is_connected: boolean
   account_id?: string
-  created_at?: string
+}
+
+interface FinixStatus {
+  connected: boolean
+  identity_id: string | null
+  merchant_id: string | null
+  onboarding_form_id: string | null
+  last_synced_at: string | null
 }
 
 const RAIL_CONFIG = {
-  stripe: {
-    name: 'Stripe',
-    description: 'Accept card payments and issue payouts via Stripe Connect',
-    icon: CreditCard,
-    color: 'bg-purple-500/10 text-purple-600',
-  },
-  plaid: {
-    name: 'Plaid',
-    description: 'Verify bank accounts and enable ACH transfers',
+  finix: {
+    name: 'Finix',
+    description: 'Process card payments and platform payouts through Finix',
     icon: Building,
-    color: 'bg-green-500/10 text-green-600',
-  },
-  paypal: {
-    name: 'PayPal',
-    description: 'Accept PayPal payments and issue PayPal payouts',
-    icon: Wallet,
-    color: 'bg-blue-500/10 text-blue-600',
+    color: 'bg-emerald-500/10 text-emerald-600',
   },
   manual: {
     name: 'Manual Payouts',
@@ -44,77 +45,140 @@ const RAIL_CONFIG = {
 }
 
 export default function PaymentRailsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [loading, setLoading] = useState(true)
   const [rails, setRails] = useState<PaymentRail[]>([])
   const [connecting, setConnecting] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const [handledCallback, setHandledCallback] = useState(false)
+
+  const loadPaymentRails = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetchWithCsrf('/api/finix', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'status' }),
+      })
+
+      const result = await res.json()
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load payment rail status')
+      }
+
+      const status = result.data as FinixStatus
+      const connectedId = status.merchant_id || status.identity_id || undefined
+
+      setRails([
+        {
+          id: 'finix',
+          type: 'finix',
+          name: 'Finix',
+          is_connected: status.connected,
+          account_id: connectedId,
+        },
+        {
+          id: 'manual',
+          type: 'manual',
+          name: 'Manual Payouts',
+          is_connected: true,
+        },
+      ])
+    } catch (err: any) {
+      setError(err.message || 'Failed to load payment rails')
+      setRails([
+        {
+          id: 'finix',
+          type: 'finix',
+          name: 'Finix',
+          is_connected: false,
+        },
+        {
+          id: 'manual',
+          type: 'manual',
+          name: 'Manual Payouts',
+          is_connected: true,
+        },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     loadPaymentRails()
   }, [])
 
-  const loadPaymentRails = async () => {
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+  useEffect(() => {
+    if (handledCallback) return
 
-    if (!user) return
+    const finixState = searchParams.get('finix')
+    const identityId = searchParams.get('identity_id')
 
-    // Get organization
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization:organizations(stripe_customer_id)')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .single()
-
-    // For now, show available rails with connection status based on org data
-    const org = membership?.organization as { stripe_customer_id?: string } | null
-
-    setRails([
-      {
-        id: 'stripe',
-        type: 'stripe',
-        name: 'Stripe',
-        is_connected: !!org?.stripe_customer_id,
-        account_id: org?.stripe_customer_id || undefined,
-      },
-      {
-        id: 'plaid',
-        type: 'plaid',
-        name: 'Plaid',
-        is_connected: false,
-      },
-      {
-        id: 'paypal',
-        type: 'paypal',
-        name: 'PayPal',
-        is_connected: false,
-      },
-      {
-        id: 'manual',
-        type: 'manual',
-        name: 'Manual Payouts',
-        is_connected: true, // Always available
-      },
-    ])
-
-    setLoading(false)
-  }
-
-  const handleConnect = async (railType: string) => {
-    setConnecting(railType)
-
-    // Simulate connection flow - in production this would redirect to OAuth
-    if (railType === 'stripe') {
-      // Redirect to Stripe Connect onboarding
-      window.location.href = '/api/billing?action=connect_stripe'
+    if (finixState === 'expired') {
+      setHandledCallback(true)
+      setError('Finix onboarding session expired. Start onboarding again.')
+      router.replace('/settings/payment-rails')
       return
     }
 
-    // For other rails, show coming soon
-    setTimeout(() => {
+    if (finixState === 'success' && identityId) {
+      setHandledCallback(true)
+      ;(async () => {
+        try {
+          setConnecting('finix')
+          const res = await fetchWithCsrf('/api/finix', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'save_identity', identity_id: identityId }),
+          })
+          const result = await res.json()
+          if (!res.ok || !result.success) {
+            throw new Error(result.error || 'Failed to sync Finix account')
+          }
+
+          setInfo('Finix account connected successfully.')
+          await loadPaymentRails()
+          router.replace('/settings/payment-rails')
+        } catch (err: any) {
+          setError(err.message || 'Failed to finalize Finix connection')
+          router.replace('/settings/payment-rails')
+        } finally {
+          setConnecting(null)
+        }
+      })()
+    }
+  }, [handledCallback, searchParams, router])
+
+  const handleConnect = async (railType: 'finix' | 'manual') => {
+    setError(null)
+    setInfo(null)
+
+    if (railType === 'manual') {
+      setInfo('Manual payouts are always available.')
+      return
+    }
+
+    setConnecting(railType)
+    try {
+      const res = await fetchWithCsrf('/api/finix', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'create_onboarding_link' }),
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success || !result.data?.url) {
+        throw new Error(result.error || 'Unable to create Finix onboarding link')
+      }
+
+      window.location.href = result.data.url
+      return
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect Finix')
       setConnecting(null)
-      alert(`${RAIL_CONFIG[railType as keyof typeof RAIL_CONFIG].name} integration coming soon!`)
-    }, 1000)
+    }
   }
 
   if (loading) {
@@ -127,7 +191,6 @@ export default function PaymentRailsPage() {
 
   return (
     <div className="max-w-2xl">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground">Payment Rails</h1>
         <p className="text-muted-foreground mt-1">
@@ -135,31 +198,37 @@ export default function PaymentRailsPage() {
         </p>
       </div>
 
-      {/* Info banner */}
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-6">
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-foreground font-medium">Multiple rails supported</p>
+            <p className="text-sm text-foreground font-medium">Finix-first payout stack</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Connect multiple payment providers to give your creators payout options.
-              Each creator can choose their preferred method.
+              Use Finix for provider-managed payments and payouts. Manual transfers stay available for fallback operations.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Payment rails list */}
+      {error && (
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-3 mb-4 text-sm">
+          {error}
+        </div>
+      )}
+
+      {info && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-700 rounded-lg p-3 mb-4 text-sm">
+          {info}
+        </div>
+      )}
+
       <div className="space-y-4">
         {rails.map((rail) => {
           const config = RAIL_CONFIG[rail.type]
           const Icon = config.icon
 
           return (
-            <div
-              key={rail.id}
-              className="bg-card border border-border rounded-lg p-6"
-            >
+            <div key={rail.id} className="bg-card border border-border rounded-lg p-6">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${config.color}`}>
@@ -188,9 +257,7 @@ export default function PaymentRailsPage() {
 
                 <div>
                   {rail.is_connected ? (
-                    <button
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
+                    <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                       Settings
                     </button>
                   ) : (
@@ -214,7 +281,6 @@ export default function PaymentRailsPage() {
         })}
       </div>
 
-      {/* Payout settings */}
       <div className="mt-8 bg-card border border-border rounded-lg p-6">
         <h2 className="text-lg font-semibold text-foreground mb-4">Payout Settings</h2>
 
@@ -224,7 +290,7 @@ export default function PaymentRailsPage() {
               Default payout method
             </label>
             <select className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
-              <option value="stripe">Stripe</option>
+              <option value="finix">Finix</option>
               <option value="manual">Manual / Bank Transfer</option>
             </select>
             <p className="text-xs text-muted-foreground mt-1">
@@ -252,7 +318,6 @@ export default function PaymentRailsPage() {
         </div>
       </div>
 
-      {/* Documentation link */}
       <div className="mt-6 text-sm text-muted-foreground">
         <a
           href="/docs/api#process-payout"

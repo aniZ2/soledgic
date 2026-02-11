@@ -1,6 +1,6 @@
 // Soledgic Processor Adapter
 // Executes payouts across multiple payment rails while keeping ledger logic consistent
-// Supports: STRIPE_CONNECT, PLAID_TRANSFER, WISE, PAYPAL, MANUAL_BANK_FILE
+// Supports: FINIX, STRIPE_CONNECT, PLAID_TRANSFER, WISE, MANUAL_BANK_FILE
 // SECURITY HARDENED VERSION
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -19,7 +19,7 @@ import {
 // TYPES
 // ============================================================================
 
-type PayoutRail = 'stripe_connect' | 'plaid_transfer' | 'wise' | 'paypal' | 'manual' | 'crypto'
+type PayoutRail = 'finix' | 'stripe_connect' | 'plaid_transfer' | 'wise' | 'manual' | 'crypto'
 
 interface PayoutRequest {
   action: 'execute' | 'batch_execute' | 'get_status' | 'configure_rail' | 'list_rails' | 'generate_batch_file'
@@ -159,6 +159,198 @@ class StripeConnectRail implements PaymentRail {
     const errors: string[] = []
     if (!config.credentials?.secret_key && !Deno.env.get('STRIPE_SECRET_KEY')) {
       errors.push('Stripe secret key required')
+    }
+    return { valid: errors.length === 0, errors }
+  }
+}
+
+// ============================================================================
+// FINIX RAIL
+// ============================================================================
+
+class FinixRail implements PaymentRail {
+  name: PayoutRail = 'finix'
+
+  private resolveConfig(config: RailConfig) {
+    const username = config.credentials?.username || Deno.env.get('FINIX_USERNAME')
+    const password = config.credentials?.password || Deno.env.get('FINIX_PASSWORD')
+    const apiVersion = config.settings?.api_version || Deno.env.get('FINIX_API_VERSION') || '2022-02-01'
+    const env = config.settings?.environment || Deno.env.get('FINIX_ENV') || 'sandbox'
+    const baseUrl = (
+      config.settings?.base_url ||
+      Deno.env.get('FINIX_BASE_URL') ||
+      (env === 'production'
+        ? 'https://finix.live-payments-api.com'
+        : 'https://finix.sandbox-payments-api.com')
+    ).replace(/\/$/, '')
+
+    return { username, password, apiVersion, baseUrl }
+  }
+
+  private parseError(data: any, fallback: string) {
+    return (
+      data?.error ||
+      data?.message ||
+      data?._embedded?.errors?.[0]?.message ||
+      fallback
+    )
+  }
+
+  private mapStatus(state: string | undefined): PayoutResult['status'] {
+    const normalized = (state || '').toUpperCase()
+    if (['SUCCEEDED', 'SETTLED', 'COMPLETED'].includes(normalized)) return 'completed'
+    if (['FAILED', 'CANCELED', 'REJECTED', 'DECLINED', 'RETURNED'].includes(normalized)) return 'failed'
+    if (['PROCESSING', 'PENDING', 'CREATED', 'SENT'].includes(normalized)) return 'processing'
+    return 'pending'
+  }
+
+  async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
+    const { username, password, apiVersion, baseUrl } = this.resolveConfig(config)
+    if (!username || !password) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: 'Finix credentials not configured',
+      }
+    }
+
+    const destination =
+      payout.payout_method?.account_id ||
+      config.settings?.default_destination ||
+      null
+
+    if (!destination) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: 'No Finix destination account/identity configured',
+      }
+    }
+
+    const source = config.settings?.source || Deno.env.get('FINIX_SOURCE_ID') || undefined
+    const merchant = config.settings?.merchant || Deno.env.get('FINIX_MERCHANT_ID') || undefined
+    const transfersPath = config.settings?.transfers_path || '/transfers'
+
+    const payload: Record<string, unknown> = {
+      amount: Math.round(payout.amount * 100),
+      currency: payout.currency.toUpperCase(),
+      destination,
+      tags: {
+        soledgic_payout_id: payout.payout_id,
+        creator_id: payout.creator_id,
+      },
+    }
+    if (source) payload.source = source
+    if (merchant) payload.merchant = merchant
+
+    try {
+      const response = await fetch(`${baseUrl}${transfersPath}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+          'Finix-Version': apiVersion,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return {
+          success: false,
+          payout_id: payout.payout_id,
+          rail: this.name,
+          status: 'failed',
+          error: this.parseError(data, `Finix transfer failed (${response.status})`),
+        }
+      }
+
+      return {
+        success: true,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        external_id: data?.id,
+        status: this.mapStatus(data?.state || data?.status),
+        metadata: { finix_transfer_id: data?.id },
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: err.message,
+      }
+    }
+  }
+
+  async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
+    const { username, password, apiVersion, baseUrl } = this.resolveConfig(config)
+    if (!username || !password) {
+      return {
+        success: false,
+        payout_id: '',
+        rail: this.name,
+        external_id: externalId,
+        status: 'failed',
+        error: 'Finix credentials not configured',
+      }
+    }
+
+    const transfersPath = config.settings?.transfers_path || '/transfers'
+
+    try {
+      const response = await fetch(`${baseUrl}${transfersPath}/${externalId}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+          'Finix-Version': apiVersion,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return {
+          success: false,
+          payout_id: '',
+          rail: this.name,
+          external_id: externalId,
+          status: 'failed',
+          error: this.parseError(data, `Finix status request failed (${response.status})`),
+        }
+      }
+
+      return {
+        success: true,
+        payout_id: data?.tags?.soledgic_payout_id || '',
+        rail: this.name,
+        external_id: externalId,
+        status: this.mapStatus(data?.state || data?.status),
+      }
+    } catch (err: any) {
+      return {
+        success: false,
+        payout_id: '',
+        rail: this.name,
+        external_id: externalId,
+        status: 'failed',
+        error: err.message,
+      }
+    }
+  }
+
+  validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
+    const errors: string[] = []
+    if (!config.credentials?.username && !Deno.env.get('FINIX_USERNAME')) {
+      errors.push('Finix username required')
+    }
+    if (!config.credentials?.password && !Deno.env.get('FINIX_PASSWORD')) {
+      errors.push('Finix password required')
     }
     return { valid: errors.length === 0, errors }
   }
@@ -323,109 +515,6 @@ class PlaidTransferRail implements PaymentRail {
 }
 
 // ============================================================================
-// PAYPAL RAIL
-// ============================================================================
-
-class PayPalRail implements PaymentRail {
-  name: PayoutRail = 'paypal'
-
-  async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
-    const clientId = config.credentials?.client_id || Deno.env.get('PAYPAL_CLIENT_ID')
-    const secret = config.credentials?.secret || Deno.env.get('PAYPAL_SECRET')
-    const env = config.settings?.environment || 'sandbox'
-
-    if (!clientId || !secret) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'PayPal credentials not configured' }
-    }
-
-    const paypalEmail = payout.payout_method?.email
-    if (!paypalEmail) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'No PayPal email' }
-    }
-
-    const baseUrl = env === 'production' 
-      ? 'https://api-m.paypal.com'
-      : 'https://api-m.sandbox.paypal.com'
-
-    try {
-      // Get access token
-      const authResponse = await fetch(`${baseUrl}/v1/oauth2/token`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`${clientId}:${secret}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'grant_type=client_credentials',
-      })
-
-      const authData = await authResponse.json()
-      const accessToken = authData.access_token
-
-      // Create payout
-      const payoutResponse = await fetch(`${baseUrl}/v1/payments/payouts`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sender_batch_header: {
-            sender_batch_id: payout.payout_id,
-            email_subject: 'You have a payment',
-            email_message: 'Your payout has been processed.',
-          },
-          items: [{
-            recipient_type: 'EMAIL',
-            amount: {
-              value: payout.amount.toFixed(2),
-              currency: payout.currency.toUpperCase(),
-            },
-            receiver: paypalEmail,
-            note: `Payout from ${payout.creator_name}`,
-            sender_item_id: payout.payout_id,
-          }],
-        }),
-      })
-
-      const payoutData = await payoutResponse.json()
-
-      if (payoutData.error) {
-        return {
-          success: false,
-          payout_id: payout.payout_id,
-          rail: this.name,
-          status: 'failed',
-          error: payoutData.error_description || payoutData.message,
-        }
-      }
-
-      return {
-        success: true,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        external_id: payoutData.batch_header.payout_batch_id,
-        status: 'processing',
-        metadata: { paypal_batch_id: payoutData.batch_header.payout_batch_id },
-      }
-    } catch (err: any) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: err.message }
-    }
-  }
-
-  async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
-    return { success: true, payout_id: '', rail: this.name, external_id: externalId, status: 'processing' }
-  }
-
-  validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
-    const errors: string[] = []
-    if (!config.credentials?.client_id && !Deno.env.get('PAYPAL_CLIENT_ID')) {
-      errors.push('PayPal client ID required')
-    }
-    return { valid: errors.length === 0, errors }
-  }
-}
-
-// ============================================================================
 // MANUAL BANK FILE RAIL (NACHA/ACH file generation)
 // ============================================================================
 
@@ -574,12 +663,44 @@ class ManualBankFileRail implements PaymentRail {
 // ============================================================================
 
 const RAILS: Record<PayoutRail, PaymentRail> = {
+  finix: new FinixRail(),
   stripe_connect: new StripeConnectRail(),
   plaid_transfer: new PlaidTransferRail(),
-  paypal: new PayPalRail(),
   manual: new ManualBankFileRail(),
   wise: new ManualBankFileRail(),
   crypto: new ManualBankFileRail(),
+}
+
+function normalizeRail(value?: string | null): PayoutRail | null {
+  if (!value) return null
+  switch (value) {
+    case 'finix':
+      return 'finix'
+    case 'stripe':
+    case 'stripe_connect':
+      return 'stripe_connect'
+    case 'plaid':
+    case 'plaid_transfer':
+      return 'plaid_transfer'
+    case 'manual':
+      return 'manual'
+    case 'wise':
+      return 'wise'
+    case 'crypto':
+      return 'crypto'
+    default:
+      return null
+  }
+}
+
+function pickDefaultRail(configs: RailConfig[]): PayoutRail {
+  const enabledRails = new Set(configs.filter(c => c.enabled).map(c => c.rail))
+  if (enabledRails.has('finix')) return 'finix'
+  if (enabledRails.has('stripe_connect')) return 'stripe_connect'
+  if (enabledRails.has('plaid_transfer')) return 'plaid_transfer'
+  if (enabledRails.has('manual')) return 'manual'
+  // Finix is now the active default integration when no explicit rail is configured.
+  return 'finix'
 }
 
 // ============================================================================
@@ -638,20 +759,30 @@ async function executeSinglePayout(
     payout_method: creatorMeta.payout_method,
   }
 
-  const selectedRail = rail || creatorMeta.payout_method?.rail || 'manual'
-  const railImpl = RAILS[selectedRail as PayoutRail]
+  const requestedRail = normalizeRail((rail as string | undefined) || creatorMeta.payout_method?.rail)
+  const selectedRail = requestedRail || pickDefaultRail(payoutRails)
+  const railImpl = RAILS[selectedRail]
 
   if (!railImpl) {
     return {
       success: false,
       payout_id: payoutId,
-      rail: selectedRail as PayoutRail,
+      rail: selectedRail,
       status: 'failed',
       error: `Unknown rail: ${selectedRail}`,
     }
   }
 
-  const railConfig = payoutRails.find(r => r.rail === selectedRail) || { rail: selectedRail as PayoutRail, enabled: true }
+  const railConfig = payoutRails.find(r => r.rail === selectedRail) || { rail: selectedRail, enabled: true }
+  if (railConfig.enabled === false) {
+    return {
+      success: false,
+      payout_id: payoutId,
+      rail: selectedRail,
+      status: 'failed',
+      error: `Rail '${selectedRail}' is disabled`,
+    }
+  }
 
   // Execute
   const result = await railImpl.execute(payoutDetails, railConfig)

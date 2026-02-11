@@ -5,7 +5,7 @@
 Soledgic now supports two powerful automation features:
 
 1. **Auto-Email Service** - Automatically sends PDF earnings statements to creators on the 1st of each month
-2. **Processor Adapter** - Swap between payment rails (Stripe Connect, Plaid, PayPal, manual bank files) without changing ledger code
+2. **Processor Adapter** - Swap between payment rails (Stripe Connect, Plaid, manual bank files) without changing ledger code
 
 ---
 
@@ -74,9 +74,9 @@ const preview = await ledger.previewStatementEmail('creator_jane_doe')
 
 | Rail | Key | Description |
 |------|-----|-------------|
+| Finix | `finix` | Primary payout rail |
 | Stripe Connect | `stripe_connect` | Instant transfers |
 | Plaid Transfer | `plaid_transfer` | ACH via Plaid |
-| PayPal | `paypal` | Mass payouts |
 | Manual | `manual` | NACHA file generation |
 
 ### Configuration

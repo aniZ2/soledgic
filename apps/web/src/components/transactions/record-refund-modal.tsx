@@ -260,7 +260,7 @@ export function RecordRefundModal({
                 </select>
               </div>
 
-              {/* Stripe Refund */}
+              {/* Provider Refund */}
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
@@ -270,7 +270,7 @@ export function RecordRefundModal({
                   className="w-4 h-4"
                 />
                 <label htmlFor="stripeRefund" className="text-sm text-foreground">
-                  Also trigger Stripe refund (if applicable)
+                  Also trigger provider refund (legacy Stripe path)
                 </label>
               </div>
 

@@ -105,7 +105,6 @@ ALTER TABLE accounts ADD CONSTRAINT accounts_account_type_check CHECK (
     'clearing',
     'merchant',
     'stripe',
-    'paypal',
     'plaid',
     'business',
     'operating',

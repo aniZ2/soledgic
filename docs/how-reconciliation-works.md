@@ -90,7 +90,7 @@ When Stripe events arrive, Soledgic:
 
 ### Supported Banks
 
-Chase, Bank of America, Wells Fargo, Citi, Mercury, Relay, PayPal, or any bank with CSV export.
+Chase, Bank of America, Wells Fargo, Citi, Mercury, Relay, or any bank with CSV export.
 
 ### Deduplication
 

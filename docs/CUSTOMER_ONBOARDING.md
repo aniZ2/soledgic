@@ -81,14 +81,13 @@ Integration Type:
 
 Payment Processors Used:
   [ ] Stripe
-  [ ] PayPal
   [ ] Square
   [ ] Crypto (specify): ________________
   [ ] Other: ________________
 
 Payout Methods:
   [ ] Stripe Connect
-  [ ] PayPal Payouts
+  [ ] Plaid ACH
   [ ] ACH (bank transfer)
   [ ] Check
   [ ] Crypto

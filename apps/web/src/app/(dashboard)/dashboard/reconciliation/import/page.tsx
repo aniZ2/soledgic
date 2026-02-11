@@ -36,7 +36,6 @@ const BANK_PRESETS = [
   { id: 'bofa', name: 'Bank of America' },
   { id: 'wells_fargo', name: 'Wells Fargo' },
   { id: 'citi', name: 'Citibank' },
-  { id: 'paypal', name: 'PayPal' },
   { id: 'stripe', name: 'Stripe' },
   { id: 'relay', name: 'Relay' },
   { id: 'mercury', name: 'Mercury' },

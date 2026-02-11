@@ -8,7 +8,6 @@ import {
   Receipt,
   Settings,
   LogOut,
-  CreditCard,
 } from 'lucide-react'
 
 const navigation = [
@@ -16,7 +15,6 @@ const navigation = [
   { name: 'Earnings', href: '/creator/earnings', icon: Wallet },
   { name: 'Statements', href: '/creator/statements', icon: FileText },
   { name: 'Payouts', href: '/creator/payouts', icon: Receipt },
-  { name: 'Stripe Connect', href: '/creator/connect-stripe', icon: CreditCard },
   { name: 'Settings', href: '/creator/settings', icon: Settings },
 ]
 

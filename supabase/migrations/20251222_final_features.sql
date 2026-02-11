@@ -304,7 +304,6 @@ CREATE TABLE contractors (
   
   -- External references
   stripe_account_id TEXT,
-  paypal_email TEXT,
   
   -- W-9 status (we track status, not the actual W-9)
   w9_status TEXT DEFAULT 'not_requested' CHECK (

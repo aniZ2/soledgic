@@ -134,7 +134,7 @@ CREATE TABLE payouts (
   currency TEXT DEFAULT 'USD',
   
   -- Payment details
-  payment_method TEXT CHECK (payment_method IN ('stripe', 'paypal', 'bank_transfer', 'manual')),
+  payment_method TEXT CHECK (payment_method IN ('stripe', 'bank_transfer', 'manual')),
   payment_reference TEXT,  -- External payment ID
   
   status TEXT DEFAULT 'pending' CHECK (

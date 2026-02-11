@@ -102,7 +102,6 @@ supabase functions deploy execute-payout --no-verify-jwt
 Features ready:
 - Stripe Connect rail
 - Plaid Transfer rail
-- PayPal Payouts rail
 - NACHA file generation (manual bank upload)
 
 ---

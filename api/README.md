@@ -119,7 +119,7 @@ const { balances, platformSummary } = await soledgic.getAllBalances({
 ```typescript
 const payout = await soledgic.processPayout({
   creatorId: 'author_123',
-  paymentMethod: 'stripe',          // 'stripe' | 'paypal' | 'bank_transfer' | 'manual'
+  paymentMethod: 'finix',           // 'finix' | 'stripe' | 'bank_transfer' | 'manual'
   amount: 10000,                    // Optional, in cents (default: full balance)
   paymentReference: 'tr_xxx',       // Your external payment ID
 })

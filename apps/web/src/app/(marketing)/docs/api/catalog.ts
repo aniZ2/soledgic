@@ -654,7 +654,7 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "method",
-        "type": "'stripe' | 'paypal' | 'bank_transfer'",
+        "type": "'stripe' | 'bank_transfer'",
         "required": false
       },
       {
@@ -1491,7 +1491,7 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "account_type",
-        "type": "'checking' | 'savings' | 'credit_card' | 'paypal' | 'other'",
+        "type": "'checking' | 'savings' | 'credit_card' | 'other'",
         "required": true
       },
       {

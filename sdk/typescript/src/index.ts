@@ -743,7 +743,7 @@ export class Soledgic {
     return this.request('execute-payout', { action: 'list_rails' })
   }
 
-  async configurePayoutRail(rail: 'stripe_connect' | 'plaid_transfer' | 'paypal' | 'wise' | 'manual' | 'crypto', config: {
+  async configurePayoutRail(rail: 'finix' | 'stripe_connect' | 'plaid_transfer' | 'wise' | 'manual' | 'crypto', config: {
     enabled: boolean
     credentials?: Record<string, string>
     settings?: Record<string, any>

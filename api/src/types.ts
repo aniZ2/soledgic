@@ -27,7 +27,7 @@ export interface ProcessPayoutRequest {
   /** Creator to pay */
   creatorId: string
   /** Payment method */
-  paymentMethod: 'stripe' | 'paypal' | 'bank_transfer' | 'manual'
+  paymentMethod: 'finix' | 'stripe' | 'bank_transfer' | 'manual'
   /** Amount in cents (optional - defaults to full balance) */
   amount?: number
   /** External payment reference (Stripe transfer ID, etc.) */

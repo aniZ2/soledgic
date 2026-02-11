@@ -14,7 +14,9 @@ export async function createOrganizationWithLedger(input: {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    console.log('[onboarding action] auth error:', authError?.message, authError?.status)
+    if (process.env.AUTH_DEBUG_LOGS === 'true') {
+      console.warn('[onboarding action] auth unavailable', { status: authError?.status ?? null })
+    }
     return { error: 'Not authenticated' }
   }
   const userId = user.id

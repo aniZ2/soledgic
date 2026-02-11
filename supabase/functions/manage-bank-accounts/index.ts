@@ -17,11 +17,11 @@ import {
 interface CreateBankAccountRequest {
   bank_name: string
   account_name: string
-  account_type: 'checking' | 'savings' | 'credit_card' | 'paypal' | 'other'
+  account_type: 'checking' | 'savings' | 'credit_card' | 'other'
   account_last_four?: string
 }
 
-const VALID_ACCOUNT_TYPES = ['checking', 'savings', 'credit_card', 'paypal', 'other']
+const VALID_ACCOUNT_TYPES = ['checking', 'savings', 'credit_card', 'other']
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {

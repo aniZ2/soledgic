@@ -36,7 +36,7 @@ interface CreateCreatorRequest {
   payout_preferences?: {
     schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
     minimum_amount?: number // cents
-    method?: 'stripe' | 'paypal' | 'bank_transfer'
+    method?: 'finix' | 'stripe' | 'bank_transfer'
   }
   metadata?: Record<string, any>
 }

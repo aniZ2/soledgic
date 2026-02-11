@@ -154,7 +154,6 @@ INSERT INTO reserved_slugs (slug, reason) VALUES
   ('twitter', 'Brand protection'),
   -- Common phishing targets
   ('bank', 'Security reserved'),
-  ('paypal', 'Security reserved'),
   ('venmo', 'Security reserved'),
   ('coinbase', 'Security reserved'),
   ('crypto', 'Security reserved'),

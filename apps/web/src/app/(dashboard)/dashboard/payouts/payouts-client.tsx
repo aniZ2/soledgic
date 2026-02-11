@@ -124,7 +124,7 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
         <div className="p-6">
           {payoutRails.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No payment rails configured. Configure Stripe Connect, Plaid, or manual bank transfers.
+              No payment rails configured. Configure Finix or manual bank transfers.
             </p>
           ) : (
             <div className="flex gap-4">
