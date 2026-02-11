@@ -69,14 +69,14 @@ export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
 // Active plans shown to customers today.
 export const PLANS: Record<string, PlanConfig> = {
   pro: {
-    name: 'Pro + Payment Processing',
+    name: 'Free',
     stripe_price_id: null,
     price_monthly: 0,
     max_ledgers: 1,
     max_team_members: 1,
     features: [
       'Payment processing',
-      'Everything in Pro',
+      'Core finance features',
       '1 ledger included',
       '$20/month per additional ledger',
       'API access',

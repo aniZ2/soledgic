@@ -145,7 +145,7 @@ export default function QuickstartPage() {
           </pre>
         </div>
         <p className="text-muted-foreground">
-          This creates a payout record and, if you&apos;ve connected Stripe, initiates the actual transfer.
+          This creates a payout record and, if you&apos;ve connected a payment rail, initiates the actual transfer.
         </p>
       </section>
 

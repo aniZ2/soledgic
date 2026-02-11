@@ -71,7 +71,7 @@ export default function TermsPage() {
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.3 Payment</h3>
             <p>
-              Any paid charges (including overage charges and other paid features) are billed via Stripe. By adding a payment method and using paid features, you authorize us to charge your payment method on a recurring basis where applicable. All fees are quoted in US Dollars. You are responsible for all applicable taxes.
+              Any paid charges (including overage charges and other paid features) are billed via our payment processing providers. By adding a payment method and using paid features, you authorize us to charge your payment method on a recurring basis where applicable. All fees are quoted in US Dollars. You are responsible for all applicable taxes.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.4 Overage Charges</h3>
@@ -120,7 +120,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-3">9. Third-Party Services</h2>
             <p>
-              The Service integrates with third-party services including Stripe for payment processing and Supabase for data infrastructure. Your use of these third-party services is subject to their respective terms and privacy policies. We are not responsible for the actions or omissions of third-party service providers.
+              The Service integrates with third-party services including payment processing providers and Supabase for data infrastructure. Your use of these third-party services is subject to their respective terms and privacy policies. We are not responsible for the actions or omissions of third-party service providers.
             </p>
           </section>
 

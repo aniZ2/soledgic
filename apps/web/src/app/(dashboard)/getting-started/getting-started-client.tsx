@@ -143,7 +143,7 @@ export function GettingStartedClient({
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-500" />
-                Stripe & payment automations
+                Payment rail automations
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-500" />

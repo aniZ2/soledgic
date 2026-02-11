@@ -115,7 +115,7 @@ export default function ConceptsPage() {
           <div className="p-4 bg-card border border-border rounded-lg">
             <h3 className="font-semibold text-foreground mb-1">Processing Fees</h3>
             <p className="text-sm text-muted-foreground">
-              Payment processor fees (Stripe, PayPal, etc.). Tracked as an expense.
+              Payment processor fees (card rails, bank rails, etc.). Tracked as an expense.
             </p>
           </div>
           <div className="p-4 bg-card border border-border rounded-lg">

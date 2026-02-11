@@ -10,13 +10,13 @@ type LedgerMode = 'standard' | 'marketplace'
 const plans = [
   {
     id: 'pro',
-    name: 'Pro + Payment Processing',
+    name: 'Free',
     price: 0,
     ledgers: 1,
     team_members: 1,
     features: [
       'Payment processing',
-      'Everything in Pro',
+      'Core finance features',
       '1 ledger included',
       '$20/month per additional ledger',
       'API access',

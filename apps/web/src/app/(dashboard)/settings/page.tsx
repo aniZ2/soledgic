@@ -25,7 +25,7 @@ export default async function SettingsPage() {
       items: [
         {
           name: 'Payment Rails',
-          description: 'Configure Stripe, Plaid, PayPal, or manual payouts',
+          description: 'Configure payment providers, bank rails, or manual payouts',
           href: '/settings/payment-rails',
           icon: CreditCard,
         },

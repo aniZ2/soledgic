@@ -3,12 +3,12 @@ import { Check, ShieldCheck, Zap, BookLock } from 'lucide-react'
 
 const plans = [
   {
-    name: 'Pro + Payment Processing',
+    name: 'Free',
     price: 0,
-    description: 'Start free with payment processing plus everything in Pro.',
+    description: 'Start free with payment processing and core finance features.',
     features: [
       'Payment processing',
-      'Everything in Pro',
+      'Core finance features',
       '1 ledger included',
       '$20/month per additional ledger',
       '1 team member',
@@ -61,7 +61,7 @@ const features = [
 
     title: 'Compliance and Tax Reporting',
 
-    description: 'Use Stripe Connect for KYC/KYB and export 1099-K data with verified, consistent numbers.',
+    description: 'Use secure provider onboarding for KYC/KYB and export 1099-K data with verified, consistent numbers.',
 
   },
 
@@ -291,7 +291,7 @@ export default function HomePage() {
 
                 <p className="mt-4 text-muted-foreground">
 
-                    We protect the ledger while Stripe Connect handles sensitive identity checks and onboarding flows.
+                    We protect the ledger while trusted payment providers handle sensitive identity checks and onboarding flows.
 
                 </p>
 
@@ -331,9 +331,9 @@ export default function HomePage() {
 
                         <div>
 
-                            <h4 className="font-semibold">Stripe-Managed Compliance</h4>
+                            <h4 className="font-semibold">Provider-Managed Compliance</h4>
 
-                            <p className="text-muted-foreground text-sm">Identity checks and creator onboarding are handled by Stripe's secure UI.</p>
+                            <p className="text-muted-foreground text-sm">Identity checks and creator onboarding are handled through secure provider-hosted flows.</p>
 
                         </div>
 

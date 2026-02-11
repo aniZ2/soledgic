@@ -39,7 +39,7 @@ export default function PrivacyPage() {
             <h3 className="text-lg font-medium mt-4 mb-2">2.1 Information You Provide</h3>
             <ul className="list-disc pl-6 space-y-2 mt-2">
               <li><strong>Account Information:</strong> Name, email address, organization name, and password when you create an account.</li>
-              <li><strong>Billing Information:</strong> Payment card details, billing address, and tax identification numbers. Payment card information is processed directly by Stripe and is not stored on our servers.</li>
+              <li><strong>Billing Information:</strong> Payment card details, billing address, and tax identification numbers. Payment card information is processed directly by our payment providers and is not stored on our servers.</li>
               <li><strong>Business Data:</strong> Financial records, transaction data, seller/creator information, ledger entries, and other data you input into the Service.</li>
               <li><strong>Communications:</strong> Information you provide when contacting our support team or providing feedback.</li>
             </ul>
@@ -75,7 +75,7 @@ export default function PrivacyPage() {
             <h3 className="text-lg font-medium mt-4 mb-2">4.1 Service Providers</h3>
             <p>We use third-party services to operate the platform:</p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
-              <li><strong>Stripe:</strong> Payment processing and subscription management. Stripe processes your payment information under their own <a href="https://stripe.com/privacy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</li>
+              <li><strong>Payment Providers:</strong> Payment processing and subscription management. Payment providers process your payment information under their own privacy policies.</li>
               <li><strong>Supabase:</strong> Database hosting and authentication infrastructure.</li>
               <li><strong>Vercel:</strong> Application hosting and content delivery.</li>
             </ul>
