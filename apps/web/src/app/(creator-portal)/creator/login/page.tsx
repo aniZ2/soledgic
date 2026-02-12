@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { toAppUrl } from '@/lib/public-url'
 import Link from 'next/link'
 import { Loader2, Mail } from 'lucide-react'
 
@@ -40,7 +41,7 @@ export default function CreatorLoginPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/creator`,
+          emailRedirectTo: toAppUrl('/creator'),
         },
       })
 

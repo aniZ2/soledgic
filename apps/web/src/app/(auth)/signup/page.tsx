@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { toAppUrl } from '@/lib/public-url'
 import { signup } from '../login/actions'
 
 export default function SignupPage() {
@@ -39,7 +40,7 @@ export default function SignupPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: toAppUrl('/auth/callback'),
       },
     })
 

@@ -4,6 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { toAppUrl } from '@/lib/public-url'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -15,11 +16,13 @@ function LoginForm() {
 
   const handleGoogleLogin = async () => {
     const supabase = createClient()
+    const callbackUrl = new URL(toAppUrl('/auth/callback'))
+    callbackUrl.searchParams.set('redirect', redirectPath)
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?redirect=${redirectPath}`,
+        redirectTo: callbackUrl.toString(),
       },
     })
 
