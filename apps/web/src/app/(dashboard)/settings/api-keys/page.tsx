@@ -1,72 +1,128 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Key, Copy, Eye, EyeOff, Plus, Trash2 } from 'lucide-react'
+import { Key, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface Ledger {
   id: string
   business_name: string
-  api_key: string
+  key_preview: string
   created_at: string
   livemode: boolean
+  has_key: boolean
 }
 
 export default function ApiKeysPage() {
   const [ledgers, setLedgers] = useState<Ledger[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set())
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({})
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [rotatingLedgerId, setRotatingLedgerId] = useState<string | null>(null)
 
   useEffect(() => {
     loadLedgers()
   }, [])
 
-	  const loadLedgers = async () => {
-	    const supabase = createClient()
+  const loadLedgers = async () => {
+    setLoading(true)
+    setError(null)
 
-	    const { data: { user } } = await supabase.auth.getUser()
-	    if (!user) return
+    try {
+      const response = await fetch('/api/settings/api-keys')
+      const data = await response.json()
 
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .single()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load API keys')
+      }
 
-    if (!membership) return
-
-    // Fetch ALL ledgers — both test and live — no livemode filter
-    const { data } = await supabase
-      .from('ledgers')
-      .select('id, business_name, api_key, created_at, livemode')
-      .eq('organization_id', membership.organization_id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-
-    setLedgers(data || [])
-    setLoading(false)
-  }
-
-  const toggleKeyVisibility = (ledgerId: string) => {
-    const newVisible = new Set(visibleKeys)
-    if (newVisible.has(ledgerId)) {
-      newVisible.delete(ledgerId)
-    } else {
-      newVisible.add(ledgerId)
+      setLedgers(data.ledgers || [])
+    } catch (err: any) {
+      setError(err.message || 'Failed to load API keys')
+    } finally {
+      setLoading(false)
     }
-    setVisibleKeys(newVisible)
   }
 
-  const copyKey = async (key: string, ledgerId: string) => {
-    await navigator.clipboard.writeText(key)
-    setCopiedKey(ledgerId)
-    setTimeout(() => setCopiedKey(null), 2000)
+  const revealKey = async (ledgerId: string) => {
+    const response = await fetchWithCsrf('/api/settings/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'reveal', ledger_id: ledgerId }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to reveal key')
+    }
+
+    setRevealedKeys((prev) => ({ ...prev, [ledgerId]: data.key }))
+    setVisibleKeys((prev) => new Set(prev).add(ledgerId))
+
+    return data.key as string
   }
 
-  const maskKey = (key: string) => {
-    if (!key) return '—'
-    return key.substring(0, 10) + '•'.repeat(20) + key.substring(key.length - 4)
+  const toggleKeyVisibility = async (ledgerId: string) => {
+    if (visibleKeys.has(ledgerId)) {
+      const next = new Set(visibleKeys)
+      next.delete(ledgerId)
+      setVisibleKeys(next)
+      return
+    }
+
+    try {
+      if (!revealedKeys[ledgerId]) {
+        await revealKey(ledgerId)
+        return
+      }
+
+      setVisibleKeys((prev) => new Set(prev).add(ledgerId))
+    } catch (err: any) {
+      setError(err.message || 'Failed to reveal key')
+    }
+  }
+
+  const rotateKey = async (ledgerId: string) => {
+    setRotatingLedgerId(ledgerId)
+    setError(null)
+
+    try {
+      const response = await fetchWithCsrf('/api/settings/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'rotate', ledger_id: ledgerId }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to rotate key')
+      }
+
+      setRevealedKeys((prev) => ({ ...prev, [ledgerId]: data.key }))
+      setVisibleKeys((prev) => new Set(prev).add(ledgerId))
+      await loadLedgers()
+    } catch (err: any) {
+      setError(err.message || 'Failed to rotate key')
+    } finally {
+      setRotatingLedgerId(null)
+    }
+  }
+
+  const copyKey = async (ledgerId: string) => {
+    try {
+      const key = revealedKeys[ledgerId] || (await revealKey(ledgerId))
+      await navigator.clipboard.writeText(key)
+      setCopiedKey(ledgerId)
+      setTimeout(() => setCopiedKey(null), 2000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to copy key')
+    }
+  }
+
+  const displayedKey = (ledger: Ledger) => {
+    const revealed = revealedKeys[ledger.id]
+    if (visibleKeys.has(ledger.id) && revealed) return revealed
+    return ledger.key_preview
   }
 
   const testLedgers = ledgers.filter(l => !l.livemode)
@@ -76,6 +132,14 @@ export default function ApiKeysPage() {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  if (error && ledgers.length === 0) {
+    return (
+      <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-4">
+        {error}
       </div>
     )
   }
@@ -106,7 +170,7 @@ export default function ApiKeysPage() {
 
             <div className="flex items-center gap-2">
               <code className="flex-1 bg-muted px-4 py-2 rounded text-sm font-mono text-foreground">
-                {visibleKeys.has(ledger.id) ? ledger.api_key : maskKey(ledger.api_key)}
+                {displayedKey(ledger)}
               </code>
 
               <button
@@ -122,7 +186,7 @@ export default function ApiKeysPage() {
               </button>
 
               <button
-                onClick={() => copyKey(ledger.api_key, ledger.id)}
+                onClick={() => copyKey(ledger.id)}
                 className="p-2 hover:bg-accent rounded transition-colors"
                 title="Copy to clipboard"
               >
@@ -131,6 +195,15 @@ export default function ApiKeysPage() {
                 ) : (
                   <Copy className="w-4 h-4 text-muted-foreground" />
                 )}
+              </button>
+
+              <button
+                onClick={() => rotateKey(ledger.id)}
+                disabled={rotatingLedgerId === ledger.id}
+                className="p-2 hover:bg-accent rounded transition-colors disabled:opacity-50"
+                title="Rotate API key"
+              >
+                <RefreshCw className={`w-4 h-4 text-muted-foreground ${rotatingLedgerId === ledger.id ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
@@ -148,15 +221,18 @@ export default function ApiKeysPage() {
         </p>
       </div>
 
-      {/* Security Notice */}
+      {error && (
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-lg p-3 mb-6 text-sm">
+          {error}
+        </div>
+      )}
+
       <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-8">
         <p className="text-sm text-yellow-700 dark:text-yellow-400">
-          <strong>Keep your API keys secure.</strong> Do not share them publicly or commit them to version control.
-          Use environment variables in your applications.
+          <strong>Keep your API keys secure.</strong> Keys are masked by default. Reveal only when needed and rotate immediately if a key is exposed.
         </p>
       </div>
 
-      {/* Test API Keys */}
       <div className="bg-card border border-amber-500/30 rounded-lg overflow-hidden mb-8">
         <div className="px-6 py-4 border-b border-amber-500/30 bg-amber-500/5">
           <h2 className="text-lg font-semibold text-amber-600">Test API Keys</h2>
@@ -167,7 +243,6 @@ export default function ApiKeysPage() {
         {renderKeyList(testLedgers)}
       </div>
 
-      {/* Live API Keys */}
       <div className="bg-card border border-green-500/30 rounded-lg overflow-hidden mb-8">
         <div className="px-6 py-4 border-b border-green-500/30 bg-green-500/5">
           <h2 className="text-lg font-semibold text-green-600">Live API Keys</h2>
@@ -178,7 +253,6 @@ export default function ApiKeysPage() {
         {renderKeyList(liveLedgers)}
       </div>
 
-      {/* Usage Example */}
       <div className="bg-card border border-border rounded-lg p-6">
         <h3 className="font-semibold text-foreground mb-4">Usage Example</h3>
         <div className="bg-muted rounded-lg p-4 overflow-x-auto">
@@ -195,7 +269,6 @@ export default function ApiKeysPage() {
         </div>
       </div>
 
-      {/* SDK Links */}
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-lg p-6">
           <h3 className="font-semibold text-foreground mb-2">TypeScript SDK</h3>

@@ -5,6 +5,11 @@ import { getLivemode } from '@/lib/livemode-server'
 import { ACTIVE_LEDGER_GROUP_COOKIE } from '@/lib/livemode'
 import { canCreateLiveLedger } from '@/lib/entitlements'
 import { sendSecurityAlertEmail } from '@/lib/email'
+import { createHash } from 'crypto'
+
+function hashApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex')
+}
 
 // POST /api/ledgers - Create a new ledger (paired test + live)
 export const POST = createApiHandler(
@@ -108,8 +113,8 @@ export const POST = createApiHandler(
     const { data: ledgers, error: ledgerError } = await supabase
       .from('ledgers')
       .insert([
-        { ...sharedFields, api_key: testApiKey, livemode: false },
-        { ...sharedFields, api_key: liveApiKey, livemode: true },
+        { ...sharedFields, api_key: testApiKey, api_key_hash: hashApiKey(testApiKey), livemode: false },
+        { ...sharedFields, api_key: liveApiKey, api_key_hash: hashApiKey(liveApiKey), livemode: true },
       ])
       .select()
 
@@ -180,7 +185,7 @@ export const GET = createApiHandler(
     // Get ledgers for those organizations, filtered by mode
     const { data: ledgers, error } = await supabase
       .from('ledgers')
-      .select('*')
+      .select('id, organization_id, business_name, status, livemode, ledger_group_id, settings, created_at')
       .in('organization_id', orgIds)
       .eq('livemode', livemode)
       .order('created_at', { ascending: false })

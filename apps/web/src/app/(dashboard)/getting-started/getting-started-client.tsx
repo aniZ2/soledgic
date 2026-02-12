@@ -503,9 +503,7 @@ export function GettingStartedClient({
           Manage API Keys <ExternalLink className="w-3 h-3" />
         </Link>
         <a
-          href="https://docs.soledgic.com"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/docs/api"
           className="text-primary hover:underline flex items-center gap-1"
         >
           Full API Documentation <ExternalLink className="w-3 h-3" />
