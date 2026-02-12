@@ -1,4 +1,4 @@
-const PROD_DEFAULT_APP_URL = 'https://app.soledgic.com'
+const PROD_DEFAULT_APP_URL = 'https://soledgic.com'
 const DEV_DEFAULT_APP_URL = 'http://localhost:3000'
 
 function stripTrailingSlash(value: string): string {
