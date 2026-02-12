@@ -96,7 +96,7 @@ export const GET = createApiHandler(
   {
     requireAuth: true,
     rateLimit: true,
-    csrfProtection: false,
+    csrfProtection: true,
     routePath: '/api/settings/api-keys',
   }
 )
