@@ -142,6 +142,8 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
         name: organizationName,
         slug,
         owner_id: input.userId,
+        current_member_count: 0,
+        current_ledger_count: 0,
       })
       .select('id')
       .single<{ id: string }>()
@@ -180,6 +182,48 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
   }
 
   if (!membership) {
+    // Heal org counters if they drift (or if an org was created with an
+    // initial member count but no actual membership rows yet).
+    const [{ data: orgUsage, error: orgUsageError }, { count: activeMemberCount, error: memberCountError }] = await Promise.all([
+      supabase
+        .from('organizations')
+        .select('current_member_count, max_team_members')
+        .eq('id', organizationId)
+        .single<{ current_member_count: number | null; max_team_members: number | null }>(),
+      supabase
+        .from('organization_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .eq('status', 'active'),
+    ])
+
+    if (orgUsageError) {
+      throw new Error(`Failed loading organization usage: ${orgUsageError.message}`)
+    }
+
+    if (memberCountError) {
+      throw new Error(`Failed counting organization members: ${memberCountError.message}`)
+    }
+
+    const normalizedCount = activeMemberCount || 0
+    const updates: Record<string, number> = {}
+    if ((orgUsage.current_member_count || 0) !== normalizedCount) {
+      updates.current_member_count = normalizedCount
+    }
+    if (normalizedCount >= (orgUsage.max_team_members || 1)) {
+      updates.max_team_members = normalizedCount + 1
+    }
+
+    if (Object.keys(updates).length > 0) {
+      const { error: healError } = await supabase
+        .from('organizations')
+        .update(updates)
+        .eq('id', organizationId)
+      if (healError) {
+        throw new Error(`Failed syncing organization member limits: ${healError.message}`)
+      }
+    }
+
     const { error: insertError } = await supabase
       .from('organization_members')
       .insert({
@@ -239,6 +283,41 @@ async function maybeCreateApiKeyRecords(
     // Keep provisioning resilient; this table is not required for runtime auth.
     console.warn('api_keys insert skipped:', error.code)
   }
+}
+
+async function insertLedgersWithSchemaFallback(
+  rows: Array<Record<string, unknown>>
+): Promise<ExistingLedger[]> {
+  const supabase = createServiceClient()
+
+  const attempts: Array<Array<Record<string, unknown>>> = [
+    rows,
+    rows.map(({ owner_email, ...rest }) => rest),
+    rows.map(({ platform_name, ...rest }) => rest),
+    rows.map(({ owner_email, platform_name, ...rest }) => rest),
+  ]
+
+  let lastError: { message?: string } | null = null
+
+  for (const payload of attempts) {
+    const { data, error } = await supabase
+      .from('ledgers')
+      .insert(payload)
+      .select('id, livemode, ledger_group_id, api_key')
+      .returns<ExistingLedger[]>()
+
+    if (!error) {
+      return data || []
+    }
+
+    lastError = error
+    const message = (error.message || '').toLowerCase()
+    if (!message.includes('schema cache') && !message.includes('column')) {
+      break
+    }
+  }
+
+  throw new Error(`Failed creating ledger pair: ${lastError?.message || 'unknown schema error'}`)
 }
 
 async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationId: string) {
@@ -302,15 +381,7 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
   }
 
   if (rowsToInsert.length > 0) {
-    const { data: inserted, error: insertError } = await supabase
-      .from('ledgers')
-      .insert(rowsToInsert)
-      .select('id, livemode, ledger_group_id, api_key')
-      .returns<ExistingLedger[]>()
-
-    if (insertError) {
-      throw new Error(`Failed creating ledger pair: ${insertError.message}`)
-    }
+    const inserted = await insertLedgersWithSchemaFallback(rowsToInsert)
 
     for (const ledger of inserted || []) {
       if (ledger.livemode) {
