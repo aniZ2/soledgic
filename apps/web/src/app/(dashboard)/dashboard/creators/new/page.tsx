@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, User, Mail, Percent, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 export default function NewCreatorPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [ledger, setLedger] = useState<{ id: string; api_key: string; business_name: string } | null>(null)
+  const [ledger, setLedger] = useState<{ id: string; business_name: string } | null>(null)
 
   // Form state
   const [creatorId, setCreatorId] = useState('')
@@ -49,7 +50,7 @@ export default function NewCreatorPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key, business_name')
+      .select('id, business_name')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .eq('livemode', livemode)
@@ -74,22 +75,16 @@ export default function NewCreatorPage() {
       // Generate creator ID if not provided
       const finalCreatorId = creatorId.trim() || `creator_${Date.now()}`
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-creator`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': ledger.api_key,
-          },
-          body: JSON.stringify({
-            creator_id: finalCreatorId,
-            display_name: displayName.trim() || undefined,
-            email: email.trim() || undefined,
-            default_split_percent: parseFloat(splitPercent) || 80,
-          }),
-        }
-      )
+      const response = await callLedgerFunction('create-creator', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: {
+          creator_id: finalCreatorId,
+          display_name: displayName.trim() || undefined,
+          email: email.trim() || undefined,
+          default_split_percent: parseFloat(splitPercent) || 80,
+        },
+      })
 
       const data = await response.json()
 

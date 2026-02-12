@@ -9,10 +9,9 @@ interface ApiKeysRequest {
   ledger_id: string
 }
 
-function maskApiKey(key: string | null): string {
-  if (!key) return '—'
-  if (key.length <= 14) return `${key.slice(0, 4)}****`
-  return `${key.slice(0, 10)}${'*'.repeat(16)}${key.slice(-4)}`
+function keyPreviewFromPrefix(prefix: string | null | undefined): string {
+  if (!prefix) return 'Configured (rotate to generate a new visible key)'
+  return `${prefix}${'*'.repeat(16)}`
 }
 
 function hashApiKey(apiKey: string): string {
@@ -56,6 +55,39 @@ function createServiceClient() {
   )
 }
 
+async function updateLedgerApiKeyHash(
+  serviceClient: ReturnType<typeof createServerClient>,
+  ledgerId: string,
+  keyHash: string
+) {
+  const attempts: Array<Record<string, unknown>> = [
+    { api_key_hash: keyHash, api_key: null },
+    { api_key_hash: keyHash },
+  ]
+
+  let lastError: { message?: string } | null = null
+
+  for (const payload of attempts) {
+    const { error } = await serviceClient
+      .from('ledgers')
+      .update(payload)
+      .eq('id', ledgerId)
+
+    if (!error) {
+      lastError = null
+      break
+    }
+
+    lastError = error
+    const message = (error.message || '').toLowerCase()
+    if (!message.includes('schema cache') && !message.includes('column')) {
+      break
+    }
+  }
+
+  return lastError
+}
+
 export const GET = createApiHandler(
   async (_request, { user }) => {
     const membership = await getActiveMembership(user!.id)
@@ -73,7 +105,7 @@ export const GET = createApiHandler(
     const serviceClient = createServiceClient()
     const { data: ledgers, error } = await serviceClient
       .from('ledgers')
-      .select('id, business_name, api_key, created_at, livemode')
+      .select('id, business_name, api_key_hash, created_at, livemode')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
@@ -82,14 +114,37 @@ export const GET = createApiHandler(
       return NextResponse.json({ error: 'Failed to load API keys' }, { status: 500 })
     }
 
+    const prefixByLedgerId = new Map<string, string>()
+
+    try {
+      const { data: apiKeys, error: apiKeysError } = await serviceClient
+        .from('api_keys')
+        .select('ledger_id, key_prefix, created_at')
+        .in('ledger_id', (ledgers || []).map((ledger) => ledger.id))
+        .is('revoked_at', null)
+        .order('created_at', { ascending: false })
+
+      if (!apiKeysError && Array.isArray(apiKeys)) {
+        for (const row of apiKeys) {
+          if (!prefixByLedgerId.has(row.ledger_id)) {
+            prefixByLedgerId.set(row.ledger_id, row.key_prefix)
+          }
+        }
+      }
+    } catch {
+      // Non-blocking: api_keys may not exist in older environments.
+    }
+
     return NextResponse.json({
       ledgers: (ledgers || []).map((ledger) => ({
         id: ledger.id,
         business_name: ledger.business_name,
         livemode: ledger.livemode,
         created_at: ledger.created_at,
-        has_key: Boolean(ledger.api_key),
-        key_preview: maskApiKey(ledger.api_key),
+        has_key: Boolean(ledger.api_key_hash),
+        key_preview: ledger.api_key_hash
+          ? keyPreviewFromPrefix(prefixByLedgerId.get(ledger.id))
+          : 'No key configured',
       })),
     })
   },
@@ -131,7 +186,7 @@ export const POST = createApiHandler(
     const serviceClient = createServiceClient()
     const { data: ledger, error: ledgerError } = await serviceClient
       .from('ledgers')
-      .select('id, api_key, livemode')
+      .select('id, livemode')
       .eq('id', body.ledger_id)
       .eq('organization_id', membership.organization_id)
       .single()
@@ -141,40 +196,34 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'reveal') {
-      if (!ledger.api_key) {
-        return NextResponse.json(
-          { error: 'No API key found. Rotate to generate a new key.' },
-          { status: 404 }
-        )
-      }
-
-      return NextResponse.json({
-        key: ledger.api_key,
-        key_preview: maskApiKey(ledger.api_key),
-      })
+      return NextResponse.json(
+        { error: 'API keys are hidden by design. Rotate to generate a new key.' },
+        { status: 410 }
+      )
     }
 
     const nextKey = makeApiKey(Boolean(ledger.livemode))
-    const { error: updateError } = await serviceClient
-      .from('ledgers')
-      .update({
-        api_key: nextKey,
-        api_key_hash: hashApiKey(nextKey),
-      })
-      .eq('id', ledger.id)
+    const nextHash = hashApiKey(nextKey)
 
+    const updateError = await updateLedgerApiKeyHash(serviceClient, ledger.id, nextHash)
     if (updateError) {
       return NextResponse.json({ error: 'Failed to rotate API key' }, { status: 500 })
     }
 
-    // Best-effort insert for secondary key registry when present.
+    // Best-effort rotate history in api_keys table.
     try {
+      await serviceClient
+        .from('api_keys')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('ledger_id', ledger.id)
+        .is('revoked_at', null)
+
       await serviceClient
         .from('api_keys')
         .insert({
           ledger_id: ledger.id,
           name: ledger.livemode ? 'Rotated Live Key' : 'Rotated Test Key',
-          key_hash: hashApiKey(nextKey),
+          key_hash: nextHash,
           key_prefix: nextKey.slice(0, 12),
           scopes: ['read', 'write', 'admin'],
           created_by: user!.id,
@@ -185,7 +234,7 @@ export const POST = createApiHandler(
 
     return NextResponse.json({
       key: nextKey,
-      key_preview: maskApiKey(nextKey),
+      key_preview: keyPreviewFromPrefix(nextKey.slice(0, 12)),
       rotated: true,
     })
   },

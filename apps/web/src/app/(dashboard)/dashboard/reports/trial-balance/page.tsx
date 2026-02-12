@@ -1,3 +1,4 @@
+import React from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -25,7 +26,7 @@ export default async function TrialBalancePage() {
 
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, api_key, ledger_group_id')
+    .select('id, business_name, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
     .eq('livemode', livemode)
@@ -238,6 +239,3 @@ export default async function TrialBalancePage() {
     </div>
   )
 }
-
-// Need to import React for Fragment
-import React from 'react'

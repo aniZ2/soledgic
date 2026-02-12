@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Key, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { Key, Copy, RefreshCw } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface Ledger {
@@ -17,7 +17,6 @@ export default function ApiKeysPage() {
   const [ledgers, setLedgers] = useState<Ledger[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set())
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({})
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [rotatingLedgerId, setRotatingLedgerId] = useState<string | null>(null)
@@ -46,43 +45,6 @@ export default function ApiKeysPage() {
     }
   }
 
-  const revealKey = async (ledgerId: string) => {
-    const response = await fetchWithCsrf('/api/settings/api-keys', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'reveal', ledger_id: ledgerId }),
-    })
-
-    const data = await response.json()
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to reveal key')
-    }
-
-    setRevealedKeys((prev) => ({ ...prev, [ledgerId]: data.key }))
-    setVisibleKeys((prev) => new Set(prev).add(ledgerId))
-
-    return data.key as string
-  }
-
-  const toggleKeyVisibility = async (ledgerId: string) => {
-    if (visibleKeys.has(ledgerId)) {
-      const next = new Set(visibleKeys)
-      next.delete(ledgerId)
-      setVisibleKeys(next)
-      return
-    }
-
-    try {
-      if (!revealedKeys[ledgerId]) {
-        await revealKey(ledgerId)
-        return
-      }
-
-      setVisibleKeys((prev) => new Set(prev).add(ledgerId))
-    } catch (err: any) {
-      setError(err.message || 'Failed to reveal key')
-    }
-  }
-
   const rotateKey = async (ledgerId: string) => {
     setRotatingLedgerId(ledgerId)
     setError(null)
@@ -99,7 +61,6 @@ export default function ApiKeysPage() {
       }
 
       setRevealedKeys((prev) => ({ ...prev, [ledgerId]: data.key }))
-      setVisibleKeys((prev) => new Set(prev).add(ledgerId))
       await loadLedgers()
     } catch (err: any) {
       setError(err.message || 'Failed to rotate key')
@@ -110,7 +71,10 @@ export default function ApiKeysPage() {
 
   const copyKey = async (ledgerId: string) => {
     try {
-      const key = revealedKeys[ledgerId] || (await revealKey(ledgerId))
+      const key = revealedKeys[ledgerId]
+      if (!key) {
+        throw new Error('Rotate this key first. For security, existing keys cannot be revealed.')
+      }
       await navigator.clipboard.writeText(key)
       setCopiedKey(ledgerId)
       setTimeout(() => setCopiedKey(null), 2000)
@@ -121,7 +85,7 @@ export default function ApiKeysPage() {
 
   const displayedKey = (ledger: Ledger) => {
     const revealed = revealedKeys[ledger.id]
-    if (visibleKeys.has(ledger.id) && revealed) return revealed
+    if (revealed) return revealed
     return ledger.key_preview
   }
 
@@ -174,21 +138,10 @@ export default function ApiKeysPage() {
               </code>
 
               <button
-                onClick={() => toggleKeyVisibility(ledger.id)}
-                className="p-2 hover:bg-accent rounded transition-colors"
-                title={visibleKeys.has(ledger.id) ? 'Hide key' : 'Show key'}
-              >
-                {visibleKeys.has(ledger.id) ? (
-                  <EyeOff className="w-4 h-4 text-muted-foreground" />
-                ) : (
-                  <Eye className="w-4 h-4 text-muted-foreground" />
-                )}
-              </button>
-
-              <button
                 onClick={() => copyKey(ledger.id)}
-                className="p-2 hover:bg-accent rounded transition-colors"
-                title="Copy to clipboard"
+                disabled={!revealedKeys[ledger.id]}
+                className="p-2 hover:bg-accent rounded transition-colors disabled:opacity-50"
+                title={revealedKeys[ledger.id] ? 'Copy to clipboard' : 'Rotate to generate a new visible key'}
               >
                 {copiedKey === ledger.id ? (
                   <span className="text-xs text-green-600">Copied!</span>
@@ -229,7 +182,7 @@ export default function ApiKeysPage() {
 
       <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-8">
         <p className="text-sm text-yellow-700 dark:text-yellow-400">
-          <strong>Keep your API keys secure.</strong> Keys are masked by default. Reveal only when needed and rotate immediately if a key is exposed.
+          <strong>Keep your API keys secure.</strong> Existing keys are never revealed again. Rotate to generate a new key and copy it immediately.
         </p>
       </div>
 

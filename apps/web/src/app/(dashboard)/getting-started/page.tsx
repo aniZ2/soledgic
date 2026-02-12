@@ -26,7 +26,7 @@ export default async function GettingStartedPage() {
   // Get ledgers
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, api_key, ledger_group_id')
+    .select('id, business_name, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
     .eq('livemode', livemode)
@@ -61,7 +61,6 @@ export default async function GettingStartedPage() {
       ledger={{
         id: ledger.id,
         business_name: ledger.business_name,
-        api_key: ledger.api_key,
       }}
       progress={{
         hasCreator: (creatorCount || 0) > 0,

@@ -1,6 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
+import { createHash } from 'crypto'
+
+function makeApiKey(livemode: boolean): string {
+  return `sk_${livemode ? 'live' : 'test'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+}
+
+function hashApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex')
+}
 
 export const POST = createApiHandler(
   async (_request, { user }) => {
@@ -56,21 +65,24 @@ export const POST = createApiHandler(
       return NextResponse.json({ success: true, repaired: 0, orphans: [] })
     }
 
-    // Create the missing sibling for each orphan
-    const inserts = orphans.map(({ existing, missingMode }) => ({
-      platform_name: existing.platform_name,
-      organization_id: existing.organization_id,
-      owner_email: existing.owner_email,
-      status: 'active' as const,
-      ledger_group_id: existing.ledger_group_id,
-      livemode: missingMode,
-      business_name: existing.business_name,
-      ledger_mode: existing.ledger_mode,
-      settings: existing.settings,
-      api_key: missingMode
-        ? `sk_live_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
-        : `sk_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`,
-    }))
+    // Create the missing sibling for each orphan using hash-only key storage.
+    const keyByGroupAndMode = new Map<string, string>()
+    const inserts = orphans.map(({ existing, missingMode }) => {
+      const key = makeApiKey(missingMode)
+      keyByGroupAndMode.set(`${existing.ledger_group_id}:${missingMode ? 'live' : 'test'}`, key)
+      return {
+        platform_name: existing.platform_name,
+        organization_id: existing.organization_id,
+        owner_email: existing.owner_email,
+        status: 'active' as const,
+        ledger_group_id: existing.ledger_group_id,
+        livemode: missingMode,
+        business_name: existing.business_name,
+        ledger_mode: existing.ledger_mode,
+        settings: existing.settings,
+        api_key_hash: hashApiKey(key),
+      }
+    })
 
     const { data: created, error } = await supabase
       .from('ledgers')
@@ -83,6 +95,29 @@ export const POST = createApiHandler(
         { error: 'Failed to create missing siblings' },
         { status: 500 }
       )
+    }
+
+    try {
+      const rows = (created || []).flatMap((ledger) => {
+        const key = keyByGroupAndMode.get(`${ledger.ledger_group_id}:${ledger.livemode ? 'live' : 'test'}`)
+        if (!key) return []
+        return [
+          {
+            ledger_id: ledger.id,
+            name: ledger.livemode ? 'Recovered Live Key' : 'Recovered Test Key',
+            key_hash: hashApiKey(key),
+            key_prefix: key.slice(0, 12),
+            scopes: ['read', 'write', 'admin'],
+            created_by: user!.id,
+          },
+        ]
+      })
+
+      if (rows.length > 0) {
+        await supabase.from('api_keys').insert(rows)
+      }
+    } catch {
+      // Non-blocking: api_keys table might be unavailable in older environments.
     }
 
     return NextResponse.json({

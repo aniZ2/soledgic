@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, Clock, Eye, EyeOff, Copy } from 'lucide-react'
 
 interface WebhookEndpoint {
@@ -48,7 +49,7 @@ export default function WebhooksPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [newEndpoint, setNewEndpoint] = useState({ url: '', description: '', events: ['*'] })
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<{ success: boolean; status?: number } | null>(null)
 
@@ -73,7 +74,7 @@ export default function WebhooksPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key, ledger_group_id')
+      .select('id, ledger_group_id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .eq('livemode', livemode)
@@ -81,37 +82,25 @@ export default function WebhooksPage() {
     const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return
 
-    setApiKey(ledger.api_key)
+    setLedgerId(ledger.id)
 
     // Fetch endpoints
-    const endpointsRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/webhooks`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ledger.api_key,
-        },
-        body: JSON.stringify({ action: 'list' }),
-      }
-    )
+    const endpointsRes = await callLedgerFunction('webhooks', {
+      ledgerId: ledger.id,
+      method: 'POST',
+      body: { action: 'list' },
+    })
     const endpointsData = await endpointsRes.json()
     if (endpointsData.success) {
       setEndpoints(endpointsData.data)
     }
 
     // Fetch recent deliveries
-    const deliveriesRes = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/webhooks`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ledger.api_key,
-        },
-        body: JSON.stringify({ action: 'deliveries' }),
-      }
-    )
+    const deliveriesRes = await callLedgerFunction('webhooks', {
+      ledgerId: ledger.id,
+      method: 'POST',
+      body: { action: 'deliveries' },
+    })
     const deliveriesData = await deliveriesRes.json()
     if (deliveriesData.success) {
       setDeliveries(deliveriesData.data)
@@ -121,24 +110,18 @@ export default function WebhooksPage() {
   }
 
   const createEndpoint = async () => {
-    if (!apiKey || !newEndpoint.url) return
+    if (!ledgerId || !newEndpoint.url) return
 
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/webhooks`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          action: 'create',
-          url: newEndpoint.url,
-          description: newEndpoint.description || null,
-          events: newEndpoint.events,
-        }),
-      }
-    )
+    const res = await callLedgerFunction('webhooks', {
+      ledgerId,
+      method: 'POST',
+      body: {
+        action: 'create',
+        url: newEndpoint.url,
+        description: newEndpoint.description || null,
+        events: newEndpoint.events,
+      },
+    })
     const data = await res.json()
     
     if (data.success) {
@@ -149,57 +132,39 @@ export default function WebhooksPage() {
   }
 
   const deleteEndpoint = async (id: string) => {
-    if (!apiKey || !confirm('Delete this webhook endpoint?')) return
+    if (!ledgerId || !confirm('Delete this webhook endpoint?')) return
 
-    await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/webhooks`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({ action: 'delete', endpoint_id: id }),
-      }
-    )
+    await callLedgerFunction('webhooks', {
+      ledgerId,
+      method: 'POST',
+      body: { action: 'delete', endpoint_id: id },
+    })
     loadData()
   }
 
   const testEndpoint = async (id: string) => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setTestingId(id)
     setTestResult(null)
 
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/webhooks`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({ action: 'test', endpoint_id: id }),
-      }
-    )
+    const res = await callLedgerFunction('webhooks', {
+      ledgerId,
+      method: 'POST',
+      body: { action: 'test', endpoint_id: id },
+    })
     const data = await res.json()
     setTestResult({ success: data.data?.delivered, status: data.data?.status })
     setTestingId(null)
   }
 
   const toggleEndpoint = async (id: string, isActive: boolean) => {
-    if (!apiKey) return
+    if (!ledgerId) return
 
-    await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/webhooks`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({ action: 'update', endpoint_id: id, is_active: !isActive }),
-      }
-    )
+    await callLedgerFunction('webhooks', {
+      ledgerId,
+      method: 'POST',
+      body: { action: 'update', endpoint_id: id, is_active: !isActive },
+    })
     loadData()
   }
 

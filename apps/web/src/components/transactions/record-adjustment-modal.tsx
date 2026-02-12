@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, FileEdit, Plus, Trash2 } from 'lucide-react'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordAdjustmentModalProps {
   isOpen: boolean
   onClose: () => void
   ledgerId: string
-  apiKey: string
   onSuccess?: () => void
 }
 
@@ -48,7 +48,6 @@ export function RecordAdjustmentModal({
   isOpen,
   onClose,
   ledgerId,
-  apiKey,
   onSuccess
 }: RecordAdjustmentModalProps) {
   const [loading, setLoading] = useState(false)
@@ -121,27 +120,21 @@ export function RecordAdjustmentModal({
     setError(null)
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/record-adjustment`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            adjustment_type: adjustmentType,
-            reason: reason.trim(),
-            prepared_by: preparedBy.trim(),
-            entries: entriesWithAmounts.map(e => ({
-              account_type: e.account_type,
-              entity_id: e.entity_id || undefined,
-              entry_type: e.entry_type,
-              amount: Math.floor(parseFloat(e.amount) * 100),
-            })),
-          }),
-        }
-      )
+      const response = await callLedgerFunction('record-adjustment', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          adjustment_type: adjustmentType,
+          reason: reason.trim(),
+          prepared_by: preparedBy.trim(),
+          entries: entriesWithAmounts.map(e => ({
+            account_type: e.account_type,
+            entity_id: e.entity_id || undefined,
+            entry_type: e.entry_type,
+            amount: Math.floor(parseFloat(e.amount) * 100),
+          })),
+        },
+      })
 
       const data = await response.json()
 

@@ -19,7 +19,6 @@ interface PayoutsClientProps {
   ledger: {
     id: string
     business_name: string
-    api_key: string
     payout_rails: any[] | null
   }
   payouts: Payout[]
@@ -233,7 +232,6 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         onSuccess={handlePayoutSuccess}
       />
     </div>

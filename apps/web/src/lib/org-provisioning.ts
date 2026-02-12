@@ -28,6 +28,7 @@ export interface ProvisionOrganizationResult {
   testLedgerId: string
   liveLedgerId: string
   ledgerGroupId: string
+  // Returned only when a new key had to be generated during this call.
   testApiKey: string | null
   liveApiKey: string | null
   createdOrganization: boolean
@@ -47,7 +48,7 @@ type ExistingLedger = {
   id: string
   livemode: boolean
   ledger_group_id: string
-  api_key: string | null
+  api_key_hash: string | null
 }
 
 let cachedServiceClient: ReturnType<typeof createServerClient> | null = null
@@ -287,22 +288,53 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
   }
 }
 
-async function ensureLedgerApiKey(ledgerId: string, livemode: boolean) {
+async function ensureLedgerApiKey(ledgerId: string, livemode: boolean, createdBy: string) {
   const supabase = getServiceClient()
   const apiKey = makeApiKey(livemode)
   const apiKeyHash = hashApiKey(apiKey)
 
-  const { error } = await supabase
-    .from('ledgers')
-    .update({
-      api_key: apiKey,
-      api_key_hash: apiKeyHash,
-    })
-    .eq('id', ledgerId)
+  // Prefer hash-only storage. Fallback keeps compatibility if api_key column
+  // has already been dropped in some environments.
+  const attempts: Array<Record<string, unknown>> = [
+    { api_key_hash: apiKeyHash, api_key: null },
+    { api_key_hash: apiKeyHash },
+  ]
 
-  if (error) {
-    throw new Error(`Failed updating missing API key: ${error.message}`)
+  let lastError: { message?: string } | null = null
+  for (const payload of attempts) {
+    const { error } = await supabase
+      .from('ledgers')
+      .update(payload)
+      .eq('id', ledgerId)
+
+    if (!error) {
+      lastError = null
+      break
+    }
+
+    lastError = error
+    if (
+      !error.message.toLowerCase().includes('schema cache') &&
+      !error.message.toLowerCase().includes('column')
+    ) {
+      break
+    }
   }
+
+  if (lastError) {
+    throw new Error(`Failed updating missing API key hash: ${lastError.message}`)
+  }
+
+  await maybeCreateApiKeyRecords([
+    {
+      ledger_id: ledgerId,
+      name: livemode ? 'Default Live Key' : 'Default Test Key',
+      key_hash: apiKeyHash,
+      key_prefix: apiKey.slice(0, 12),
+      scopes: ['read', 'write', 'admin'],
+      created_by: createdBy,
+    },
+  ])
 
   return apiKey
 }
@@ -341,7 +373,7 @@ async function insertLedgersWithSchemaFallback(
     const { data, error } = await supabase
       .from('ledgers')
       .insert(payload)
-      .select('id, livemode, ledger_group_id, api_key')
+      .select('id, livemode, ledger_group_id, api_key_hash')
       .returns()
 
     if (!error) {
@@ -366,7 +398,7 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
 
   const { data: existingLedgersRaw, error: fetchError } = await supabase
     .from('ledgers')
-    .select('id, livemode, ledger_group_id, api_key')
+    .select('id, livemode, ledger_group_id, api_key_hash')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: true })
     .returns()
@@ -385,9 +417,12 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
     crypto.randomUUID()
 
   const rowsToInsert: Array<Record<string, unknown>> = []
+  let generatedTestApiKey: string | null = null
+  let generatedLiveApiKey: string | null = null
 
   if (!testLedger) {
     const apiKey = makeApiKey(false)
+    generatedTestApiKey = apiKey
     rowsToInsert.push({
       organization_id: organizationId,
       platform_name: businessName,
@@ -398,13 +433,13 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
       ledger_group_id: ledgerGroupId,
       livemode: false,
       settings: { currency: 'USD', fiscal_year_start: 1 },
-      api_key: apiKey,
       api_key_hash: hashApiKey(apiKey),
     })
   }
 
   if (!liveLedger) {
     const apiKey = makeApiKey(true)
+    generatedLiveApiKey = apiKey
     rowsToInsert.push({
       organization_id: organizationId,
       platform_name: businessName,
@@ -415,7 +450,6 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
       ledger_group_id: ledgerGroupId,
       livemode: true,
       settings: { currency: 'USD', fiscal_year_start: 1 },
-      api_key: apiKey,
       api_key_hash: hashApiKey(apiKey),
     })
   }
@@ -432,19 +466,20 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
     }
 
     await maybeCreateApiKeyRecords(
-      (inserted || [])
-        .filter((ledger) => typeof ledger.api_key === 'string' && ledger.api_key.length > 0)
-        .map((ledger) => {
-          const apiKey = (ledger.api_key || '') as string
-          return {
+      (inserted || []).flatMap((ledger) => {
+        const key = ledger.livemode ? generatedLiveApiKey : generatedTestApiKey
+        if (!key) return []
+        return [
+          {
             ledger_id: ledger.id,
             name: ledger.livemode ? 'Default Live Key' : 'Default Test Key',
-            key_hash: hashApiKey(apiKey),
-            key_prefix: apiKey.slice(0, 12),
+            key_hash: hashApiKey(key),
+            key_prefix: key.slice(0, 12),
             scopes: ['read', 'write', 'admin'],
             created_by: input.userId,
-          }
-        })
+          },
+        ]
+      })
     )
   }
 
@@ -452,18 +487,20 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
     throw new Error('Failed to ensure both test and live ledgers')
   }
 
-  if (!testLedger.api_key) {
-    testLedger.api_key = await ensureLedgerApiKey(testLedger.id, false)
+  if (!testLedger.api_key_hash) {
+    generatedTestApiKey = await ensureLedgerApiKey(testLedger.id, false, input.userId)
   }
 
-  if (!liveLedger.api_key) {
-    liveLedger.api_key = await ensureLedgerApiKey(liveLedger.id, true)
+  if (!liveLedger.api_key_hash) {
+    generatedLiveApiKey = await ensureLedgerApiKey(liveLedger.id, true, input.userId)
   }
 
   return {
     testLedger,
     liveLedger,
     ledgerGroupId: testLedger.ledger_group_id || liveLedger.ledger_group_id,
+    testApiKey: generatedTestApiKey,
+    liveApiKey: generatedLiveApiKey,
   }
 }
 
@@ -519,8 +556,8 @@ export async function provisionOrganizationWithLedgers(
     testLedgerId: ledgers.testLedger.id,
     liveLedgerId: ledgers.liveLedger.id,
     ledgerGroupId: ledgers.ledgerGroupId,
-    testApiKey: ledgers.testLedger.api_key,
-    liveApiKey: ledgers.liveLedger.api_key,
+    testApiKey: ledgers.testApiKey,
+    liveApiKey: ledgers.liveApiKey,
     createdOrganization: organization.created,
   }
 }

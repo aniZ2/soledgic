@@ -198,25 +198,22 @@ export default async function LedgerDetailPage({
         )}
       </div>
 
-      {/* API Key */}
+      {/* API Access */}
       <div className="mt-8 bg-card border border-border rounded-lg p-6">
         <h2 className="text-lg font-semibold text-foreground">API Access</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Use this API key to integrate with your application.
+          Manage and rotate API keys from the organization settings page.
         </p>
         <div className="mt-4 flex items-center gap-3">
-          <code className="flex-1 px-4 py-3 bg-muted rounded-md text-sm font-mono text-foreground overflow-x-auto">
-            {ledger.api_key}
-          </code>
-          <button
-            onClick={() => navigator.clipboard.writeText(ledger.api_key)}
-            className="px-4 py-3 border border-border rounded-md hover:bg-accent text-sm"
+          <Link
+            href="/settings/api-keys"
+            className="px-4 py-2 border border-border rounded-md hover:bg-accent text-sm"
           >
-            Copy
-          </button>
+            Open API Keys
+          </Link>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Keep this key secure. It provides full access to this ledger's data.
+          Keys are only shown when newly generated during rotation.
         </p>
       </div>
     </div>

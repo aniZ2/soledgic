@@ -2,34 +2,23 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Download, FileText, TrendingUp, Scale } from 'lucide-react'
+import { callLedgerFunctionServer, jsonFromResponse } from '@/lib/ledger-functions-server'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-async function getProfitLoss(apiKey: string, year: number) {
-  const response = await fetch(
-    `${SUPABASE_URL}/functions/v1/profit-loss?year=${year}&breakdown=monthly`,
-    {
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'x-api-key': apiKey,
-      },
-    }
-  )
-  return response.json()
+async function getProfitLoss(ledgerId: string, year: number) {
+  const response = await callLedgerFunctionServer('profit-loss', {
+    ledgerId,
+    method: 'GET',
+    query: { year, breakdown: 'monthly' },
+  })
+  return jsonFromResponse(response)
 }
 
-async function getTrialBalance(apiKey: string) {
-  const response = await fetch(
-    `${SUPABASE_URL}/functions/v1/trial-balance`,
-    {
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'x-api-key': apiKey,
-      },
-    }
-  )
-  return response.json()
+async function getTrialBalance(ledgerId: string) {
+  const response = await callLedgerFunctionServer('trial-balance', {
+    ledgerId,
+    method: 'GET',
+  })
+  return jsonFromResponse(response)
 }
 
 export default async function ReportsPage({
@@ -43,7 +32,7 @@ export default async function ReportsPage({
   // Get ledger
   const { data: ledger, error } = await supabase
     .from('ledgers')
-    .select('id, platform_name, api_key')
+    .select('id, platform_name')
     .eq('id', id)
     .single()
 
@@ -55,8 +44,8 @@ export default async function ReportsPage({
   
   // Fetch reports
   const [plData, tbData] = await Promise.all([
-    getProfitLoss(ledger.api_key, currentYear),
-    getTrialBalance(ledger.api_key),
+    getProfitLoss(ledger.id, currentYear),
+    getTrialBalance(ledger.id),
   ])
 
   return (

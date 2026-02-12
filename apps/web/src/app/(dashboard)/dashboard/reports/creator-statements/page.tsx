@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
 import { ArrowLeft, FileText, Download, Mail, User, Send } from 'lucide-react'
 
@@ -20,7 +21,7 @@ export default function CreatorStatementsPage() {
   const activeLedgerGroupId = useActiveLedgerGroupId()
   const [creators, setCreators] = useState<Creator[]>([])
   const [loading, setLoading] = useState(true)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [sendingAll, setSendingAll] = useState(false)
@@ -45,14 +46,14 @@ export default function CreatorStatementsPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key, ledger_group_id')
+      .select('id, ledger_group_id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .eq('livemode', livemode)
 
     const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return
-    setApiKey(ledger.api_key)
+    setLedgerId(ledger.id)
 
     // Get creators
     const { data: accounts } = await supabase
@@ -89,31 +90,60 @@ export default function CreatorStatementsPage() {
     setLoading(false)
   }
 
-  const downloadStatement = async (creatorId: string) => {
-    if (!apiKey) return
+  const getPeriodRange = () => {
+    const start = new Date(selectedYear, selectedMonth - 1, 1)
+    const end = new Date(selectedYear, selectedMonth, 0)
+    return {
+      startDate: start.toISOString().split('T')[0],
+      endDate: end.toISOString().split('T')[0],
+    }
+  }
 
-    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-pdf?` +
-      `report_type=creator_statement&creator_id=${creatorId}&year=${selectedYear}&month=${selectedMonth}&api_key=${apiKey}`
-    
-    window.open(url, '_blank')
+  const downloadStatement = async (creatorId: string) => {
+    if (!ledgerId) return
+
+    const { startDate, endDate } = getPeriodRange()
+    const res = await callLedgerFunction('generate-pdf', {
+      ledgerId,
+      method: 'POST',
+      body: {
+        report_type: 'creator_statement',
+        creator_id: creatorId,
+        start_date: startDate,
+        end_date: endDate,
+      },
+    })
+    const data = await res.json()
+    if (!res.ok || !data.success || !data.data) {
+      alert(`Failed: ${data.error || 'Unable to generate statement'}`)
+      return
+    }
+
+    const binary = atob(data.data)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    const blob = new Blob([bytes], { type: data.content_type || 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = data.filename || `creator_statement_${creatorId}_${selectedYear}_${selectedMonth}.pdf`
+    a.click()
+    window.URL.revokeObjectURL(url)
   }
 
   const sendStatement = async (creatorId: string) => {
-    if (!apiKey) return
+    if (!ledgerId) return
 
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-statements`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({
-          action: 'send_single_statement',
-          creator_id: creatorId,
-          year: selectedYear,
-          month: selectedMonth,
-        }),
-      }
-    )
+    const res = await callLedgerFunction('send-statements', {
+      ledgerId,
+      method: 'POST',
+      body: {
+        action: 'send_single_statement',
+        creator_id: creatorId,
+        year: selectedYear,
+        month: selectedMonth,
+      },
+    })
     const data = await res.json()
     
     if (data.success) {
@@ -124,21 +154,18 @@ export default function CreatorStatementsPage() {
   }
 
   const sendAllStatements = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setSendingAll(true)
 
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-statements`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({
-          action: 'send_monthly_statements',
-          year: selectedYear,
-          month: selectedMonth,
-        }),
-      }
-    )
+    const res = await callLedgerFunction('send-statements', {
+      ledgerId,
+      method: 'POST',
+      body: {
+        action: 'send_monthly_statements',
+        year: selectedYear,
+        month: selectedMonth,
+      },
+    })
     const data = await res.json()
     
     if (data.success) {

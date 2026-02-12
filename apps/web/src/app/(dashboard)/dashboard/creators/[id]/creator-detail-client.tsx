@@ -36,7 +36,6 @@ interface HeldFund {
 interface CreatorDetailClientProps {
   ledger: {
     id: string
-    api_key: string
   }
   creatorAccount: {
     id: string
@@ -305,7 +304,6 @@ export function CreatorDetailClient({
         isOpen={isPayoutModalOpen}
         onClose={() => setIsPayoutModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         preselectedCreator={creatorForModal}
         onSuccess={handlePayoutSuccess}
       />

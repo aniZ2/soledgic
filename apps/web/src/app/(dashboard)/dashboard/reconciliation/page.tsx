@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
 import {
   Building2, RefreshCw, CheckCircle, XCircle,
@@ -66,7 +67,7 @@ export default function ReconciliationPage() {
   const [ledgerTransactions, setLedgerTransactions] = useState<LedgerTransaction[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [plaidConfigured, setPlaidConfigured] = useState(true)
   const [selectedTxn, setSelectedTxn] = useState<string | null>(null)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
@@ -91,25 +92,22 @@ export default function ReconciliationPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key, ledger_group_id')
+      .select('id, ledger_group_id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .eq('livemode', livemode)
 
     const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return
-    setApiKey(ledger.api_key)
+    setLedgerId(ledger.id)
 
     // Load Bank (Plaid) transactions
     try {
-      const connRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/plaid`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': ledger.api_key },
-          body: JSON.stringify({ action: 'list_connections' }),
-        }
-      )
+      const connRes = await callLedgerFunction('plaid', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: { action: 'list_connections' },
+      })
       const connData = await connRes.json()
       
       if (connData.error?.includes('not configured')) {
@@ -118,14 +116,11 @@ export default function ReconciliationPage() {
         setConnections(connData.data || [])
       }
 
-      const txRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/plaid`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': ledger.api_key },
-          body: JSON.stringify({ action: 'list_transactions' }),
-        }
-      )
+      const txRes = await callLedgerFunction('plaid', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: { action: 'list_transactions' },
+      })
       const txData = await txRes.json()
       setPlaidTransactions(txData.data || [])
     } catch {
@@ -134,14 +129,11 @@ export default function ReconciliationPage() {
 
     // Load Stripe transactions
     try {
-      const stripeRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/stripe`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': ledger.api_key },
-          body: JSON.stringify({ action: 'list_transactions' }),
-        }
-      )
+      const stripeRes = await callLedgerFunction('stripe', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: { action: 'list_transactions' },
+      })
       const stripeData = await stripeRes.json()
       setStripeTransactions(stripeData.data || [])
     } catch {
@@ -163,54 +155,45 @@ export default function ReconciliationPage() {
   }
 
   const callAction = async (source: 'plaid' | 'stripe', action: string, txnId: string, ledgerTxnId?: string) => {
-    if (!apiKey) return
+    if (!ledgerId) return
     
     const endpoint = source === 'plaid' ? 'plaid' : 'stripe'
     const idField = source === 'plaid' ? 'plaid_transaction_id' : 'stripe_transaction_id'
     
-    await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/${endpoint}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ 
-          action, 
-          [idField]: txnId,
-          ledger_transaction_id: ledgerTxnId
-        }),
-      }
-    )
+    await callLedgerFunction(endpoint, {
+      ledgerId,
+      method: 'POST',
+      body: {
+        action,
+        [idField]: txnId,
+        ledger_transaction_id: ledgerTxnId,
+      },
+    })
     setActiveDropdown(null)
     setSelectedTxn(null)
     await loadData()
   }
 
   const syncTransactions = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setSyncing(true)
-    await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/plaid`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ action: 'sync' }),
-      }
-    )
+    await callLedgerFunction('plaid', {
+      ledgerId,
+      method: 'POST',
+      body: { action: 'sync' },
+    })
     await loadData()
     setSyncing(false)
   }
 
   const autoMatchAll = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setSyncing(true)
-    await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/plaid`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-        body: JSON.stringify({ action: 'auto_match_all' }),
-      }
-    )
+    await callLedgerFunction('plaid', {
+      ledgerId,
+      method: 'POST',
+      body: { action: 'auto_match_all' },
+    })
     await loadData()
     setSyncing(false)
   }

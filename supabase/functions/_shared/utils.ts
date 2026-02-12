@@ -438,6 +438,34 @@ export interface LedgerContext {
   organization_id?: string
 }
 
+const INTERNAL_TOKEN_HEADER = 'x-soledgic-internal-token'
+const INTERNAL_LEDGER_HEADER = 'x-ledger-id'
+
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
+}
+
+function getInternalLedgerId(req: Request): string | null {
+  const expectedToken =
+    Deno.env.get('SOLEDGIC_INTERNAL_FUNCTION_TOKEN') ||
+    Deno.env.get('INTERNAL_FUNCTION_TOKEN') ||
+    ''
+
+  if (!expectedToken) return null
+
+  const providedToken = req.headers.get(INTERNAL_TOKEN_HEADER) || ''
+  if (!providedToken) return null
+  if (!timingSafeEqualString(providedToken, expectedToken)) return null
+
+  const ledgerId = req.headers.get(INTERNAL_LEDGER_HEADER)?.trim() || ''
+  return ledgerId.length > 0 ? ledgerId : null
+}
+
 export async function validateApiKey(
   supabase: SupabaseClient, 
   apiKey: string | null,
@@ -942,11 +970,12 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         }
       }
       
-      // Get API key
+      // Get API key (external callers) or validated internal ledger context (server proxy)
       const apiKey = req.headers.get('x-api-key')
+      const internalLedgerId = getInternalLedgerId(req)
       
       // 3. Allowlist Mode - Only allow pre-approved API keys
-      if (isAllowlistMode() && !isApiKeyAllowed(apiKey)) {
+      if (isAllowlistMode() && !internalLedgerId && !isApiKeyAllowed(apiKey)) {
         console.warn(`[${requestId}] Blocked non-allowlisted API key`)
         return errorResponse('Service temporarily restricted', 403, req, requestId)
       }
@@ -954,20 +983,41 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       // Validate API key if required
       let ledger: LedgerContext | null = null
       if (options.requireAuth !== false) {
-        if (!apiKey) {
-          return errorResponse('Authentication required', 401, req, requestId)
-        }
-        
-        ledger = await validateApiKey(supabase, apiKey, requestId)
-        if (!ledger) {
-          // Log failed auth attempt
-          await logSecurityEvent(supabase, null, 'auth_failed', {
-            endpoint: options.endpoint,
-            ip: clientIp,
-            user_agent: req.headers.get('user-agent')?.substring(0, 200),
-            request_id: requestId,
-          })
-          return errorResponse('Invalid credentials', 401, req, requestId)
+        if (internalLedgerId) {
+          const { data: internalLedger, error: internalLedgerError } = await supabase
+            .from('ledgers')
+            .select('id, business_name, ledger_mode, status, settings, organization_id')
+            .eq('id', internalLedgerId)
+            .single()
+
+          if (internalLedgerError || !internalLedger) {
+            await logSecurityEvent(supabase, null, 'auth_failed', {
+              endpoint: options.endpoint,
+              ip: clientIp,
+              user_agent: req.headers.get('user-agent')?.substring(0, 200),
+              request_id: requestId,
+              reason: 'invalid_internal_ledger',
+            }).catch(() => {})
+            return errorResponse('Invalid internal credentials', 401, req, requestId)
+          }
+
+          ledger = internalLedger as LedgerContext
+        } else {
+          if (!apiKey) {
+            return errorResponse('Authentication required', 401, req, requestId)
+          }
+          
+          ledger = await validateApiKey(supabase, apiKey, requestId)
+          if (!ledger) {
+            // Log failed auth attempt
+            await logSecurityEvent(supabase, null, 'auth_failed', {
+              endpoint: options.endpoint,
+              ip: clientIp,
+              user_agent: req.headers.get('user-agent')?.substring(0, 200),
+              request_id: requestId,
+            })
+            return errorResponse('Invalid credentials', 401, req, requestId)
+          }
         }
         
         if (ledger.status !== 'active') {

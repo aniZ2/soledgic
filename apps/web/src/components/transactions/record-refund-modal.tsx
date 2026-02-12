@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, RotateCcw, Search } from 'lucide-react'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordRefundModalProps {
   isOpen: boolean
   onClose: () => void
   ledgerId: string
-  apiKey: string
   preselectedSaleRef?: string
   onSuccess?: () => void
 }
@@ -16,7 +16,6 @@ export function RecordRefundModal({
   isOpen,
   onClose,
   ledgerId,
-  apiKey,
   preselectedSaleRef,
   onSuccess
 }: RecordRefundModalProps) {
@@ -94,23 +93,17 @@ export function RecordRefundModal({
     setError(null)
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/record-refund`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            original_sale_reference: saleReference.trim(),
-            amount: amountCents,
-            reason: reason.trim(),
-            refund_from: refundFrom,
-            trigger_stripe_refund: triggerStripeRefund,
-          }),
-        }
-      )
+      const response = await callLedgerFunction('record-refund', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          original_sale_reference: saleReference.trim(),
+          amount: amountCents,
+          reason: reason.trim(),
+          refund_from: refundFrom,
+          trigger_stripe_refund: triggerStripeRefund,
+        },
+      })
 
       const data = await response.json()
 

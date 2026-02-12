@@ -26,7 +26,14 @@ Deno.serve(async (req: Request) => {
     // Initialize admin client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const internalToken =
+      Deno.env.get('SOLEDGIC_INTERNAL_FUNCTION_TOKEN') ||
+      Deno.env.get('INTERNAL_FUNCTION_TOKEN')
     const supabase = createClient(supabaseUrl, supabaseKey)
+
+    if (!internalToken) {
+      throw new Error('SOLEDGIC_INTERNAL_FUNCTION_TOKEN is not configured')
+    }
 
     const now = new Date()
     const dayOfWeek = now.getDay()
@@ -40,7 +47,6 @@ Deno.serve(async (req: Request) => {
       .from('ledgers')
       .select(`
         id,
-        api_key,
         business_name,
         organization_id,
         metadata
@@ -153,9 +159,11 @@ Deno.serve(async (req: Request) => {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': ledger.api_key
+                'x-soledgic-internal-token': internalToken,
+                'x-ledger-id': ledger.id,
               },
               body: JSON.stringify({
+                ledger_id: ledger.id,
                 creator_id: account.entity_id,
                 amount: Math.floor(Number(account.balance))
               })

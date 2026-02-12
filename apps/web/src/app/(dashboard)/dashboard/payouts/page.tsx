@@ -25,7 +25,7 @@ export default async function PayoutsPage() {
   // Get ledgers, prefer active group
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, api_key, payout_rails, ledger_group_id')
+    .select('id, business_name, payout_rails, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
     .eq('livemode', livemode)
@@ -73,7 +73,6 @@ export default async function PayoutsPage() {
       ledger={{
         id: ledger.id,
         business_name: ledger.business_name,
-        api_key: ledger.api_key,
         payout_rails: ledger.payout_rails as any[] | null,
       }}
       payouts={payouts || []}

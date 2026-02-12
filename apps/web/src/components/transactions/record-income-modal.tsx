@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, DollarSign } from 'lucide-react'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordIncomeModalProps {
   isOpen: boolean
   onClose: () => void
   ledgerId: string
-  apiKey: string
   onSuccess?: () => void
 }
 
@@ -26,7 +26,6 @@ export function RecordIncomeModal({
   isOpen,
   onClose,
   ledgerId,
-  apiKey,
   onSuccess
 }: RecordIncomeModalProps) {
   const [loading, setLoading] = useState(false)
@@ -59,24 +58,18 @@ export function RecordIncomeModal({
     setError(null)
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/record-income`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            reference_id: referenceId.trim() || `income_${Date.now()}`,
-            amount: amountCents,
-            description: description.trim(),
-            category,
-            customer_name: customerName.trim() || undefined,
-            received_to: receivedTo,
-          }),
-        }
-      )
+      const response = await callLedgerFunction('record-income', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          reference_id: referenceId.trim() || `income_${Date.now()}`,
+          amount: amountCents,
+          description: description.trim(),
+          category,
+          customer_name: customerName.trim() || undefined,
+          received_to: receivedTo,
+        },
+      })
 
       const data = await response.json()
 

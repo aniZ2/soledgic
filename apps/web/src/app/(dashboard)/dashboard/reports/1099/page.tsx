@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
 import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, AlertCircle, Clock, Info } from 'lucide-react'
 
@@ -38,7 +39,7 @@ export default function TaxDocumentsPage() {
   const [generating, setGenerating] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [taxYear, setTaxYear] = useState(new Date().getFullYear() - 1)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -61,14 +62,14 @@ export default function TaxDocumentsPage() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('id, api_key, ledger_group_id')
+      .select('id, ledger_group_id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .eq('livemode', livemode)
 
     const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return
-    setApiKey(ledger.api_key)
+    setLedgerId(ledger.id)
 
     // Load tax documents
     const { data: docs } = await supabase
@@ -95,17 +96,14 @@ export default function TaxDocumentsPage() {
   }
 
   const generateAll = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setGenerating(true)
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/tax-documents`, {
+      const res = await callLedgerFunction('tax-documents', {
+        ledgerId,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({ action: 'generate_all', tax_year: taxYear }),
+        body: { action: 'generate_all', tax_year: taxYear },
       })
 
       const result = await res.json()
@@ -123,17 +121,14 @@ export default function TaxDocumentsPage() {
   }
 
   const exportCSV = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setExporting(true)
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/tax-documents`, {
+      const res = await callLedgerFunction('tax-documents', {
+        ledgerId,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({ action: 'export', tax_year: taxYear, format: 'csv' }),
+        body: { action: 'export', tax_year: taxYear, format: 'csv' },
       })
 
       if (res.ok) {
@@ -156,17 +151,14 @@ export default function TaxDocumentsPage() {
   }
 
   const markAllFiled = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     if (!confirm('Mark all exported documents as filed? This indicates you have submitted them to the IRS.')) return
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/tax-documents`, {
+      const res = await callLedgerFunction('tax-documents', {
+        ledgerId,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({ action: 'mark_filed', tax_year: taxYear }),
+        body: { action: 'mark_filed', tax_year: taxYear },
       })
 
       const result = await res.json()
