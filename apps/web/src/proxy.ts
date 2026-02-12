@@ -3,7 +3,7 @@ import { updateSession } from '@/lib/supabase/middleware'
 
 const CSRF_COOKIE = '__csrf_token'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const response = await updateSession(request)
 
   // Set pathname header for server components to read

@@ -1,21 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter, Space_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
-const spaceGrotesk = Space_Grotesk({
-  subsets: ['latin'],
-  variable: '--font-space',
-})
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '600', '700'],
-  variable: '--font-ibm-mono',
-})
-const fraunces = Fraunces({
-  subsets: ['latin'],
-  variable: '--font-fraunces',
-})
 
 export const metadata: Metadata = {
   title: 'Soledgic — The Financial Backend for Creator Platforms',
@@ -43,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} ${spaceGrotesk.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
+      <body>
         {children}
       </body>
     </html>
