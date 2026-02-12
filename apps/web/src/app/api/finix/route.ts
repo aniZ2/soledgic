@@ -5,6 +5,7 @@ import {
   createOnboardingLink,
   fetchFinixIdentity,
   fetchFinixMerchantForIdentity,
+  fetchFinixPaymentInstrumentsForIdentity,
 } from '@/lib/finix'
 
 interface FinixRequest {
@@ -16,6 +17,7 @@ interface OrganizationSettings {
   finix?: {
     identity_id?: string | null
     merchant_id?: string | null
+    source_id?: string | null
     onboarding_form_id?: string | null
     last_onboarding_link_id?: string | null
     last_onboarding_link_url?: string | null
@@ -27,6 +29,16 @@ interface OrganizationSettings {
 
 function getAppUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+}
+
+function pickFinixSourceInstrumentId(instruments: any[]): string | null {
+  if (!Array.isArray(instruments) || instruments.length === 0) return null
+  const enabled = instruments.filter((pi: any) => pi?.enabled !== false)
+  const bankAccount = enabled.find((pi: any) => {
+    const type = String(pi?.type || pi?.instrument_type || '').toUpperCase()
+    return type === 'BANK_ACCOUNT'
+  })
+  return bankAccount?.id || enabled[0]?.id || instruments[0]?.id || null
 }
 
 async function getUserOrganization(userId: string) {
@@ -106,6 +118,7 @@ export const POST = createApiHandler(
           connected: Boolean(finixSettings.identity_id || finixSettings.merchant_id),
           identity_id: finixSettings.identity_id || null,
           merchant_id: finixSettings.merchant_id || null,
+          source_id: finixSettings.source_id || null,
           onboarding_form_id: finixSettings.onboarding_form_id || process.env.FINIX_ONBOARDING_FORM_ID || null,
           last_synced_at: finixSettings.last_synced_at || null,
         },
@@ -164,10 +177,13 @@ export const POST = createApiHandler(
 
       const identity = await fetchFinixIdentity(identityId)
       const merchant = await fetchFinixMerchantForIdentity(identityId).catch(() => null)
+      const paymentInstruments = await fetchFinixPaymentInstrumentsForIdentity(identityId).catch(() => [])
+      const sourceId = pickFinixSourceInstrumentId(paymentInstruments)
 
       const saved = await saveFinixSettings(organization.id, {
         identity_id: identity.id || identityId,
         merchant_id: merchant?.id || finixSettings.merchant_id || null,
+        source_id: sourceId || finixSettings.source_id || null,
       })
 
       return NextResponse.json({
@@ -176,6 +192,7 @@ export const POST = createApiHandler(
           connected: Boolean(saved.identity_id || saved.merchant_id),
           identity_id: saved.identity_id || null,
           merchant_id: saved.merchant_id || null,
+          source_id: saved.source_id || null,
         },
       })
     }

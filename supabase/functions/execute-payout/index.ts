@@ -65,6 +65,12 @@ interface CreatorPayoutDetails {
   }
 }
 
+interface OrganizationFinixSettings {
+  identity_id?: string | null
+  merchant_id?: string | null
+  source_id?: string | null
+}
+
 // ============================================================================
 // PAYMENT RAIL INTERFACE
 // ============================================================================
@@ -703,6 +709,43 @@ function pickDefaultRail(configs: RailConfig[]): PayoutRail {
   return 'finix'
 }
 
+function mergePayoutRailsWithOrgFinix(
+  configs: RailConfig[],
+  orgFinix: OrganizationFinixSettings | null
+): RailConfig[] {
+  if (!orgFinix) return configs
+
+  const finixSettingsPatch: Record<string, any> = {}
+  if (orgFinix.merchant_id) finixSettingsPatch.merchant = orgFinix.merchant_id
+  if (orgFinix.source_id) finixSettingsPatch.source = orgFinix.source_id
+
+  if (Object.keys(finixSettingsPatch).length === 0) {
+    return configs
+  }
+
+  const next = [...configs]
+  const finixIndex = next.findIndex((cfg) => cfg.rail === 'finix')
+
+  if (finixIndex >= 0) {
+    next[finixIndex] = {
+      ...next[finixIndex],
+      settings: {
+        ...(next[finixIndex].settings || {}),
+        ...finixSettingsPatch,
+      },
+    }
+    return next
+  }
+
+  next.push({
+    rail: 'finix',
+    enabled: true,
+    settings: finixSettingsPatch,
+  })
+
+  return next
+}
+
 // ============================================================================
 // INTERNAL PAYOUT EXECUTION (shared by single and batch)
 // ============================================================================
@@ -839,7 +882,19 @@ const handler = createHandler(
       .eq('id', ledger.id)
       .single()
 
-    const payoutRails = (ledgerFull?.payout_rails as RailConfig[]) || []
+    const rawPayoutRails = (ledgerFull?.payout_rails as RailConfig[]) || []
+    let organizationFinix: OrganizationFinixSettings | null = null
+    if (ledger.organization_id) {
+      const { data: orgRow } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', ledger.organization_id)
+        .maybeSingle()
+
+      organizationFinix = ((orgRow?.settings as any)?.finix || null) as OrganizationFinixSettings | null
+    }
+
+    const payoutRails = mergePayoutRailsWithOrgFinix(rawPayoutRails, organizationFinix)
     const clientIp = getClientIp(req)
     const userAgent = req.headers.get('user-agent')
 
@@ -1036,7 +1091,7 @@ const handler = createHandler(
           return errorResponse(`Invalid config: ${validation.errors.join(', ')}`, 400, req)
         }
 
-        const existingRails = payoutRails.filter(r => r.rail !== body.rail_config!.rail)
+        const existingRails = rawPayoutRails.filter(r => r.rail !== body.rail_config!.rail)
         existingRails.push(body.rail_config)
 
         await supabase

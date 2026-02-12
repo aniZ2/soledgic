@@ -103,3 +103,8 @@ export async function fetchFinixMerchantForIdentity(identityId: string) {
   const merchants = response?._embedded?.merchants || []
   return merchants[0] || null
 }
+
+export async function fetchFinixPaymentInstrumentsForIdentity(identityId: string) {
+  const response = await finixRequest<any>(`/identities/${identityId}/payment_instruments?limit=20`)
+  return response?._embedded?.payment_instruments || []
+}
