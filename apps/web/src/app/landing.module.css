@@ -697,6 +697,17 @@
   text-align: left;
 }
 
+.pricingSingle {
+  display: flex;
+  justify-content: center;
+  text-align: left;
+}
+
+.pricingSingle .pricingCard {
+  max-width: 440px;
+  width: 100%;
+}
+
 .pricingCard {
   background: var(--card);
   border: 1.5px solid var(--border);

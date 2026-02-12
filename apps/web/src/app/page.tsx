@@ -319,68 +319,38 @@ export default function HomePage() {
           </p>
 
           <div className={s.pricingRate}>
-            2.75% + $0.30 <span>per card transaction</span>
+            3.5% + $0.55 <span>per transaction</span>
           </div>
           <p className={s.pricingDetails}>
-            ACH: 0.75% ($5 max) · Instant payouts: 1.5% · First ledger included free
+            No monthly fees · No hidden costs · 1 ledger included · $20/month per additional ledger
           </p>
 
-          <div className={s.pricingGrid}>
-            <div className={s.pricingCard}>
-              <div className={s.pricingTier}>Starter</div>
+          <div className={s.pricingSingle}>
+            <div className={`${s.pricingCard} ${s.pricingCardFeatured}`}>
+              <div className={s.pricingTier}>Everything Included</div>
               <div className={s.pricingPrice}>Free</div>
-              <div className={s.pricingSubtext}>Processing fees only</div>
+              <div className={s.pricingSubtext}>Pay only processing fees per transaction</div>
               <ul className={s.pricingFeatures}>
-                <li>1 ledger included</li>
                 <li>Payment processing</li>
                 <li>Revenue splits &amp; payouts</li>
                 <li>Double-entry ledger</li>
                 <li>Creator portal</li>
-                <li>1 team member</li>
-                <li>Email support</li>
-              </ul>
-              <Link href="/signup" className={s.pricingBtn}>Start Free</Link>
-            </div>
-
-            <div className={`${s.pricingCard} ${s.pricingCardFeatured}`}>
-              <div className={s.pricingCardBadge}>Most Popular</div>
-              <div className={s.pricingTier}>Growth</div>
-              <div className={s.pricingPrice}>$149<span>/mo</span></div>
-              <div className={s.pricingSubtext}>+ processing fees</div>
-              <ul className={s.pricingFeatures}>
-                <li>5 ledgers included</li>
-                <li>Everything in Starter</li>
                 <li>Tax withholding &amp; 1099-K</li>
                 <li>Financial reports</li>
                 <li>Scheduled &amp; on-demand payouts</li>
-                <li>5 team members</li>
-                <li>Priority support</li>
+                <li>1 ledger included</li>
+                <li>1 team member</li>
+                <li>Email support</li>
               </ul>
               <Link href="/signup" className={`${s.pricingBtn} ${s.pricingBtnFeatured}`}>
-                Start 14-Day Trial
+                Start Free
               </Link>
-            </div>
-
-            <div className={s.pricingCard}>
-              <div className={s.pricingTier}>Enterprise</div>
-              <div className={s.pricingPrice}>Custom</div>
-              <div className={s.pricingSubtext}>Volume discounts available</div>
-              <ul className={s.pricingFeatures}>
-                <li>Unlimited ledgers</li>
-                <li>Everything in Growth</li>
-                <li>Custom payout schedules</li>
-                <li>Dedicated account manager</li>
-                <li>SLA guarantee</li>
-                <li>Unlimited team members</li>
-                <li>Custom integrations</li>
-              </ul>
-              <a href="mailto:sales@soledgic.com" className={s.pricingBtn}>Contact Sales</a>
             </div>
           </div>
 
           <p className={s.pricingFootnote}>
-            All plans include payments, ledger, splits, and payouts.
-            Additional ledgers: $20/month each.
+            No credit card required. Additional ledgers: $20/month each.
+            Need custom terms? <a href="mailto:sales@soledgic.com">Talk to us.</a>
           </p>
         </div>
       </section>
