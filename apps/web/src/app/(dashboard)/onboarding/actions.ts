@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { provisionOrganizationWithLedgers } from '@/lib/org-provisioning'
 
 export async function createOrganizationWithLedger(input: {
   orgName: string
@@ -23,25 +24,17 @@ export async function createOrganizationWithLedger(input: {
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-  const effectivePlan = 'pro'
-  const planData = { ledgers: 1, team_members: 1 }
-  const trialEndsAt = new Date()
-
-  const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
-    p_user_id: userId,
-    p_org_name: orgName,
-    p_org_slug: slug,
-    p_plan: effectivePlan,
-    p_trial_ends_at: trialEndsAt.toISOString(),
-    p_max_ledgers: planData.ledgers,
-    p_max_team_members: planData.team_members,
-    p_ledger_name: ledgerName,
-    p_ledger_mode: ledgerMode,
-  })
-
-  if (rpcError) {
-    return { error: rpcError.message }
+  try {
+    const data = await provisionOrganizationWithLedgers({
+      userId,
+      userEmail: user.email,
+      organizationName: orgName,
+      organizationSlug: slug,
+      ledgerName,
+      ledgerMode,
+    })
+    return { success: true, data }
+  } catch (error: any) {
+    return { error: error?.message || 'Failed to create organization' }
   }
-
-  return { success: true, data }
 }

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { provisionOrganizationWithLedgers } from '@/lib/org-provisioning'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -37,25 +38,20 @@ export async function POST(request: Request) {
 
   const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-  const effectivePlan = 'pro'
-  const planData = { ledgers: 1, team_members: 1 }
-  const trialEndsAt = new Date()
-
-  const { data, error: rpcError } = await supabase.rpc('create_organization_with_ledger', {
-    p_user_id: user.id,
-    p_org_name: orgName,
-    p_org_slug: slug,
-    p_plan: effectivePlan,
-    p_trial_ends_at: trialEndsAt.toISOString(),
-    p_max_ledgers: planData.ledgers,
-    p_max_team_members: planData.team_members,
-    p_ledger_name: ledgerName,
-    p_ledger_mode: ledgerMode,
-  })
-
-  if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 500 })
+  try {
+    const data = await provisionOrganizationWithLedgers({
+      userId: user.id,
+      userEmail: user.email,
+      organizationName: orgName,
+      organizationSlug: slug,
+      ledgerName,
+      ledgerMode: ledgerMode === 'marketplace' ? 'marketplace' : 'standard',
+    })
+    return NextResponse.json({ success: true, data })
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message || 'Failed to create organization' },
+      { status: 500 }
+    )
   }
-
-  return NextResponse.json({ success: true, data })
 }
