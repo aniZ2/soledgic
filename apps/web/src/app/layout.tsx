@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter, JetBrains_Mono, Space_Grotesk, IBM_Plex_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono, Space_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -15,6 +15,10 @@ const ibmPlexMono = IBM_Plex_Mono({
   subsets: ['latin'],
   weight: ['400', '600', '700'],
   variable: '--font-ibm-mono',
+})
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
 })
 
 export const metadata: Metadata = {
@@ -43,13 +47,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className={`${inter.className} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable}`}>
+      <body className={`${inter.className} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
         {children}
       </body>
     </html>
