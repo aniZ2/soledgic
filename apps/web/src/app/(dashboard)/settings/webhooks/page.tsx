@@ -57,11 +57,11 @@ export default function WebhooksPage() {
   }, [livemode])
 
   const loadData = async () => {
-    const supabase = createClient()
-    
-    // Get user's organization and ledger
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-    if (!user) return
+	    const supabase = createClient()
+	    
+	    // Get user's organization and ledger
+	    const { data: { user } } = await supabase.auth.getUser()
+	    if (!user) return
 
     const { data: membership } = await supabase
       .from('organization_members')

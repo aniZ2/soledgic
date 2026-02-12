@@ -215,16 +215,24 @@ async function getCreatorPercent(
 
   // 2. Fall back to ledger default
   const settings = ledger.settings as any
-  const defaultPercent = settings?.default_split_percent || settings?.default_platform_fee_percent
-  
+  const creatorPercent =
+    settings?.default_creator_percent ??
+    settings?.default_split_percent ??
+    null
+
+  if (typeof creatorPercent === 'number' && creatorPercent >= 0 && creatorPercent <= 100) {
+    return creatorPercent
+  }
+
+  const platformFeePercent =
+    settings?.default_platform_fee_percent ??
+    settings?.platform_fee_percent ??
+    settings?.platform_fee ??
+    null
+
   // If platform fee is set (e.g., 20), creator gets 80
-  if (typeof defaultPercent === 'number') {
-    // Check if it's stored as platform fee or creator percent
-    if (defaultPercent <= 50) {
-      // Likely platform fee (e.g., 20 means creator gets 80)
-      return 100 - defaultPercent
-    }
-    return defaultPercent
+  if (typeof platformFeePercent === 'number' && platformFeePercent >= 0 && platformFeePercent <= 100) {
+    return 100 - platformFeePercent
   }
 
   // 3. Ultimate fallback: 80% to creator

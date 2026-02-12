@@ -1,8 +1,16 @@
 const DEFAULT_FINIX_VERSION = '2022-02-01'
 
+function getFinixEnvironment(): 'production' | 'sandbox' {
+  const raw = (process.env.FINIX_ENV || '').toLowerCase().trim()
+  if (['production', 'prod', 'live'].includes(raw)) return 'production'
+  if (['sandbox', 'test', 'testing', 'development', 'dev'].includes(raw)) return 'sandbox'
+  return process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
+}
+
 function getFinixBaseUrl() {
   if (process.env.FINIX_BASE_URL) return process.env.FINIX_BASE_URL
-  return process.env.NODE_ENV === 'production'
+  const env = getFinixEnvironment()
+  return env === 'production'
     ? 'https://finix.live-payments-api.com'
     : 'https://finix.sandbox-payments-api.com'
 }
@@ -29,6 +37,15 @@ export async function finixRequest<T = any>(
 ): Promise<T> {
   const { method = 'GET', body } = options
   const baseUrl = getFinixBaseUrl().replace(/\/$/, '')
+  const env = getFinixEnvironment()
+
+  // Guard against misconfiguration (e.g. sandbox URL with production env).
+  if (env === 'production' && baseUrl.includes('sandbox')) {
+    throw new Error('Finix misconfiguration: production environment cannot use sandbox base URL')
+  }
+  if (env === 'sandbox' && baseUrl.includes('live-payments')) {
+    throw new Error('Finix misconfiguration: sandbox environment cannot use live base URL')
+  }
 
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -60,6 +77,7 @@ export interface CreateOnboardingLinkParams {
   identityId?: string | null
   applicationId?: string | null
   expirationInMinutes?: number
+  state?: string | null
 }
 
 export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
@@ -69,12 +87,14 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     identityId,
     applicationId,
     expirationInMinutes = 60,
+    state,
   } = params
 
+  const stateParam = state ? `&state=${encodeURIComponent(state)}` : ''
   const payload: Record<string, unknown> = {
     expiration_in_minutes: expirationInMinutes,
-    return_url: `${appUrl}/settings/payment-rails?finix=success`,
-    expired_session_url: `${appUrl}/settings/payment-rails?finix=expired`,
+    return_url: `${appUrl}/settings/payment-rails?finix=success${stateParam}`,
+    expired_session_url: `${appUrl}/settings/payment-rails?finix=expired${stateParam}`,
     fee_details_url: `${appUrl}/terms`,
     terms_of_service_url: `${appUrl}/terms`,
     privacy_policy_url: `${appUrl}/privacy`,
@@ -94,8 +114,38 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
   })
 }
 
+function extractApplicationIdFromHref(href: unknown): string | null {
+  if (typeof href !== 'string' || href.length === 0) return null
+  const match = href.match(/\/applications\/([^/?#]+)/)
+  return match?.[1] || null
+}
+
+function extractIdentityApplicationId(identity: any): string | null {
+  return (
+    extractApplicationIdFromHref(identity?._links?.application?.href) ||
+    extractApplicationIdFromHref(identity?._links?.applications?.href) ||
+    (typeof identity?.application_id === 'string' ? identity.application_id : null) ||
+    (typeof identity?.application === 'string' ? identity.application : null) ||
+    null
+  )
+}
+
 export async function fetchFinixIdentity(identityId: string) {
-  return finixRequest(`/identities/${identityId}`)
+  const identity = await finixRequest<any>(`/identities/${identityId}`)
+
+  // Defense-in-depth: ensure a redirected identity belongs to our configured Finix application.
+  const expectedAppId = process.env.FINIX_APPLICATION_ID
+  if (expectedAppId) {
+    const actualAppId = extractIdentityApplicationId(identity)
+    if (!actualAppId) {
+      throw new Error('Unable to verify Finix identity application')
+    }
+    if (actualAppId !== expectedAppId) {
+      throw new Error('Finix identity does not belong to this application')
+    }
+  }
+
+  return identity
 }
 
 export async function fetchFinixMerchantForIdentity(identityId: string) {

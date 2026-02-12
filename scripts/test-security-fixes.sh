@@ -6,8 +6,18 @@ set -e
 
 # Configuration
 BASE_URL="https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1"
-API_KEY="${SOLEDGIC_API_KEY:-sk_live_28b75b47565bed2c5c6acaa3ffe3038f0dc897a57c83a1f2}"
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxMDAzMzcsImV4cCI6MjA4MTY3NjMzN30.e-fVzP7sgJLZcYRpuj3mvbdixtKHEQLiLxW3xZVhrbA"
+API_KEY="${SOLEDGIC_API_KEY:-}"
+ANON_KEY="${SUPABASE_ANON_KEY:-}"
+
+if [ -z "$API_KEY" ]; then
+  echo "Missing SOLEDGIC_API_KEY (ledger key). Refusing to run with a hardcoded key."
+  exit 1
+fi
+
+if [ -z "$ANON_KEY" ]; then
+  echo "Missing SUPABASE_ANON_KEY (public anon key for the Supabase project)."
+  exit 1
+fi
 
 echo "=============================================="
 echo "SOLEDGIC SECURITY AUDIT - FULL TEST SUITE"

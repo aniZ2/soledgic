@@ -60,8 +60,8 @@
 ### ⚠️ ACTION REQUIRED
 **C1: Rotate the exposed live API key**
 ```bash
-# The key sk_live_28b75b47565bed2c5c6acaa3ffe3038f0dc897a57c83a1f2 
-# in test-data/api-keys.env needs to be rotated manually
+# A previously hardcoded API key was removed from the repo. If you have ever
+# committed a real ledger key to git history, rotate it immediately.
 ```
 
 ---

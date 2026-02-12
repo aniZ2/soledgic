@@ -34,7 +34,7 @@ export default function RequestPayoutPage() {
 
   const loadAccounts = async () => {
     const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
       router.push('/creator/login')
@@ -115,7 +115,7 @@ export default function RequestPayoutPage() {
     }
 
     const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+    const { data: { user } } = await supabase.auth.getUser()
 
     const { error: insertError } = await supabase
       .from('payout_requests')

@@ -64,7 +64,7 @@ export default function CreatorSettingsPage() {
 
   const loadSettings = async () => {
     const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
       router.push('/creator/login')

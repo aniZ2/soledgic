@@ -84,6 +84,12 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserRow | null> {
 }
 
 export async function POST(request: Request) {
+  // This endpoint is a one-time bootstrap tool. It should never be callable in
+  // production once the platform org exists.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const expectedToken = process.env.PLATFORM_BOOTSTRAP_TOKEN || process.env.BOOTSTRAP_TOKEN
   if (!expectedToken) {
     return NextResponse.json(

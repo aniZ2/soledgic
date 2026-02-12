@@ -1,12 +1,8 @@
 import type { Metadata } from 'next'
-import { Inter, JetBrains_Mono, Space_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
+import { Inter, Space_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-})
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   variable: '--font-space',
@@ -47,7 +43,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
+      <body className={`${inter.className} ${spaceGrotesk.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
         {children}
       </body>
     </html>

@@ -27,6 +27,10 @@ interface FinixStatus {
   merchant_id: string | null
   onboarding_form_id: string | null
   last_synced_at: string | null
+  payout_settings?: {
+    default_method?: string | null
+    min_payout_amount?: number | null
+  }
 }
 
 const RAIL_CONFIG = {
@@ -54,6 +58,9 @@ export default function PaymentRailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [handledCallback, setHandledCallback] = useState(false)
+  const [defaultPayoutMethod, setDefaultPayoutMethod] = useState<'finix' | 'manual'>('finix')
+  const [minPayoutAmount, setMinPayoutAmount] = useState<number>(25)
+  const [savingPayoutSettings, setSavingPayoutSettings] = useState(false)
 
   const loadPaymentRails = async () => {
     setLoading(true)
@@ -72,6 +79,10 @@ export default function PaymentRailsPage() {
 
       const status = result.data as FinixStatus
       const connectedId = status.merchant_id || status.identity_id || undefined
+      const payoutSettings = status.payout_settings || {}
+
+      setDefaultPayoutMethod(payoutSettings.default_method === 'manual' ? 'manual' : 'finix')
+      setMinPayoutAmount(typeof payoutSettings.min_payout_amount === 'number' ? payoutSettings.min_payout_amount : 25)
 
       setRails([
         {
@@ -118,6 +129,7 @@ export default function PaymentRailsPage() {
 
     const finixState = searchParams.get('finix')
     const identityId = searchParams.get('identity_id')
+    const state = searchParams.get('state')
 
     if (finixState === 'expired') {
       setHandledCallback(true)
@@ -127,13 +139,20 @@ export default function PaymentRailsPage() {
     }
 
     if (finixState === 'success' && identityId) {
+      if (!state) {
+        setHandledCallback(true)
+        setError('Invalid Finix callback. Please start onboarding again.')
+        router.replace('/settings/payment-rails')
+        return
+      }
+
       setHandledCallback(true)
       ;(async () => {
         try {
           setConnecting('finix')
           const res = await fetchWithCsrf('/api/finix', {
             method: 'POST',
-            body: JSON.stringify({ action: 'save_identity', identity_id: identityId }),
+            body: JSON.stringify({ action: 'save_identity', identity_id: identityId, state }),
           })
           const result = await res.json()
           if (!res.ok || !result.success) {
@@ -178,6 +197,34 @@ export default function PaymentRailsPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to connect Finix')
       setConnecting(null)
+    }
+  }
+
+  const handleSavePayoutSettings = async () => {
+    setSavingPayoutSettings(true)
+    setError(null)
+    setInfo(null)
+
+    try {
+      const res = await fetchWithCsrf('/api/finix', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'save_payout_settings',
+          default_payout_method: defaultPayoutMethod,
+          min_payout_amount: minPayoutAmount,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save payout settings')
+      }
+
+      setInfo('Payout settings saved.')
+      await loadPaymentRails()
+    } catch (err: any) {
+      setError(err.message || 'Failed to save payout settings')
+    } finally {
+      setSavingPayoutSettings(false)
     }
   }
 
@@ -289,7 +336,11 @@ export default function PaymentRailsPage() {
             <label className="block text-sm font-medium text-foreground mb-1.5">
               Default payout method
             </label>
-            <select className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
+            <select
+              className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
+              value={defaultPayoutMethod}
+              onChange={(e) => setDefaultPayoutMethod(e.target.value === 'manual' ? 'manual' : 'finix')}
+            >
               <option value="finix">Finix</option>
               <option value="manual">Manual / Bank Transfer</option>
             </select>
@@ -306,7 +357,8 @@ export default function PaymentRailsPage() {
               <span className="text-muted-foreground">$</span>
               <input
                 type="number"
-                defaultValue={25}
+                value={minPayoutAmount}
+                onChange={(e) => setMinPayoutAmount(Number(e.target.value))}
                 min={1}
                 className="w-32 px-3 py-2 border border-border rounded-md bg-background text-foreground"
               />
@@ -314,6 +366,17 @@ export default function PaymentRailsPage() {
             <p className="text-xs text-muted-foreground mt-1">
               Balances below this amount will roll over to the next payout period
             </p>
+          </div>
+
+          <div>
+            <button
+              onClick={handleSavePayoutSettings}
+              disabled={savingPayoutSettings}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 text-sm"
+            >
+              {savingPayoutSettings && <Loader2 className="w-4 h-4 animate-spin" />}
+              {savingPayoutSettings ? 'Saving...' : 'Save Payout Settings'}
+            </button>
           </div>
         </div>
       </div>

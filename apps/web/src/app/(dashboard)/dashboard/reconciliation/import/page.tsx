@@ -66,10 +66,10 @@ export default function ImportTransactionsPage() {
 
   // Load API key on mount
   useEffect(() => {
-    const loadApiKey = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-      if (!user) return
+	    const loadApiKey = async () => {
+	      const supabase = createClient()
+	      const { data: { user } } = await supabase.auth.getUser()
+	      if (!user) return
 
       const { data: membership } = await supabase
         .from('organization_members')

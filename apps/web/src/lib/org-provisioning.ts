@@ -50,6 +50,8 @@ type ExistingLedger = {
   api_key: string | null
 }
 
+let cachedServiceClient: ReturnType<typeof createServerClient> | null = null
+
 function createServiceClient() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
@@ -67,6 +69,13 @@ function createServiceClient() {
       },
     }
   )
+}
+
+function getServiceClient() {
+  if (!cachedServiceClient) {
+    cachedServiceClient = createServiceClient()
+  }
+  return cachedServiceClient
 }
 
 function slugify(value: string): string {
@@ -96,31 +105,33 @@ function isNoRowsError(error: { code?: string } | null): boolean {
 }
 
 async function ensureOrganization(input: ProvisionOrganizationInput) {
-  const supabase = createServiceClient()
+  const supabase = getServiceClient()
   const baseSlug = slugify(input.organizationSlug || input.organizationName)
   const organizationName = input.organizationName.trim()
   let slug = baseSlug
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { data: existing, error: existingError } = await supabase
+    const { data: existingRaw, error: existingError } = await supabase
       .from('organizations')
       .select('id, name, slug, owner_id, settings')
       .eq('slug', slug)
-      .maybeSingle<ExistingOrganization>()
+      .maybeSingle()
+
+    const existing = existingRaw as ExistingOrganization | null
 
     if (existingError && !isNoRowsError(existingError)) {
       throw new Error(`Failed checking organization slug: ${existingError.message}`)
     }
 
     if (existing) {
-      if (existing.owner_id === input.userId || input.reuseIfSlugExists) {
-        if (existing.name !== organizationName || existing.owner_id !== input.userId) {
+      if (existing.owner_id === input.userId) {
+        if (existing.name !== organizationName) {
           const { error: updateError } = await supabase
             .from('organizations')
-            .update({ name: organizationName, owner_id: input.userId })
+            .update({ name: organizationName })
             .eq('id', existing.id)
           if (updateError) {
-            throw new Error(`Failed updating organization owner: ${updateError.message}`)
+            throw new Error(`Failed updating organization name: ${updateError.message}`)
           }
         }
 
@@ -130,6 +141,13 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
           organizationName,
           created: false,
         }
+      }
+
+      // Bootstrap callers may ask to reuse the slug, but we must never "take
+      // over" an existing organization. If the slug is already owned by a
+      // different user, fail loudly.
+      if (input.reuseIfSlugExists) {
+        throw new Error(`Organization slug "${slug}" is already taken`)
       }
 
       slug = `${baseSlug}-${randomSuffix(4)}`
@@ -146,11 +164,12 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
         current_ledger_count: 0,
       })
       .select('id')
-      .single<{ id: string }>()
+      .single()
 
-    if (!createError && created?.id) {
+    const createdId = (created as any)?.id
+    if (!createError && typeof createdId === 'string' && createdId.length > 0) {
       return {
-        organizationId: created.id,
+        organizationId: createdId,
         organizationSlug: slug,
         organizationName,
         created: true,
@@ -169,16 +188,35 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
 }
 
 async function ensureOwnerMembership(organizationId: string, userId: string) {
-  const supabase = createServiceClient()
-  const { data: membership, error: membershipError } = await supabase
+  const supabase = getServiceClient()
+  const { data: membershipRaw, error: membershipError } = await supabase
     .from('organization_members')
     .select('id, role, status')
     .eq('organization_id', organizationId)
     .eq('user_id', userId)
-    .maybeSingle<{ id: string; role: string; status: string | null }>()
+    .maybeSingle()
+
+  const membership = membershipRaw as { id: string; role: string; status: string | null } | null
 
   if (membershipError && !isNoRowsError(membershipError)) {
     throw new Error(`Failed checking organization membership: ${membershipError.message}`)
+  }
+
+  const { data: orgOwner, error: orgOwnerError } = await supabase
+    .from('organizations')
+    .select('owner_id')
+    .eq('id', organizationId)
+    .single()
+
+  if (orgOwnerError) {
+    throw new Error(`Failed loading organization owner: ${orgOwnerError.message}`)
+  }
+
+  // Safety check: never grant ownership/membership if the org isn't owned by
+  // the caller. This prevents bootstrap/service flows from accidentally (or
+  // maliciously) escalating access to an unrelated org.
+  if ((orgOwner as any)?.owner_id !== userId) {
+    throw new Error('Refusing to provision membership for non-owner user')
   }
 
   if (!membership) {
@@ -189,7 +227,7 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
         .from('organizations')
         .select('current_member_count, max_team_members')
         .eq('id', organizationId)
-        .single<{ current_member_count: number | null; max_team_members: number | null }>(),
+        .single(),
       supabase
         .from('organization_members')
         .select('id', { count: 'exact', head: true })
@@ -250,7 +288,7 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
 }
 
 async function ensureLedgerApiKey(ledgerId: string, livemode: boolean) {
-  const supabase = createServiceClient()
+  const supabase = getServiceClient()
   const apiKey = makeApiKey(livemode)
   const apiKeyHash = hashApiKey(apiKey)
 
@@ -274,7 +312,7 @@ async function maybeCreateApiKeyRecords(
 ) {
   if (rows.length === 0) return
 
-  const supabase = createServiceClient()
+  const supabase = getServiceClient()
   const { error } = await supabase
     .from('api_keys')
     .insert(rows)
@@ -288,7 +326,7 @@ async function maybeCreateApiKeyRecords(
 async function insertLedgersWithSchemaFallback(
   rows: Array<Record<string, unknown>>
 ): Promise<ExistingLedger[]> {
-  const supabase = createServiceClient()
+  const supabase = getServiceClient()
 
   const attempts: Array<Array<Record<string, unknown>>> = [
     rows,
@@ -304,10 +342,10 @@ async function insertLedgersWithSchemaFallback(
       .from('ledgers')
       .insert(payload)
       .select('id, livemode, ledger_group_id, api_key')
-      .returns<ExistingLedger[]>()
+      .returns()
 
     if (!error) {
-      return data || []
+      return (data || []) as ExistingLedger[]
     }
 
     lastError = error
@@ -321,21 +359,23 @@ async function insertLedgersWithSchemaFallback(
 }
 
 async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationId: string) {
-  const supabase = createServiceClient()
+  const supabase = getServiceClient()
   const ledgerMode = input.ledgerMode || 'standard'
   const businessName = input.ledgerName?.trim() || input.organizationName.trim()
   const ownerEmail = input.userEmail?.toLowerCase() || 'admin@soledgic.com'
 
-  const { data: existingLedgers, error: fetchError } = await supabase
+  const { data: existingLedgersRaw, error: fetchError } = await supabase
     .from('ledgers')
     .select('id, livemode, ledger_group_id, api_key')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: true })
-    .returns<ExistingLedger[]>()
+    .returns()
 
   if (fetchError) {
     throw new Error(`Failed fetching ledgers: ${fetchError.message}`)
   }
+
+  const existingLedgers = (existingLedgersRaw || []) as ExistingLedger[]
 
   let testLedger = existingLedgers?.find((ledger) => ledger.livemode === false) || null
   let liveLedger = existingLedgers?.find((ledger) => ledger.livemode === true) || null
@@ -434,35 +474,18 @@ async function mergeFinixSettings(organizationId: string, patch: FinixSettingsPa
 
   if (Object.keys(cleanedPatch).length === 0) return
 
-  const supabase = createServiceClient()
-  const { data: org, error: orgError } = await supabase
-    .from('organizations')
-    .select('settings')
-    .eq('id', organizationId)
-    .single<{ settings: JsonObject | null }>()
-
-  if (orgError) {
-    throw new Error(`Failed loading organization settings: ${orgError.message}`)
-  }
-
-  const currentSettings = (org?.settings || {}) as JsonObject
-  const currentFinix = (currentSettings.finix || {}) as JsonObject
-  const nextSettings: JsonObject = {
-    ...currentSettings,
-    finix: {
-      ...currentFinix,
+  const supabase = getServiceClient()
+  const { error } = await supabase.rpc('merge_organization_settings_key', {
+    p_organization_id: organizationId,
+    p_settings_key: 'finix',
+    p_patch: {
       ...cleanedPatch,
       last_synced_at: new Date().toISOString(),
     },
-  }
+  })
 
-  const { error: updateError } = await supabase
-    .from('organizations')
-    .update({ settings: nextSettings })
-    .eq('id', organizationId)
-
-  if (updateError) {
-    throw new Error(`Failed updating Finix settings: ${updateError.message}`)
+  if (error) {
+    throw new Error(`Failed updating Finix settings: ${error.message}`)
   }
 }
 

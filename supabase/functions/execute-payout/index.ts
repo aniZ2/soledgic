@@ -12,7 +12,8 @@ import {
   hashApiKey,
   LedgerContext,
   getClientIp,
-  createAuditLogAsync
+  createAuditLogAsync,
+  isProduction
 } from '../_shared/utils.ts'
 
 // ============================================================================
@@ -145,6 +146,16 @@ class StripeConnectRail implements PaymentRail {
 
   async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
     const stripeKey = config.credentials?.secret_key || Deno.env.get('STRIPE_SECRET_KEY')
+    if (!stripeKey) {
+      return {
+        success: false,
+        payout_id: '',
+        rail: this.name,
+        external_id: externalId,
+        status: 'failed',
+        error: 'Stripe key not configured',
+      }
+    }
     
     const response = await fetch(`https://api.stripe.com/v1/transfers/${externalId}`, {
       headers: { 'Authorization': `Bearer ${stripeKey}` },
@@ -181,7 +192,12 @@ class FinixRail implements PaymentRail {
     const username = config.credentials?.username || Deno.env.get('FINIX_USERNAME')
     const password = config.credentials?.password || Deno.env.get('FINIX_PASSWORD')
     const apiVersion = config.settings?.api_version || Deno.env.get('FINIX_API_VERSION') || '2022-02-01'
-    const env = config.settings?.environment || Deno.env.get('FINIX_ENV') || 'sandbox'
+    const envRaw = config.settings?.environment || Deno.env.get('FINIX_ENV') || 'sandbox'
+    const envNormalized = String(envRaw).toLowerCase().trim()
+    const env =
+      envNormalized === 'production' || envNormalized === 'prod' || envNormalized === 'live'
+        ? 'production'
+        : 'sandbox'
     const baseUrl = (
       config.settings?.base_url ||
       Deno.env.get('FINIX_BASE_URL') ||
@@ -190,7 +206,15 @@ class FinixRail implements PaymentRail {
         : 'https://finix.sandbox-payments-api.com')
     ).replace(/\/$/, '')
 
-    return { username, password, apiVersion, baseUrl }
+    let configError: string | null = null
+    if (env === 'production' && baseUrl.includes('sandbox')) {
+      configError = 'Finix misconfiguration: production environment cannot use sandbox base URL'
+    }
+    if (env === 'sandbox' && baseUrl.includes('live-payments')) {
+      configError = 'Finix misconfiguration: sandbox environment cannot use live base URL'
+    }
+
+    return { username, password, apiVersion, baseUrl, configError }
   }
 
   private parseError(data: any, fallback: string) {
@@ -211,7 +235,16 @@ class FinixRail implements PaymentRail {
   }
 
   async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
-    const { username, password, apiVersion, baseUrl } = this.resolveConfig(config)
+    const { username, password, apiVersion, baseUrl, configError } = this.resolveConfig(config)
+    if (configError) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: configError,
+      }
+    }
     if (!username || !password) {
       return {
         success: false,
@@ -295,7 +328,17 @@ class FinixRail implements PaymentRail {
   }
 
   async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
-    const { username, password, apiVersion, baseUrl } = this.resolveConfig(config)
+    const { username, password, apiVersion, baseUrl, configError } = this.resolveConfig(config)
+    if (configError) {
+      return {
+        success: false,
+        payout_id: '',
+        rail: this.name,
+        external_id: externalId,
+        status: 'failed',
+        error: configError,
+      }
+    }
     if (!username || !password) {
       return {
         success: false,
@@ -547,13 +590,41 @@ class ManualBankFileRail implements PaymentRail {
   }
 
   validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
-    return { valid: true, errors: [] }
+    const errors: string[] = []
+
+    // NACHA is extremely strict. Defaults are OK for sandbox/dev demos but
+    // should never be used in production.
+    if (isProduction()) {
+      const companyId = (config.settings?.company_id || '').toString().trim()
+      const originatingDfi = (config.settings?.originating_dfi || '').toString().trim()
+      const bankName = (config.settings?.bank_name || '').toString().trim()
+      const companyName = (config.settings?.company_name || '').toString().trim()
+
+      if (!companyId) errors.push('company_id is required for NACHA generation')
+      if (!originatingDfi) errors.push('originating_dfi is required for NACHA generation')
+      if (!bankName) errors.push('bank_name is required for NACHA generation')
+      if (!companyName) errors.push('company_name is required for NACHA generation')
+    }
+
+    return { valid: errors.length === 0, errors }
   }
 
   generateNACHAFile(payouts: CreatorPayoutDetails[], config: RailConfig): string {
-    const companyName = (config.settings?.company_name || 'SOLEDGIC').substring(0, 16).padEnd(16)
-    const companyId = (config.settings?.company_id || '1234567890').padStart(10, '0')
-    const originatingDFI = (config.settings?.originating_dfi || '12345678').substring(0, 8)
+    const bankNameRaw = (config.settings?.bank_name || 'BANK NAME').toString()
+    const companyNameRaw = (config.settings?.company_name || 'SOLEDGIC').toString()
+    const companyIdRaw = (config.settings?.company_id || '1234567890').toString()
+    const originatingDfiRaw = (config.settings?.originating_dfi || '12345678').toString()
+
+    if (isProduction()) {
+      const { valid, errors } = this.validateConfig(config)
+      if (!valid) {
+        throw new Error(`Manual NACHA config invalid: ${errors.join(', ')}`)
+      }
+    }
+
+    const companyName = companyNameRaw.substring(0, 16).padEnd(16)
+    const companyId = companyIdRaw.padStart(10, '0')
+    const originatingDFI = originatingDfiRaw.substring(0, 8)
     const batchNumber = (config.settings?.batch_number || '0000001').padStart(7, '0')
     const now = new Date()
     const effectiveDate = now.toISOString().slice(2, 10).replace(/-/g, '')
@@ -574,7 +645,7 @@ class ManualBankFileRail implements PaymentRail {
       '094' +
       '10' +
       '1' +
-      'BANK NAME'.padEnd(23) +
+      bankNameRaw.substring(0, 23).padEnd(23) +
       companyName.padEnd(23) +
       ''.padEnd(8)
     )
