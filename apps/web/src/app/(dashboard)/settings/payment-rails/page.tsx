@@ -127,7 +127,7 @@ export default function PaymentRailsPage() {
   useEffect(() => {
     if (handledCallback) return
 
-    const onboardingState = searchParams.get('onboarding') || searchParams.get('finix')
+    const onboardingState = searchParams.get('onboarding')
     const identityId = searchParams.get('identity_id')
     const state = searchParams.get('state')
 

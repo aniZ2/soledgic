@@ -337,20 +337,17 @@ class FinixPaymentProvider implements PaymentProvider {
 
     const source =
       params.payment_method_id ||
-      params.metadata?.finix_source_id ||
       params.metadata?.source_id ||
       sourceId ||
       null
 
     const merchant =
       params.merchant_id ||
-      params.metadata?.finix_merchant_id ||
       merchantId ||
       null
 
     const destination =
       params.destination_id ||
-      params.metadata?.finix_destination_id ||
       params.metadata?.destination_id ||
       merchant ||
       null
@@ -525,7 +522,6 @@ export async function getStripeSecretKey(
 export function normalizePaymentProviderName(value: unknown): PaymentProviderName | null {
   const normalized = String(value || '').toLowerCase().trim()
   if (normalized === 'card' || normalized === 'processor' || normalized === 'primary') return 'card'
-  if (normalized === 'finix') return 'card'
   if (normalized === 'stripe') return 'stripe'
   return null
 }

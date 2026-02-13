@@ -755,7 +755,6 @@ function normalizeRail(value?: string | null): PayoutRail | null {
     case 'card':
     case 'processor':
     case 'primary':
-    case 'finix': // legacy alias
       return 'card'
     case 'stripe':
     case 'stripe_connect':

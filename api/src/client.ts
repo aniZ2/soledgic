@@ -58,7 +58,7 @@ function createSecureKeyHolder(key: string): () => string {
  * 
  * // Record a sale
  * const sale = await soledgic.recordSale({
- *   referenceId: 'stripe_pi_xxx',
+ *   referenceId: 'sale_123',
  *   creatorId: 'author_123',
  *   amount: 1999
  * })
@@ -271,7 +271,7 @@ export class Soledgic {
    * @example
    * ```typescript
    * const sale = await soledgic.recordSale({
-   *   referenceId: 'stripe_pi_xxx',
+   *   referenceId: 'sale_123',
    *   creatorId: 'author_123',
    *   amount: 1999, // $19.99 in cents
    *   platformFeePercent: 20
@@ -336,8 +336,8 @@ export class Soledgic {
    * ```typescript
    * const payout = await soledgic.processPayout({
    *   creatorId: 'author_123',
-   *   paymentMethod: 'stripe',
-   *   paymentReference: 'tr_xxx'
+   *   paymentMethod: 'card',
+   *   paymentReference: 'payout_123'
    * })
    * ```
    */
@@ -359,7 +359,7 @@ export class Soledgic {
    * @example
    * ```typescript
    * const refund = await soledgic.recordRefund({
-   *   originalSaleReference: 'stripe_pi_xxx',
+   *   originalSaleReference: 'sale_123',
    *   reason: 'Customer requested refund',
    *   refundFrom: 'both' // Split refund proportionally
    * })

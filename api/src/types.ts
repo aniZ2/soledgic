@@ -5,7 +5,7 @@
 // ---- Request Types ----
 
 export interface RecordSaleRequest {
-  /** Your external sale ID (Stripe payment_intent, order ID, etc.) */
+  /** Your external sale ID (order ID, payment ID, etc.) */
   referenceId: string
   /** The creator receiving funds */
   creatorId: string
@@ -27,10 +27,10 @@ export interface ProcessPayoutRequest {
   /** Creator to pay */
   creatorId: string
   /** Payment method */
-  paymentMethod: 'finix' | 'stripe' | 'bank_transfer' | 'manual'
+  paymentMethod: 'card' | 'manual'
   /** Amount in cents (optional - defaults to full balance) */
   amount?: number
-  /** External payment reference (Stripe transfer ID, etc.) */
+  /** External payment reference (payout ID, transfer ID, etc.) */
   paymentReference?: string
   /** Payout description */
   description?: string
@@ -47,7 +47,7 @@ export interface RecordRefundRequest {
   amount?: number
   /** Who absorbs the refund cost */
   refundFrom?: 'both' | 'platform_only' | 'creator_only'
-  /** External refund ID (Stripe refund ID, etc.) */
+  /** External refund ID (refund ID, transaction ID, etc.) */
   externalRefundId?: string
   /** Additional metadata */
   metadata?: Record<string, unknown>

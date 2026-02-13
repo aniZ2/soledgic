@@ -24,7 +24,7 @@ const soledgic = new Soledgic({
 
 // Record a sale with automatic 80/20 split
 const sale = await soledgic.recordSale({
-  referenceId: 'stripe_pi_xxx',
+  referenceId: 'sale_123',
   creatorId: 'author_123',
   amount: 1999, // $19.99 in cents
 })
@@ -51,7 +51,7 @@ const soledgic = new Soledgic({
 
 ```typescript
 const sale = await soledgic.recordSale({
-  referenceId: 'stripe_pi_xxx',     // Your external sale ID
+  referenceId: 'sale_123',          // Your external sale ID
   creatorId: 'author_123',          // Creator receiving funds
   amount: 1999,                     // Amount in cents
   currency: 'USD',                  // Optional, default: USD
@@ -119,9 +119,9 @@ const { balances, platformSummary } = await soledgic.getAllBalances({
 ```typescript
 const payout = await soledgic.processPayout({
   creatorId: 'author_123',
-  paymentMethod: 'finix',           // 'finix' | 'stripe' | 'bank_transfer' | 'manual'
+  paymentMethod: 'card',            // 'card' | 'manual'
   amount: 10000,                    // Optional, in cents (default: full balance)
-  paymentReference: 'tr_xxx',       // Your external payment ID
+  paymentReference: 'payout_123',   // Your external payment ID
 })
 
 // Response
@@ -138,11 +138,11 @@ const payout = await soledgic.processPayout({
 
 ```typescript
 const refund = await soledgic.recordRefund({
-  originalSaleReference: 'stripe_pi_xxx',
+  originalSaleReference: 'sale_123',
   reason: 'Customer requested refund',
   amount: 999,                      // Optional, partial refund in cents
   refundFrom: 'both',               // 'both' | 'platform_only' | 'creator_only'
-  externalRefundId: 're_xxx'        // Your refund ID
+  externalRefundId: 'refund_123'    // Your refund ID
 })
 
 // Response
@@ -197,7 +197,7 @@ const { transactions, pagination } = await soledgic.getTransactions({
   transactions: [{
     id: 'uuid',
     transactionType: 'sale',
-    referenceId: 'stripe_pi_xxx',
+    referenceId: 'sale_123',
     amount: 19.99,
     status: 'completed',
     createdAt: '2025-12-18T10:00:00Z',

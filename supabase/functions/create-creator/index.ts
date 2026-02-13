@@ -36,7 +36,7 @@ interface CreateCreatorRequest {
   payout_preferences?: {
     schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
     minimum_amount?: number // cents
-    method?: 'card' | 'stripe' | 'bank_transfer'
+    method?: 'card' | 'manual'
   }
   metadata?: Record<string, any>
 }
@@ -87,10 +87,6 @@ const handler = createHandler(
     }
 
     const payoutPreferences = (body.payout_preferences || { schedule: 'manual' }) as any
-    // Backward-compat: accept legacy processor method name.
-    if (payoutPreferences?.method === 'finix') {
-      payoutPreferences.method = 'card'
-    }
 
     // Create creator account
     const { data: account, error: accountError } = await supabase

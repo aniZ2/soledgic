@@ -654,7 +654,7 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "method",
-        "type": "'stripe' | 'bank_transfer'",
+        "type": "'card' | 'manual'",
         "required": false
       },
       {

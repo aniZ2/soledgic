@@ -47,9 +47,6 @@ interface CreateCheckoutRequest {
   payment_method_id?: string
   source_id?: string
   merchant_id?: string
-  // Deprecated aliases (kept for backward compatibility).
-  finix_source_id?: string
-  finix_merchant_id?: string
   
   // Pass-through
   metadata?: Record<string, string>  // Additional metadata
@@ -263,8 +260,8 @@ const handler = createHandler(
     const customerEmail = body.customer_email ? validateEmail(body.customer_email) : null
     const customerId = body.customer_id ? validateId(body.customer_id, 100) : null
     const paymentMethodId = body.payment_method_id ? validateString(body.payment_method_id, 200) : null
-    const sourceIdRaw = body.source_id || body.finix_source_id || null
-    const merchantIdRaw = body.merchant_id || body.finix_merchant_id || null
+    const sourceIdRaw = body.source_id || null
+    const merchantIdRaw = body.merchant_id || null
     const sourceId = sourceIdRaw ? validateString(sourceIdRaw, 200) : null
     const merchantId = merchantIdRaw ? validateString(merchantIdRaw, 200) : null
 

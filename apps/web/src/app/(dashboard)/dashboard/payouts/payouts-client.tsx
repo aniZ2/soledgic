@@ -36,7 +36,7 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
 
   const formatRailLabel = (rail: any) => {
     const name = String(rail?.rail || '').toLowerCase()
-    if (name === 'finix' || name === 'card') return 'Card'
+    if (name === 'card') return 'Card'
     return name.replaceAll('_', ' ')
   }
 
