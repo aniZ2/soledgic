@@ -34,6 +34,10 @@ const handler = createHandler(
       return errorResponse('Ledger not found', 401, req, requestId)
     }
 
+    if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
+      return errorResponse('Stripe legacy endpoints are disabled', 410, req, requestId)
+    }
+
     if (!body.action || !VALID_ACTIONS.includes(body.action)) {
       return errorResponse(`Invalid action: must be one of ${VALID_ACTIONS.join(', ')}`, 400, req, requestId)
     }

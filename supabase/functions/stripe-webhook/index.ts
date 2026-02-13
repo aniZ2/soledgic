@@ -56,6 +56,10 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Method not allowed' }, 405, req)
   }
 
+  if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
+    return jsonResponse({ error: 'Stripe legacy endpoints are disabled' }, 410, req)
+  }
+
   const supabase = getSupabaseClient()
   const clientIp = getClientIp(req)
 

@@ -114,6 +114,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: getCorsHeaders(req) })
   }
 
+  if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
+    return jsonResponse({ error: 'Stripe legacy endpoints are disabled' }, 410, req)
+  }
+
   const supabase = getSupabaseClient()
   const clientIp = getClientIp(req)
 

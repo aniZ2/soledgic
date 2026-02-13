@@ -11,6 +11,10 @@ function jsonResponse(data: any, status = 200, req: Request) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
 
+  if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
+    return jsonResponse({ error: 'Stripe legacy endpoints are disabled' }, 410, req)
+  }
+
   const supabase = getSupabaseClient()
 
   try {

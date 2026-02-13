@@ -443,6 +443,13 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
+    return new Response(JSON.stringify({ error: 'Stripe legacy endpoints are disabled' }), {
+      status: 410,
+      headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
+    })
+  }
+
   const supabase = getSupabaseClient()
 
   try {
