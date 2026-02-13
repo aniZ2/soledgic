@@ -48,6 +48,13 @@ function getPlatformProcessorSettings() {
   return { platformManaged, merchantId, sourceId }
 }
 
+function normalizeOnboardingFormId(value: string | null | undefined): string | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!/^obf_[A-Za-z0-9]+$/.test(trimmed)) return null
+  return trimmed
+}
+
 function pickSourceInstrumentId(instruments: any[]): string | null {
   if (!Array.isArray(instruments) || instruments.length === 0) return null
   const enabled = instruments.filter((pi: any) => pi?.enabled !== false)
@@ -202,10 +209,10 @@ export const POST = createApiHandler(
         )
       }
 
-      const onboardingFormId = process.env.FINIX_ONBOARDING_FORM_ID
+      const onboardingFormId = normalizeOnboardingFormId(process.env.FINIX_ONBOARDING_FORM_ID || null)
       if (!onboardingFormId) {
         return NextResponse.json(
-          { error: 'Payment processor onboarding is not configured' },
+          { error: 'FINIX_ONBOARDING_FORM_ID must be a full form id like obf_xxx (not "obf")' },
           { status: 503 }
         )
       }

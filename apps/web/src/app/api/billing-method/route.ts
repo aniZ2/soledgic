@@ -40,6 +40,13 @@ function getAppUrl() {
   return getPublicAppUrl()
 }
 
+function normalizeOnboardingFormId(value: string | null | undefined): string | null {
+  if (!value) return null
+  const trimmed = value.trim()
+  if (!/^obf_[A-Za-z0-9]+$/.test(trimmed)) return null
+  return trimmed
+}
+
 function isExpired(iso: string | null | undefined) {
   if (!iso) return false
   const t = new Date(iso).getTime()
@@ -240,11 +247,12 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'create_setup_link') {
-      const onboardingFormId =
-        process.env.FINIX_BILLING_ONBOARDING_FORM_ID || process.env.FINIX_ONBOARDING_FORM_ID
+      const onboardingFormId = normalizeOnboardingFormId(
+        process.env.FINIX_BILLING_ONBOARDING_FORM_ID || process.env.FINIX_ONBOARDING_FORM_ID || null
+      )
       if (!onboardingFormId) {
         return NextResponse.json(
-          { error: 'Billing method setup is not configured' },
+          { error: 'FINIX_BILLING_ONBOARDING_FORM_ID (or FINIX_ONBOARDING_FORM_ID) must be a full form id like obf_xxx (not "obf")' },
           { status: 503 }
         )
       }
@@ -361,4 +369,3 @@ export const POST = createApiHandler(
     routePath: '/api/billing-method',
   }
 )
-
