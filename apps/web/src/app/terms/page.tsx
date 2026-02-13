@@ -58,10 +58,10 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mt-8 mb-3">5. Subscriptions and Billing</h2>
+            <h2 className="text-xl font-semibold mt-8 mb-3">5. Billing and Charges</h2>
             <h3 className="text-lg font-medium mt-4 mb-2">5.1 Plans and Pricing</h3>
             <p>
-              The Service is offered under pricing plans as described on our pricing page. The current offering starts free with one included ledger. Payment processing fees apply separately, and each additional ledger is billed at $20/month. We reserve the right to modify pricing with 30 days&apos; written notice to active customers.
+              The Service is offered under pricing plans as described on our pricing page. The current offering starts free with one included ledger and one included team member. Payment processing fees apply separately, and each additional ledger or additional team member is billed at $20/month. We reserve the right to modify pricing with 30 days&apos; written notice to active customers.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.2 Free Start</h3>
@@ -76,12 +76,12 @@ export default function TermsPage() {
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.4 Overage Charges</h3>
             <p>
-              If you exceed the ledger limits included in your plan, additional ledgers are billed at $20/month each. Overages are charged on your next billing cycle.
+              If you exceed the included limits in your plan, additional ledgers and additional team members are billed at $20/month each. Overages are charged on your next billing cycle.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.5 Cancellation</h3>
             <p>
-              If you have an active paid subscription, you may cancel it at any time from your account settings. Cancellation takes effect at the end of the current billing period. No partial refunds are issued for unused time within a billing period. See our <Link href="/refund-policy" className="text-primary hover:underline">Refund Policy</Link> for details.
+              If you have active paid usage, you may stop future paid charges at any time from your account settings by removing paid usage or updating your billing profile. No partial refunds are issued for usage already incurred within a billing period. See our <Link href="/refund-policy" className="text-primary hover:underline">Refund Policy</Link> for details.
             </p>
           </section>
 

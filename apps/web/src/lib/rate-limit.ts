@@ -53,7 +53,18 @@ export async function checkRateLimit(
   config: RateLimitConfig = { requests: 100, windowMs: 60000 }
 ): Promise<RateLimitResult> {
   const now = Date.now()
+  const isProd = process.env.NODE_ENV === 'production'
   const serviceClient = getServiceClient()
+
+  // In production, do not fall back to in-memory limits. Rate limiting must be
+  // distributed and durable across instances.
+  if (isProd && !serviceClient) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: now + config.windowMs,
+    }
+  }
 
   if (serviceClient) {
     const windowSeconds = Math.max(1, Math.ceil(config.windowMs / 1000))
@@ -64,7 +75,7 @@ export async function checkRateLimit(
         p_endpoint: endpoint,
         p_max_requests: config.requests,
         p_window_seconds: windowSeconds,
-        p_fail_closed: false,
+        p_fail_closed: isProd,
       })
 
       const row = Array.isArray(data) ? data[0] : null
@@ -80,7 +91,13 @@ export async function checkRateLimit(
         }
       }
     } catch {
-      // fall through to in-memory fallback
+      if (isProd) {
+        return {
+          allowed: false,
+          remaining: 0,
+          resetAt: now + config.windowMs,
+        }
+      }
     }
   }
 

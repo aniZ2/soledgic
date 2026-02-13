@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { MemberList, TeamMember, Invitation } from '@/components/team/member-list'
 import { InviteMemberDialog } from '@/components/team/invite-member-dialog'
-import { Users, UserPlus, AlertCircle } from 'lucide-react'
-import Link from 'next/link'
+import { UserPlus, AlertCircle } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 interface TeamData {
@@ -17,8 +16,10 @@ interface TeamData {
     id: string
     name: string
     plan: string
+    status: string
     max_team_members: number
     current_member_count: number
+    overage_team_member_price: number
   }
 }
 
@@ -155,9 +156,13 @@ export default function TeamSettingsPage() {
 
   const { organization, members, invitations, current_user_id, current_user_role } = teamData
   const canManageTeam = current_user_role === 'owner' || current_user_role === 'admin'
-  const remainingSeats = organization.max_team_members === -1
-    ? null
-    : organization.max_team_members - organization.current_member_count
+  const includedMembers = organization.max_team_members === -1
+    ? organization.current_member_count
+    : organization.max_team_members
+  const additionalMembers = organization.max_team_members === -1
+    ? 0
+    : Math.max(0, organization.current_member_count - organization.max_team_members)
+  const teamMemberOveragePrice = organization.overage_team_member_price ?? 2000
 
   return (
     <div>
@@ -194,38 +199,17 @@ export default function TeamSettingsPage() {
         </div>
       )}
 
-      {/* Seats Info */}
-      {remainingSeats !== null && (
-        <div className={`mb-6 p-4 rounded-lg border ${
-          remainingSeats <= 0
-            ? 'bg-amber-500/10 border-amber-500/20'
-            : 'bg-muted/50 border-border'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Users className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="font-medium text-foreground">
-                  {organization.current_member_count} of {organization.max_team_members} team members
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {remainingSeats > 0
-                    ? `${remainingSeats} seat${remainingSeats !== 1 ? 's' : ''} remaining`
-                    : 'No seats remaining'}
-                </p>
-              </div>
-            </div>
-            {remainingSeats <= 2 && (
-              <Link
-                href="/billing"
-                className="text-sm text-primary hover:underline"
-              >
-                Upgrade plan
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
+      <div className="mb-6 p-4 rounded-lg border bg-muted/50 border-border">
+        <p className="font-medium text-foreground">
+          {organization.current_member_count} team member{organization.current_member_count === 1 ? '' : 's'} active
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {includedMembers} included. Additional team members: $
+          {(teamMemberOveragePrice / 100).toFixed(0)}
+          /month each.
+          {additionalMembers > 0 ? ` (${additionalMembers} additional member${additionalMembers === 1 ? '' : 's'} currently billed)` : ''}
+        </p>
+      </div>
 
       {/* Member List */}
       <MemberList
@@ -244,7 +228,6 @@ export default function TeamSettingsPage() {
         onClose={() => setShowInviteDialog(false)}
         onInvite={handleInvite}
         currentUserRole={current_user_role}
-        remainingSeats={remainingSeats}
       />
     </div>
   )

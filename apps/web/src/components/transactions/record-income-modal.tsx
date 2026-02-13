@@ -223,7 +223,7 @@ export function RecordIncomeModal({
                   className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   <option value="cash">Cash / Bank Account</option>
-                  <option value="stripe">Finix Balance</option>
+                  <option value="stripe">Processor Balance</option>
                 </select>
               </div>
 

@@ -60,7 +60,7 @@ export default async function TransactionDetailPage({
 
       if (stripeEvent) {
         sourceData = stripeEvent.raw_data
-        sourceName = 'Stripe Webhook'
+        sourceName = 'Card Processor Webhook'
         sourceVerified = stripeEvent.status === 'processed'
       }
     }
@@ -319,7 +319,7 @@ export default async function TransactionDetailPage({
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-border bg-muted/30">
             <h2 className="font-semibold text-foreground flex items-center gap-2">
-              {sourceName.includes('Stripe') ? (
+              {!sourceName.includes('Bank') ? (
                 <CreditCard className="w-4 h-4" />
               ) : (
                 <Building className="w-4 h-4" />
@@ -346,13 +346,13 @@ export default async function TransactionDetailPage({
                   )}
                   {sourceData.data?.object?.id && (
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase mb-1">Stripe Object ID</p>
+                      <p className="text-xs text-muted-foreground uppercase mb-1">Processor Object ID</p>
                       <code className="text-sm bg-muted px-2 py-1 rounded">{sourceData.data.object.id}</code>
                     </div>
                   )}
                   {sourceData.data?.object?.amount && (
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase mb-1">Stripe Amount</p>
+                      <p className="text-xs text-muted-foreground uppercase mb-1">Processor Amount</p>
                       <p className="text-foreground">{formatCurrency(sourceData.data.object.amount / 100)}</p>
                     </div>
                   )}
@@ -400,7 +400,7 @@ export default async function TransactionDetailPage({
               {transaction._stripeTx && (
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-foreground">Stripe Transaction</p>
+                    <p className="font-medium text-foreground">Processor Transaction</p>
                     <p className="text-sm text-muted-foreground">
                       {transaction._stripeTx.stripe_type} • {transaction._stripeTx.stripe_id}
                     </p>

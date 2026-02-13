@@ -24,7 +24,7 @@ const TRANSFER_TYPES = [
 
 const ACCOUNT_TYPES = [
   { value: 'cash', label: 'Cash / Bank Account' },
-  { value: 'stripe', label: 'Finix Balance' },
+  { value: 'stripe', label: 'Processor Balance' },
   { value: 'platform_revenue', label: 'Platform Revenue' },
   { value: 'tax_reserve', label: 'Tax Reserve' },
   { value: 'payout_reserve', label: 'Payout Reserve' },

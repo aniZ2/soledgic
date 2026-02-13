@@ -43,6 +43,11 @@ const BANK_PRESETS = [
   { id: 'generic', name: 'Other / Generic CSV' },
 ]
 
+const STRIPE_LEGACY_ENABLED = process.env.NEXT_PUBLIC_ENABLE_STRIPE_LEGACY === 'true'
+const visibleBankPresets = STRIPE_LEGACY_ENABLED
+  ? BANK_PRESETS
+  : BANK_PRESETS.filter((preset) => preset.id !== 'stripe')
+
 export default function ImportTransactionsPage() {
   const livemode = useLivemode()
   const activeLedgerGroupId = useActiveLedgerGroupId()
@@ -280,7 +285,7 @@ export default function ImportTransactionsPage() {
             <div className="mt-8">
               <h4 className="text-sm font-medium text-foreground mb-3">Supported Banks</h4>
               <div className="grid grid-cols-3 gap-2">
-                {BANK_PRESETS.map((bank) => (
+                {visibleBankPresets.map((bank) => (
                   <div key={bank.id} className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Check className="w-4 h-4 text-green-500" />
                     {bank.name}

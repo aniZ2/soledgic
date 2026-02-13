@@ -36,7 +36,7 @@ interface CreateCreatorRequest {
   payout_preferences?: {
     schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
     minimum_amount?: number // cents
-    method?: 'finix' | 'stripe' | 'bank_transfer'
+    method?: 'card' | 'stripe' | 'bank_transfer'
   }
   metadata?: Record<string, any>
 }
@@ -86,6 +86,12 @@ const handler = createHandler(
       return errorResponse('Creator already exists', 409, req, requestId)
     }
 
+    const payoutPreferences = (body.payout_preferences || { schedule: 'manual' }) as any
+    // Backward-compat: accept legacy processor method name.
+    if (payoutPreferences?.method === 'finix') {
+      payoutPreferences.method = 'card'
+    }
+
     // Create creator account
     const { data: account, error: accountError } = await supabase
       .from('accounts')
@@ -100,7 +106,7 @@ const handler = createHandler(
           display_name: displayName,
           default_split_percent: splitPercent,
           tax_info: body.tax_info || null,
-          payout_preferences: body.payout_preferences || { schedule: 'manual' },
+          payout_preferences: payoutPreferences,
           ...(body.metadata || {})
         }
       })

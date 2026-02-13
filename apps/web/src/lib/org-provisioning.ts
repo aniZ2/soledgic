@@ -249,8 +249,9 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
     if ((orgUsage.current_member_count || 0) !== normalizedCount) {
       updates.current_member_count = normalizedCount
     }
-    if (normalizedCount >= (orgUsage.max_team_members || 1)) {
-      updates.max_team_members = normalizedCount + 1
+    // Keep included-member limits stable for overage billing.
+    if (!orgUsage.max_team_members || orgUsage.max_team_members < 1) {
+      updates.max_team_members = 1
     }
 
     if (Object.keys(updates).length > 0) {
@@ -522,7 +523,7 @@ async function mergeFinixSettings(organizationId: string, patch: FinixSettingsPa
   })
 
   if (error) {
-    throw new Error(`Failed updating Finix settings: ${error.message}`)
+    throw new Error(`Failed updating processor settings: ${error.message}`)
   }
 }
 

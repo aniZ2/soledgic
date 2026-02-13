@@ -15,13 +15,13 @@ import {
 
 interface PaymentRail {
   id: string
-  type: 'finix' | 'manual'
+  type: 'card' | 'manual'
   name: string
   is_connected: boolean
   account_id?: string
 }
 
-interface FinixStatus {
+interface PaymentRailsStatus {
   connected: boolean
   identity_id: string | null
   merchant_id: string | null
@@ -34,9 +34,9 @@ interface FinixStatus {
 }
 
 const RAIL_CONFIG = {
-  finix: {
-    name: 'Finix',
-    description: 'Process card payments and platform payouts through Finix',
+  card: {
+    name: 'Card Processor',
+    description: 'Process card payments and platform payouts through your processor',
     icon: Building,
     color: 'bg-emerald-500/10 text-emerald-600',
   },
@@ -58,7 +58,7 @@ export default function PaymentRailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [handledCallback, setHandledCallback] = useState(false)
-  const [defaultPayoutMethod, setDefaultPayoutMethod] = useState<'finix' | 'manual'>('finix')
+  const [defaultPayoutMethod, setDefaultPayoutMethod] = useState<'card' | 'manual'>('card')
   const [minPayoutAmount, setMinPayoutAmount] = useState<number>(25)
   const [savingPayoutSettings, setSavingPayoutSettings] = useState(false)
 
@@ -67,7 +67,7 @@ export default function PaymentRailsPage() {
     setError(null)
 
     try {
-      const res = await fetchWithCsrf('/api/finix', {
+      const res = await fetchWithCsrf('/api/payment-rails', {
         method: 'POST',
         body: JSON.stringify({ action: 'status' }),
       })
@@ -77,18 +77,18 @@ export default function PaymentRailsPage() {
         throw new Error(result.error || 'Failed to load payment rail status')
       }
 
-      const status = result.data as FinixStatus
+      const status = result.data as PaymentRailsStatus
       const connectedId = status.merchant_id || status.identity_id || undefined
       const payoutSettings = status.payout_settings || {}
 
-      setDefaultPayoutMethod(payoutSettings.default_method === 'manual' ? 'manual' : 'finix')
+      setDefaultPayoutMethod(payoutSettings.default_method === 'manual' ? 'manual' : 'card')
       setMinPayoutAmount(typeof payoutSettings.min_payout_amount === 'number' ? payoutSettings.min_payout_amount : 25)
 
       setRails([
         {
-          id: 'finix',
-          type: 'finix',
-          name: 'Finix',
+          id: 'card',
+          type: 'card',
+          name: 'Card Processor',
           is_connected: status.connected,
           account_id: connectedId,
         },
@@ -103,9 +103,9 @@ export default function PaymentRailsPage() {
       setError(err.message || 'Failed to load payment rails')
       setRails([
         {
-          id: 'finix',
-          type: 'finix',
-          name: 'Finix',
+          id: 'card',
+          type: 'card',
+          name: 'Card Processor',
           is_connected: false,
         },
         {
@@ -127,21 +127,21 @@ export default function PaymentRailsPage() {
   useEffect(() => {
     if (handledCallback) return
 
-    const finixState = searchParams.get('finix')
+    const onboardingState = searchParams.get('onboarding') || searchParams.get('finix')
     const identityId = searchParams.get('identity_id')
     const state = searchParams.get('state')
 
-    if (finixState === 'expired') {
+    if (onboardingState === 'expired') {
       setHandledCallback(true)
-      setError('Finix onboarding session expired. Start onboarding again.')
+      setError('Onboarding session expired. Start onboarding again.')
       router.replace('/settings/payment-rails')
       return
     }
 
-    if (finixState === 'success' && identityId) {
+    if (onboardingState === 'success' && identityId) {
       if (!state) {
         setHandledCallback(true)
-        setError('Invalid Finix callback. Please start onboarding again.')
+        setError('Invalid callback. Please start onboarding again.')
         router.replace('/settings/payment-rails')
         return
       }
@@ -149,21 +149,21 @@ export default function PaymentRailsPage() {
       setHandledCallback(true)
       ;(async () => {
         try {
-          setConnecting('finix')
-          const res = await fetchWithCsrf('/api/finix', {
+          setConnecting('card')
+          const res = await fetchWithCsrf('/api/payment-rails', {
             method: 'POST',
             body: JSON.stringify({ action: 'save_identity', identity_id: identityId, state }),
           })
           const result = await res.json()
           if (!res.ok || !result.success) {
-            throw new Error(result.error || 'Failed to sync Finix account')
+            throw new Error(result.error || 'Failed to sync processor account')
           }
 
-          setInfo('Finix account connected successfully.')
+          setInfo('Processor account connected successfully.')
           await loadPaymentRails()
           router.replace('/settings/payment-rails')
         } catch (err: any) {
-          setError(err.message || 'Failed to finalize Finix connection')
+          setError(err.message || 'Failed to finalize connection')
           router.replace('/settings/payment-rails')
         } finally {
           setConnecting(null)
@@ -172,7 +172,7 @@ export default function PaymentRailsPage() {
     }
   }, [handledCallback, searchParams, router])
 
-  const handleConnect = async (railType: 'finix' | 'manual') => {
+  const handleConnect = async (railType: 'card' | 'manual') => {
     setError(null)
     setInfo(null)
 
@@ -183,19 +183,19 @@ export default function PaymentRailsPage() {
 
     setConnecting(railType)
     try {
-      const res = await fetchWithCsrf('/api/finix', {
+      const res = await fetchWithCsrf('/api/payment-rails', {
         method: 'POST',
         body: JSON.stringify({ action: 'create_onboarding_link' }),
       })
       const result = await res.json()
       if (!res.ok || !result.success || !result.data?.url) {
-        throw new Error(result.error || 'Unable to create Finix onboarding link')
+        throw new Error(result.error || 'Unable to create onboarding link')
       }
 
       window.location.href = result.data.url
       return
     } catch (err: any) {
-      setError(err.message || 'Failed to connect Finix')
+      setError(err.message || 'Failed to connect')
       setConnecting(null)
     }
   }
@@ -206,7 +206,7 @@ export default function PaymentRailsPage() {
     setInfo(null)
 
     try {
-      const res = await fetchWithCsrf('/api/finix', {
+      const res = await fetchWithCsrf('/api/payment-rails', {
         method: 'POST',
         body: JSON.stringify({
           action: 'save_payout_settings',
@@ -249,9 +249,9 @@ export default function PaymentRailsPage() {
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-foreground font-medium">Finix-first payout stack</p>
+            <p className="text-sm text-foreground font-medium">Processor-first payout stack</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Use Finix for provider-managed payments and payouts. Manual transfers stay available for fallback operations.
+              Use your card processor for provider-managed payments and payouts. Manual transfers stay available for fallback operations.
             </p>
           </div>
         </div>
@@ -339,9 +339,9 @@ export default function PaymentRailsPage() {
             <select
               className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground"
               value={defaultPayoutMethod}
-              onChange={(e) => setDefaultPayoutMethod(e.target.value === 'manual' ? 'manual' : 'finix')}
+              onChange={(e) => setDefaultPayoutMethod(e.target.value === 'manual' ? 'manual' : 'card')}
             >
-              <option value="finix">Finix</option>
+              <option value="card">Card Processor</option>
               <option value="manual">Manual / Bank Transfer</option>
             </select>
             <p className="text-xs text-muted-foreground mt-1">

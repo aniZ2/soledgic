@@ -20,6 +20,11 @@ function createServiceClient() {
 }
 
 export async function POST(request: Request) {
+  // Stripe webhooks are legacy-only. Keep the code for optionality, but disable by default.
+  if (process.env.ENABLE_STRIPE_LEGACY !== 'true') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const body = await request.text()
   const signature = request.headers.get('stripe-signature')
 
@@ -124,10 +129,10 @@ export async function POST(request: Request) {
         await supabase
           .from('organizations')
           .update({
-            plan: 'trial',
+            plan: 'pro',
             status: 'canceled',
             stripe_subscription_id: null,
-            max_ledgers: 3,
+            max_ledgers: 1,
             max_team_members: 1,
           })
           .eq('id', orgId)

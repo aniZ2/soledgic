@@ -1,6 +1,6 @@
 // Soledgic Processor Adapter
 // Executes payouts across multiple payment rails while keeping ledger logic consistent
-// Supports: FINIX, STRIPE_CONNECT, PLAID_TRANSFER, WISE, MANUAL_BANK_FILE
+// Supports: CARD, STRIPE_CONNECT, PLAID_TRANSFER, WISE, MANUAL_BANK_FILE
 // SECURITY HARDENED VERSION
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -20,7 +20,8 @@ import {
 // TYPES
 // ============================================================================
 
-type PayoutRail = 'finix' | 'stripe_connect' | 'plaid_transfer' | 'wise' | 'manual' | 'crypto'
+// Public rail names are whitelabeled. Internally, the primary processor is Finix.
+type PayoutRail = 'card' | 'stripe_connect' | 'plaid_transfer' | 'wise' | 'manual' | 'crypto'
 
 interface PayoutRequest {
   action: 'execute' | 'batch_execute' | 'get_status' | 'configure_rail' | 'list_rails' | 'generate_batch_file'
@@ -66,7 +67,7 @@ interface CreatorPayoutDetails {
   }
 }
 
-interface OrganizationFinixSettings {
+interface OrganizationProcessorSettings {
   identity_id?: string | null
   merchant_id?: string | null
   source_id?: string | null
@@ -186,7 +187,7 @@ class StripeConnectRail implements PaymentRail {
 // ============================================================================
 
 class FinixRail implements PaymentRail {
-  name: PayoutRail = 'finix'
+  name: PayoutRail = 'card'
 
   private resolveConfig(config: RailConfig) {
     const username = config.credentials?.username || Deno.env.get('FINIX_USERNAME')
@@ -208,10 +209,10 @@ class FinixRail implements PaymentRail {
 
     let configError: string | null = null
     if (env === 'production' && baseUrl.includes('sandbox')) {
-      configError = 'Finix misconfiguration: production environment cannot use sandbox base URL'
+      configError = 'Payment processor misconfiguration: production environment cannot use sandbox base URL'
     }
     if (env === 'sandbox' && baseUrl.includes('live-payments')) {
-      configError = 'Finix misconfiguration: sandbox environment cannot use live base URL'
+      configError = 'Payment processor misconfiguration: sandbox environment cannot use live base URL'
     }
 
     return { username, password, apiVersion, baseUrl, configError }
@@ -251,7 +252,7 @@ class FinixRail implements PaymentRail {
         payout_id: payout.payout_id,
         rail: this.name,
         status: 'failed',
-        error: 'Finix credentials not configured',
+        error: 'Payment processor credentials not configured',
       }
     }
 
@@ -266,7 +267,7 @@ class FinixRail implements PaymentRail {
         payout_id: payout.payout_id,
         rail: this.name,
         status: 'failed',
-        error: 'No Finix destination account/identity configured',
+        error: 'No destination account configured',
       }
     }
 
@@ -304,7 +305,7 @@ class FinixRail implements PaymentRail {
           payout_id: payout.payout_id,
           rail: this.name,
           status: 'failed',
-          error: this.parseError(data, `Finix transfer failed (${response.status})`),
+          error: this.parseError(data, `Processor transfer failed (${response.status})`),
         }
       }
 
@@ -314,7 +315,7 @@ class FinixRail implements PaymentRail {
         rail: this.name,
         external_id: data?.id,
         status: this.mapStatus(data?.state || data?.status),
-        metadata: { finix_transfer_id: data?.id },
+        metadata: { transfer_id: data?.id },
       }
     } catch (err: any) {
       return {
@@ -346,7 +347,7 @@ class FinixRail implements PaymentRail {
         rail: this.name,
         external_id: externalId,
         status: 'failed',
-        error: 'Finix credentials not configured',
+        error: 'Payment processor credentials not configured',
       }
     }
 
@@ -370,7 +371,7 @@ class FinixRail implements PaymentRail {
           rail: this.name,
           external_id: externalId,
           status: 'failed',
-          error: this.parseError(data, `Finix status request failed (${response.status})`),
+          error: this.parseError(data, `Processor status request failed (${response.status})`),
         }
       }
 
@@ -396,10 +397,10 @@ class FinixRail implements PaymentRail {
   validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = []
     if (!config.credentials?.username && !Deno.env.get('FINIX_USERNAME')) {
-      errors.push('Finix username required')
+      errors.push('Processor username required')
     }
     if (!config.credentials?.password && !Deno.env.get('FINIX_PASSWORD')) {
-      errors.push('Finix password required')
+      errors.push('Processor password required')
     }
     return { valid: errors.length === 0, errors }
   }
@@ -740,7 +741,7 @@ class ManualBankFileRail implements PaymentRail {
 // ============================================================================
 
 const RAILS: Record<PayoutRail, PaymentRail> = {
-  finix: new FinixRail(),
+  card: new FinixRail(),
   stripe_connect: new StripeConnectRail(),
   plaid_transfer: new PlaidTransferRail(),
   manual: new ManualBankFileRail(),
@@ -751,8 +752,11 @@ const RAILS: Record<PayoutRail, PaymentRail> = {
 function normalizeRail(value?: string | null): PayoutRail | null {
   if (!value) return null
   switch (value) {
-    case 'finix':
-      return 'finix'
+    case 'card':
+    case 'processor':
+    case 'primary':
+    case 'finix': // legacy alias
+      return 'card'
     case 'stripe':
     case 'stripe_connect':
       return 'stripe_connect'
@@ -770,48 +774,69 @@ function normalizeRail(value?: string | null): PayoutRail | null {
   }
 }
 
+function normalizeRailConfigs(configs: any): RailConfig[] {
+  if (!Array.isArray(configs)) return []
+  const next: RailConfig[] = []
+  for (const cfg of configs) {
+    const rail = normalizeRail(cfg?.rail)
+    if (!rail) continue
+    next.push({
+      rail,
+      enabled: Boolean(cfg?.enabled),
+      credentials: cfg?.credentials && typeof cfg.credentials === 'object' ? cfg.credentials : undefined,
+      settings: cfg?.settings && typeof cfg.settings === 'object' ? cfg.settings : undefined,
+    })
+  }
+  return next
+}
+
 function pickDefaultRail(configs: RailConfig[]): PayoutRail {
-  const enabledRails = new Set(configs.filter(c => c.enabled).map(c => c.rail))
-  if (enabledRails.has('finix')) return 'finix'
+  const enabledRails = new Set(
+    configs
+      .filter(c => c.enabled)
+      .map(c => normalizeRail(String((c as any).rail)) )
+      .filter(Boolean) as PayoutRail[]
+  )
+  if (enabledRails.has('card')) return 'card'
   if (enabledRails.has('stripe_connect')) return 'stripe_connect'
   if (enabledRails.has('plaid_transfer')) return 'plaid_transfer'
   if (enabledRails.has('manual')) return 'manual'
-  // Finix is now the active default integration when no explicit rail is configured.
-  return 'finix'
+  // Card processor is the active default integration when no explicit rail is configured.
+  return 'card'
 }
 
-function mergePayoutRailsWithOrgFinix(
+function mergePayoutRailsWithOrgProcessor(
   configs: RailConfig[],
-  orgFinix: OrganizationFinixSettings | null
+  orgProcessor: OrganizationProcessorSettings | null
 ): RailConfig[] {
-  if (!orgFinix) return configs
+  if (!orgProcessor) return configs
 
-  const finixSettingsPatch: Record<string, any> = {}
-  if (orgFinix.merchant_id) finixSettingsPatch.merchant = orgFinix.merchant_id
-  if (orgFinix.source_id) finixSettingsPatch.source = orgFinix.source_id
+  const processorSettingsPatch: Record<string, any> = {}
+  if (orgProcessor.merchant_id) processorSettingsPatch.merchant = orgProcessor.merchant_id
+  if (orgProcessor.source_id) processorSettingsPatch.source = orgProcessor.source_id
 
-  if (Object.keys(finixSettingsPatch).length === 0) {
+  if (Object.keys(processorSettingsPatch).length === 0) {
     return configs
   }
 
   const next = [...configs]
-  const finixIndex = next.findIndex((cfg) => cfg.rail === 'finix')
+  const processorIndex = next.findIndex((cfg) => cfg.rail === 'card')
 
-  if (finixIndex >= 0) {
-    next[finixIndex] = {
-      ...next[finixIndex],
+  if (processorIndex >= 0) {
+    next[processorIndex] = {
+      ...next[processorIndex],
       settings: {
-        ...(next[finixIndex].settings || {}),
-        ...finixSettingsPatch,
+        ...(next[processorIndex].settings || {}),
+        ...processorSettingsPatch,
       },
     }
     return next
   }
 
   next.push({
-    rail: 'finix',
+    rail: 'card',
     enabled: true,
-    settings: finixSettingsPatch,
+    settings: processorSettingsPatch,
   })
 
   return next
@@ -953,8 +978,8 @@ const handler = createHandler(
       .eq('id', ledger.id)
       .single()
 
-    const rawPayoutRails = (ledgerFull?.payout_rails as RailConfig[]) || []
-    let organizationFinix: OrganizationFinixSettings | null = null
+    const rawPayoutRails = normalizeRailConfigs(ledgerFull?.payout_rails)
+    let organizationProcessor: OrganizationProcessorSettings | null = null
     if (ledger.organization_id) {
       const { data: orgRow } = await supabase
         .from('organizations')
@@ -962,10 +987,10 @@ const handler = createHandler(
         .eq('id', ledger.organization_id)
         .maybeSingle()
 
-      organizationFinix = ((orgRow?.settings as any)?.finix || null) as OrganizationFinixSettings | null
+      organizationProcessor = ((orgRow?.settings as any)?.finix || null) as OrganizationProcessorSettings | null
     }
 
-    const payoutRails = mergePayoutRailsWithOrgFinix(rawPayoutRails, organizationFinix)
+    const payoutRails = mergePayoutRailsWithOrgProcessor(rawPayoutRails, organizationProcessor)
     const clientIp = getClientIp(req)
     const userAgent = req.headers.get('user-agent')
 

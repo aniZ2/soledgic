@@ -19,7 +19,7 @@ function getFinixAuthHeader() {
   const username = process.env.FINIX_USERNAME
   const password = process.env.FINIX_PASSWORD
   if (!username || !password) {
-    throw new Error('Finix credentials are not configured')
+    throw new Error('Payment processor credentials are not configured')
   }
 
   const token = Buffer.from(`${username}:${password}`).toString('base64')
@@ -41,10 +41,10 @@ export async function finixRequest<T = any>(
 
   // Guard against misconfiguration (e.g. sandbox URL with production env).
   if (env === 'production' && baseUrl.includes('sandbox')) {
-    throw new Error('Finix misconfiguration: production environment cannot use sandbox base URL')
+    throw new Error('Payment processor misconfiguration: production environment cannot use sandbox base URL')
   }
   if (env === 'sandbox' && baseUrl.includes('live-payments')) {
-    throw new Error('Finix misconfiguration: sandbox environment cannot use live base URL')
+    throw new Error('Payment processor misconfiguration: sandbox environment cannot use live base URL')
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
@@ -64,7 +64,7 @@ export async function finixRequest<T = any>(
       json?.error ||
       json?.message ||
       json?._embedded?.errors?.[0]?.message ||
-      `Finix request failed (${response.status})`
+      `Processor request failed (${response.status})`
     throw new Error(message)
   }
 
@@ -93,8 +93,8 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
   const stateParam = state ? `&state=${encodeURIComponent(state)}` : ''
   const payload: Record<string, unknown> = {
     expiration_in_minutes: expirationInMinutes,
-    return_url: `${appUrl}/settings/payment-rails?finix=success${stateParam}`,
-    expired_session_url: `${appUrl}/settings/payment-rails?finix=expired${stateParam}`,
+    return_url: `${appUrl}/settings/payment-rails?onboarding=success${stateParam}`,
+    expired_session_url: `${appUrl}/settings/payment-rails?onboarding=expired${stateParam}`,
     fee_details_url: `${appUrl}/terms`,
     terms_of_service_url: `${appUrl}/terms`,
     privacy_policy_url: `${appUrl}/privacy`,
@@ -138,10 +138,10 @@ export async function fetchFinixIdentity(identityId: string) {
   if (expectedAppId) {
     const actualAppId = extractIdentityApplicationId(identity)
     if (!actualAppId) {
-      throw new Error('Unable to verify Finix identity application')
+      throw new Error('Unable to verify identity application')
     }
     if (actualAppId !== expectedAppId) {
-      throw new Error('Finix identity does not belong to this application')
+      throw new Error('Identity does not belong to this application')
     }
   }
 

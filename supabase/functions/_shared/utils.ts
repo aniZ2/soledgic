@@ -92,7 +92,7 @@ const FAIL_CLOSED_ENDPOINTS = [
   'send-statements',    // Prevent email spam
   'import-transactions', // Prevent data flooding
   'import-bank-statement',
-  'create-checkout',    // Prevent checkout spam / Stripe rate limit exhaustion
+  'create-checkout',    // Prevent checkout spam / processor rate-limit exhaustion
   'release-funds',      // Critical: Prevent unauthorized fund releases
 ]
 
@@ -576,7 +576,7 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'send-statements': { requests: 20, windowSeconds: 60 },
   'create-ledger': { requests: 10, windowSeconds: 3600 },  // Per hour
   'upload-receipt': { requests: 50, windowSeconds: 60 },
-  'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (matches Stripe limits)
+  'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (processor-safe baseline)
   'release-funds': { requests: 50, windowSeconds: 60 },    // Fund releases (sensitive financial operation)
   'stripe-reconciliation': { requests: 5, windowSeconds: 60 },  // Reconciliation runs (heavy operations)
   'default': { requests: 100, windowSeconds: 60 },

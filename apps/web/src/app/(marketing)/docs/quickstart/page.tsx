@@ -140,7 +140,7 @@ export default function QuickstartPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "creator_id": "creator_456",
-    "payment_method": "stripe"
+    "payment_method": "card"
   }'`}
           </pre>
         </div>

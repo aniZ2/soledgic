@@ -60,7 +60,7 @@ console.log(\`Available: $\${balance.available}\`);
 // Process a payout
 const payout = await soledgic.processPayout({
   creatorId: 'creator_456',
-  paymentMethod: 'stripe'
+  paymentMethod: 'card'
 });
 
 // Record a refund
@@ -125,7 +125,7 @@ print(f"Available: \${balance.available}")
 # Process a payout
 payout = client.process_payout(
     creator_id='creator_456',
-    payment_method='stripe'
+    payment_method='card'
 )`}
           </pre>
         </div>

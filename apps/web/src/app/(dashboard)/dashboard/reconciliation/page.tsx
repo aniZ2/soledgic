@@ -56,6 +56,7 @@ interface LedgerTransaction {
 }
 
 type TabType = 'bank' | 'stripe'
+const STRIPE_LEGACY_ENABLED = process.env.NEXT_PUBLIC_ENABLE_STRIPE_LEGACY === 'true'
 
 export default function ReconciliationPage() {
   const livemode = useLivemode()
@@ -127,17 +128,21 @@ export default function ReconciliationPage() {
       setPlaidConfigured(false)
     }
 
-    // Load Stripe transactions
-    try {
-      const stripeRes = await callLedgerFunction('stripe', {
-        ledgerId: ledger.id,
-        method: 'POST',
-        body: { action: 'list_transactions' },
-      })
-      const stripeData = await stripeRes.json()
-      setStripeTransactions(stripeData.data || [])
-    } catch {
-      // Stripe not configured, that's ok
+    // Load Stripe transactions only when legacy Stripe mode is enabled.
+    if (STRIPE_LEGACY_ENABLED) {
+      try {
+        const stripeRes = await callLedgerFunction('stripe', {
+          ledgerId: ledger.id,
+          method: 'POST',
+          body: { action: 'list_transactions' },
+        })
+        const stripeData = await stripeRes.json()
+        setStripeTransactions(stripeData.data || [])
+      } catch {
+        // Stripe not configured, that's ok
+      }
+    } else {
+      setStripeTransactions([])
     }
 
     // Load ledger transactions for matching
@@ -222,8 +227,10 @@ export default function ReconciliationPage() {
     excluded: stripeTransactions.filter(t => t.match_status === 'excluded').length,
   }
 
-  const currentStats = activeTab === 'bank' ? bankStats : stripeStats
-  const currentTransactions = activeTab === 'bank' ? plaidTransactions : stripeTransactions
+  const currentStats =
+    !STRIPE_LEGACY_ENABLED || activeTab === 'bank' ? bankStats : stripeStats
+  const currentTransactions =
+    !STRIPE_LEGACY_ENABLED || activeTab === 'bank' ? plaidTransactions : stripeTransactions
   const unmatchedTxns = currentTransactions.filter(t => t.match_status === 'unmatched')
   const matchedTxns = currentTransactions.filter(t => t.match_status === 'matched' || t.match_status === 'auto_matched')
   const reviewedTxns = currentTransactions.filter(t => t.match_status === 'reviewed' || t.match_status === 'excluded')
@@ -293,22 +300,24 @@ export default function ReconciliationPage() {
             </span>
           )}
         </button>
-        <button
-          onClick={() => setActiveTab('stripe')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'stripe' 
-              ? 'bg-background text-foreground shadow-sm' 
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <CreditCard className="w-4 h-4" />
-          Stripe
-          {stripeStats.unmatched > 0 && (
-            <span className="bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {stripeStats.unmatched}
-            </span>
-          )}
-        </button>
+        {STRIPE_LEGACY_ENABLED && (
+          <button
+            onClick={() => setActiveTab('stripe')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'stripe' 
+                ? 'bg-background text-foreground shadow-sm' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            Stripe (Legacy)
+            {stripeStats.unmatched > 0 && (
+              <span className="bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {stripeStats.unmatched}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Bank Tab - No Config Message */}
@@ -330,7 +339,7 @@ export default function ReconciliationPage() {
       )}
 
       {/* Stripe Tab - No Transactions Message */}
-      {activeTab === 'stripe' && stripeTransactions.length === 0 && (
+      {STRIPE_LEGACY_ENABLED && activeTab === 'stripe' && stripeTransactions.length === 0 && (
         <div className="bg-card border border-border rounded-lg p-8 text-center mb-8">
           <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">No Stripe Transactions</h2>

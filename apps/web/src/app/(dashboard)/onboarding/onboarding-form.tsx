@@ -18,7 +18,9 @@ const plans = [
       'Payment processing',
       'Core finance features',
       '1 ledger included',
+      '1 team member included',
       '$20/month per additional ledger',
+      '$20/month per additional team member',
       'API access',
       'Receipts & reconciliation',
       'Email support',
@@ -212,10 +214,10 @@ export default function OnboardingForm() {
           {step === 3 && (
             <>
               <h1 className="text-2xl font-bold text-foreground mb-2">
-                Choose your plan
+                Review your setup
               </h1>
               <p className="text-muted-foreground mb-8">
-                Start free with one included ledger. Additional ledgers are $20/month each.
+                Start free with one included ledger and one included team member. Additional ledgers and team members are $20/month each.
               </p>
 
               {error && (

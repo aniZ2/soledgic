@@ -9,11 +9,11 @@ import {
   fetchFinixPaymentInstrumentsForIdentity,
 } from '@/lib/finix'
 
-interface FinixRequest {
+interface PaymentRailsRequest {
   action: 'status' | 'create_onboarding_link' | 'save_identity' | 'save_payout_settings'
   identity_id?: string
   state?: string
-  default_payout_method?: 'finix' | 'manual'
+  default_payout_method?: 'card' | 'manual'
   min_payout_amount?: number
 }
 
@@ -41,7 +41,7 @@ function getAppUrl() {
   return getPublicAppUrl()
 }
 
-function pickFinixSourceInstrumentId(instruments: any[]): string | null {
+function pickSourceInstrumentId(instruments: any[]): string | null {
   if (!Array.isArray(instruments) || instruments.length === 0) return null
   const enabled = instruments.filter((pi: any) => pi?.enabled !== false)
   const bankAccount = enabled.find((pi: any) => {
@@ -95,7 +95,7 @@ async function mergeOrgSettingsKey(orgId: string, key: string, patch: Record<str
   return (data || {}) as Record<string, unknown>
 }
 
-async function saveFinixSettings(orgId: string, patch: Partial<OrganizationSettings['finix']>) {
+async function saveProcessorSettings(orgId: string, patch: Partial<OrganizationSettings['finix']>) {
   const payload = {
     ...(patch || {}),
     last_synced_at: new Date().toISOString(),
@@ -122,16 +122,20 @@ function requireActiveOnboardingState(
   provided: string | null | undefined
 ) {
   if (!expected || !provided || expected !== provided) {
-    throw new Error('Invalid Finix onboarding state')
+    throw new Error('Invalid onboarding state')
   }
   if (isExpired(expectedExpiresAt || null)) {
-    throw new Error('Finix onboarding session expired. Start onboarding again.')
+    throw new Error('Onboarding session expired. Start onboarding again.')
   }
+}
+
+function normalizeDefaultMethod(value: string | null | undefined): 'card' | 'manual' {
+  return value === 'manual' ? 'manual' : 'card'
 }
 
 export const POST = createApiHandler(
   async (request, { user }) => {
-    const { data: body, error: parseError } = await parseJsonBody<FinixRequest>(request)
+    const { data: body, error: parseError } = await parseJsonBody<PaymentRailsRequest>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid request body' }, { status: 400 })
     }
@@ -142,22 +146,26 @@ export const POST = createApiHandler(
     }
 
     const { organization, isOwner } = membership
-    const finixSettings = organization.settings?.finix || {}
+    const processorSettings = organization.settings?.finix || {}
     const payoutSettings = organization.settings?.payouts || {}
 
     if (body.action === 'status') {
       return NextResponse.json({
         success: true,
         data: {
-          connected: Boolean(finixSettings.identity_id || finixSettings.merchant_id),
-          identity_id: finixSettings.identity_id || null,
-          merchant_id: finixSettings.merchant_id || null,
-          source_id: finixSettings.source_id || null,
-          onboarding_form_id: finixSettings.onboarding_form_id || process.env.FINIX_ONBOARDING_FORM_ID || null,
-          last_synced_at: finixSettings.last_synced_at || null,
+          connected: Boolean(processorSettings.identity_id || processorSettings.merchant_id),
+          identity_id: processorSettings.identity_id || null,
+          merchant_id: processorSettings.merchant_id || null,
+          source_id: processorSettings.source_id || null,
+          onboarding_form_id:
+            processorSettings.onboarding_form_id || process.env.FINIX_ONBOARDING_FORM_ID || null,
+          last_synced_at: processorSettings.last_synced_at || null,
           payout_settings: {
-            default_method: payoutSettings.default_method || 'finix',
-            min_payout_amount: typeof payoutSettings.min_payout_amount === 'number' ? payoutSettings.min_payout_amount : 25,
+            default_method: normalizeDefaultMethod(payoutSettings.default_method || null),
+            min_payout_amount:
+              typeof payoutSettings.min_payout_amount === 'number'
+                ? payoutSettings.min_payout_amount
+                : 25,
           },
         },
       })
@@ -174,7 +182,7 @@ export const POST = createApiHandler(
       const onboardingFormId = process.env.FINIX_ONBOARDING_FORM_ID
       if (!onboardingFormId) {
         return NextResponse.json(
-          { error: 'FINIX_ONBOARDING_FORM_ID is not configured' },
+          { error: 'Payment processor onboarding is not configured' },
           { status: 503 }
         )
       }
@@ -186,7 +194,7 @@ export const POST = createApiHandler(
       const link = await createOnboardingLink({
         onboardingFormId,
         appUrl: getAppUrl(),
-        identityId: finixSettings.identity_id || null,
+        identityId: processorSettings.identity_id || null,
         applicationId: process.env.FINIX_APPLICATION_ID || null,
         expirationInMinutes,
         state: onboardingState,
@@ -194,10 +202,10 @@ export const POST = createApiHandler(
 
       const linkUrl = link?.link_url || link?.onboarding_link_url || link?._embedded?.links?.[0]?.link_url
       if (!linkUrl) {
-        return NextResponse.json({ error: 'Failed to create Finix onboarding link' }, { status: 500 })
+        return NextResponse.json({ error: 'Failed to create onboarding link' }, { status: 500 })
       }
 
-      const saved = await saveFinixSettings(organization.id, {
+      const saved = await saveProcessorSettings(organization.id, {
         onboarding_form_id: onboardingFormId,
         last_onboarding_link_id: link.id || null,
         last_onboarding_link_url: linkUrl,
@@ -210,7 +218,7 @@ export const POST = createApiHandler(
         success: true,
         data: {
           url: linkUrl,
-          finix: saved,
+          processor: saved,
         },
       })
     }
@@ -218,8 +226,8 @@ export const POST = createApiHandler(
     if (body.action === 'save_identity') {
       try {
         requireActiveOnboardingState(
-          finixSettings.last_onboarding_state || null,
-          finixSettings.last_onboarding_state_expires_at || null,
+          processorSettings.last_onboarding_state || null,
+          processorSettings.last_onboarding_state_expires_at || null,
           body.state || null
         )
       } catch (err: any) {
@@ -229,7 +237,7 @@ export const POST = createApiHandler(
         )
       }
 
-      const identityId = body.identity_id || finixSettings.identity_id
+      const identityId = body.identity_id || processorSettings.identity_id
       if (!identityId) {
         return NextResponse.json({ error: 'identity_id is required' }, { status: 400 })
       }
@@ -239,38 +247,45 @@ export const POST = createApiHandler(
         identity = await fetchFinixIdentity(identityId)
       } catch (err: any) {
         return NextResponse.json(
-          { error: err.message || 'Invalid Finix identity' },
+          { error: err.message || 'Invalid identity' },
           { status: 400 }
         )
       }
-      const merchant = await fetchFinixMerchantForIdentity(identityId).catch(() => null)
-      const paymentInstruments = await fetchFinixPaymentInstrumentsForIdentity(identityId).catch(() => [])
-      const sourceId = pickFinixSourceInstrumentId(paymentInstruments)
 
-      const saved = (await saveFinixSettings(organization.id, {
-        identity_id: identity.id || identityId,
-        merchant_id: merchant?.id || finixSettings.merchant_id || null,
-        source_id: sourceId || finixSettings.source_id || null,
-        // Clear state to prevent replay of the redirect URL.
-        last_onboarding_state: null,
-        last_onboarding_state_expires_at: null,
-      })) || {}
+      const merchant = await fetchFinixMerchantForIdentity(identityId).catch(() => null)
+      const paymentInstruments = await fetchFinixPaymentInstrumentsForIdentity(identityId).catch(
+        () => []
+      )
+      const sourceId = pickSourceInstrumentId(paymentInstruments)
+
+      const saved =
+        (await saveProcessorSettings(organization.id, {
+          identity_id: identity.id || identityId,
+          merchant_id: merchant?.id || processorSettings.merchant_id || null,
+          source_id: sourceId || processorSettings.source_id || null,
+          // Clear state to prevent replay of the redirect URL.
+          last_onboarding_state: null,
+          last_onboarding_state_expires_at: null,
+        })) || {}
 
       return NextResponse.json({
-          success: true,
-          data: {
+        success: true,
+        data: {
           connected: Boolean((saved as any).identity_id || (saved as any).merchant_id),
           identity_id: (saved as any).identity_id || null,
           merchant_id: (saved as any).merchant_id || null,
           source_id: (saved as any).source_id || null,
-          },
-        })
-      }
+        },
+      })
+    }
 
     if (body.action === 'save_payout_settings') {
-      const defaultMethod = body.default_payout_method || 'finix'
-      if (!['finix', 'manual'].includes(defaultMethod)) {
-        return NextResponse.json({ error: 'default_payout_method must be finix or manual' }, { status: 400 })
+      const defaultMethod = body.default_payout_method || 'card'
+      if (!['card', 'manual'].includes(defaultMethod)) {
+        return NextResponse.json(
+          { error: 'default_payout_method must be card or manual' },
+          { status: 400 }
+        )
       }
 
       const min = body.min_payout_amount
@@ -287,7 +302,7 @@ export const POST = createApiHandler(
         success: true,
         data: {
           payout_settings: {
-            default_method: saved?.default_method || defaultMethod,
+            default_method: normalizeDefaultMethod(saved?.default_method || defaultMethod),
             min_payout_amount: saved?.min_payout_amount ?? min,
           },
         },
@@ -300,6 +315,7 @@ export const POST = createApiHandler(
     requireAuth: true,
     rateLimit: true,
     csrfProtection: true,
-    routePath: '/api/finix',
+    routePath: '/api/payment-rails',
   }
 )
+

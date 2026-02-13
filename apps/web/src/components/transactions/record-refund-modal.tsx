@@ -30,7 +30,7 @@ export function RecordRefundModal({
   const [refundAmount, setRefundAmount] = useState('')
   const [reason, setReason] = useState('')
   const [refundFrom, setRefundFrom] = useState<'both' | 'platform_only' | 'creator_only'>('both')
-  const [triggerStripeRefund, setTriggerStripeRefund] = useState(false)
+  const [triggerProviderRefund, setTriggerProviderRefund] = useState(false)
 
   useEffect(() => {
     if (isOpen && preselectedSaleRef) {
@@ -101,7 +101,7 @@ export function RecordRefundModal({
           amount: amountCents,
           reason: reason.trim(),
           refund_from: refundFrom,
-          trigger_stripe_refund: triggerStripeRefund,
+          trigger_stripe_refund: triggerProviderRefund,
         },
       })
 
@@ -130,7 +130,7 @@ export function RecordRefundModal({
     setRefundAmount('')
     setReason('')
     setRefundFrom('both')
-    setTriggerStripeRefund(false)
+    setTriggerProviderRefund(false)
     setSaleInfo(null)
     setError(null)
   }
@@ -257,13 +257,13 @@ export function RecordRefundModal({
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  id="stripeRefund"
-                  checked={triggerStripeRefund}
-                  onChange={(e) => setTriggerStripeRefund(e.target.checked)}
+                  id="providerRefund"
+                  checked={triggerProviderRefund}
+                  onChange={(e) => setTriggerProviderRefund(e.target.checked)}
                   className="w-4 h-4"
                 />
-                <label htmlFor="stripeRefund" className="text-sm text-foreground">
-                  Also trigger provider refund (legacy Stripe path)
+                <label htmlFor="providerRefund" className="text-sm text-foreground">
+                  Also trigger provider refund (legacy path)
                 </label>
               </div>
 

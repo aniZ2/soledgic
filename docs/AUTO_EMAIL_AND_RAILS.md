@@ -74,7 +74,7 @@ const preview = await ledger.previewStatementEmail('creator_jane_doe')
 
 | Rail | Key | Description |
 |------|-----|-------------|
-| Finix | `finix` | Primary payout rail |
+| Card Processor | `card` | Primary payout rail |
 | Stripe Connect | `stripe_connect` | Instant transfers |
 | Plaid Transfer | `plaid_transfer` | ACH via Plaid |
 | Manual | `manual` | NACHA file generation |

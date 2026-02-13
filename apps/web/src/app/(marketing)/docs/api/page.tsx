@@ -95,7 +95,10 @@ function buildCurlExample(entry: ApiEndpointDoc): string {
 }
 
 export default function ApiReferencePage() {
-  const catalog = [...API_ENDPOINT_CATALOG].sort((a, b) => a.endpoint.localeCompare(b.endpoint))
+  const showStripeLegacy = process.env.NEXT_PUBLIC_ENABLE_STRIPE_LEGACY === 'true'
+  const catalog = [...API_ENDPOINT_CATALOG]
+    .filter((entry) => (showStripeLegacy ? true : !entry.endpoint.startsWith('stripe')))
+    .sort((a, b) => a.endpoint.localeCompare(b.endpoint))
   const totalEndpoints = catalog.length
   const internalCount = catalog.filter((entry) => entry.internal).length
   const deprecatedCount = catalog.filter((entry) => entry.deprecated).length

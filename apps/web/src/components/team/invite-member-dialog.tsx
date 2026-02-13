@@ -8,7 +8,6 @@ interface InviteMemberDialogProps {
   onClose: () => void
   onInvite: (email: string, role: string) => Promise<{ success: boolean; error?: string }>
   currentUserRole: string
-  remainingSeats: number | null
 }
 
 const ROLES = [
@@ -40,7 +39,6 @@ export function InviteMemberDialog({
   onClose,
   onInvite,
   currentUserRole,
-  remainingSeats,
 }: InviteMemberDialogProps) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('member')
@@ -139,12 +137,6 @@ export function InviteMemberDialog({
               </div>
             )}
 
-            {remainingSeats !== null && remainingSeats <= 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 text-sm rounded-md p-3">
-                You&apos;ve reached your team member limit. Upgrade your plan to add more members.
-              </div>
-            )}
-
             {/* Email Input */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
@@ -211,7 +203,7 @@ export function InviteMemberDialog({
               </button>
               <button
                 type="submit"
-                disabled={loading || (remainingSeats !== null && remainingSeats <= 0)}
+                disabled={loading}
                 className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
