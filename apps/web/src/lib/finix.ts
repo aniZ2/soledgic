@@ -78,6 +78,8 @@ export interface CreateOnboardingLinkParams {
   applicationId?: string | null
   expirationInMinutes?: number
   state?: string | null
+  returnUrl?: string | null
+  expiredSessionUrl?: string | null
 }
 
 export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
@@ -88,13 +90,40 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     applicationId,
     expirationInMinutes = 60,
     state,
+    returnUrl,
+    expiredSessionUrl,
   } = params
 
-  const stateParam = state ? `&state=${encodeURIComponent(state)}` : ''
+  const returnTarget = (() => {
+    if (returnUrl) {
+      const next = new URL(returnUrl)
+      if (state) next.searchParams.set('state', state)
+      return next.toString()
+    }
+
+    const next = new URL('/settings/payment-rails', appUrl)
+    next.searchParams.set('onboarding', 'success')
+    if (state) next.searchParams.set('state', state)
+    return next.toString()
+  })()
+
+  const expiredTarget = (() => {
+    if (expiredSessionUrl) {
+      const next = new URL(expiredSessionUrl)
+      if (state) next.searchParams.set('state', state)
+      return next.toString()
+    }
+
+    const next = new URL('/settings/payment-rails', appUrl)
+    next.searchParams.set('onboarding', 'expired')
+    if (state) next.searchParams.set('state', state)
+    return next.toString()
+  })()
+
   const payload: Record<string, unknown> = {
     expiration_in_minutes: expirationInMinutes,
-    return_url: `${appUrl}/settings/payment-rails?onboarding=success${stateParam}`,
-    expired_session_url: `${appUrl}/settings/payment-rails?onboarding=expired${stateParam}`,
+    return_url: returnTarget,
+    expired_session_url: expiredTarget,
     fee_details_url: `${appUrl}/terms`,
     terms_of_service_url: `${appUrl}/terms`,
     privacy_policy_url: `${appUrl}/privacy`,

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
@@ -46,6 +47,7 @@ interface BillingSummaryResponse {
   overage: BillingOverageSummary
   billing: {
     method_configured: boolean
+    method_label?: string | null
     processor_connected: boolean
     last_charge: {
       period_start: string
@@ -82,46 +84,119 @@ async function billingFetch(action: string) {
 }
 
 export default function BillingPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<BillingSummaryResponse | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const [handledCallback, setHandledCallback] = useState(false)
+  const [connectingBillingMethod, setConnectingBillingMethod] = useState(false)
+
+  const loadBilling = async () => {
+    setLoading(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const [subData, plansData] = await Promise.all([
+        billingFetch('get_subscription'),
+        billingFetch('get_plans'),
+      ])
+
+      if (subData?.success) {
+        setSummary(subData.data as BillingSummaryResponse)
+      } else {
+        setError(subData?.error || 'Failed to load billing summary')
+      }
+
+      if (plansData?.success) {
+        setPlans(plansData.data as Plan[])
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load billing data')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const [subData, plansData] = await Promise.all([
-          billingFetch('get_subscription'),
-          billingFetch('get_plans'),
-        ])
-
-        if (!mounted) return
-
-        if (subData?.success) {
-          setSummary(subData.data as BillingSummaryResponse)
-        } else {
-          setError(subData?.error || 'Failed to load billing summary')
-        }
-
-        if (plansData?.success) {
-          setPlans(plansData.data as Plan[])
-        }
-      } catch (err: any) {
-        if (mounted) {
-          setError(err?.message || 'Failed to load billing data')
-        }
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    })()
-
-    return () => {
-      mounted = false
-    }
+    void loadBilling()
   }, [])
+
+  useEffect(() => {
+    if (handledCallback) return
+
+    const billingSetup = searchParams.get('billing_setup')
+    const identityId = searchParams.get('identity_id')
+    const state = searchParams.get('state')
+
+    if (billingSetup === 'expired') {
+      setHandledCallback(true)
+      setError('Billing setup session expired. Start setup again.')
+      router.replace('/billing')
+      return
+    }
+
+    if (billingSetup === 'success' && identityId) {
+      if (!state) {
+        setHandledCallback(true)
+        setError('Invalid callback. Please start setup again.')
+        router.replace('/billing')
+        return
+      }
+
+      setHandledCallback(true)
+      ;(async () => {
+        setConnectingBillingMethod(true)
+        setError(null)
+        setInfo(null)
+        try {
+          const res = await fetchWithCsrf('/api/billing-method', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'save_billing_method', identity_id: identityId, state }),
+          })
+          const result = await res.json()
+          if (!res.ok || !result.success) {
+            throw new Error(result.error || 'Failed to save billing method')
+          }
+
+          setInfo('Billing method saved.')
+          await loadBilling()
+          router.replace('/billing')
+        } catch (err: any) {
+          setError(err.message || 'Failed to finalize billing method setup')
+          router.replace('/billing')
+        } finally {
+          setConnectingBillingMethod(false)
+        }
+      })()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handledCallback, searchParams, router])
+
+  const handleSetupBillingMethod = async () => {
+    setError(null)
+    setInfo(null)
+    setConnectingBillingMethod(true)
+
+    try {
+      const res = await fetchWithCsrf('/api/billing-method', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'create_setup_link' }),
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success || !result.data?.url) {
+        throw new Error(result.error || 'Unable to start billing method setup')
+      }
+
+      window.location.href = result.data.url
+    } catch (err: any) {
+      setError(err.message || 'Failed to start billing method setup')
+      setConnectingBillingMethod(false)
+    }
+  }
 
   const formatCurrency = (cents: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
@@ -179,21 +254,30 @@ export default function BillingPage() {
               <p className="font-medium text-foreground">
                 {isCanceled ? 'Billing is inactive' : 'Payment issue detected'}
               </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {isCanceled
-                  ? 'Owner actions that create new live resources may be blocked until billing is reactivated.'
-                  : 'Owner actions that create new live resources may be blocked until billing is resolved.'}
-              </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {isCanceled
+                    ? 'Owner actions that create new live resources may be blocked until billing is reactivated.'
+                    : 'Owner actions that create new live resources may be blocked until billing is resolved.'}
+                </p>
             </div>
-            <Link
-              href="/settings/payment-rails"
-              className="whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Open Payment Rails
-            </Link>
+            {summary.is_owner ? (
+              <button
+                onClick={handleSetupBillingMethod}
+                disabled={connectingBillingMethod}
+                className="whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {connectingBillingMethod ? 'Opening…' : billing.method_configured ? 'Update Billing Method' : 'Add Billing Method'}
+              </button>
+            ) : null}
           </div>
         </div>
       )}
+
+      {info ? (
+        <div className="mb-6 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-700">
+          {info}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -310,8 +394,11 @@ export default function BillingPage() {
             {billing.method_configured ? (
               <>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Billing is enabled through your connected card processor account.
+                  Billing is enabled for usage-based overages.
                 </p>
+                {billing.method_label ? (
+                  <p className="mt-2 text-sm text-foreground font-medium">{billing.method_label}</p>
+                ) : null}
                 {billing.last_charge ? (
                   <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 text-sm">
                     <div className="flex items-center justify-between">
@@ -341,28 +428,46 @@ export default function BillingPage() {
                     No overage charges have been recorded yet.
                   </p>
                 )}
-                <div className="mt-4">
-                  <Link
-                    href="/settings/payment-rails"
-                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                  >
-                    Manage Payment Rails
-                  </Link>
-                </div>
+                {summary.is_owner ? (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      onClick={handleSetupBillingMethod}
+                      disabled={connectingBillingMethod}
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {connectingBillingMethod ? 'Opening…' : 'Update Billing Method'}
+                    </button>
+                    <Link
+                      href="/settings/payment-rails"
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/40"
+                    >
+                      Manage Payment Rails
+                    </Link>
+                  </div>
+                ) : null}
               </>
             ) : (
               <>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Connect payment rails to enable overage billing. Overages are only charged when you exceed the included limits.
+                  Add a billing method to enable overage billing. Overages are only charged when you exceed the included limits.
                 </p>
-                <div className="mt-4">
-                  <Link
-                    href="/settings/payment-rails"
-                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                  >
-                    Open Payment Rails
-                  </Link>
-                </div>
+                {summary.is_owner ? (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      onClick={handleSetupBillingMethod}
+                      disabled={connectingBillingMethod}
+                      className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {connectingBillingMethod ? 'Opening…' : 'Add Billing Method'}
+                    </button>
+                    <Link
+                      href="/settings/payment-rails"
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/40"
+                    >
+                      Manage Payment Rails
+                    </Link>
+                  </div>
+                ) : null}
               </>
             )}
           </div>

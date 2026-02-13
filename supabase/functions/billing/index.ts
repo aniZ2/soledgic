@@ -129,10 +129,17 @@ const handler = createHandler(
         const additionalMembers = includedMembers === -1 ? 0 : Math.max(0, memberCount - includedMembers)
         const estimatedMonthlyOverageCents = additionalLedgers * overageLedgerPrice + additionalMembers * overageMemberPrice
 
-        const processorSettings =
-          org?.settings && typeof org.settings === 'object' ? (org.settings.finix || {}) : {}
-        const billingMethodConfigured =
-          typeof processorSettings?.source_id === 'string' && processorSettings.source_id.trim().length > 0
+        const settingsObj = org?.settings && typeof org.settings === 'object' ? org.settings : {}
+        const processorSettings = (settingsObj.finix || {}) as Record<string, any>
+        const billingSettings = (settingsObj.billing || {}) as Record<string, any>
+
+        const billingMethodIdRaw =
+          typeof billingSettings?.payment_method_id === 'string' ? billingSettings.payment_method_id.trim() : ''
+        const billingMethodConfigured = billingMethodIdRaw.length > 0
+        const billingMethodLabel =
+          typeof billingSettings?.payment_method_label === 'string' && billingSettings.payment_method_label.trim().length > 0
+            ? billingSettings.payment_method_label.trim()
+            : null
         const processorConnected =
           (typeof processorSettings?.merchant_id === 'string' && processorSettings.merchant_id.trim().length > 0) ||
           (typeof processorSettings?.identity_id === 'string' && processorSettings.identity_id.trim().length > 0)
@@ -198,6 +205,7 @@ const handler = createHandler(
             },
             billing: {
               method_configured: billingMethodConfigured,
+              method_label: billingMethodLabel,
               processor_connected: processorConnected,
               last_charge: lastCharge,
             },

@@ -193,14 +193,11 @@ Deno.serve(async (req: Request) => {
       continue
     }
 
-    const orgProcessor = (org.settings && typeof org.settings === 'object' ? org.settings.finix : null) || {}
+    const settingsObj = org.settings && typeof org.settings === 'object' ? org.settings : {}
+    const billingSettings = (settingsObj.billing || {}) as Record<string, any>
     const billingSourceId =
-      typeof orgProcessor?.source_id === 'string' && orgProcessor.source_id.trim().length > 0
-        ? orgProcessor.source_id.trim()
-        : null
-    const orgMerchantId =
-      typeof orgProcessor?.merchant_id === 'string' && orgProcessor.merchant_id.trim().length > 0
-        ? orgProcessor.merchant_id.trim()
+      typeof billingSettings?.payment_method_id === 'string' && billingSettings.payment_method_id.trim().length > 0
+        ? billingSettings.payment_method_id.trim()
         : null
 
     if (dryRun) {
@@ -262,7 +259,7 @@ Deno.serve(async (req: Request) => {
         .from('billing_overage_charges')
         .update({
           status: 'failed',
-          error: 'Billing method not configured. Connect payment rails to enable overage billing.',
+          error: 'Billing method not configured. Add a billing method to enable overage billing.',
           updated_at: new Date().toISOString(),
         })
         .eq('id', chargeId)
@@ -282,7 +279,7 @@ Deno.serve(async (req: Request) => {
       continue
     }
 
-    const merchantId = orgMerchantId || platformMerchantId
+    const merchantId = platformMerchantId
     if (!merchantId || !platformDestinationId) {
       await supabase
         .from('billing_overage_charges')
