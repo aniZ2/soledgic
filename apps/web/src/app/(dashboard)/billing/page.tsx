@@ -44,6 +44,20 @@ interface BillingSummaryResponse {
   organization: BillingOrganizationSummary
   usage: BillingUsage
   overage: BillingOverageSummary
+  billing: {
+    method_configured: boolean
+    processor_connected: boolean
+    last_charge: {
+      period_start: string
+      period_end: string
+      amount_cents: number
+      status: string
+      attempts: number
+      last_attempt_at: string | null
+      processor_payment_id: string | null
+      error: string | null
+    } | null
+  }
   is_owner: boolean
 }
 
@@ -143,6 +157,7 @@ export default function BillingPage() {
   const org = summary.organization
   const usage = summary.usage
   const overage = summary.overage
+  const billing = summary.billing
 
   const isPastDue = org.status === 'past_due'
   const isCanceled = org.status === 'canceled'
@@ -292,21 +307,67 @@ export default function BillingPage() {
 
           <div className="rounded-lg border border-border bg-card p-6">
             <h2 className="text-lg font-semibold text-foreground">Billing Method</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Overage billing will run through your connected card processor. If you have not connected payment rails yet, do that first.
-            </p>
-            <div className="mt-4">
-              <Link
-                href="/settings/payment-rails"
-                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Open Payment Rails
-              </Link>
-            </div>
+            {billing.method_configured ? (
+              <>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Billing is enabled through your connected card processor account.
+                </p>
+                {billing.last_charge ? (
+                  <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Last charge</span>
+                      <span className="font-medium text-foreground capitalize">
+                        {billing.last_charge.status}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-muted-foreground">Period</span>
+                      <span className="text-foreground">
+                        {billing.last_charge.period_start} to {billing.last_charge.period_end}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-muted-foreground">Amount</span>
+                      <span className="text-foreground font-medium">
+                        {formatCurrency(billing.last_charge.amount_cents)}
+                      </span>
+                    </div>
+                    {billing.last_charge.error ? (
+                      <p className="mt-3 text-xs text-destructive">{billing.last_charge.error}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    No overage charges have been recorded yet.
+                  </p>
+                )}
+                <div className="mt-4">
+                  <Link
+                    href="/settings/payment-rails"
+                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    Manage Payment Rails
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Connect payment rails to enable overage billing. Overages are only charged when you exceed the included limits.
+                </p>
+                <div className="mt-4">
+                  <Link
+                    href="/settings/payment-rails"
+                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    Open Payment Rails
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
     </div>
   )
 }
-

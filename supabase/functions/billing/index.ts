@@ -1,57 +1,85 @@
 // Soledgic Edge Function: Billing Management API
 // POST /billing
-// Manage subscriptions, checkout, invoices, usage
-// MIGRATED TO createHandler - Uses JWT auth (not API keys)
+//
+// Stripe subscription billing is disabled by default. This endpoint currently
+// serves usage-based overage billing summaries for the dashboard.
+//
+// Auth:
+// - JWT (Supabase Auth) via Authorization: Bearer <user_jwt>
+// - Uses service-role Supabase client for queries, but enforces org membership.
 
-import Stripe from 'https://esm.sh/stripe@14.5.0'
-import { 
+import {
   createHandler,
-  jsonResponse, 
+  jsonResponse,
   errorResponse,
-  getSupabaseClient,
-  getClientIp,
-  generateRequestId
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface BillingRequest {
-  action: 'get_subscription' | 'get_usage' | 'get_invoices' | 'get_payment_methods' |
-          'create_checkout_session' | 'create_portal_session' | 'update_subscription' |
-          'cancel_subscription' | 'resume_subscription' | 'add_payment_method' |
-          'set_default_payment_method' | 'get_plans' | 'report_usage'
+  action:
+    | 'get_subscription'
+    | 'get_usage'
+    | 'get_plans'
+    | 'get_invoices'
+    | 'get_payment_methods'
+    | 'create_checkout_session'
+    | 'create_portal_session'
+    | 'update_subscription'
+    | 'cancel_subscription'
+    | 'resume_subscription'
+    | 'add_payment_method'
+    | 'set_default_payment_method'
+    | 'report_usage'
   organization_id?: string
-  price_id?: string
-  quantity?: number
-  return_url?: string
-  cancel_url?: string
-  payment_method_id?: string
-  usage_type?: string
-  usage_quantity?: number
+}
+
+function currentBillingPeriodUtc(now: Date) {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0))
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0))
+  return { start, end }
+}
+
+function disabledSubscriptionBilling(req: Request, requestId: string) {
+  return errorResponse('Subscription billing is disabled', 410, req, requestId)
+}
+
+async function countLiveLedgers(supabase: SupabaseClient, orgId: string): Promise<number> {
+  const { count } = await supabase
+    .from('ledgers')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', orgId)
+    .eq('livemode', true)
+    .eq('status', 'active')
+  return count || 0
+}
+
+async function countActiveMembers(supabase: SupabaseClient, orgId: string): Promise<number> {
+  const { count } = await supabase
+    .from('organization_members')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+  return count || 0
 }
 
 const handler = createHandler(
-  { 
-    endpoint: 'billing', 
-    requireAuth: false,  // Uses JWT auth (Supabase Auth), not API keys - handled below
+  {
+    endpoint: 'billing',
+    requireAuth: false, // Uses JWT auth (Supabase Auth), not API keys.
     rateLimit: true,
-    // NOTE: This endpoint uses JWT authentication, not API key authentication.
-    // The createHandler's requireAuth is for API key auth only.
-    // JWT auth is handled in the handler function itself.
   },
   async (req, supabase, _ledger, body: BillingRequest, { requestId }) => {
-    // This function uses JWT auth (Supabase Auth), not API keys
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader) {
+    const authHeader = req.headers.get('authorization') || ''
+    if (!authHeader.toLowerCase().startsWith('bearer ')) {
       return errorResponse('Unauthorized', 401, req, requestId)
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
+    const token = authHeader.slice('bearer '.length)
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
       return errorResponse('Unauthorized', 401, req, requestId)
     }
 
-    // Get user's organization
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id, role')
@@ -64,16 +92,15 @@ const handler = createHandler(
     }
 
     const orgId = body.organization_id || membership.organization_id
-
-    // Verify access
     if (orgId !== membership.organization_id) {
       return errorResponse('Access denied', 403, req, requestId)
     }
 
-    // Get organization
+    const isOwner = membership.role === 'owner'
+
     const { data: org } = await supabase
       .from('organizations')
-      .select('*')
+      .select('id, name, plan, status, trial_ends_at, max_ledgers, max_team_members, overage_ledger_price, overage_team_member_price, settings')
       .eq('id', orgId)
       .single()
 
@@ -81,222 +108,153 @@ const handler = createHandler(
       return errorResponse('Organization not found', 404, req, requestId)
     }
 
-    // Initialize Stripe
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
-    if (!stripeKey) {
-      return errorResponse('Stripe not configured', 503, req, requestId)
-    }
-    const stripe = new Stripe(stripeKey, { apiVersion: '2023-10-16' })
-
     switch (body.action) {
-      case 'get_subscription': {
-        const { data: subscription } = await supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('organization_id', orgId)
-          .eq('status', 'active')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+      case 'get_subscription':
+      case 'get_usage': {
+        const now = new Date()
+        const { start, end } = currentBillingPeriodUtc(now)
 
-        const usage = await supabase.rpc('get_current_period_usage', { p_organization_id: orgId })
-        const limits = await supabase.rpc('check_usage_limits', { p_organization_id: orgId })
+        const [ledgerCount, memberCount] = await Promise.all([
+          countLiveLedgers(supabase, orgId),
+          countActiveMembers(supabase, orgId),
+        ])
+
+        const includedLedgers = typeof org.max_ledgers === 'number' ? org.max_ledgers : 1
+        const includedMembers = typeof org.max_team_members === 'number' ? org.max_team_members : 1
+
+        const overageLedgerPrice = typeof org.overage_ledger_price === 'number' ? org.overage_ledger_price : 2000
+        const overageMemberPrice = typeof org.overage_team_member_price === 'number' ? org.overage_team_member_price : 2000
+
+        const additionalLedgers = includedLedgers === -1 ? 0 : Math.max(0, ledgerCount - includedLedgers)
+        const additionalMembers = includedMembers === -1 ? 0 : Math.max(0, memberCount - includedMembers)
+        const estimatedMonthlyOverageCents = additionalLedgers * overageLedgerPrice + additionalMembers * overageMemberPrice
+
+        const processorSettings =
+          org?.settings && typeof org.settings === 'object' ? (org.settings.finix || {}) : {}
+        const billingMethodConfigured =
+          typeof processorSettings?.source_id === 'string' && processorSettings.source_id.trim().length > 0
+        const processorConnected =
+          typeof processorSettings?.merchant_id === 'string' ||
+          typeof processorSettings?.identity_id === 'string'
+
+        let lastCharge: Record<string, any> | null = null
+        if (isOwner) {
+          const { data: charge } = await supabase
+            .from('billing_overage_charges')
+            .select('period_start, period_end, amount_cents, status, attempts, last_attempt_at, processor_payment_id, error')
+            .eq('organization_id', orgId)
+            .order('period_start', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          lastCharge = charge || null
+        }
+
+        if (body.action === 'get_usage') {
+          return jsonResponse({
+            success: true,
+            data: {
+              ledgers: ledgerCount,
+              team_members: memberCount,
+              period_start: start.toISOString(),
+              period_end: end.toISOString(),
+            },
+          }, 200, req, requestId)
+        }
 
         return jsonResponse({
           success: true,
           data: {
-            subscription,
-            organization: { id: org.id, name: org.name, plan: org.plan, status: org.status, trial_ends_at: org.trial_ends_at },
-            usage: usage.data,
-            limits: limits.data,
-          }
+            subscription: null,
+            organization: {
+              id: org.id,
+              name: org.name,
+              plan: org.plan,
+              status: org.status,
+              trial_ends_at: org.trial_ends_at,
+              max_ledgers: org.max_ledgers,
+              max_team_members: org.max_team_members,
+              current_ledger_count: ledgerCount,
+              current_member_count: memberCount,
+              included_ledgers: includedLedgers,
+              included_team_members: includedMembers,
+              overage_ledger_price: overageLedgerPrice,
+              overage_team_member_price: overageMemberPrice,
+            },
+            usage: {
+              ledgers: ledgerCount,
+              team_members: memberCount,
+              creators: 0,
+              transactions: 0,
+              api_calls: 0,
+              period_start: start.toISOString(),
+              period_end: end.toISOString(),
+            },
+            overage: {
+              additional_ledgers: additionalLedgers,
+              additional_team_members: additionalMembers,
+              overage_ledger_price: overageLedgerPrice,
+              overage_team_member_price: overageMemberPrice,
+              estimated_monthly_cents: estimatedMonthlyOverageCents,
+            },
+            billing: {
+              method_configured: billingMethodConfigured,
+              processor_connected: Boolean(processorConnected),
+              last_charge: lastCharge,
+            },
+            is_owner: isOwner,
+          },
         }, 200, req, requestId)
-      }
-
-      case 'get_usage': {
-        const usage = await supabase.rpc('get_current_period_usage', { p_organization_id: orgId })
-        return jsonResponse({ success: true, data: usage.data }, 200, req, requestId)
-      }
-
-      case 'get_invoices': {
-        const { data: invoices } = await supabase
-          .from('invoices')
-          .select('*')
-          .eq('organization_id', orgId)
-          .order('created_at', { ascending: false })
-          .limit(24)
-        return jsonResponse({ success: true, data: invoices || [] }, 200, req, requestId)
-      }
-
-      case 'get_payment_methods': {
-        const { data: methods } = await supabase
-          .from('payment_methods')
-          .select('*')
-          .eq('organization_id', orgId)
-          .order('is_default', { ascending: false })
-        return jsonResponse({ success: true, data: methods || [] }, 200, req, requestId)
       }
 
       case 'get_plans': {
-        const { data: plans } = await supabase
-          .from('pricing_plans')
-          .select('*')
-          .eq('is_active', true)
-          .order('sort_order')
-        return jsonResponse({ success: true, data: plans || [] }, 200, req, requestId)
-      }
-
-      case 'create_checkout_session': {
-        if (!body.price_id) {
-          return errorResponse('price_id required', 400, req, requestId)
-        }
-
-        let customerId = org.stripe_customer_id
-        if (!customerId) {
-          const customer = await stripe.customers.create({
-            email: org.billing_email || user.email,
-            name: org.name,
-            metadata: { organization_id: orgId },
-          })
-          customerId = customer.id
-          await supabase.from('organizations').update({ stripe_customer_id: customerId }).eq('id', orgId)
-        }
-
-        const session = await stripe.checkout.sessions.create({
-          customer: customerId,
-          mode: 'subscription',
-          line_items: [{ price: body.price_id, quantity: body.quantity || 1 }],
-          success_url: body.return_url || `${req.headers.get('origin')}/dashboard/settings/billing?success=true`,
-          cancel_url: body.cancel_url || `${req.headers.get('origin')}/dashboard/settings/billing?canceled=true`,
-          subscription_data: { metadata: { organization_id: orgId } },
-          allow_promotion_codes: true,
-        })
-
-        return jsonResponse({ success: true, data: { url: session.url, session_id: session.id } }, 200, req, requestId)
-      }
-
-      case 'create_portal_session': {
-        if (!org.stripe_customer_id) {
-          return errorResponse('No billing account', 400, req, requestId)
-        }
-
-        const session = await stripe.billingPortal.sessions.create({
-          customer: org.stripe_customer_id,
-          return_url: body.return_url || `${req.headers.get('origin')}/dashboard/settings/billing`,
-        })
-
-        return jsonResponse({ success: true, data: { url: session.url } }, 200, req, requestId)
-      }
-
-      case 'update_subscription': {
-        if (!org.stripe_subscription_id) {
-          return errorResponse('No active subscription', 400, req, requestId)
-        }
-
-        const subscription = await stripe.subscriptions.retrieve(org.stripe_subscription_id)
-        const updateParams: any = {}
-        
-        if (body.price_id) {
-          updateParams.items = [{ id: subscription.items.data[0].id, price: body.price_id }]
-          updateParams.proration_behavior = 'create_prorations'
-        }
-        
-        if (body.quantity) {
-          updateParams.items = [{ id: subscription.items.data[0].id, quantity: body.quantity }]
-        }
-
-        const updated = await stripe.subscriptions.update(org.stripe_subscription_id, updateParams)
-
-        return jsonResponse({ 
-          success: true, 
-          data: { status: updated.status, current_period_end: updated.current_period_end } 
+        return jsonResponse({
+          success: true,
+          data: [
+            {
+              id: 'pro',
+              name: 'Free',
+              price_monthly: 0,
+              max_ledgers: 1,
+              max_team_members: 1,
+              overage_ledger_price_monthly: 2000,
+              overage_team_member_price_monthly: 2000,
+              features: [
+                'Payment processing',
+                'Core finance features',
+                '1 ledger included',
+                '1 team member included',
+                '$20/month per additional ledger',
+                '$20/month per additional team member',
+              ],
+              price_id_monthly: null,
+              contact_sales: false,
+            },
+          ],
         }, 200, req, requestId)
       }
 
-      case 'cancel_subscription': {
-        if (!org.stripe_subscription_id) {
-          return errorResponse('No active subscription', 400, req, requestId)
-        }
-
-        const subscription = await stripe.subscriptions.update(org.stripe_subscription_id, {
-          cancel_at_period_end: true,
-        })
-
-        return jsonResponse({ 
-          success: true, 
-          data: { cancel_at: subscription.cancel_at, current_period_end: subscription.current_period_end } 
-        }, 200, req, requestId)
+      case 'get_invoices':
+      case 'get_payment_methods': {
+        return jsonResponse({ success: true, data: [] }, 200, req, requestId)
       }
 
-      case 'resume_subscription': {
-        if (!org.stripe_subscription_id) {
-          return errorResponse('No subscription to resume', 400, req, requestId)
-        }
-
-        const subscription = await stripe.subscriptions.update(org.stripe_subscription_id, {
-          cancel_at_period_end: false,
-        })
-
-        return jsonResponse({ success: true, data: { status: subscription.status } }, 200, req, requestId)
-      }
-
-      case 'add_payment_method': {
-        if (!body.payment_method_id || !org.stripe_customer_id) {
-          return errorResponse('payment_method_id required', 400, req, requestId)
-        }
-
-        await stripe.paymentMethods.attach(body.payment_method_id, { customer: org.stripe_customer_id })
-        return jsonResponse({ success: true }, 200, req, requestId)
-      }
-
-      case 'set_default_payment_method': {
-        if (!body.payment_method_id || !org.stripe_customer_id) {
-          return errorResponse('payment_method_id required', 400, req, requestId)
-        }
-
-        await stripe.customers.update(org.stripe_customer_id, {
-          invoice_settings: { default_payment_method: body.payment_method_id },
-        })
-
-        await supabase.from('payment_methods').update({ is_default: false }).eq('organization_id', orgId)
-        await supabase.from('payment_methods').update({ is_default: true }).eq('stripe_payment_method_id', body.payment_method_id)
-
-        return jsonResponse({ success: true }, 200, req, requestId)
-      }
-
+      case 'create_checkout_session':
+      case 'create_portal_session':
+      case 'update_subscription':
+      case 'cancel_subscription':
+      case 'resume_subscription':
+      case 'add_payment_method':
+      case 'set_default_payment_method':
       case 'report_usage': {
-        if (!body.usage_type || !body.usage_quantity) {
-          return errorResponse('usage_type and usage_quantity required', 400, req, requestId)
-        }
-
-        await supabase.from('usage_records').insert({
-          organization_id: orgId,
-          usage_type: body.usage_type,
-          quantity: body.usage_quantity,
-          period_start: new Date().toISOString(),
-          period_end: new Date().toISOString(),
-        })
-
-        const { data: subItem } = await supabase
-          .from('subscription_items')
-          .select('stripe_subscription_item_id')
-          .eq('is_metered', true)
-          .single()
-
-        if (subItem) {
-          await stripe.subscriptionItems.createUsageRecord(
-            subItem.stripe_subscription_item_id,
-            { quantity: body.usage_quantity, timestamp: Math.floor(Date.now() / 1000), action: 'increment' }
-          )
-        }
-
-        return jsonResponse({ success: true }, 200, req, requestId)
+        return disabledSubscriptionBilling(req, requestId)
       }
 
-      default:
+      default: {
         return errorResponse(`Unknown action: ${body.action}`, 400, req, requestId)
+      }
     }
   }
 )
 
 Deno.serve(handler)
+

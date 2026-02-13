@@ -172,6 +172,29 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
     additionalLedgers * ledgerOveragePrice +
     additionalTeamMembers * teamMemberOveragePrice
 
+  const processorSettings =
+    org?.settings && typeof org.settings === 'object' ? (org.settings.finix || {}) : {}
+  const billingMethodConfigured =
+    typeof processorSettings?.source_id === 'string' && processorSettings.source_id.trim().length > 0
+  const processorConnected =
+    typeof processorSettings?.merchant_id === 'string' ||
+    typeof processorSettings?.identity_id === 'string'
+
+  let lastCharge: Record<string, any> | null = null
+  if (isOwner) {
+    const { data: charge } = await supabase
+      .from('billing_overage_charges')
+      .select(
+        'period_start, period_end, amount_cents, status, attempts, last_attempt_at, processor_payment_id, error'
+      )
+      .eq('organization_id', org.id)
+      .order('period_start', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    lastCharge = charge || null
+  }
+
   let creators = 0
   let transactions = 0
   let apiCalls = 0
@@ -235,6 +258,11 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
         overage_team_member_price: teamMemberOveragePrice,
         estimated_monthly_cents: estimatedMonthlyOverageCents,
       },
+      billing: {
+        method_configured: billingMethodConfigured,
+        processor_connected: Boolean(processorConnected),
+        last_charge: lastCharge,
+      },
       is_owner: isOwner,
     },
   })
@@ -285,4 +313,3 @@ async function handleActivateFreePlan(org: Record<string, any>, planId?: string)
 
   return NextResponse.json({ success: true, data: { activated: true, plan: planId } })
 }
-
