@@ -177,8 +177,8 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
   const billingMethodConfigured =
     typeof processorSettings?.source_id === 'string' && processorSettings.source_id.trim().length > 0
   const processorConnected =
-    typeof processorSettings?.merchant_id === 'string' ||
-    typeof processorSettings?.identity_id === 'string'
+    (typeof processorSettings?.merchant_id === 'string' && processorSettings.merchant_id.trim().length > 0) ||
+    (typeof processorSettings?.identity_id === 'string' && processorSettings.identity_id.trim().length > 0)
 
   let lastCharge: Record<string, any> | null = null
   if (isOwner) {
@@ -260,7 +260,7 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       },
       billing: {
         method_configured: billingMethodConfigured,
-        processor_connected: Boolean(processorConnected),
+        processor_connected: processorConnected,
         last_charge: lastCharge,
       },
       is_owner: isOwner,

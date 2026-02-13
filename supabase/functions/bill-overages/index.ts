@@ -198,6 +198,10 @@ Deno.serve(async (req: Request) => {
       typeof orgProcessor?.source_id === 'string' && orgProcessor.source_id.trim().length > 0
         ? orgProcessor.source_id.trim()
         : null
+    const orgMerchantId =
+      typeof orgProcessor?.merchant_id === 'string' && orgProcessor.merchant_id.trim().length > 0
+        ? orgProcessor.merchant_id.trim()
+        : null
 
     if (dryRun) {
       results.push({
@@ -278,12 +282,13 @@ Deno.serve(async (req: Request) => {
       continue
     }
 
-    if (!platformMerchantId || !platformDestinationId) {
+    const merchantId = orgMerchantId || platformMerchantId
+    if (!merchantId || !platformDestinationId) {
       await supabase
         .from('billing_overage_charges')
         .update({
           status: 'failed',
-          error: 'Platform billing destination is not configured',
+          error: 'Billing destination is not configured',
           updated_at: new Date().toISOString(),
         })
         .eq('id', chargeId)
@@ -313,7 +318,7 @@ Deno.serve(async (req: Request) => {
       },
       payment_method_id: billingSourceId,
       destination_id: platformDestinationId,
-      merchant_id: platformMerchantId,
+      merchant_id: merchantId,
     })
 
     if (!checkout.success || !checkout.id) {
@@ -380,4 +385,3 @@ Deno.serve(async (req: Request) => {
     results,
   })
 })
-
