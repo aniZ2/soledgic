@@ -41,6 +41,13 @@ function getAppUrl() {
   return getPublicAppUrl()
 }
 
+function getPlatformProcessorSettings() {
+  const merchantId = process.env.FINIX_MERCHANT_ID || null
+  const sourceId = process.env.FINIX_SOURCE_ID || null
+  const platformManaged = Boolean(merchantId || sourceId)
+  return { platformManaged, merchantId, sourceId }
+}
+
 function pickSourceInstrumentId(instruments: any[]): string | null {
   if (!Array.isArray(instruments) || instruments.length === 0) return null
   const enabled = instruments.filter((pi: any) => pi?.enabled !== false)
@@ -148,15 +155,21 @@ export const POST = createApiHandler(
     const { organization, isOwner } = membership
     const processorSettings = organization.settings?.finix || {}
     const payoutSettings = organization.settings?.payouts || {}
+    const platform = getPlatformProcessorSettings()
 
     if (body.action === 'status') {
+      const resolvedMerchantId = platform.merchantId || processorSettings.merchant_id || null
+      const resolvedSourceId = platform.sourceId || processorSettings.source_id || null
+      const connected = Boolean(resolvedMerchantId || processorSettings.identity_id)
+
       return NextResponse.json({
         success: true,
         data: {
-          connected: Boolean(processorSettings.identity_id || processorSettings.merchant_id),
+          connected,
+          platform_managed: platform.platformManaged,
           identity_id: processorSettings.identity_id || null,
-          merchant_id: processorSettings.merchant_id || null,
-          source_id: processorSettings.source_id || null,
+          merchant_id: resolvedMerchantId,
+          source_id: resolvedSourceId,
           onboarding_form_id:
             processorSettings.onboarding_form_id || process.env.FINIX_ONBOARDING_FORM_ID || null,
           last_synced_at: processorSettings.last_synced_at || null,
@@ -179,6 +192,16 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'create_onboarding_link') {
+      if (platform.platformManaged) {
+        return NextResponse.json(
+          {
+            error:
+              'Card processor connection is managed at the platform level. No action is required here.',
+          },
+          { status: 409 }
+        )
+      }
+
       const onboardingFormId = process.env.FINIX_ONBOARDING_FORM_ID
       if (!onboardingFormId) {
         return NextResponse.json(
@@ -224,6 +247,16 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'save_identity') {
+      if (platform.platformManaged) {
+        return NextResponse.json(
+          {
+            error:
+              'Card processor connection is managed at the platform level. No action is required here.',
+          },
+          { status: 409 }
+        )
+      }
+
       try {
         requireActiveOnboardingState(
           processorSettings.last_onboarding_state || null,
@@ -318,4 +351,3 @@ export const POST = createApiHandler(
     routePath: '/api/payment-rails',
   }
 )
-

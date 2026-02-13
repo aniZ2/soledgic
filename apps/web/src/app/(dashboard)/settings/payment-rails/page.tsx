@@ -23,6 +23,7 @@ interface PaymentRail {
 
 interface PaymentRailsStatus {
   connected: boolean
+  platform_managed?: boolean
   identity_id: string | null
   merchant_id: string | null
   onboarding_form_id: string | null
@@ -61,6 +62,7 @@ export default function PaymentRailsPage() {
   const [defaultPayoutMethod, setDefaultPayoutMethod] = useState<'card' | 'manual'>('card')
   const [minPayoutAmount, setMinPayoutAmount] = useState<number>(25)
   const [savingPayoutSettings, setSavingPayoutSettings] = useState(false)
+  const [platformManaged, setPlatformManaged] = useState(false)
 
   const loadPaymentRails = async () => {
     setLoading(true)
@@ -81,6 +83,7 @@ export default function PaymentRailsPage() {
       const connectedId = status.merchant_id || status.identity_id || undefined
       const payoutSettings = status.payout_settings || {}
 
+      setPlatformManaged(Boolean(status.platform_managed))
       setDefaultPayoutMethod(payoutSettings.default_method === 'manual' ? 'manual' : 'card')
       setMinPayoutAmount(typeof payoutSettings.min_payout_amount === 'number' ? payoutSettings.min_payout_amount : 25)
 
@@ -181,6 +184,11 @@ export default function PaymentRailsPage() {
       return
     }
 
+    if (platformManaged) {
+      setInfo('Card processing is managed at the platform level.')
+      return
+    }
+
     setConnecting(railType)
     try {
       const res = await fetchWithCsrf('/api/payment-rails', {
@@ -244,6 +252,20 @@ export default function PaymentRailsPage() {
           Configure how you receive payments and issue payouts
         </p>
       </div>
+
+      {platformManaged ? (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-foreground font-medium">Processor connection is platform-managed</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                This workspace uses a single card processor account across all ledgers. You can still configure payout preferences below.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-6">
         <div className="flex items-start gap-3">
