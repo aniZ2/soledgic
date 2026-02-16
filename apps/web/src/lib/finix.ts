@@ -1,4 +1,5 @@
 const DEFAULT_FINIX_VERSION = '2022-02-01'
+const PUBLIC_PRICING_URL = 'https://soledgic.com/pricing'
 
 function getFinixEnvironment(): 'production' | 'sandbox' {
   const raw = (process.env.FINIX_ENV || '').toLowerCase().trim()
@@ -124,7 +125,8 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     expiration_in_minutes: expirationInMinutes,
     return_url: returnTarget,
     expired_session_url: expiredTarget,
-    fee_details_url: `${appUrl}/terms`,
+    // Always send merchants to the public pricing page.
+    fee_details_url: PUBLIC_PRICING_URL,
     terms_of_service_url: `${appUrl}/terms`,
     privacy_policy_url: `${appUrl}/privacy`,
   }
