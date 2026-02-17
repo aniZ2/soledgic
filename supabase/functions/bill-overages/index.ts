@@ -118,7 +118,7 @@ Deno.serve(async (req: Request) => {
   const orgFilter = typeof body.organization_id === 'string' ? body.organization_id.trim() : ''
 
   const platformMerchantId =
-    (Deno.env.get('BILLING_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID') || '').trim() || null
+    (Deno.env.get('BILLING_MERCHANT_ID') || Deno.env.get('PROCESSOR_MERCHANT_ID') || '').trim() || null
 
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
@@ -307,7 +307,7 @@ Deno.serve(async (req: Request) => {
       continue
     }
 
-    const provider = getPaymentProvider('card')
+    const provider = getPaymentProvider('card', { processor: { merchantId } })
     const checkout = await provider.createPaymentIntent({
       amount: amountCents,
       currency: 'USD',

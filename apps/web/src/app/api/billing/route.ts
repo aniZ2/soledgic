@@ -186,9 +186,9 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
   // Shared-merchant model: processing is platform-managed (env-configured),
   // not configured per workspace.
   const processorConnected = Boolean(
-    (process.env.PROCESSOR_USERNAME || process.env.FINIX_USERNAME) &&
-      (process.env.PROCESSOR_PASSWORD || process.env.FINIX_PASSWORD) &&
-      (process.env.PROCESSOR_MERCHANT_ID || process.env.FINIX_MERCHANT_ID)
+    process.env.PROCESSOR_USERNAME &&
+      process.env.PROCESSOR_PASSWORD &&
+      process.env.PROCESSOR_MERCHANT_ID
   )
 
   let lastCharge: Record<string, any> | null = null

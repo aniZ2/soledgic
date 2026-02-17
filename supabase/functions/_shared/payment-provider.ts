@@ -73,9 +73,11 @@ export interface PaymentStatus {
 }
 
 export interface ProcessorProviderConfig {
+  merchantId?: string | null
   username?: string | null
   password?: string | null
   apiVersion?: string | null
+  versionHeader?: string | null
   environment?: string | null
   baseUrl?: string | null
   transfersPath?: string | null
@@ -110,44 +112,36 @@ class CardPaymentProvider implements PaymentProvider {
   }
 
   private resolveConfig() {
-    const envRaw = (
-      this.cfg.environment ||
-      Deno.env.get('PROCESSOR_ENV') ||
-      Deno.env.get('FINIX_ENV') ||
-      'sandbox'
-    )
-      .toLowerCase()
-      .trim()
+    const envRaw = (this.cfg.environment || Deno.env.get('PROCESSOR_ENV') || 'sandbox').toLowerCase().trim()
     const env: ProcessorEnv =
       envRaw === 'production' || envRaw === 'prod' || envRaw === 'live' ? 'production' : 'sandbox'
 
-    const baseUrl = (
-      this.cfg.baseUrl ||
-      Deno.env.get('PROCESSOR_BASE_URL') ||
-      Deno.env.get('FINIX_BASE_URL') ||
-      (env === 'production'
-        ? 'https://finix.live-payments-api.com'
-        : 'https://finix.sandbox-payments-api.com')
-    ).replace(/\/$/, '')
-
     let configError: string | null = null
-    if (env === 'production' && baseUrl.includes('sandbox')) {
-      configError = 'Payment processor misconfiguration: production environment cannot use sandbox base URL'
+    const baseUrl = (this.cfg.baseUrl || Deno.env.get('PROCESSOR_BASE_URL') || '').trim().replace(/\/$/, '')
+    if (!baseUrl) {
+      configError = 'Payment processor base URL is not configured'
+    } else {
+      if (env === 'production' && /sandbox/i.test(baseUrl)) {
+        configError = 'Payment processor misconfiguration: production environment cannot use sandbox base URL'
+      }
+      if (env === 'sandbox' && /(production|prod)/i.test(baseUrl)) {
+        configError = 'Payment processor misconfiguration: sandbox environment cannot use production base URL'
+      }
     }
-    if (env === 'sandbox' && baseUrl.includes('live')) {
-      configError = 'Payment processor misconfiguration: sandbox environment cannot use live base URL'
+
+    const versionHeader = (this.cfg.versionHeader || Deno.env.get('PROCESSOR_VERSION_HEADER') || '').trim()
+    const apiVersion = (this.cfg.apiVersion || Deno.env.get('PROCESSOR_API_VERSION') || '').trim()
+    if ((versionHeader && !apiVersion) || (!versionHeader && apiVersion)) {
+      configError = 'Payment processor versioning is misconfigured (set both PROCESSOR_VERSION_HEADER and PROCESSOR_API_VERSION)'
     }
 
     return {
-      username: this.cfg.username || Deno.env.get('PROCESSOR_USERNAME') || Deno.env.get('FINIX_USERNAME'),
-      password: this.cfg.password || Deno.env.get('PROCESSOR_PASSWORD') || Deno.env.get('FINIX_PASSWORD'),
-      apiVersion:
-        this.cfg.apiVersion ||
-        Deno.env.get('PROCESSOR_API_VERSION') ||
-        Deno.env.get('FINIX_API_VERSION') ||
-        '2022-02-01',
+      merchantId: (this.cfg.merchantId || Deno.env.get('PROCESSOR_MERCHANT_ID') || '').trim() || null,
+      username: this.cfg.username || Deno.env.get('PROCESSOR_USERNAME'),
+      password: this.cfg.password || Deno.env.get('PROCESSOR_PASSWORD'),
+      versionHeader: versionHeader || null,
+      apiVersion: apiVersion || null,
       transfersPath: this.cfg.transfersPath || Deno.env.get('PROCESSOR_TRANSFERS_PATH') || '/transfers',
-      merchantId: (Deno.env.get('PROCESSOR_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID') || '').trim() || null,
       baseUrl,
       configError,
     }
@@ -166,7 +160,8 @@ class CardPaymentProvider implements PaymentProvider {
   }
 
   async createPaymentIntent(params: PaymentIntentParams): Promise<PaymentIntentResult> {
-    const { username, password, apiVersion, transfersPath, merchantId, baseUrl, configError } = this.resolveConfig()
+    const { username, password, apiVersion, versionHeader, transfersPath, merchantId, baseUrl, configError } =
+      this.resolveConfig()
 
     if (configError) return { success: false, provider: 'card', error: configError }
     if (!username || !password) {
@@ -206,11 +201,12 @@ class CardPaymentProvider implements PaymentProvider {
     if (destination) payload.destination = destination
 
     try {
+      const versioning = versionHeader && apiVersion ? { [versionHeader]: apiVersion } : {}
       const response = await fetch(`${baseUrl}${transfersPath}`, {
         method: 'POST',
         headers: {
           Authorization: `Basic ${btoa(`${username}:${password}`)}`,
-          [Deno.env.get('PROCESSOR_VERSION_HEADER') || 'Finix-Version']: apiVersion,
+          ...versioning,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -256,7 +252,8 @@ class CardPaymentProvider implements PaymentProvider {
   }
 
   async getPaymentStatus(paymentIntentId: string): Promise<PaymentStatus> {
-    const { username, password, apiVersion, transfersPath, baseUrl, configError } = this.resolveConfig()
+    const { username, password, apiVersion, versionHeader, transfersPath, baseUrl, configError } =
+      this.resolveConfig()
 
     if (configError) return { success: false, provider: 'card', error: configError }
     if (!username || !password) {
@@ -264,11 +261,12 @@ class CardPaymentProvider implements PaymentProvider {
     }
 
     try {
+      const versioning = versionHeader && apiVersion ? { [versionHeader]: apiVersion } : {}
       const response = await fetch(`${baseUrl}${transfersPath}/${paymentIntentId}`, {
         method: 'GET',
         headers: {
           Authorization: `Basic ${btoa(`${username}:${password}`)}`,
-          [Deno.env.get('PROCESSOR_VERSION_HEADER') || 'Finix-Version']: apiVersion,
+          ...versioning,
         },
       })
 

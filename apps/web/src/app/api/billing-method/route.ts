@@ -250,8 +250,6 @@ export const POST = createApiHandler(
       const onboardingFormId = normalizeOnboardingFormId(
         process.env.PROCESSOR_BILLING_ONBOARDING_FORM_ID ||
           process.env.PROCESSOR_ONBOARDING_FORM_ID ||
-          process.env.FINIX_BILLING_ONBOARDING_FORM_ID ||
-          process.env.FINIX_ONBOARDING_FORM_ID ||
           null
       )
       if (!onboardingFormId) {
@@ -276,7 +274,7 @@ export const POST = createApiHandler(
         onboardingFormId,
         appUrl,
         identityId: billingSettings.identity_id || null,
-        applicationId: process.env.PROCESSOR_APPLICATION_ID || process.env.FINIX_APPLICATION_ID || null,
+        applicationId: process.env.PROCESSOR_APPLICATION_ID || null,
         expirationInMinutes,
         state: setupState,
         returnUrl: returnUrl.toString(),

@@ -142,9 +142,10 @@ const handler = createHandler(
         // Shared-merchant model: processing is platform-managed (env-configured),
         // not configured per organization.
         const processorConnected = Boolean(
-          (Deno.env.get('PROCESSOR_USERNAME') || Deno.env.get('FINIX_USERNAME')) &&
-            (Deno.env.get('PROCESSOR_PASSWORD') || Deno.env.get('FINIX_PASSWORD')) &&
-            (Deno.env.get('PROCESSOR_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID'))
+          Deno.env.get('PROCESSOR_BASE_URL') &&
+            Deno.env.get('PROCESSOR_USERNAME') &&
+            Deno.env.get('PROCESSOR_PASSWORD') &&
+            Deno.env.get('PROCESSOR_MERCHANT_ID')
         )
 
         let lastCharge: Record<string, any> | null = null

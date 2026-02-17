@@ -1,25 +1,23 @@
-const DEFAULT_PROCESSOR_VERSION = '2022-02-01'
 const PUBLIC_PRICING_URL = 'https://soledgic.com/pricing'
 
 function getProcessorEnvironment(): 'production' | 'sandbox' {
-  const raw = (process.env.PROCESSOR_ENV || process.env.FINIX_ENV || '').toLowerCase().trim()
+  const raw = (process.env.PROCESSOR_ENV || '').toLowerCase().trim()
   if (['production', 'prod', 'live'].includes(raw)) return 'production'
   if (['sandbox', 'test', 'testing', 'development', 'dev'].includes(raw)) return 'sandbox'
   return process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
 }
 
 function getProcessorBaseUrl() {
-  if (process.env.PROCESSOR_BASE_URL) return process.env.PROCESSOR_BASE_URL
-  if (process.env.FINIX_BASE_URL) return process.env.FINIX_BASE_URL
-  const env = getProcessorEnvironment()
-  return env === 'production'
-    ? 'https://finix.live-payments-api.com'
-    : 'https://finix.sandbox-payments-api.com'
+  const baseUrl = (process.env.PROCESSOR_BASE_URL || '').trim()
+  if (!baseUrl) {
+    throw new Error('Payment processor base URL is not configured')
+  }
+  return baseUrl
 }
 
 function getProcessorAuthHeader() {
-  const username = process.env.PROCESSOR_USERNAME || process.env.FINIX_USERNAME
-  const password = process.env.PROCESSOR_PASSWORD || process.env.FINIX_PASSWORD
+  const username = process.env.PROCESSOR_USERNAME
+  const password = process.env.PROCESSOR_PASSWORD
   if (!username || !password) {
     throw new Error('Payment processor credentials are not configured')
   }
@@ -42,19 +40,24 @@ export async function processorRequest<T = any>(
   const env = getProcessorEnvironment()
 
   // Guard against misconfiguration (e.g. sandbox URL with production env).
-  if (env === 'production' && baseUrl.includes('sandbox')) {
+  if (env === 'production' && /sandbox/i.test(baseUrl)) {
     throw new Error('Payment processor misconfiguration: production environment cannot use sandbox base URL')
   }
-  if (env === 'sandbox' && baseUrl.includes('live-payments')) {
-    throw new Error('Payment processor misconfiguration: sandbox environment cannot use live base URL')
+  if (env === 'sandbox' && /(live|production)/i.test(baseUrl)) {
+    throw new Error('Payment processor misconfiguration: sandbox environment cannot use production base URL')
+  }
+
+  const versionHeader = (process.env.PROCESSOR_VERSION_HEADER || '').trim()
+  const apiVersion = (process.env.PROCESSOR_API_VERSION || '').trim()
+  if ((versionHeader && !apiVersion) || (!versionHeader && apiVersion)) {
+    throw new Error('Payment processor versioning is misconfigured (set both PROCESSOR_VERSION_HEADER and PROCESSOR_API_VERSION)')
   }
 
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
       Authorization: getProcessorAuthHeader(),
-      [process.env.PROCESSOR_VERSION_HEADER || 'Finix-Version']:
-        process.env.PROCESSOR_API_VERSION || process.env.FINIX_API_VERSION || DEFAULT_PROCESSOR_VERSION,
+      ...(versionHeader ? { [versionHeader]: apiVersion } : {}),
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -167,7 +170,7 @@ export async function fetchProcessorIdentity(identityId: string) {
   const identity = await processorRequest<any>(`/identities/${identityId}`)
 
   // Defense-in-depth: ensure a redirected identity belongs to our configured application.
-  const expectedAppId = process.env.PROCESSOR_APPLICATION_ID || process.env.FINIX_APPLICATION_ID
+  const expectedAppId = process.env.PROCESSOR_APPLICATION_ID
   if (expectedAppId) {
     const actualAppId = extractIdentityApplicationId(identity)
     if (!actualAppId) {

@@ -107,7 +107,7 @@ class CardProcessorRail implements PaymentRail {
 
     // Platform funding instrument (optional, depends on processor configuration).
     const platformSource =
-      (Deno.env.get('PROCESSOR_PAYOUT_SOURCE_ID') || Deno.env.get('FINIX_SOURCE_ID') || '').trim() || null
+      (Deno.env.get('PROCESSOR_PAYOUT_SOURCE_ID') || '').trim() || null
 
     const provider = getPaymentProvider('card')
     const result = await provider.createPaymentIntent({
@@ -168,10 +168,12 @@ class CardProcessorRail implements PaymentRail {
   validateConfig(_config: RailConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = []
 
-    const username = Deno.env.get('PROCESSOR_USERNAME') || Deno.env.get('FINIX_USERNAME') || ''
-    const password = Deno.env.get('PROCESSOR_PASSWORD') || Deno.env.get('FINIX_PASSWORD') || ''
-    const merchant = Deno.env.get('PROCESSOR_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID') || ''
+    const baseUrl = Deno.env.get('PROCESSOR_BASE_URL') || ''
+    const username = Deno.env.get('PROCESSOR_USERNAME') || ''
+    const password = Deno.env.get('PROCESSOR_PASSWORD') || ''
+    const merchant = Deno.env.get('PROCESSOR_MERCHANT_ID') || ''
 
+    if (!baseUrl.trim()) errors.push('Processor base URL required')
     if (!username.trim()) errors.push('Processor username required')
     if (!password.trim()) errors.push('Processor password required')
     if (!merchant.trim()) errors.push('Processor merchant required')

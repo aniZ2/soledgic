@@ -19,9 +19,9 @@ interface OrganizationSettings {
 }
 
 function getPlatformProcessorSettings() {
-  const merchantId = process.env.PROCESSOR_MERCHANT_ID || process.env.FINIX_MERCHANT_ID || null
-  const username = process.env.PROCESSOR_USERNAME || process.env.FINIX_USERNAME || null
-  const password = process.env.PROCESSOR_PASSWORD || process.env.FINIX_PASSWORD || null
+  const merchantId = process.env.PROCESSOR_MERCHANT_ID || null
+  const username = process.env.PROCESSOR_USERNAME || null
+  const password = process.env.PROCESSOR_PASSWORD || null
   const configured = Boolean(merchantId && username && password)
   return { configured }
 }
