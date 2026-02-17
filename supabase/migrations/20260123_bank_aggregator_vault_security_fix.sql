@@ -36,7 +36,7 @@ BEGIN
   
   RETURN v_token;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION get_bank_aggregator_token_from_vault IS 
-  'Retrieve bank_aggregator access token from Vault. Returns NULL for marker strings like [ENCRYPTED] (SECURITY DEFINER)';
+  'Retrieve bank_aggregator access token from Vault. Returns NULL for marker strings like [ENCRYPTED].';

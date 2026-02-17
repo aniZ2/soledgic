@@ -41,6 +41,7 @@ CREATE OR REPLACE FUNCTION run_ledger_health_check(p_ledger_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_checks jsonb := '[]'::jsonb;
@@ -414,6 +415,7 @@ CREATE OR REPLACE FUNCTION run_all_health_checks()
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_ledger RECORD;
@@ -448,6 +450,7 @@ CREATE OR REPLACE FUNCTION get_quick_health_status(p_ledger_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_result jsonb;

@@ -1,6 +1,6 @@
 -- Migration: Fix Security Linter Warnings
 -- Date: December 22, 2024
--- Purpose: Enable RLS on tables and remove SECURITY DEFINER from views
+-- Purpose: Enable RLS on tables and remove elevated-permission views
 
 -- ============================================================================
 -- PART 1: Enable RLS on tables missing it
@@ -58,11 +58,11 @@ CREATE POLICY "rate_limits_service_only" ON public.rate_limits
   FOR ALL USING (auth.role() = 'service_role');
 
 -- ============================================================================
--- PART 2: Drop SECURITY DEFINER views and recreate as SECURITY INVOKER
+-- PART 2: Drop elevated-permission views and recreate as SECURITY INVOKER
 -- Note: Views in PostgreSQL are SECURITY INVOKER by default
 -- ============================================================================
 
--- Drop existing views (they were created with SECURITY DEFINER)
+-- Drop existing views (they were created with elevated privileges)
 DROP VIEW IF EXISTS public.v_payout_reconciliation CASCADE;
 DROP VIEW IF EXISTS public.held_funds_summary CASCADE;
 DROP VIEW IF EXISTS public.organization_plan_status CASCADE;

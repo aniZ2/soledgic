@@ -240,6 +240,7 @@ CREATE OR REPLACE FUNCTION record_api_usage(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   INSERT INTO usage_records (
@@ -268,6 +269,7 @@ CREATE OR REPLACE FUNCTION record_transaction_usage(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   INSERT INTO usage_records (
@@ -293,6 +295,7 @@ CREATE OR REPLACE FUNCTION aggregate_daily_usage(p_date date DEFAULT CURRENT_DAT
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_count integer := 0;
@@ -321,6 +324,7 @@ CREATE OR REPLACE FUNCTION get_current_period_usage(p_organization_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_period_start timestamptz;
@@ -371,6 +375,7 @@ CREATE OR REPLACE FUNCTION check_usage_limits(p_organization_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_org organizations%ROWTYPE;
@@ -422,6 +427,7 @@ CREATE OR REPLACE FUNCTION sync_subscription_from_processor(
 RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_subscription_id uuid;
@@ -558,7 +564,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS trigger_transaction_usage ON transactions;
 CREATE TRIGGER trigger_transaction_usage

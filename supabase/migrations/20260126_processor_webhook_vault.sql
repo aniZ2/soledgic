@@ -54,7 +54,7 @@ BEGIN
   
   RETURN v_vault_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
 -- 3. FUNCTION TO RETRIEVE processor WEBHOOK SECRET FROM VAULT
@@ -86,7 +86,7 @@ BEGIN
   -- (This will be null for new ledgers or after migration)
   RETURN v_settings_secret;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ============================================================================
 -- 4. MIGRATE EXISTING SECRETS TO VAULT

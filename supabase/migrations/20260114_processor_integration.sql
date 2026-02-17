@@ -134,6 +134,7 @@ CREATE OR REPLACE FUNCTION reprocess_processor_event(p_event_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_event processor_events%ROWTYPE;
@@ -161,6 +162,7 @@ CREATE OR REPLACE FUNCTION get_processor_reconciliation_summary(p_ledger_id uuid
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_result jsonb;

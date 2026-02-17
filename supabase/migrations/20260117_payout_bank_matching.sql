@@ -35,6 +35,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_matched INTEGER := 0;
@@ -138,6 +139,7 @@ CREATE OR REPLACE FUNCTION trigger_match_processor_payout()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 BEGIN
   -- Only process deposits that might be processor payouts

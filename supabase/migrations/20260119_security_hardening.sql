@@ -44,7 +44,7 @@ BEGIN
   
   RETURN v_vault_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create a function to retrieve token from vault (for Edge Functions)
 -- SECURITY FIX: Properly handle marker strings from incomplete migrations
@@ -80,7 +80,7 @@ BEGIN
   
   RETURN v_token;
 END;
-$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Migrate existing plaintext tokens to vault
 DO $$
@@ -101,7 +101,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION store_bank_aggregator_token_in_vault IS 'Securely store bank_aggregator access token in Supabase Vault';
-COMMENT ON FUNCTION get_bank_aggregator_token_from_vault IS 'Retrieve bank_aggregator access token from Vault (SECURITY DEFINER)';
+COMMENT ON FUNCTION get_bank_aggregator_token_from_vault IS 'Retrieve bank_aggregator access token from Vault';
 
 -- ============================================================================
 -- 3. API KEY HASH ENFORCEMENT
@@ -149,7 +149,7 @@ BEGIN
   FROM ledgers l
   WHERE l.api_key_hash = v_hash;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION validate_api_key_secure IS 'Validate API key using hash comparison only - no plaintext';
 
