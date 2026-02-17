@@ -119,8 +119,6 @@ Deno.serve(async (req: Request) => {
 
   const platformMerchantId =
     (Deno.env.get('BILLING_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID') || '').trim() || null
-  const platformDestinationId =
-    (Deno.env.get('BILLING_DESTINATION_ID') || Deno.env.get('FINIX_SOURCE_ID') || '').trim() || null
 
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
@@ -289,12 +287,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const merchantId = platformMerchantId
-    if (!merchantId || !platformDestinationId) {
+    if (!merchantId) {
       await supabase
         .from('billing_overage_charges')
         .update({
           status: 'failed',
-          error: 'Billing destination is not configured',
+          error: 'Billing merchant is not configured',
           updated_at: new Date().toISOString(),
         })
         .eq('id', chargeId)
@@ -323,7 +321,6 @@ Deno.serve(async (req: Request) => {
         soledgic_additional_team_members: String(additionalMembers),
       },
       payment_method_id: billingSourceId,
-      destination_id: platformDestinationId,
       merchant_id: merchantId,
     })
 

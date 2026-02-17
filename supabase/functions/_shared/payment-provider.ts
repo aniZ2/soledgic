@@ -335,50 +335,42 @@ class FinixPaymentProvider implements PaymentProvider {
       return { success: false, provider: 'card', error: 'Payment processor credentials are not configured' }
     }
 
-    const source =
-      params.payment_method_id ||
-      params.metadata?.source_id ||
-      sourceId ||
-      null
+    // Finix transfer rules:
+    // - DEBIT transfers use `source` (no destination)
+    // - CREDIT transfers use `destination` (no source)
+    // This provider primarily supports charge-side DEBIT flows.
+    const source = params.payment_method_id || params.metadata?.source_id || sourceId || null
+    const destination = params.destination_id || params.metadata?.destination_id || null
+    const merchant = params.merchant_id || merchantId || null
 
-    const merchant =
-      params.merchant_id ||
-      merchantId ||
-      null
+    if (!merchant) {
+      return { success: false, provider: 'card', error: 'Payment processor merchant is not configured' }
+    }
 
-    const destination =
-      params.destination_id ||
-      params.metadata?.destination_id ||
-      merchant ||
-      null
-
-    if (!source) {
+    if (source && destination) {
       return {
         success: false,
         provider: 'card',
-        error: 'No payment method configured for checkout',
+        error: 'Invalid processor transfer: provide only one of source (payment_method_id) or destination_id',
       }
     }
-    if (!destination) {
-      return {
-        success: false,
-        provider: 'card',
-        error: 'No destination account configured for checkout',
-      }
+
+    if (!source && !destination) {
+      return { success: false, provider: 'card', error: 'No payment method configured for checkout' }
     }
 
     const payload: Record<string, unknown> = {
       amount: params.amount,
       currency: params.currency.toUpperCase(),
-      source,
-      destination,
       tags: {
         ...params.metadata,
         checkout_description: params.description || '',
         checkout_receipt_email: params.receipt_email || '',
       },
     }
-    if (merchant) payload.merchant = merchant
+    payload.merchant = merchant
+    if (source) payload.source = source
+    if (destination) payload.destination = destination
 
     try {
       const response = await fetch(`${baseUrl}${transfersPath}`, {
