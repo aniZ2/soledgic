@@ -1,6 +1,6 @@
-// Soledgic Processor Adapter
-// Executes payouts across multiple payment rails while keeping ledger logic consistent
-// Supports: CARD, STRIPE_CONNECT, PLAID_TRANSFER, WISE, MANUAL_BANK_FILE
+// Soledgic Payout Executor
+// Executes payouts across payment rails while keeping ledger logic consistent.
+// Shared-merchant invariant: card rail uses platform-managed credentials only.
 // SECURITY HARDENED VERSION
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -8,20 +8,18 @@ import {
   createHandler, 
   jsonResponse, 
   errorResponse, 
-  validateApiKey,
-  hashApiKey,
   LedgerContext,
   getClientIp,
-  createAuditLogAsync,
   isProduction
 } from '../_shared/utils.ts'
+import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-// Public rail names are whitelabeled. Internally, the primary processor is Finix.
-type PayoutRail = 'card' | 'stripe_connect' | 'plaid_transfer' | 'wise' | 'manual' | 'crypto'
+// Public rail names are whitelabeled.
+type PayoutRail = 'card' | 'wise' | 'manual' | 'crypto'
 
 interface PayoutRequest {
   action: 'execute' | 'batch_execute' | 'get_status' | 'configure_rail' | 'list_rails' | 'generate_batch_file'
@@ -67,11 +65,7 @@ interface CreatorPayoutDetails {
   }
 }
 
-interface OrganizationProcessorSettings {
-  identity_id?: string | null
-  merchant_id?: string | null
-  source_id?: string | null
-}
+// Platform-managed processor settings live in environment variables.
 
 // ============================================================================
 // PAYMENT RAIL INTERFACE
@@ -85,182 +79,22 @@ interface PaymentRail {
 }
 
 // ============================================================================
-// STRIPE CONNECT RAIL
+// CARD PROCESSOR RAIL
 // ============================================================================
 
-class StripeConnectRail implements PaymentRail {
-  name: PayoutRail = 'stripe_connect'
-
-  async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
-    const stripeKey = config.credentials?.secret_key || Deno.env.get('STRIPE_SECRET_KEY')
-    if (!stripeKey) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Legacy provider key not configured' }
-    }
-
-    const connectedAccountId = payout.payout_method?.account_id
-    if (!connectedAccountId) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'No connected account ID' }
-    }
-
-    try {
-      // Create transfer to connected account
-      const response = await fetch('https://api.stripe.com/v1/transfers', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${stripeKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          amount: String(Math.round(payout.amount * 100)), // Convert to cents
-          currency: payout.currency.toLowerCase(),
-          destination: connectedAccountId,
-          transfer_group: payout.payout_id,
-          'metadata[soledgic_payout_id]': payout.payout_id,
-          'metadata[creator_id]': payout.creator_id,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (data.error) {
-        return {
-          success: false,
-          payout_id: payout.payout_id,
-          rail: this.name,
-          status: 'failed',
-          error: data.error.message,
-        }
-      }
-
-      return {
-        success: true,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        external_id: data.id,
-        status: 'completed',
-        metadata: { stripe_transfer_id: data.id },
-      }
-    } catch (err: any) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: err.message }
-    }
-  }
-
-  async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
-    const stripeKey = config.credentials?.secret_key || Deno.env.get('STRIPE_SECRET_KEY')
-    if (!stripeKey) {
-      return {
-        success: false,
-        payout_id: '',
-        rail: this.name,
-        external_id: externalId,
-        status: 'failed',
-        error: 'Legacy provider key not configured',
-      }
-    }
-    
-    const response = await fetch(`https://api.stripe.com/v1/transfers/${externalId}`, {
-      headers: { 'Authorization': `Bearer ${stripeKey}` },
-    })
-
-    const data = await response.json()
-    
-    return {
-      success: !data.error,
-      payout_id: data.metadata?.soledgic_payout_id || '',
-      rail: this.name,
-      external_id: externalId,
-      status: data.reversed ? 'failed' : 'completed',
-    }
-  }
-
-  validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
-    const errors: string[] = []
-    if (!config.credentials?.secret_key && !Deno.env.get('STRIPE_SECRET_KEY')) {
-      errors.push('Legacy provider secret key required')
-    }
-    return { valid: errors.length === 0, errors }
-  }
-}
-
-// ============================================================================
-// FINIX RAIL
-// ============================================================================
-
-class FinixRail implements PaymentRail {
+class CardProcessorRail implements PaymentRail {
   name: PayoutRail = 'card'
 
-  private resolveConfig(config: RailConfig) {
-    const username = config.credentials?.username || Deno.env.get('FINIX_USERNAME')
-    const password = config.credentials?.password || Deno.env.get('FINIX_PASSWORD')
-    const apiVersion = config.settings?.api_version || Deno.env.get('FINIX_API_VERSION') || '2022-02-01'
-    const envRaw = config.settings?.environment || Deno.env.get('FINIX_ENV') || 'sandbox'
-    const envNormalized = String(envRaw).toLowerCase().trim()
-    const env =
-      envNormalized === 'production' || envNormalized === 'prod' || envNormalized === 'live'
-        ? 'production'
-        : 'sandbox'
-    const baseUrl = (
-      config.settings?.base_url ||
-      Deno.env.get('FINIX_BASE_URL') ||
-      (env === 'production'
-        ? 'https://finix.live-payments-api.com'
-        : 'https://finix.sandbox-payments-api.com')
-    ).replace(/\/$/, '')
-
-    let configError: string | null = null
-    if (env === 'production' && baseUrl.includes('sandbox')) {
-      configError = 'Payment processor misconfiguration: production environment cannot use sandbox base URL'
-    }
-    if (env === 'sandbox' && baseUrl.includes('live-payments')) {
-      configError = 'Payment processor misconfiguration: sandbox environment cannot use live base URL'
-    }
-
-    return { username, password, apiVersion, baseUrl, configError }
-  }
-
-  private parseError(data: any, fallback: string) {
-    return (
-      data?.error ||
-      data?.message ||
-      data?._embedded?.errors?.[0]?.message ||
-      fallback
-    )
-  }
-
-  private mapStatus(state: string | undefined): PayoutResult['status'] {
-    const normalized = (state || '').toUpperCase()
-    if (['SUCCEEDED', 'SETTLED', 'COMPLETED'].includes(normalized)) return 'completed'
-    if (['FAILED', 'CANCELED', 'REJECTED', 'DECLINED', 'RETURNED'].includes(normalized)) return 'failed'
-    if (['PROCESSING', 'PENDING', 'CREATED', 'SENT'].includes(normalized)) return 'processing'
+  private mapProviderStatus(status: string | undefined): PayoutResult['status'] {
+    const normalized = String(status || '').toLowerCase().trim()
+    if (normalized === 'succeeded' || normalized === 'completed' || normalized === 'settled') return 'completed'
+    if (normalized === 'failed' || normalized === 'canceled' || normalized === 'cancelled') return 'failed'
+    if (normalized === 'processing') return 'processing'
     return 'pending'
   }
 
-  async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
-    const { username, password, apiVersion, baseUrl, configError } = this.resolveConfig(config)
-    if (configError) {
-      return {
-        success: false,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        status: 'failed',
-        error: configError,
-      }
-    }
-    if (!username || !password) {
-      return {
-        success: false,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        status: 'failed',
-        error: 'Payment processor credentials not configured',
-      }
-    }
-
-    const destination =
-      payout.payout_method?.account_id ||
-      config.settings?.default_destination ||
-      null
-
+  async execute(payout: CreatorPayoutDetails, _config: RailConfig): Promise<PayoutResult> {
+    const destination = payout.payout_method?.account_id || null
     if (!destination) {
       return {
         success: false,
@@ -271,295 +105,77 @@ class FinixRail implements PaymentRail {
       }
     }
 
-    const source = config.settings?.source || Deno.env.get('FINIX_SOURCE_ID') || undefined
-    const merchant = config.settings?.merchant || Deno.env.get('FINIX_MERCHANT_ID') || undefined
-    const transfersPath = config.settings?.transfers_path || '/transfers'
+    // Platform funding instrument (optional, depends on processor configuration).
+    const platformSource =
+      (Deno.env.get('PROCESSOR_PAYOUT_SOURCE_ID') || Deno.env.get('FINIX_SOURCE_ID') || '').trim() || null
 
-    const payload: Record<string, unknown> = {
+    const provider = getPaymentProvider('card')
+    const result = await provider.createPaymentIntent({
       amount: Math.round(payout.amount * 100),
       currency: payout.currency.toUpperCase(),
-      destination,
-      tags: {
+      description: `Payout ${payout.payout_id}`,
+      metadata: {
         soledgic_payout_id: payout.payout_id,
         creator_id: payout.creator_id,
       },
-    }
-    if (source) payload.source = source
-    if (merchant) payload.merchant = merchant
-
-    try {
-      const response = await fetch(`${baseUrl}${transfersPath}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
-          'Finix-Version': apiVersion,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        return {
-          success: false,
-          payout_id: payout.payout_id,
-          rail: this.name,
-          status: 'failed',
-          error: this.parseError(data, `Processor transfer failed (${response.status})`),
-        }
-      }
-
-      return {
-        success: true,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        external_id: data?.id,
-        status: this.mapStatus(data?.state || data?.status),
-        metadata: { transfer_id: data?.id },
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        status: 'failed',
-        error: err.message,
-      }
-    }
-  }
-
-  async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
-    const { username, password, apiVersion, baseUrl, configError } = this.resolveConfig(config)
-    if (configError) {
-      return {
-        success: false,
-        payout_id: '',
-        rail: this.name,
-        external_id: externalId,
-        status: 'failed',
-        error: configError,
-      }
-    }
-    if (!username || !password) {
-      return {
-        success: false,
-        payout_id: '',
-        rail: this.name,
-        external_id: externalId,
-        status: 'failed',
-        error: 'Payment processor credentials not configured',
-      }
-    }
-
-    const transfersPath = config.settings?.transfers_path || '/transfers'
-
-    try {
-      const response = await fetch(`${baseUrl}${transfersPath}/${externalId}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
-          'Finix-Version': apiVersion,
-          'Content-Type': 'application/json',
-        },
-      })
-
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        return {
-          success: false,
-          payout_id: '',
-          rail: this.name,
-          external_id: externalId,
-          status: 'failed',
-          error: this.parseError(data, `Processor status request failed (${response.status})`),
-        }
-      }
-
-      return {
-        success: true,
-        payout_id: data?.tags?.soledgic_payout_id || '',
-        rail: this.name,
-        external_id: externalId,
-        status: this.mapStatus(data?.state || data?.status),
-      }
-    } catch (err: any) {
-      return {
-        success: false,
-        payout_id: '',
-        rail: this.name,
-        external_id: externalId,
-        status: 'failed',
-        error: err.message,
-      }
-    }
-  }
-
-  validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
-    const errors: string[] = []
-    if (!config.credentials?.username && !Deno.env.get('FINIX_USERNAME')) {
-      errors.push('Processor username required')
-    }
-    if (!config.credentials?.password && !Deno.env.get('FINIX_PASSWORD')) {
-      errors.push('Processor password required')
-    }
-    return { valid: errors.length === 0, errors }
-  }
-}
-
-// ============================================================================
-// PLAID TRANSFER RAIL (USES VAULT FOR TOKENS)
-// ============================================================================
-
-class PlaidTransferRail implements PaymentRail {
-  name: PayoutRail = 'plaid_transfer'
-
-  async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
-    const clientId = config.credentials?.client_id || Deno.env.get('PLAID_CLIENT_ID')
-    const secret = config.credentials?.secret || Deno.env.get('PLAID_SECRET')
-    const env = config.settings?.environment || 'sandbox'
-
-    if (!clientId || !secret) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Bank feed credentials not configured' }
-    }
-
-    const bankAccount = payout.payout_method?.bank_account
-    if (!bankAccount) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'No bank account details' }
-    }
-
-    const baseUrl = env === 'production' 
-      ? 'https://production.plaid.com'
-      : 'https://sandbox.plaid.com'
-
-    try {
-      // SECURITY: Get access token from vault, not from request
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      )
-      
-      const { data: accessToken } = await supabase.rpc('get_plaid_token_from_vault', {
-        p_connection_id: payout.payout_method?.account_id
-      })
-      
-      if (!accessToken) {
-        return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Bank feed connection not found' }
-      }
-
-      // Create transfer authorization first
-      const authResponse = await fetch(`${baseUrl}/transfer/authorization/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          secret: secret,
-          access_token: accessToken,
-          account_id: bankAccount.account_number,
-          type: 'debit',
-          network: 'ach',
-          amount: payout.amount.toFixed(2),
-          ach_class: 'ppd',
-          user: {
-            legal_name: payout.creator_name,
-          },
-        }),
-      })
-
-      const authData = await authResponse.json()
-      
-      if (authData.error_code) {
-        return { 
-          success: false, 
-          payout_id: payout.payout_id, 
-          rail: this.name, 
-          status: 'failed', 
-          error: authData.error_message 
-        }
-      }
-
-      // Execute the transfer
-      const transferResponse = await fetch(`${baseUrl}/transfer/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          secret: secret,
-          access_token: accessToken,
-          account_id: bankAccount.account_number,
-          authorization_id: authData.authorization.id,
-          description: `Payout ${payout.payout_id}`,
-        }),
-      })
-
-      const transferData = await transferResponse.json()
-
-      if (transferData.error_code) {
-        return {
-          success: false,
-          payout_id: payout.payout_id,
-          rail: this.name,
-          status: 'failed',
-          error: transferData.error_message,
-        }
-      }
-
-      return {
-        success: true,
-        payout_id: payout.payout_id,
-        rail: this.name,
-        external_id: transferData.transfer.id,
-        status: 'processing',
-        metadata: { plaid_transfer_id: transferData.transfer.id },
-      }
-    } catch (err: any) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: err.message }
-    }
-  }
-
-  async getStatus(externalId: string, config: RailConfig): Promise<PayoutResult> {
-    const clientId = config.credentials?.client_id || Deno.env.get('PLAID_CLIENT_ID')
-    const secret = config.credentials?.secret || Deno.env.get('PLAID_SECRET')
-    const env = config.settings?.environment || 'sandbox'
-    const baseUrl = env === 'production' ? 'https://production.plaid.com' : 'https://sandbox.plaid.com'
-
-    const response = await fetch(`${baseUrl}/transfer/get`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        secret: secret,
-        transfer_id: externalId,
-      }),
+      payment_method_id: platformSource || undefined,
+      destination_id: destination,
     })
 
-    const data = await response.json()
-    
-    const statusMap: Record<string, PayoutResult['status']> = {
-      pending: 'pending',
-      posted: 'completed',
-      settled: 'completed',
-      cancelled: 'failed',
-      failed: 'failed',
-      returned: 'failed',
+    if (!result.success || !result.id) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: result.error || 'Processor transfer failed',
+      }
     }
 
     return {
-      success: !data.error_code,
-      payout_id: '',
+      success: true,
+      payout_id: payout.payout_id,
       rail: this.name,
-      external_id: externalId,
-      status: statusMap[data.transfer?.status] || 'processing',
+      external_id: result.id,
+      status: this.mapProviderStatus(result.status),
+      metadata: { transfer_id: result.id },
     }
   }
 
-  validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
+  async getStatus(externalId: string, _config: RailConfig): Promise<PayoutResult> {
+    const provider = getPaymentProvider('card')
+    const status = await provider.getPaymentStatus(externalId)
+    if (!status.success) {
+      return {
+        success: false,
+        payout_id: '',
+        rail: this.name,
+        external_id: externalId,
+        status: 'failed',
+        error: status.error || 'Processor status lookup failed',
+      }
+    }
+
+    return {
+      success: true,
+      payout_id: '',
+      rail: this.name,
+      external_id: externalId,
+      status: this.mapProviderStatus(status.status),
+    }
+  }
+
+  validateConfig(_config: RailConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = []
-    if (!config.credentials?.client_id && !Deno.env.get('PLAID_CLIENT_ID')) {
-      errors.push('Bank feed client ID required')
-    }
-    if (!config.credentials?.secret && !Deno.env.get('PLAID_SECRET')) {
-      errors.push('Bank feed secret required')
-    }
+
+    const username = Deno.env.get('PROCESSOR_USERNAME') || Deno.env.get('FINIX_USERNAME') || ''
+    const password = Deno.env.get('PROCESSOR_PASSWORD') || Deno.env.get('FINIX_PASSWORD') || ''
+    const merchant = Deno.env.get('PROCESSOR_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID') || ''
+
+    if (!username.trim()) errors.push('Processor username required')
+    if (!password.trim()) errors.push('Processor password required')
+    if (!merchant.trim()) errors.push('Processor merchant required')
+
     return { valid: errors.length === 0, errors }
   }
 }
@@ -741,9 +357,7 @@ class ManualBankFileRail implements PaymentRail {
 // ============================================================================
 
 const RAILS: Record<PayoutRail, PaymentRail> = {
-  card: new FinixRail(),
-  stripe_connect: new StripeConnectRail(),
-  plaid_transfer: new PlaidTransferRail(),
+  card: new CardProcessorRail(),
   manual: new ManualBankFileRail(),
   wise: new ManualBankFileRail(),
   crypto: new ManualBankFileRail(),
@@ -756,12 +370,6 @@ function normalizeRail(value?: string | null): PayoutRail | null {
     case 'processor':
     case 'primary':
       return 'card'
-    case 'stripe':
-    case 'stripe_connect':
-      return 'stripe_connect'
-    case 'plaid':
-    case 'plaid_transfer':
-      return 'plaid_transfer'
     case 'manual':
       return 'manual'
     case 'wise':
@@ -797,49 +405,12 @@ function pickDefaultRail(configs: RailConfig[]): PayoutRail {
       .filter(Boolean) as PayoutRail[]
   )
   if (enabledRails.has('card')) return 'card'
-  if (enabledRails.has('stripe_connect')) return 'stripe_connect'
-  if (enabledRails.has('plaid_transfer')) return 'plaid_transfer'
   if (enabledRails.has('manual')) return 'manual'
   // Card processor is the active default integration when no explicit rail is configured.
   return 'card'
 }
 
-function mergePayoutRailsWithOrgProcessor(
-  configs: RailConfig[],
-  orgProcessor: OrganizationProcessorSettings | null
-): RailConfig[] {
-  if (!orgProcessor) return configs
-
-  const processorSettingsPatch: Record<string, any> = {}
-  if (orgProcessor.merchant_id) processorSettingsPatch.merchant = orgProcessor.merchant_id
-  if (orgProcessor.source_id) processorSettingsPatch.source = orgProcessor.source_id
-
-  if (Object.keys(processorSettingsPatch).length === 0) {
-    return configs
-  }
-
-  const next = [...configs]
-  const processorIndex = next.findIndex((cfg) => cfg.rail === 'card')
-
-  if (processorIndex >= 0) {
-    next[processorIndex] = {
-      ...next[processorIndex],
-      settings: {
-        ...(next[processorIndex].settings || {}),
-        ...processorSettingsPatch,
-      },
-    }
-    return next
-  }
-
-  next.push({
-    rail: 'card',
-    enabled: true,
-    settings: processorSettingsPatch,
-  })
-
-  return next
-}
+// Shared-merchant invariant: do not merge per-organization processor settings into rails.
 
 // ============================================================================
 // INTERNAL PAYOUT EXECUTION (shared by single and batch)
@@ -978,18 +549,7 @@ const handler = createHandler(
       .single()
 
     const rawPayoutRails = normalizeRailConfigs(ledgerFull?.payout_rails)
-    let organizationProcessor: OrganizationProcessorSettings | null = null
-    if (ledger.organization_id) {
-      const { data: orgRow } = await supabase
-        .from('organizations')
-        .select('settings')
-        .eq('id', ledger.organization_id)
-        .maybeSingle()
-
-      organizationProcessor = ((orgRow?.settings as any)?.finix || null) as OrganizationProcessorSettings | null
-    }
-
-    const payoutRails = mergePayoutRailsWithOrgProcessor(rawPayoutRails, organizationProcessor)
+    const payoutRails = rawPayoutRails
     const clientIp = getClientIp(req)
     const userAgent = req.headers.get('user-agent')
 

@@ -17,7 +17,7 @@ export interface RecordSaleRequest {
   platformFeePercent?: number
   /** Sale description */
   description?: string
-  /** Reference type (e.g., 'stripe_payment', 'manual') */
+  /** Reference type (e.g., 'processor_payment', 'manual') */
   referenceType?: string
   /** Additional metadata */
   metadata?: Record<string, unknown>
@@ -33,10 +33,10 @@ export interface CreateCheckoutRequest {
   customerId?: string
   captureMethod?: 'automatic' | 'manual'
   setupFutureUsage?: 'off_session' | 'on_session'
-  paymentProvider?: 'card' | 'stripe'
+  /** Buyer payment method / payment instrument id (required). */
   paymentMethodId?: string
+  /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
   sourceId?: string
-  merchantId?: string
   metadata?: Record<string, string>
 }
 
@@ -125,7 +125,7 @@ export interface CheckoutBreakdown {
 
 export interface CreateCheckoutResponse {
   success: boolean
-  provider?: 'card' | 'stripe'
+  provider?: 'card'
   paymentId?: string
   paymentIntentId?: string
   clientSecret?: string | null

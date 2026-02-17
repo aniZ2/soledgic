@@ -78,9 +78,9 @@ Fail-Closed (sensitive) or Fail-Open (read-only)
 **Implementation:** Multiple layers of protection
 
 ```typescript
-// processor-webhook/index.ts
+// webhook handler
 // 1. Signature verification with HMAC-SHA256
-const signatureResult = await verifyStripeSignature(body, signature, webhookSecret)
+const signatureResult = await verifyWebhookSignature(body, signature, webhookSecret)
 
 // 2. Constant-time comparison (prevents timing attacks)
 let result = 0
@@ -142,10 +142,10 @@ function isUrlSafe(urlString: string): boolean {
 
 ```sql
 -- Migration: 20260119_security_hardening.sql
-CREATE FUNCTION store_plaid_token_in_vault(p_connection_id UUID, p_access_token TEXT)
+CREATE FUNCTION store_bank_feed_token_in_vault(p_connection_id UUID, p_access_token TEXT)
 -- Stores token encrypted in vault.secrets
 
-CREATE FUNCTION get_plaid_token_from_vault(p_connection_id UUID)
+CREATE FUNCTION get_bank_feed_token_from_vault(p_connection_id UUID)
 -- Retrieves from vault.decrypted_secrets (SECURITY DEFINER)
 ```
 

@@ -107,14 +107,7 @@ export const POST = createApiHandler(
       .in('ledger_id', testLedgerIds)
     deleted.report_exports = reportCount ?? 0
 
-    // 9. Stripe events
-    const { count: stripeCount } = await supabase
-      .from('stripe_events')
-      .delete({ count: 'exact' })
-      .in('ledger_id', testLedgerIds)
-    deleted.stripe_events = stripeCount ?? 0
-
-    // 10. Usage metrics tied to test ledgers
+    // 9. Usage metrics tied to test ledgers
     const { count: usageCount } = await supabase
       .from('usage_metrics')
       .delete({ count: 'exact' })

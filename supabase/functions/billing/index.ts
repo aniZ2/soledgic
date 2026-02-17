@@ -1,8 +1,8 @@
 // Soledgic Edge Function: Billing Management API
 // POST /billing
 //
-// Stripe subscription billing is disabled by default. This endpoint currently
-// serves usage-based overage billing summaries for the dashboard.
+// Subscription billing is disabled by default. This endpoint currently serves
+// usage-based overage billing summaries for the dashboard.
 //
 // Auth:
 // - JWT (Supabase Auth) via Authorization: Bearer <user_jwt>
@@ -130,7 +130,6 @@ const handler = createHandler(
         const estimatedMonthlyOverageCents = additionalLedgers * overageLedgerPrice + additionalMembers * overageMemberPrice
 
         const settingsObj = org?.settings && typeof org.settings === 'object' ? org.settings : {}
-        const processorSettings = (settingsObj.finix || {}) as Record<string, any>
         const billingSettings = (settingsObj.billing || {}) as Record<string, any>
 
         const billingMethodIdRaw =
@@ -140,9 +139,13 @@ const handler = createHandler(
           typeof billingSettings?.payment_method_label === 'string' && billingSettings.payment_method_label.trim().length > 0
             ? billingSettings.payment_method_label.trim()
             : null
-        const processorConnected =
-          (typeof processorSettings?.merchant_id === 'string' && processorSettings.merchant_id.trim().length > 0) ||
-          (typeof processorSettings?.identity_id === 'string' && processorSettings.identity_id.trim().length > 0)
+        // Shared-merchant model: processing is platform-managed (env-configured),
+        // not configured per organization.
+        const processorConnected = Boolean(
+          (Deno.env.get('PROCESSOR_USERNAME') || Deno.env.get('FINIX_USERNAME')) &&
+            (Deno.env.get('PROCESSOR_PASSWORD') || Deno.env.get('FINIX_PASSWORD')) &&
+            (Deno.env.get('PROCESSOR_MERCHANT_ID') || Deno.env.get('FINIX_MERCHANT_ID'))
+        )
 
         let lastCharge: Record<string, any> | null = null
         if (isOwner) {

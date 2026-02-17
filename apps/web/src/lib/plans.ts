@@ -1,6 +1,5 @@
 export interface PlanConfig {
   name: string
-  stripe_price_id: string | null
   price_monthly: number // cents
   max_ledgers: number
   max_team_members: number
@@ -14,7 +13,6 @@ export interface PlanConfig {
 export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
   pro: {
     name: 'Pro',
-    stripe_price_id: process.env.STRIPE_PRICE_PRO_MONTHLY || null,
     price_monthly: 4900,
     max_ledgers: 3,
     max_team_members: 1,
@@ -27,7 +25,6 @@ export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
   },
   business: {
     name: 'Business',
-    stripe_price_id: process.env.STRIPE_PRICE_BUSINESS_MONTHLY || null,
     price_monthly: 24900,
     max_ledgers: 10,
     max_team_members: 10,
@@ -40,7 +37,6 @@ export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
   },
   scale: {
     name: 'Scale',
-    stripe_price_id: null,
     price_monthly: 0,
     max_ledgers: -1,
     max_team_members: -1,
@@ -58,7 +54,6 @@ export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
 export const PLANS: Record<string, PlanConfig> = {
   pro: {
     name: 'Free',
-    stripe_price_id: null,
     price_monthly: 0,
     max_ledgers: 1,
     max_team_members: 1,
@@ -81,4 +76,3 @@ export const PLANS: Record<string, PlanConfig> = {
 export function getPlanConfig(planId: string): PlanConfig | undefined {
   return PLANS[planId] ?? FUTURE_PRICING_SUGGESTION[planId]
 }
-

@@ -90,7 +90,7 @@ apps/web/
 └── next.config.js      # CSP and security headers
 
 supabase/migrations/
-├── 20260126_stripe_webhook_vault.sql      # Vault for webhook secrets
+├── 20260126_webhook_vault.sql             # Vault for webhook secrets
 └── 20260127_compliance_audit_hardening.sql # SOC 2 compliance layer
 
 supabase/functions/_shared/

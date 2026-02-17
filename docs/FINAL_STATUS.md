@@ -209,7 +209,7 @@ curl "$BASE/manage-budgets" -H "$AUTH" -H "$KEY"
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         STRIPE                               │
+│                    PAYMENT PROCESSOR                         │
 │  • Moves money           • Issues 1099s                      │
 │  • Collects W-9          • KYC/AML                          │
 │  • Blocks/approves payouts                                   │

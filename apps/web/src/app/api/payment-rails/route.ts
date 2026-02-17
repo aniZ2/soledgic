@@ -1,13 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
-import { getPublicAppUrl } from '@/lib/public-url'
-import {
-  createOnboardingLink,
-  fetchFinixIdentity,
-  fetchFinixMerchantForIdentity,
-  fetchFinixPaymentInstrumentsForIdentity,
-} from '@/lib/finix'
 
 interface PaymentRailsRequest {
   action: 'status' | 'create_onboarding_link' | 'save_identity' | 'save_payout_settings'
@@ -18,18 +11,6 @@ interface PaymentRailsRequest {
 }
 
 interface OrganizationSettings {
-  finix?: {
-    identity_id?: string | null
-    merchant_id?: string | null
-    source_id?: string | null
-    onboarding_form_id?: string | null
-    last_onboarding_link_id?: string | null
-    last_onboarding_link_url?: string | null
-    last_onboarding_link_expires_at?: string | null
-    last_onboarding_state?: string | null
-    last_onboarding_state_expires_at?: string | null
-    last_synced_at?: string | null
-  }
   payouts?: {
     default_method?: string | null
     min_payout_amount?: number | null
@@ -37,32 +18,12 @@ interface OrganizationSettings {
   [key: string]: any
 }
 
-function getAppUrl() {
-  return getPublicAppUrl()
-}
-
 function getPlatformProcessorSettings() {
-  const merchantId = process.env.FINIX_MERCHANT_ID || null
-  const sourceId = process.env.FINIX_SOURCE_ID || null
-  const platformManaged = Boolean(merchantId || sourceId)
-  return { platformManaged, merchantId, sourceId }
-}
-
-function normalizeOnboardingFormId(value: string | null | undefined): string | null {
-  if (!value) return null
-  const trimmed = value.trim()
-  if (!/^obf_[A-Za-z0-9]+$/.test(trimmed)) return null
-  return trimmed
-}
-
-function pickSourceInstrumentId(instruments: any[]): string | null {
-  if (!Array.isArray(instruments) || instruments.length === 0) return null
-  const enabled = instruments.filter((pi: any) => pi?.enabled !== false)
-  const bankAccount = enabled.find((pi: any) => {
-    const type = String(pi?.type || pi?.instrument_type || '').toUpperCase()
-    return type === 'BANK_ACCOUNT'
-  })
-  return bankAccount?.id || enabled[0]?.id || instruments[0]?.id || null
+  const merchantId = process.env.PROCESSOR_MERCHANT_ID || process.env.FINIX_MERCHANT_ID || null
+  const username = process.env.PROCESSOR_USERNAME || process.env.FINIX_USERNAME || null
+  const password = process.env.PROCESSOR_PASSWORD || process.env.FINIX_PASSWORD || null
+  const configured = Boolean(merchantId && username && password)
+  return { configured }
 }
 
 async function getUserOrganization(userId: string) {
@@ -94,53 +55,19 @@ async function getUserOrganization(userId: string) {
   }
 }
 
-async function mergeOrgSettingsKey(orgId: string, key: string, patch: Record<string, unknown>) {
+async function savePayoutSettings(orgId: string, patch: OrganizationSettings['payouts']) {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('merge_organization_settings_key', {
     p_organization_id: orgId,
-    p_settings_key: key,
-    p_patch: patch,
+    p_settings_key: 'payouts',
+    p_patch: patch as Record<string, unknown>,
   })
 
   if (error) {
     throw new Error(error.message || 'Failed updating organization settings')
   }
 
-  return (data || {}) as Record<string, unknown>
-}
-
-async function saveProcessorSettings(orgId: string, patch: Partial<OrganizationSettings['finix']>) {
-  const payload = {
-    ...(patch || {}),
-    last_synced_at: new Date().toISOString(),
-  } as Record<string, unknown>
-
-  const finix = await mergeOrgSettingsKey(orgId, 'finix', payload)
-  return finix as OrganizationSettings['finix']
-}
-
-async function savePayoutSettings(orgId: string, patch: OrganizationSettings['payouts']) {
-  const payouts = await mergeOrgSettingsKey(orgId, 'payouts', patch as Record<string, unknown>)
-  return payouts as OrganizationSettings['payouts']
-}
-
-function isExpired(iso: string | null | undefined) {
-  if (!iso) return false
-  const t = new Date(iso).getTime()
-  return Number.isFinite(t) ? t <= Date.now() : false
-}
-
-function requireActiveOnboardingState(
-  expected: string | null | undefined,
-  expectedExpiresAt: string | null | undefined,
-  provided: string | null | undefined
-) {
-  if (!expected || !provided || expected !== provided) {
-    throw new Error('Invalid onboarding state')
-  }
-  if (isExpired(expectedExpiresAt || null)) {
-    throw new Error('Onboarding session expired. Start onboarding again.')
-  }
+  return (data || {}) as OrganizationSettings['payouts']
 }
 
 function normalizeDefaultMethod(value: string | null | undefined): 'card' | 'manual' {
@@ -160,26 +87,21 @@ export const POST = createApiHandler(
     }
 
     const { organization, isOwner } = membership
-    const processorSettings = organization.settings?.finix || {}
     const payoutSettings = organization.settings?.payouts || {}
     const platform = getPlatformProcessorSettings()
 
     if (body.action === 'status') {
-      const resolvedMerchantId = platform.merchantId || processorSettings.merchant_id || null
-      const resolvedSourceId = platform.sourceId || processorSettings.source_id || null
-      const connected = Boolean(resolvedMerchantId || processorSettings.identity_id)
+      const connected = platform.configured
 
       return NextResponse.json({
         success: true,
         data: {
           connected,
-          platform_managed: platform.platformManaged,
-          identity_id: processorSettings.identity_id || null,
-          merchant_id: resolvedMerchantId,
-          source_id: resolvedSourceId,
-          onboarding_form_id:
-            processorSettings.onboarding_form_id || process.env.FINIX_ONBOARDING_FORM_ID || null,
-          last_synced_at: processorSettings.last_synced_at || null,
+          platform_managed: true,
+          identity_id: null,
+          merchant_id: null,
+          onboarding_form_id: null,
+          last_synced_at: null,
           payout_settings: {
             default_method: normalizeDefaultMethod(payoutSettings.default_method || null),
             min_payout_amount:
@@ -199,124 +121,17 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'create_onboarding_link') {
-      if (platform.platformManaged) {
-        return NextResponse.json(
-          {
-            error:
-              'Card processor connection is managed at the platform level. No action is required here.',
-          },
-          { status: 409 }
-        )
-      }
-
-      const onboardingFormId = normalizeOnboardingFormId(process.env.FINIX_ONBOARDING_FORM_ID || null)
-      if (!onboardingFormId) {
-        return NextResponse.json(
-          { error: 'FINIX_ONBOARDING_FORM_ID must be a full form id like obf_xxx (not "obf")' },
-          { status: 503 }
-        )
-      }
-
-      const onboardingState = crypto.randomUUID()
-      const expirationInMinutes = 60
-      const expiresAt = new Date(Date.now() + expirationInMinutes * 60 * 1000).toISOString()
-
-      const link = await createOnboardingLink({
-        onboardingFormId,
-        appUrl: getAppUrl(),
-        identityId: processorSettings.identity_id || null,
-        applicationId: process.env.FINIX_APPLICATION_ID || null,
-        expirationInMinutes,
-        state: onboardingState,
-      })
-
-      const linkUrl = link?.link_url || link?.onboarding_link_url || link?._embedded?.links?.[0]?.link_url
-      if (!linkUrl) {
-        return NextResponse.json({ error: 'Failed to create onboarding link' }, { status: 500 })
-      }
-
-      const saved = await saveProcessorSettings(organization.id, {
-        onboarding_form_id: onboardingFormId,
-        last_onboarding_link_id: link.id || null,
-        last_onboarding_link_url: linkUrl,
-        last_onboarding_link_expires_at: link.expires_at || null,
-        last_onboarding_state: onboardingState,
-        last_onboarding_state_expires_at: expiresAt,
-      })
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          url: linkUrl,
-          processor: saved,
-        },
-      })
+      return NextResponse.json(
+        { error: 'Card processing is managed by Soledgic and cannot be configured per workspace.' },
+        { status: 409 }
+      )
     }
 
     if (body.action === 'save_identity') {
-      if (platform.platformManaged) {
-        return NextResponse.json(
-          {
-            error:
-              'Card processor connection is managed at the platform level. No action is required here.',
-          },
-          { status: 409 }
-        )
-      }
-
-      try {
-        requireActiveOnboardingState(
-          processorSettings.last_onboarding_state || null,
-          processorSettings.last_onboarding_state_expires_at || null,
-          body.state || null
-        )
-      } catch (err: any) {
-        return NextResponse.json(
-          { error: err.message || 'Invalid onboarding state' },
-          { status: 403 }
-        )
-      }
-
-      const identityId = body.identity_id || processorSettings.identity_id
-      if (!identityId) {
-        return NextResponse.json({ error: 'identity_id is required' }, { status: 400 })
-      }
-
-      let identity: any
-      try {
-        identity = await fetchFinixIdentity(identityId)
-      } catch (err: any) {
-        return NextResponse.json(
-          { error: err.message || 'Invalid identity' },
-          { status: 400 }
-        )
-      }
-
-      const merchant = await fetchFinixMerchantForIdentity(identityId).catch(() => null)
-      const paymentInstruments = await fetchFinixPaymentInstrumentsForIdentity(identityId).catch(
-        () => []
+      return NextResponse.json(
+        { error: 'Card processing is managed by Soledgic and cannot be configured per workspace.' },
+        { status: 409 }
       )
-      const sourceId = pickSourceInstrumentId(paymentInstruments)
-
-      const saved =
-        (await saveProcessorSettings(organization.id, {
-          identity_id: identity.id || identityId,
-          merchant_id: merchant?.id || processorSettings.merchant_id || null,
-          source_id: sourceId || processorSettings.source_id || null,
-          // Clear state to prevent replay of the redirect URL.
-          last_onboarding_state: null,
-          last_onboarding_state_expires_at: null,
-        })) || {}
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          connected: Boolean((saved as any).identity_id || (saved as any).merchant_id),
-          identity_id: (saved as any).identity_id || null,
-          merchant_id: (saved as any).merchant_id || null,
-          source_id: (saved as any).source_id || null,
-        },
-      })
     }
 
     if (body.action === 'save_payout_settings') {

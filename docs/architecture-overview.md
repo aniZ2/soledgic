@@ -41,8 +41,8 @@ If money moves through your platform, Soledgic can:
          │ webhooks                  │ import                    │ sync
          ▼                           ▼                           ▼
 ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
-│     STRIPE      │        │      BANK       │        │     PLAID       │
-│   (payments)    │        │   (CSV/OFX)     │        │  (bank feeds)   │
+│ PAYMENT PROCESSOR│        │      BANK       │        │   BANK FEEDS    │
+│   (payments)    │        │   (CSV/OFX)     │        │ (integrations)  │
 └─────────────────┘        └─────────────────┘        └─────────────────┘
 ```
 
@@ -141,7 +141,7 @@ Once a month is closed:
 
 Problem: Payment Processor payout and bank deposit are the same money, but appear as two records.
 
-Solution: Auto-match by amount + date + description. Bank transaction marked `is_stripe_payout = true`. No duplicate ledger entry.
+Solution: Auto-match by amount + date + description. Bank transaction marked `is_processor_payout = true`. No duplicate ledger entry.
 
 ### 5. Multi-Tenant by Ledger
 

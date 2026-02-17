@@ -113,11 +113,11 @@ Same transaction imported twice? Second import is skipped.
 
 ```
 Payment Processor payout: $5,000 on Jan 15
-Bank deposit: $5,000 on Jan 17, description "STRIPE TRANSFER"
+Bank deposit: $5,000 on Jan 17, description "PROCESSOR TRANSFER"
                     ↓
             AUTO-MATCHED
                     ↓
-Bank transaction marked: is_stripe_payout = true
+Bank transaction marked: is_processor_payout = true
 No duplicate ledger entry created
 ```
 
@@ -127,7 +127,7 @@ No duplicate ledger entry created
 |----------|------|
 | Amount | Exact match (±$0.01) |
 | Date | Within 3 days of Payment Processor's `arrival_date` |
-| Description | Prefers "STRIPE" in description |
+| Description | Prefers processor keywords in description |
 
 ### Manual Linking
 
@@ -179,7 +179,7 @@ Daily automated checks verify:
 │                                                             │
 │  Unmatched Transactions                                     │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │ Jan 15  STRIPE TRANSFER      $5,000   [Match ▾]     │   │
+│  │ Jan 15  PROCESSOR TRANSFER   $5,000   [Match ▾]     │   │
 │  │ Jan 12  ACH DEPOSIT          $1,234   [Match ▾]     │   │
 │  │ Jan 10  WIRE FROM CLIENT     $8,500   [Match ▾]     │   │
 │  └─────────────────────────────────────────────────────┘   │

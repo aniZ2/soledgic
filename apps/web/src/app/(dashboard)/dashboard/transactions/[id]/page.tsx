@@ -2,8 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { 
-  ArrowLeft, CheckCircle, AlertTriangle, ExternalLink,
-  FileText, Database, CreditCard, Building, Hash, Clock
+  ArrowLeft, ExternalLink,
+  FileText, Database, Clock
 } from 'lucide-react'
 
 export default async function TransactionDetailPage({
@@ -36,69 +36,6 @@ export default async function TransactionDetailPage({
     .single()
 
   if (!transaction) notFound()
-
-  // Get external source data based on reference_type
-  let sourceData: any = null
-  let sourceName = 'Unknown'
-  let sourceVerified = false
-
-  if (transaction.reference_type === 'stripe_charge' || 
-      transaction.reference_type === 'stripe_payment_intent') {
-    // Get from stripe_events
-    const stripeId = transaction.metadata?.stripe_charge_id || 
-                     transaction.metadata?.stripe_payment_intent_id
-    
-    if (stripeId) {
-      const { data: stripeEvent } = await supabase
-        .from('stripe_events')
-        .select('*')
-        .eq('ledger_id', transaction.ledger_id)
-        .or(`raw_data->data->object->id.eq.${stripeId},raw_data->data->object->payment_intent.eq.${stripeId}`)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (stripeEvent) {
-        sourceData = stripeEvent.raw_data
-        sourceName = 'Card Processor Webhook'
-        sourceVerified = stripeEvent.status === 'processed'
-      }
-    }
-
-    // Also check stripe_transactions for reconciliation status
-    const { data: stripeTx } = await supabase
-      .from('stripe_transactions')
-      .select('*')
-      .eq('transaction_id', transaction.id)
-      .single()
-
-    if (stripeTx) {
-      transaction._stripeTx = stripeTx
-    }
-  }
-
-  if (transaction.reference_type === 'bank_import' || 
-      transaction.metadata?.source === 'bank_import') {
-    // Get from plaid_transactions
-    const { data: bankTx } = await supabase
-      .from('plaid_transactions')
-      .select('*')
-      .eq('transaction_id', transaction.id)
-      .single()
-
-    if (bankTx) {
-      sourceData = bankTx.raw_data || {
-        date: bankTx.date,
-        amount: bankTx.amount,
-        description: bankTx.description,
-        reference: bankTx.reference,
-        dedup_hash: bankTx.dedup_hash,
-      }
-      sourceName = bankTx.source === 'plaid' ? 'Bank Feed' : 'CSV Import'
-      sourceVerified = bankTx.match_status === 'matched' || bankTx.match_status === 'auto_matched'
-      transaction._bankTx = bankTx
-    }
-  }
 
   // Get audit log entries for this transaction
   const { data: auditLogs } = await supabase
@@ -192,34 +129,6 @@ export default async function TransactionDetailPage({
         </div>
       </div>
 
-      {/* Triple-Entry Verification Banner */}
-      <div className={`rounded-lg p-4 mb-6 flex items-center gap-4 ${
-        sourceVerified && isBalanced 
-          ? 'bg-green-500/10 border border-green-500/20' 
-          : 'bg-yellow-500/10 border border-yellow-500/20'
-      }`}>
-        {sourceVerified && isBalanced ? (
-          <CheckCircle className="w-6 h-6 text-green-500 flex-shrink-0" />
-        ) : (
-          <AlertTriangle className="w-6 h-6 text-yellow-500 flex-shrink-0" />
-        )}
-        <div>
-          <p className="font-medium text-foreground">
-            {sourceVerified && isBalanced 
-              ? 'Triple-Entry Verified' 
-              : 'Verification Incomplete'}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {sourceVerified 
-              ? `Ledger entries match external record from ${sourceName}` 
-              : 'External source data not yet verified'}
-            {isBalanced 
-              ? ' • Debits equal credits' 
-              : ' • ⚠️ Transaction is unbalanced'}
-          </p>
-        </div>
-      </div>
-
       <div className="grid gap-6">
         {/* Transaction Details */}
         <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -256,9 +165,15 @@ export default async function TransactionDetailPage({
               <div className="col-span-2">
                 <p className="text-xs text-muted-foreground uppercase mb-1">Amount Breakdown</p>
                 <div className="flex gap-4 text-sm">
-                  <span>Gross: {formatCurrency(transaction.metadata.breakdown.gross)}</span>
-                  <span>Fees: {formatCurrency(transaction.metadata.breakdown.stripe_fee || 0)}</span>
-                  <span>Net: {formatCurrency(transaction.metadata.breakdown.net)}</span>
+                  {transaction.metadata.breakdown.gross_amount !== undefined && (
+                    <span>Gross: {formatCurrency(transaction.metadata.breakdown.gross_amount)}</span>
+                  )}
+                  {transaction.metadata.breakdown.processing_fee !== undefined && (
+                    <span>Fees: {formatCurrency(transaction.metadata.breakdown.processing_fee)}</span>
+                  )}
+                  {transaction.metadata.breakdown.net_amount !== undefined && (
+                    <span>Net: {formatCurrency(transaction.metadata.breakdown.net_amount)}</span>
+                  )}
                 </div>
               </div>
             )}
@@ -314,130 +229,6 @@ export default async function TransactionDetailPage({
             </div>
           )}
         </div>
-
-        {/* External Source Proof (Third Entry) */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-border bg-muted/30">
-            <h2 className="font-semibold text-foreground flex items-center gap-2">
-              {!sourceName.includes('Bank') ? (
-                <CreditCard className="w-4 h-4" />
-              ) : (
-                <Building className="w-4 h-4" />
-              )}
-              External Source: {sourceName}
-              <span className="text-xs font-normal text-muted-foreground ml-2">
-                (Immutable Record — Entry #3)
-              </span>
-              {sourceVerified && (
-                <CheckCircle className="w-4 h-4 text-green-500 ml-auto" />
-              )}
-            </h2>
-          </div>
-          <div className="p-6">
-            {sourceData ? (
-              <>
-                {/* Key fields summary */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  {sourceData.id && (
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase mb-1">External ID</p>
-                      <code className="text-sm bg-muted px-2 py-1 rounded">{sourceData.id}</code>
-                    </div>
-                  )}
-                  {sourceData.data?.object?.id && (
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase mb-1">Processor Object ID</p>
-                      <code className="text-sm bg-muted px-2 py-1 rounded">{sourceData.data.object.id}</code>
-                    </div>
-                  )}
-                  {sourceData.data?.object?.amount && (
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase mb-1">Processor Amount</p>
-                      <p className="text-foreground">{formatCurrency(sourceData.data.object.amount / 100)}</p>
-                    </div>
-                  )}
-                  {sourceData.dedup_hash && (
-                    <div className="col-span-2">
-                      <p className="text-xs text-muted-foreground uppercase mb-1">Deduplication Hash (SHA-256)</p>
-                      <code className="text-xs bg-muted px-2 py-1 rounded break-all">{sourceData.dedup_hash}</code>
-                    </div>
-                  )}
-                </div>
-
-                {/* Full JSON */}
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-                    View Raw JSON
-                  </summary>
-                  <pre className="mt-2 p-4 bg-muted rounded-lg overflow-x-auto text-xs">
-                    {JSON.stringify(sourceData, null, 2)}
-                  </pre>
-                </details>
-              </>
-            ) : (
-              <p className="text-muted-foreground">
-                No external source data linked to this transaction.
-                {transaction.reference_type === 'api' && (
-                  <span className="block mt-1 text-sm">
-                    This transaction was created via API without external verification.
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Reconciliation Status */}
-        {(transaction._stripeTx || transaction._bankTx) && (
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-muted/30">
-              <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <Hash className="w-4 h-4" />
-                Reconciliation Status
-              </h2>
-            </div>
-            <div className="p-6">
-              {transaction._stripeTx && (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Processor Transaction</p>
-                    <p className="text-sm text-muted-foreground">
-                      {transaction._stripeTx.stripe_type} • {transaction._stripeTx.stripe_id}
-                    </p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    transaction._stripeTx.match_status === 'auto_matched' 
-                      ? 'bg-green-500/10 text-green-600' 
-                      : transaction._stripeTx.match_status === 'matched'
-                      ? 'bg-blue-500/10 text-blue-600'
-                      : 'bg-yellow-500/10 text-yellow-600'
-                  }`}>
-                    {transaction._stripeTx.match_status}
-                  </span>
-                </div>
-              )}
-              {transaction._bankTx && (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">Bank Transaction</p>
-                    <p className="text-sm text-muted-foreground">
-                      {transaction._bankTx.source} • {transaction._bankTx.reference || transaction._bankTx.description}
-                    </p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    transaction._bankTx.match_status === 'auto_matched' 
-                      ? 'bg-green-500/10 text-green-600' 
-                      : transaction._bankTx.match_status === 'matched'
-                      ? 'bg-blue-500/10 text-blue-600'
-                      : 'bg-yellow-500/10 text-yellow-600'
-                  }`}>
-                    {transaction._bankTx.match_status}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Linked Transactions */}
         {linkedTransactions.length > 0 && (

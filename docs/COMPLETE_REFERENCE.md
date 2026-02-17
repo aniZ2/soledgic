@@ -379,7 +379,7 @@ soledgic/
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         STRIPE                               │
+│                    PAYMENT PROCESSOR                         │
 │  • Moves money                                               │
 │  • Collects W-9 / tax info                                   │
 │  • Issues 1099s                                              │
@@ -396,7 +396,7 @@ soledgic/
 │  • Maintains audit trail                                     │
 │  • Calculates revenue splits                                 │
 │  • Generates reports                                         │
-│  • Reconciles with Payment Processor                                    │
+│  • Reconciles with Payment Processor                          │
 │  • NEVER decides, blocks, or holds                           │
 └─────────────────────────────────────────────────────────────┘
 ```

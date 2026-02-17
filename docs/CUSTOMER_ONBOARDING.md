@@ -448,9 +448,9 @@ Call agenda:
 ### Billing Setup
 
 ```javascript
-// Payment Processor subscription creation
+// Recurring billing setup (processor-backed)
 const subscription = await processor.subscriptions.create({
-  customer: stripeCustomerId,
+  customer: processorCustomerId,
   items: [
     { price: 'price_soledgic_growth' }
   ],
@@ -463,7 +463,7 @@ const subscription = await processor.subscriptions.create({
 await supabase
   .from('organizations')
   .update({ 
-    processor_customer_id: stripeCustomerId,
+    processor_customer_id: processorCustomerId,
     subscription_status: 'active'
   })
   .eq('id', orgId)

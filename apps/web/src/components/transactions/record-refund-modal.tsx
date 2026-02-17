@@ -30,7 +30,6 @@ export function RecordRefundModal({
   const [refundAmount, setRefundAmount] = useState('')
   const [reason, setReason] = useState('')
   const [refundFrom, setRefundFrom] = useState<'both' | 'platform_only' | 'creator_only'>('both')
-  const [triggerProviderRefund, setTriggerProviderRefund] = useState(false)
 
   useEffect(() => {
     if (isOpen && preselectedSaleRef) {
@@ -101,7 +100,6 @@ export function RecordRefundModal({
           amount: amountCents,
           reason: reason.trim(),
           refund_from: refundFrom,
-          trigger_stripe_refund: triggerProviderRefund,
         },
       })
 
@@ -130,7 +128,6 @@ export function RecordRefundModal({
     setRefundAmount('')
     setReason('')
     setRefundFrom('both')
-    setTriggerProviderRefund(false)
     setSaleInfo(null)
     setError(null)
   }
@@ -251,20 +248,6 @@ export function RecordRefundModal({
                   <option value="platform_only">Platform Only</option>
                   <option value="creator_only">Creator Only</option>
                 </select>
-              </div>
-
-              {/* Provider Refund */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="providerRefund"
-                  checked={triggerProviderRefund}
-                  onChange={(e) => setTriggerProviderRefund(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="providerRefund" className="text-sm text-foreground">
-                  Also trigger provider refund (legacy path)
-                </label>
               </div>
 
               {error && (

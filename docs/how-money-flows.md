@@ -112,7 +112,7 @@ await soledgic.createLedger({
                         │ pays $100
                         ▼
                 ┌───────────────┐
-                │    STRIPE     │
+                │ PAYMENT PROC. │
                 │  (processor)  │
                 └───────┬───────┘
                         │

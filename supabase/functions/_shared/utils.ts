@@ -60,15 +60,12 @@ const ENDPOINT_BODY_SIZE_LIMITS: Record<string, number> = {
   'execute-payout': 256 * 1024,              // 256KB - batch payouts
   'process-payout': 64 * 1024,               // 64KB - single payout
   'webhooks': 64 * 1024,                     // 64KB - webhook config
-  'stripe-webhook': 256 * 1024,              // 256KB - Stripe events
-  'plaid': 256 * 1024,                       // 256KB - Plaid data
   'invoices': 128 * 1024,                    // 128KB - invoice with line items
   'record-bill': 64 * 1024,                  // 64KB - single bill
   'pay-bill': 64 * 1024,                     // 64KB - bill payment
   'receive-payment': 64 * 1024,              // 64KB - payment received
   'create-checkout': 64 * 1024,              // 64KB - checkout creation
   'release-funds': 64 * 1024,                // 64KB - fund release requests
-  'stripe-reconciliation': 64 * 1024,        // 64KB - reconciliation requests
   'default': 512 * 1024,                     // 512KB - default
 }
 
@@ -84,8 +81,6 @@ export function getEndpointBodySizeLimit(endpoint: string): number {
 const FAIL_CLOSED_ENDPOINTS = [
   'execute-payout',
   'process-payout', 
-  'stripe-webhook',
-  'plaid',
   'record-sale',
   'record-refund',
   'create-ledger',      // Prevent resource exhaustion attacks
@@ -518,7 +513,6 @@ export async function validateApiKey(
 //
 // FAIL-CLOSED endpoints (block if ALL rate limiting fails):
 //   - execute-payout, process-payout: Prevents double payouts
-//   - stripe-webhook, plaid: Prevents replay attacks  
 //   - record-sale, record-refund: Prevents transaction flooding
 //   - create-ledger: Prevents resource exhaustion
 //   - send-statements: Prevents email spam
@@ -570,15 +564,12 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'execute-payout': { requests: 50, windowSeconds: 60 },
   'process-payout': { requests: 50, windowSeconds: 60 },
   'health-check': { requests: 5, windowSeconds: 60 },  // SECURITY FIX H2: Reduced from 10 to 5
-  'stripe-webhook': { requests: 500, windowSeconds: 60 },
-  'plaid': { requests: 50, windowSeconds: 60 },
   'webhooks': { requests: 100, windowSeconds: 60 },
   'send-statements': { requests: 20, windowSeconds: 60 },
   'create-ledger': { requests: 10, windowSeconds: 3600 },  // Per hour
   'upload-receipt': { requests: 50, windowSeconds: 60 },
   'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (processor-safe baseline)
   'release-funds': { requests: 50, windowSeconds: 60 },    // Fund releases (sensitive financial operation)
-  'stripe-reconciliation': { requests: 5, windowSeconds: 60 },  // Reconciliation runs (heavy operations)
   'default': { requests: 100, windowSeconds: 60 },
 }
 

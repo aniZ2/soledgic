@@ -59,9 +59,7 @@ deploy create-ledger
 deploy list-ledgers
 deploy health-check
 
-echo "[7/10] Integrations (3)..."
-deploy stripe-webhook
-deploy plaid
+echo "[7/10] Integrations (1)..."
 deploy webhooks
 
 echo "[8/10] Standard Mode & Statements (4)..."
@@ -80,13 +78,11 @@ echo "[10/10] Imports & Utilities (6)..."
 deploy import-transactions
 deploy import-bank-statement
 deploy upload-receipt
-deploy stripe
-deploy stripe-billing-webhook
 deploy process-webhooks
 
 echo ""
 echo "=========================================="
-echo "✅ Deployment Complete - 48 Functions"
+echo "✅ Deployment Complete"
 echo "=========================================="
 echo ""
 echo "Security Features Active:"
@@ -97,6 +93,5 @@ echo "  ✓ Input validation on all parameters"
 echo "  ✓ Fire-and-forget audit logging"
 echo "  ✓ Webhook replay protection (5min)"
 echo "  ✓ SSRF protection for webhooks"
-echo "  ✓ Bank feed token encryption in Vault"
 echo ""
 echo "Run tests: cd test-data && ./test-api.sh"

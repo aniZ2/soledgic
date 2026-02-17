@@ -109,72 +109,88 @@ Deno.serve(async (req: Request) => {
         const payoutPrefs = account.metadata?.payout_preferences || {}
         if (payoutPrefs.schedule === 'manual') continue
 
+        // Shared-merchant model: payouts are executed based on each creator's
+        // configured payout_method stored on their balance account metadata.
+        const payoutMethod = account.metadata?.payout_method || null
+        if (!payoutMethod) {
+          console.log(`Skipping ${account.entity_id}: no payout method configured`)
+          continue
+        }
+
         // Check minimum payout amount
         const minAmount = payoutPrefs.minimum_amount || settings.minimum_amount || 0
         if (Number(account.balance) < minAmount) continue
 
-        // Check if creator has a connected account with payouts enabled
-        const { data: connectedAccount } = await supabase
-          .from('connected_accounts')
-          .select('id, stripe_account_id, payouts_enabled')
-          .eq('ledger_id', ledger.id)
-          .eq('entity_type', 'creator')
-          .eq('entity_id', account.entity_id)
-          .eq('is_active', true)
-          .single()
+        // Record payout (atomic) then execute it.
+        // NOTE: reference_id must be stable and restricted to [a-zA-Z0-9_-].
+        const dayStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+        const referenceId = `sched_${dayStamp}_${ledger.id}_${account.entity_id}`
 
-        if (!connectedAccount?.payouts_enabled) {
-          console.log(`Skipping ${account.entity_id}: payouts not enabled`)
-          continue
-        }
-
-        // Create payout request
         try {
-          const { error: payoutError } = await supabase
-            .from('payout_requests')
-            .insert({
-              ledger_id: ledger.id,
-              connected_account_id: connectedAccount.id,
-              recipient_entity_type: 'creator',
-              recipient_entity_id: account.entity_id,
-              requested_amount: Math.floor(Number(account.balance)),
-              approved_amount: Math.floor(Number(account.balance)),
-              status: 'approved', // Auto-approve scheduled payouts
-              requested_at: now.toISOString()
-            })
+          const amountCents = Math.floor(Number(account.balance))
 
-          if (payoutError) {
-            console.error(`Error creating payout for ${account.entity_id}:`, payoutError)
-            errorCount++
-          } else {
-            processedCount++
-            results.push({
-              ledger: ledger.business_name,
-              creator: account.entity_id,
-              amount: account.balance
-            })
-
-            // Call process-payout to actually execute the payout
-            const processResponse = await fetch(`${supabaseUrl}/functions/v1/process-payout`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-soledgic-internal-token': internalToken,
-                'x-ledger-id': ledger.id,
+          const recordResponse = await fetch(`${supabaseUrl}/functions/v1/process-payout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-soledgic-internal-token': internalToken,
+              'x-ledger-id': ledger.id,
+            },
+            body: JSON.stringify({
+              creator_id: account.entity_id,
+              amount: amountCents,
+              reference_id: referenceId,
+              reference_type: 'scheduled',
+              description: `Scheduled payout (${settings.schedule})`,
+              metadata: {
+                scheduled: true,
+                schedule: settings.schedule,
+                run_at: now.toISOString(),
               },
-              body: JSON.stringify({
-                ledger_id: ledger.id,
-                creator_id: account.entity_id,
-                amount: Math.floor(Number(account.balance))
-              })
-            })
+            }),
+          })
 
-            if (!processResponse.ok) {
-              const error = await processResponse.json()
-              console.error(`Error processing payout for ${account.entity_id}:`, error)
-              errorCount++
-            }
+          const recordJson = await recordResponse.json().catch(() => ({}))
+          if (!recordResponse.ok || recordJson?.success === false) {
+            console.error(`Error recording payout for ${account.entity_id}:`, recordJson)
+            errorCount++
+            continue
           }
+
+          const payoutTransactionId = recordJson?.transaction_id
+          if (typeof payoutTransactionId !== 'string' || payoutTransactionId.length === 0) {
+            console.error(`Unexpected payout response for ${account.entity_id}:`, recordJson)
+            errorCount++
+            continue
+          }
+
+          const executeResponse = await fetch(`${supabaseUrl}/functions/v1/execute-payout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-soledgic-internal-token': internalToken,
+              'x-ledger-id': ledger.id,
+            },
+            body: JSON.stringify({
+              action: 'execute',
+              payout_id: payoutTransactionId,
+            }),
+          })
+
+          const executeJson = await executeResponse.json().catch(() => ({}))
+          if (!executeResponse.ok || executeJson?.success === false) {
+            console.error(`Error executing payout for ${account.entity_id}:`, executeJson)
+            errorCount++
+            continue
+          }
+
+          processedCount++
+          results.push({
+            ledger: ledger.business_name,
+            creator: account.entity_id,
+            amount: amountCents,
+            payout_id: payoutTransactionId,
+          })
         } catch (err) {
           console.error(`Exception processing payout for ${account.entity_id}:`, err)
           errorCount++

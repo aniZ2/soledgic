@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import { getPublicAppUrl } from '@/lib/public-url'
 import {
   createOnboardingLink,
-  fetchFinixIdentity,
-  fetchFinixPaymentInstrumentsForIdentity,
-} from '@/lib/finix'
+  fetchProcessorIdentity,
+  fetchProcessorPaymentInstrumentsForIdentity,
+} from '@/lib/processor'
 
 interface BillingMethodRequest {
   action: 'status' | 'create_setup_link' | 'save_billing_method'
@@ -248,11 +248,15 @@ export const POST = createApiHandler(
 
     if (body.action === 'create_setup_link') {
       const onboardingFormId = normalizeOnboardingFormId(
-        process.env.FINIX_BILLING_ONBOARDING_FORM_ID || process.env.FINIX_ONBOARDING_FORM_ID || null
+        process.env.PROCESSOR_BILLING_ONBOARDING_FORM_ID ||
+          process.env.PROCESSOR_ONBOARDING_FORM_ID ||
+          process.env.FINIX_BILLING_ONBOARDING_FORM_ID ||
+          process.env.FINIX_ONBOARDING_FORM_ID ||
+          null
       )
       if (!onboardingFormId) {
         return NextResponse.json(
-          { error: 'FINIX_BILLING_ONBOARDING_FORM_ID (or FINIX_ONBOARDING_FORM_ID) must be a full form id like obf_xxx (not "obf")' },
+          { error: 'Billing setup form id is not configured (expected obf_xxx format)' },
           { status: 503 }
         )
       }
@@ -272,7 +276,7 @@ export const POST = createApiHandler(
         onboardingFormId,
         appUrl,
         identityId: billingSettings.identity_id || null,
-        applicationId: process.env.FINIX_APPLICATION_ID || null,
+        applicationId: process.env.PROCESSOR_APPLICATION_ID || process.env.FINIX_APPLICATION_ID || null,
         expirationInMinutes,
         state: setupState,
         returnUrl: returnUrl.toString(),
@@ -321,12 +325,12 @@ export const POST = createApiHandler(
 
       let identity: any
       try {
-        identity = await fetchFinixIdentity(identityId)
+        identity = await fetchProcessorIdentity(identityId)
       } catch (err: any) {
         return NextResponse.json({ error: err.message || 'Invalid identity' }, { status: 400 })
       }
 
-      const instruments = await fetchFinixPaymentInstrumentsForIdentity(identityId).catch(() => [])
+      const instruments = await fetchProcessorPaymentInstrumentsForIdentity(identityId).catch(() => [])
       const chosen = pickBillingInstrument(instruments)
       if (!chosen) {
         return NextResponse.json(

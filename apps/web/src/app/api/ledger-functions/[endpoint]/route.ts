@@ -12,8 +12,6 @@ const ALLOWED_ENDPOINTS = new Set([
   'record-transfer',
   'record-adjustment',
   'process-payout',
-  'plaid',
-  'stripe',
   'webhooks',
   'import-transactions',
   'tax-documents',

@@ -3,13 +3,6 @@ import { createHash } from 'crypto'
 
 export type ProvisionLedgerMode = 'standard' | 'marketplace'
 
-export interface FinixSettingsPatch {
-  identity_id?: string
-  merchant_id?: string
-  source_id?: string
-  onboarding_form_id?: string
-}
-
 export interface ProvisionOrganizationInput {
   userId: string
   userEmail?: string | null
@@ -17,7 +10,6 @@ export interface ProvisionOrganizationInput {
   organizationSlug?: string
   ledgerName?: string
   ledgerMode?: ProvisionLedgerMode
-  finix?: FinixSettingsPatch
   reuseIfSlugExists?: boolean
 }
 
@@ -505,28 +497,6 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
   }
 }
 
-async function mergeFinixSettings(organizationId: string, patch: FinixSettingsPatch) {
-  const cleanedPatch = Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => Boolean(value))
-  ) as FinixSettingsPatch
-
-  if (Object.keys(cleanedPatch).length === 0) return
-
-  const supabase = getServiceClient()
-  const { error } = await supabase.rpc('merge_organization_settings_key', {
-    p_organization_id: organizationId,
-    p_settings_key: 'finix',
-    p_patch: {
-      ...cleanedPatch,
-      last_synced_at: new Date().toISOString(),
-    },
-  })
-
-  if (error) {
-    throw new Error(`Failed updating processor settings: ${error.message}`)
-  }
-}
-
 export async function provisionOrganizationWithLedgers(
   input: ProvisionOrganizationInput
 ): Promise<ProvisionOrganizationResult> {
@@ -545,10 +515,6 @@ export async function provisionOrganizationWithLedgers(
   })
   await ensureOwnerMembership(organization.organizationId, input.userId)
   const ledgers = await ensureLedgerPair(input, organization.organizationId)
-
-  if (input.finix) {
-    await mergeFinixSettings(organization.organizationId, input.finix)
-  }
 
   return {
     organizationId: organization.organizationId,

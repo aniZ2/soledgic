@@ -37,16 +37,12 @@ const BANK_PRESETS = [
   { id: 'bofa', name: 'Bank of America' },
   { id: 'wells_fargo', name: 'Wells Fargo' },
   { id: 'citi', name: 'Citibank' },
-  { id: 'stripe', name: 'Card Processor (Legacy)' },
   { id: 'relay', name: 'Relay' },
   { id: 'mercury', name: 'Mercury' },
   { id: 'generic', name: 'Other / Generic CSV' },
 ]
 
-const STRIPE_LEGACY_ENABLED = process.env.NEXT_PUBLIC_ENABLE_STRIPE_LEGACY === 'true'
-const visibleBankPresets = STRIPE_LEGACY_ENABLED
-  ? BANK_PRESETS
-  : BANK_PRESETS.filter((preset) => preset.id !== 'stripe')
+const visibleBankPresets = BANK_PRESETS
 
 export default function ImportTransactionsPage() {
   const livemode = useLivemode()
@@ -168,25 +164,6 @@ export default function ImportTransactionsPage() {
           errors: data.data.errors,
           auto_matched: 0,
           needs_review: data.data.imported,
-        }
-
-        // Step 2: Run auto-match if we imported any transactions
-        if (data.data.imported > 0) {
-          try {
-            const matchRes = await callLedgerFunction('plaid', {
-              ledgerId,
-              method: 'POST',
-              body: { action: 'auto_match_all' },
-            })
-            const matchData = await matchRes.json()
-            
-            if (matchData.success && matchData.data?.matched) {
-              result.auto_matched = matchData.data.matched
-              result.needs_review = data.data.imported - matchData.data.matched
-            }
-          } catch {
-            // Auto-match failed, but import succeeded - not critical
-          }
         }
 
         setImportResult(result)

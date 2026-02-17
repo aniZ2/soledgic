@@ -1,24 +1,25 @@
-const DEFAULT_FINIX_VERSION = '2022-02-01'
+const DEFAULT_PROCESSOR_VERSION = '2022-02-01'
 const PUBLIC_PRICING_URL = 'https://soledgic.com/pricing'
 
-function getFinixEnvironment(): 'production' | 'sandbox' {
-  const raw = (process.env.FINIX_ENV || '').toLowerCase().trim()
+function getProcessorEnvironment(): 'production' | 'sandbox' {
+  const raw = (process.env.PROCESSOR_ENV || process.env.FINIX_ENV || '').toLowerCase().trim()
   if (['production', 'prod', 'live'].includes(raw)) return 'production'
   if (['sandbox', 'test', 'testing', 'development', 'dev'].includes(raw)) return 'sandbox'
   return process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
 }
 
-function getFinixBaseUrl() {
+function getProcessorBaseUrl() {
+  if (process.env.PROCESSOR_BASE_URL) return process.env.PROCESSOR_BASE_URL
   if (process.env.FINIX_BASE_URL) return process.env.FINIX_BASE_URL
-  const env = getFinixEnvironment()
+  const env = getProcessorEnvironment()
   return env === 'production'
     ? 'https://finix.live-payments-api.com'
     : 'https://finix.sandbox-payments-api.com'
 }
 
-function getFinixAuthHeader() {
-  const username = process.env.FINIX_USERNAME
-  const password = process.env.FINIX_PASSWORD
+function getProcessorAuthHeader() {
+  const username = process.env.PROCESSOR_USERNAME || process.env.FINIX_USERNAME
+  const password = process.env.PROCESSOR_PASSWORD || process.env.FINIX_PASSWORD
   if (!username || !password) {
     throw new Error('Payment processor credentials are not configured')
   }
@@ -27,18 +28,18 @@ function getFinixAuthHeader() {
   return `Basic ${token}`
 }
 
-export interface FinixRequestOptions {
+export interface ProcessorRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: Record<string, unknown>
 }
 
-export async function finixRequest<T = any>(
+export async function processorRequest<T = any>(
   path: string,
-  options: FinixRequestOptions = {}
+  options: ProcessorRequestOptions = {}
 ): Promise<T> {
   const { method = 'GET', body } = options
-  const baseUrl = getFinixBaseUrl().replace(/\/$/, '')
-  const env = getFinixEnvironment()
+  const baseUrl = getProcessorBaseUrl().replace(/\/$/, '')
+  const env = getProcessorEnvironment()
 
   // Guard against misconfiguration (e.g. sandbox URL with production env).
   if (env === 'production' && baseUrl.includes('sandbox')) {
@@ -51,8 +52,9 @@ export async function finixRequest<T = any>(
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      Authorization: getFinixAuthHeader(),
-      'Finix-Version': process.env.FINIX_API_VERSION || DEFAULT_FINIX_VERSION,
+      Authorization: getProcessorAuthHeader(),
+      [process.env.PROCESSOR_VERSION_HEADER || 'Finix-Version']:
+        process.env.PROCESSOR_API_VERSION || process.env.FINIX_API_VERSION || DEFAULT_PROCESSOR_VERSION,
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -139,7 +141,7 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     payload.entity = applicationId
   }
 
-  return finixRequest(`/onboarding_forms/${onboardingFormId}/links`, {
+  return processorRequest(`/onboarding_forms/${onboardingFormId}/links`, {
     method: 'POST',
     body: payload,
   })
@@ -161,11 +163,11 @@ function extractIdentityApplicationId(identity: any): string | null {
   )
 }
 
-export async function fetchFinixIdentity(identityId: string) {
-  const identity = await finixRequest<any>(`/identities/${identityId}`)
+export async function fetchProcessorIdentity(identityId: string) {
+  const identity = await processorRequest<any>(`/identities/${identityId}`)
 
-  // Defense-in-depth: ensure a redirected identity belongs to our configured Finix application.
-  const expectedAppId = process.env.FINIX_APPLICATION_ID
+  // Defense-in-depth: ensure a redirected identity belongs to our configured application.
+  const expectedAppId = process.env.PROCESSOR_APPLICATION_ID || process.env.FINIX_APPLICATION_ID
   if (expectedAppId) {
     const actualAppId = extractIdentityApplicationId(identity)
     if (!actualAppId) {
@@ -179,13 +181,13 @@ export async function fetchFinixIdentity(identityId: string) {
   return identity
 }
 
-export async function fetchFinixMerchantForIdentity(identityId: string) {
-  const response = await finixRequest<any>(`/identities/${identityId}/merchants`)
+export async function fetchProcessorMerchantForIdentity(identityId: string) {
+  const response = await processorRequest<any>(`/identities/${identityId}/merchants`)
   const merchants = response?._embedded?.merchants || []
   return merchants[0] || null
 }
 
-export async function fetchFinixPaymentInstrumentsForIdentity(identityId: string) {
-  const response = await finixRequest<any>(`/identities/${identityId}/payment_instruments?limit=20`)
+export async function fetchProcessorPaymentInstrumentsForIdentity(identityId: string) {
+  const response = await processorRequest<any>(`/identities/${identityId}/payment_instruments?limit=20`)
   return response?._embedded?.payment_instruments || []
 }

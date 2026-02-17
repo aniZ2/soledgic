@@ -19,7 +19,7 @@
 │                    [ADMIN: Release Funds]                                   │
 │                                    ▼                                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     STRIPE CUSTOM ACCOUNTS                          │   │
+│  │                    CONNECTED ACCOUNTS                               │   │
 │  │   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐           │   │
 │  │   │   Author A   │   │   Trader B   │   │   Author C   │           │   │
 │  │   │ acct_xxx123  │   │ acct_xxx456  │   │ acct_xxx789  │           │   │
@@ -212,7 +212,7 @@ For creators to request payout from their connected account to bank.
 ### `escrow_releases`
 ```sql
 - entry_id              -- What we're releasing
-- recipient_stripe_account  -- acct_xxx
+- recipient_processor_account  -- external account id
 - amount, currency
 - status                -- pending, processing, completed, failed
 - processor_transfer_id    -- tr_xxx
@@ -298,7 +298,7 @@ For creators to request payout from their connected account to bank.
 
 - [ ] Apply migrations:
   - `20260240_escrow_control_system.sql`
-  - `20260241_stripe_custom_accounts.sql`
+  - Connected accounts migration (historical)
 
 - [ ] Deploy functions:
   - `create-checkout`
@@ -323,7 +323,7 @@ For creators to request payout from their connected account to bank.
 
 ### New Migrations
 - `20260240_escrow_control_system.sql` - Escrow tables and functions
-- `20260241_stripe_custom_accounts.sql` - Connected accounts infrastructure
+- Connected accounts migration - Connected accounts infrastructure
 
 ### New Edge Functions
 - `connected-accounts/index.ts` - Create/manage Payment Processor Custom accounts

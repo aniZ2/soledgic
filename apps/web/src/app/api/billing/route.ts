@@ -173,7 +173,6 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
     additionalTeamMembers * teamMemberOveragePrice
 
   const settingsObj = org?.settings && typeof org.settings === 'object' ? org.settings : {}
-  const processorSettings = (settingsObj.finix || {}) as Record<string, any>
   const billingSettings = (settingsObj.billing || {}) as Record<string, any>
 
   const billingMethodIdRaw =
@@ -184,9 +183,13 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       ? billingSettings.payment_method_label.trim()
       : null
 
-  const processorConnected =
-    (typeof processorSettings?.merchant_id === 'string' && processorSettings.merchant_id.trim().length > 0) ||
-    (typeof processorSettings?.identity_id === 'string' && processorSettings.identity_id.trim().length > 0)
+  // Shared-merchant model: processing is platform-managed (env-configured),
+  // not configured per workspace.
+  const processorConnected = Boolean(
+    (process.env.PROCESSOR_USERNAME || process.env.FINIX_USERNAME) &&
+      (process.env.PROCESSOR_PASSWORD || process.env.FINIX_PASSWORD) &&
+      (process.env.PROCESSOR_MERCHANT_ID || process.env.FINIX_MERCHANT_ID)
+  )
 
   let lastCharge: Record<string, any> | null = null
   if (isOwner) {
@@ -278,18 +281,18 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
 }
 
 async function handleGetPlans() {
-  const plansList = Object.entries(PLANS).map(([id, config]) => ({
-    id,
-    name: config.name,
-    price_monthly: config.price_monthly,
-    max_ledgers: config.max_ledgers,
-    max_team_members: config.max_team_members,
-    overage_ledger_price_monthly: config.overage_ledger_price_monthly ?? 2000,
-    overage_team_member_price_monthly: config.overage_team_member_price_monthly ?? 2000,
-    features: config.features,
-    price_id_monthly: config.stripe_price_id,
-    contact_sales: config.contact_sales || false,
-  }))
+	  const plansList = Object.entries(PLANS).map(([id, config]) => ({
+	    id,
+	    name: config.name,
+	    price_monthly: config.price_monthly,
+	    max_ledgers: config.max_ledgers,
+	    max_team_members: config.max_team_members,
+	    overage_ledger_price_monthly: config.overage_ledger_price_monthly ?? 2000,
+	    overage_team_member_price_monthly: config.overage_team_member_price_monthly ?? 2000,
+	    features: config.features,
+	    price_id_monthly: null,
+	    contact_sales: config.contact_sales || false,
+	  }))
 
   return NextResponse.json({ success: true, data: plansList })
 }

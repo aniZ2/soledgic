@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import {
   provisionOrganizationWithLedgers,
-  type FinixSettingsPatch,
   type ProvisionLedgerMode,
 } from '@/lib/org-provisioning'
 
@@ -13,9 +12,6 @@ interface BootstrapPlatformBody {
   organization_slug?: string
   ledger_name?: string
   ledger_mode?: ProvisionLedgerMode
-  finix_identity_id?: string
-  finix_merchant_id?: string
-  finix_source_id?: string
 }
 
 interface AuthUserRow {
@@ -172,13 +168,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const finixPatch: FinixSettingsPatch = {
-    identity_id: body.finix_identity_id,
-    merchant_id: body.finix_merchant_id || process.env.FINIX_MERCHANT_ID,
-    source_id: body.finix_source_id || process.env.FINIX_SOURCE_ID,
-    onboarding_form_id: process.env.FINIX_ONBOARDING_FORM_ID,
-  }
-
   try {
     const provisioned = await provisionOrganizationWithLedgers({
       userId: authUser.id,
@@ -187,7 +176,6 @@ export async function POST(request: Request) {
       organizationSlug,
       ledgerName,
       ledgerMode,
-      finix: finixPatch,
       reuseIfSlugExists: true,
     })
 

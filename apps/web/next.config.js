@@ -52,21 +52,21 @@ const nextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()'
           },
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob: https:",
-              "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co https://api.stripe.com wss://*.supabase.co",
-              "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join('; ')
-          }
+	          {
+	            key: 'Content-Security-Policy',
+	            value: [
+	              "default-src 'self'",
+	              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+	              "style-src 'self' 'unsafe-inline'",
+	              "img-src 'self' data: blob: https:",
+	              "font-src 'self' data:",
+	              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+	              "frame-src 'self'",
+	              "frame-ancestors 'none'",
+	              "base-uri 'self'",
+	              "form-action 'self'",
+	            ].join('; ')
+	          }
         ],
       },
       // Stricter headers for API routes

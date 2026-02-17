@@ -321,7 +321,6 @@ Deno.serve(async (req: Request) => {
         soledgic_additional_team_members: String(additionalMembers),
       },
       payment_method_id: billingSourceId,
-      merchant_id: merchantId,
     })
 
     if (!checkout.success || !checkout.id) {

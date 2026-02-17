@@ -45,7 +45,7 @@ Soledgic is a platform finance system: a double-entry ledger plus payment orches
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         STRIPE                               │
+│                    PAYMENT PROCESSOR                         │
 │  • Moves money                                               │
 │  • Collects tax info (W-9)                                   │
 │  • Issues 1099s (or provides source data)                    │
@@ -61,7 +61,7 @@ Soledgic is a platform finance system: a double-entry ledger plus payment orches
 │  • Initiates payouts and records outcomes                    │
 │  • Maintains audit trail                                     │
 │  • Generates reports and exports                             │
-│  • Reconciles with Payment Processor                                    │
+│  • Reconciles with Payment Processor                          │
 │  • Proves history                                            │
 │  • NEVER custodies funds                                     │
 └─────────────────────────────────────────────────────────────┘

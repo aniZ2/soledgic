@@ -114,21 +114,6 @@ const handler = createHandler(
       return errorResponse('Failed to create creator', 500, req, requestId)
     }
 
-    // Create connected_account record if email provided (for Stripe Connect later)
-    if (email) {
-      await supabase
-        .from('connected_accounts')
-        .insert({
-          ledger_id: ledger.id,
-          entity_type: 'creator',
-          entity_id: creatorId,
-          display_name: displayName,
-          email: email,
-          payout_schedule: { interval: body.payout_preferences?.schedule || 'manual' }
-        })
-        .single()
-    }
-
     // Audit log
     createAuditLogAsync(supabase, req, {
       ledger_id: ledger.id,
