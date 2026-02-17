@@ -5,6 +5,8 @@ import {
   ValidationError,
   NotFoundError,
   ConflictError,
+  CreateCheckoutRequest,
+  CreateCheckoutResponse,
   RecordSaleRequest,
   RecordSaleResponse,
   GetBalanceResponse,
@@ -264,6 +266,33 @@ export class Soledgic {
   // ============================================================================
   // Public API Methods
   // ============================================================================
+
+  /**
+   * Create a hosted checkout payment
+   *
+   * @example
+   * ```typescript
+   * const checkout = await soledgic.createCheckout({
+   *   amount: 1999,
+   *   creatorId: 'author_123',
+   *   productName: 'Book purchase',
+   *   customerEmail: 'reader@example.com'
+   * })
+   *
+   * console.log(checkout.checkoutUrl)
+   * ```
+   */
+  async createCheckout(request: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {
+    if (!request.creatorId) throw new ValidationError('creatorId is required')
+    if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
+
+    const response = await this.request<Record<string, unknown>>('create-checkout', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<CreateCheckoutResponse>(response)
+  }
 
   /**
    * Record a sale with automatic revenue split

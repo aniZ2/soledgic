@@ -17,9 +17,18 @@ const ledger = new Soledgic('sk_live_your_api_key')
 
 // === MARKETPLACE MODE ===
 
+// Create a hosted checkout session
+const checkout = await ledger.createCheckout({
+  amount: 2999, // $29.99 in cents
+  creatorId: 'author_123',
+  productName: 'Book purchase',
+  customerEmail: 'reader@example.com',
+})
+// → { checkoutUrl, paymentId, provider, ... }
+
 // Record a sale with automatic split
 const sale = await ledger.recordSale({
-  referenceId: 'stripe_pi_xxx',
+  referenceId: 'order_123',
   creatorId: 'author_123',
   amount: 2999,  // $29.99 in cents
   processingFee: 117,
@@ -66,6 +75,7 @@ const summary = await ledger.get1099Summary(2024)
 
 | Method | Description |
 |--------|-------------|
+| `createCheckout(req)` | Create hosted checkout payment |
 | `recordSale(req)` | Record sale with automatic split |
 | `processPayout(req)` | Pay a creator |
 | `listTiers()` | Get all tiers |

@@ -22,6 +22,25 @@ export interface RecordSaleRequest {
   transactionDate?: string // For backdated entries
 }
 
+export type CheckoutProvider = 'card' | 'stripe'
+
+export interface CreateCheckoutRequest {
+  amount: number
+  creatorId: string
+  currency?: string
+  productId?: string
+  productName?: string
+  customerEmail?: string
+  customerId?: string
+  captureMethod?: 'automatic' | 'manual'
+  setupFutureUsage?: 'off_session' | 'on_session'
+  paymentProvider?: CheckoutProvider
+  paymentMethodId?: string
+  sourceId?: string
+  merchantId?: string
+  metadata?: Record<string, string>
+}
+
 export interface RecordIncomeRequest {
   referenceId: string
   amount: number
@@ -299,6 +318,27 @@ export interface SaleResponse {
   }
 }
 
+export interface CheckoutBreakdown {
+  grossAmount: number
+  creatorAmount: number
+  platformAmount: number
+  creatorPercent: number
+}
+
+export interface CreateCheckoutResponse {
+  success: boolean
+  provider: CheckoutProvider
+  paymentId: string
+  paymentIntentId: string
+  clientSecret?: string | null
+  checkoutUrl?: string | null
+  status?: string | null
+  requiresAction: boolean
+  amount: number
+  currency: string
+  breakdown?: CheckoutBreakdown
+}
+
 export interface ReverseResponse {
   success: boolean
   voidType: 'soft_delete' | 'reversing_entry'
@@ -383,6 +423,48 @@ export class Soledgic {
   }
 
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
+
+  async createCheckout(req: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {
+    const response = await this.request<any>('create-checkout', {
+      amount: req.amount,
+      creator_id: req.creatorId,
+      currency: req.currency,
+      product_id: req.productId,
+      product_name: req.productName,
+      customer_email: req.customerEmail,
+      customer_id: req.customerId,
+      capture_method: req.captureMethod,
+      setup_future_usage: req.setupFutureUsage,
+      payment_provider: req.paymentProvider,
+      payment_method_id: req.paymentMethodId,
+      source_id: req.sourceId,
+      merchant_id: req.merchantId,
+      metadata: req.metadata,
+    })
+
+    const breakdown = response.breakdown
+      ? {
+          grossAmount: response.breakdown.gross_amount,
+          creatorAmount: response.breakdown.creator_amount,
+          platformAmount: response.breakdown.platform_amount,
+          creatorPercent: response.breakdown.creator_percent,
+        }
+      : undefined
+
+    return {
+      success: Boolean(response.success),
+      provider: response.provider,
+      paymentId: response.payment_id ?? response.payment_intent_id,
+      paymentIntentId: response.payment_intent_id ?? response.payment_id,
+      clientSecret: response.client_secret ?? null,
+      checkoutUrl: response.checkout_url ?? null,
+      status: response.status ?? null,
+      requiresAction: Boolean(response.requires_action),
+      amount: response.amount,
+      currency: response.currency,
+      breakdown,
+    }
+  }
 
   async recordSale(req: RecordSaleRequest): Promise<SaleResponse> {
     return this.request('record-sale', {

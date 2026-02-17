@@ -23,6 +23,23 @@ export interface RecordSaleRequest {
   metadata?: Record<string, unknown>
 }
 
+export interface CreateCheckoutRequest {
+  amount: number
+  creatorId: string
+  currency?: string
+  productId?: string
+  productName?: string
+  customerEmail?: string
+  customerId?: string
+  captureMethod?: 'automatic' | 'manual'
+  setupFutureUsage?: 'off_session' | 'on_session'
+  paymentProvider?: 'card' | 'stripe'
+  paymentMethodId?: string
+  sourceId?: string
+  merchantId?: string
+  metadata?: Record<string, string>
+}
+
 export interface ProcessPayoutRequest {
   /** Creator to pay */
   creatorId: string
@@ -96,6 +113,28 @@ export interface RecordSaleResponse {
   success: boolean
   transactionId?: string
   breakdown?: SaleBreakdown
+  error?: string
+}
+
+export interface CheckoutBreakdown {
+  grossAmount: number
+  creatorAmount: number
+  platformAmount: number
+  creatorPercent: number
+}
+
+export interface CreateCheckoutResponse {
+  success: boolean
+  provider?: 'card' | 'stripe'
+  paymentId?: string
+  paymentIntentId?: string
+  clientSecret?: string | null
+  checkoutUrl?: string | null
+  status?: string | null
+  requiresAction?: boolean
+  amount?: number
+  currency?: string
+  breakdown?: CheckoutBreakdown
   error?: string
 }
 

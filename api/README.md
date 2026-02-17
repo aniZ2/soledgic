@@ -22,6 +22,17 @@ const soledgic = new Soledgic({
   baseUrl: 'https://your-project.supabase.co/functions/v1'
 })
 
+// Create a hosted checkout payment
+const checkout = await soledgic.createCheckout({
+  amount: 1999,
+  creatorId: 'author_123',
+  productName: 'Book purchase',
+  customerEmail: 'reader@example.com',
+})
+
+console.log(checkout.checkoutUrl)
+// https://...
+
 // Record a sale with automatic 80/20 split
 const sale = await soledgic.recordSale({
   referenceId: 'sale_123',
@@ -45,6 +56,31 @@ const soledgic = new Soledgic({
   baseUrl: 'https://...',           // Your Supabase functions URL
   timeout: 30000,                   // Request timeout (ms)
 })
+```
+
+### Create Checkout
+
+```typescript
+const checkout = await soledgic.createCheckout({
+  amount: 1999,                       // Amount in cents
+  creatorId: 'author_123',            // Creator receiving the split
+  productId: 'book_abc',              // Optional
+  productName: 'Book purchase',       // Optional
+  customerEmail: 'reader@example.com',// Optional
+  paymentProvider: 'card',            // Optional: 'card' | 'stripe'
+  metadata: { orderId: 'order_123' }, // Optional
+})
+
+// Response
+{
+  success: true,
+  provider: 'card',
+  paymentId: 'TR123...',
+  paymentIntentId: 'TR123...',
+  checkoutUrl: 'https://...',
+  clientSecret: null,
+  requiresAction: false
+}
 ```
 
 ### Record a Sale
