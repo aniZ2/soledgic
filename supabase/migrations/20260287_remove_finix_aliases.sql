@@ -1,24 +1,22 @@
 -- ============================================================================
--- Remove legacy Finix aliases and normalize stored rail/provider values to `card`
--- - Payout rails: ledgers.payout_rails[].rail = 'finix' -> 'card'
--- - Creator payout methods: accounts.metadata.payout_method.rail = 'finix' -> 'card'
--- - Organizations settings: organizations.settings.finix remains the storage key
---   for processor config (do not rename without a coordinated app+DB migration).
+-- Remove legacy rail aliases and normalize stored rail/provider values to `card`
+-- - Payout rails: ledgers.payout_rails[].rail legacy -> 'card'
+-- - Creator payout methods: accounts.metadata.payout_method.rail legacy -> 'card'
 -- ============================================================================
 
 -- Normalize ledgers.payout_rails rails
 UPDATE public.ledgers
 SET payout_rails = (
-  SELECT jsonb_agg(
+  SELECT COALESCE(jsonb_agg(
     CASE
-      WHEN elem ? 'rail' AND elem->>'rail' = 'finix'
+      WHEN elem ? 'rail' AND (elem->>'rail') NOT IN ('card', 'wise', 'manual', 'crypto')
         THEN jsonb_set(elem, '{rail}', to_jsonb('card'::text), true)
       ELSE elem
     END
-  )
+  ), '[]'::jsonb)
   FROM jsonb_array_elements(COALESCE(payout_rails::jsonb, '[]'::jsonb)) AS elem
 )
-WHERE payout_rails::text LIKE '%"finix"%';
+WHERE payout_rails IS NOT NULL;
 
 -- Normalize accounts.metadata payout method rails (creator metadata)
 UPDATE public.accounts
@@ -28,5 +26,5 @@ SET metadata = jsonb_set(
   to_jsonb('card'::text),
   true
 )
-WHERE metadata::jsonb #>> '{payout_method,rail}' = 'finix';
-
+WHERE (metadata::jsonb #>> '{payout_method,rail}') IS NOT NULL
+  AND (metadata::jsonb #>> '{payout_method,rail}') NOT IN ('card', 'wise', 'manual', 'crypto');

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createApiHandler } from '@/lib/api-handler'
+import { createHash } from 'crypto'
+
+export const runtime = 'nodejs'
 
 function createServiceClient() {
   return createServerClient(
@@ -55,7 +58,11 @@ function safeHeaders(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of headers.entries()) {
     const key = k.toLowerCase()
+    // Avoid persisting secrets and session material to the database.
     if (key === 'authorization') continue
+    if (key === 'cookie' || key === 'set-cookie') continue
+    if (key === 'x-soledgic-webhook-token' || key === 'x-webhook-token') continue
+    if (key === 'x-api-key') continue
     if (key.length > 64) continue
     const value = String(v).slice(0, 512)
     out[key] = value
@@ -74,7 +81,7 @@ function pickBool(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
 }
 
-function findTagsObject(payload: any, maxDepth = 6): Record<string, unknown> | null {
+function findKeyValueObject(payload: any, maxDepth = 6): Record<string, unknown> | null {
   const visited = new Set<any>()
   const stack: Array<{ node: any; depth: number }> = [{ node: payload, depth: 0 }]
 
@@ -86,9 +93,9 @@ function findTagsObject(payload: any, maxDepth = 6): Record<string, unknown> | n
     if (visited.has(node)) continue
     visited.add(node)
 
-    if (node.tags && typeof node.tags === 'object' && !Array.isArray(node.tags)) {
-      return node.tags as Record<string, unknown>
-    }
+    // Different processors call this object different things. We accept either.
+    if (node.tags && typeof node.tags === 'object' && !Array.isArray(node.tags)) return node.tags as Record<string, unknown>
+    if (node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)) return node.metadata as Record<string, unknown>
 
     if (depth >= maxDepth) continue
 
@@ -101,8 +108,11 @@ function findTagsObject(payload: any, maxDepth = 6): Record<string, unknown> | n
 }
 
 function extractLedgerId(payload: any): string | null {
-  const tags = findTagsObject(payload)
-  const raw = tags ? (tags['ledger_id'] as unknown) : null
+  const kv = findKeyValueObject(payload)
+  const raw =
+    (kv ? (kv['ledger_id'] as unknown) : null) ??
+    (kv ? (kv['soledgic_ledger_id'] as unknown) : null) ??
+    null
   const ledgerId = pickString(raw, 64)
   // UUID is expected but we don't strictly validate here; DB FK will enforce if set.
   return ledgerId
@@ -134,6 +144,11 @@ function extractWebhookFields(payload: any) {
   return { eventId, eventType, resourceId, livemode }
 }
 
+function fallbackEventId(rawBody: string): string {
+  const hash = createHash('sha256').update(rawBody || '').digest('hex')
+  return `sha256:${hash}`
+}
+
 export const POST = createApiHandler(
   async (request, { requestId }) => {
     const auth = authorizeWebhook(request)
@@ -155,11 +170,12 @@ export const POST = createApiHandler(
 
     const { eventId, eventType, resourceId, livemode } = extractWebhookFields(payload)
     const ledgerId = extractLedgerId(payload)
+    const finalEventId = eventId || fallbackEventId(rawBody)
 
     const supabase = createServiceClient()
     const { error } = await supabase.from('processor_webhook_inbox').insert({
       ledger_id: ledgerId,
-      event_id: eventId,
+      event_id: finalEventId,
       event_type: eventType,
       resource_id: resourceId,
       livemode,
@@ -190,4 +206,3 @@ export const POST = createApiHandler(
     maxBodySize: 2 * 1024 * 1024,
   }
 )
-

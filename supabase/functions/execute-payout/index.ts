@@ -48,6 +48,7 @@ interface PayoutResult {
 
 interface CreatorPayoutDetails {
   payout_id: string
+  ledger_id: string
   creator_id: string
   creator_name: string
   amount: number
@@ -115,6 +116,8 @@ class CardProcessorRail implements PaymentRail {
       currency: payout.currency.toUpperCase(),
       description: `Payout ${payout.payout_id}`,
       metadata: {
+        ledger_id: payout.ledger_id,
+        soledgic_ledger_id: payout.ledger_id,
         soledgic_payout_id: payout.payout_id,
         creator_id: payout.creator_id,
       },
@@ -463,6 +466,7 @@ async function executeSinglePayout(
   const creatorMeta = creatorEntry.accounts.metadata || {}
   const payoutDetails: CreatorPayoutDetails = {
     payout_id: payout.id,
+    ledger_id: ledger.id,
     creator_id: creatorEntry.accounts.entity_id,
     creator_name: creatorEntry.accounts.name,
     amount: payout.amount,
@@ -642,6 +646,7 @@ const handler = createHandler(
           const creatorEntry = (p.entries as any[]).find(e => e.accounts?.entity_id)
           return {
             payout_id: p.id,
+            ledger_id: ledger.id,
             creator_id: creatorEntry?.accounts?.entity_id || '',
             creator_name: creatorEntry?.accounts?.name || '',
             amount: p.amount,
