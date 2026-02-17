@@ -25,7 +25,7 @@ Before onboarding, verify the customer meets these criteria:
 - [ ] Rate limiting active
 - [ ] Monitoring alerts configured
 - [ ] Support process documented
-- [ ] Billing integration ready (Stripe)
+- [ ] Billing integration ready (Payment Processor)
 - [ ] Terms of Service finalized
 - [ ] Data Processing Agreement ready
 
@@ -80,14 +80,14 @@ Integration Type:
   [ ] Dashboard-only
 
 Payment Processors Used:
-  [ ] Stripe
+  [ ] Payment Processor
   [ ] Square
   [ ] Crypto (specify): ________________
   [ ] Other: ________________
 
 Payout Methods:
-  [ ] Stripe Connect
-  [ ] Plaid ACH
+  [ ] Connected Accounts
+  [ ] Bank Feed ACH
   [ ] ACH (bank transfer)
   [ ] Check
   [ ] Crypto
@@ -448,8 +448,8 @@ Call agenda:
 ### Billing Setup
 
 ```javascript
-// Stripe subscription creation
-const subscription = await stripe.subscriptions.create({
+// Payment Processor subscription creation
+const subscription = await processor.subscriptions.create({
   customer: stripeCustomerId,
   items: [
     { price: 'price_soledgic_growth' }
@@ -463,7 +463,7 @@ const subscription = await stripe.subscriptions.create({
 await supabase
   .from('organizations')
   .update({ 
-    stripe_customer_id: stripeCustomerId,
+    processor_customer_id: stripeCustomerId,
     subscription_status: 'active'
   })
   .eq('id', orgId)

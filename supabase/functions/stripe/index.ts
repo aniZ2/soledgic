@@ -35,7 +35,7 @@ const handler = createHandler(
     }
 
     if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
-      return errorResponse('Stripe legacy endpoints are disabled', 410, req, requestId)
+      return errorResponse('Legacy endpoints are disabled', 410, req, requestId)
     }
 
     if (!body.action || !VALID_ACTIONS.includes(body.action)) {
@@ -265,7 +265,7 @@ const handler = createHandler(
           .single()
         
         if (!stripeTxn) {
-          return errorResponse('Stripe payout not found', 404, req, requestId)
+          return errorResponse('Payout not found', 404, req, requestId)
         }
 
         await supabase

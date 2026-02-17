@@ -5,7 +5,7 @@
 Soledgic now supports two powerful automation features:
 
 1. **Auto-Email Service** - Automatically sends PDF earnings statements to creators on the 1st of each month
-2. **Processor Adapter** - Swap between payment rails (Stripe Connect, Plaid, manual bank files) without changing ledger code
+2. **Processor Adapter** - Swap between payment rails (Connected Accounts, Bank Feed, manual bank files) without changing ledger code
 
 ---
 
@@ -75,15 +75,15 @@ const preview = await ledger.previewStatementEmail('creator_jane_doe')
 | Rail | Key | Description |
 |------|-----|-------------|
 | Card Processor | `card` | Primary payout rail |
-| Stripe Connect | `stripe_connect` | Instant transfers |
-| Plaid Transfer | `plaid_transfer` | ACH via Plaid |
+| Connected Accounts | `processor_connect` | Instant transfers |
+| Bank Feed Transfer | `bank_feed_transfer` | ACH via Bank Feed |
 | Manual | `manual` | NACHA file generation |
 
 ### Configuration
 
 ```typescript
-// Configure Stripe Connect
-await ledger.configurePayoutRail('stripe_connect', {
+// Configure Connected Accounts
+await ledger.configurePayoutRail('processor_connect', {
   enabled: true,
   credentials: { secret_key: 'sk_live_xxx' }
 })
@@ -110,7 +110,7 @@ const payout = await ledger.processPayout({
 
 // 2. Execute via payment rail
 const result = await ledger.executePayout(payout.payout_id)
-// { success: true, rail: 'stripe_connect', external_id: 'tr_xxx' }
+// { success: true, rail: 'processor_connect', external_id: 'tr_xxx' }
 
 // Batch execution
 await ledger.executeBatchPayouts(['payout_1', 'payout_2', 'payout_3'])
@@ -136,5 +136,5 @@ supabase db push
 # Set secrets
 supabase secrets set EMAIL_PROVIDER=sendgrid
 supabase secrets set SENDGRID_API_KEY=SG.xxx
-supabase secrets set STRIPE_SECRET_KEY=sk_live_xxx
+supabase secrets set PROCESSOR_SECRET_KEY=sk_live_xxx
 ```

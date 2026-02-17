@@ -364,7 +364,7 @@ const handler = createHandler(
     })
     
     if (!stripeKey) {
-      return errorResponse('Stripe not configured for this ledger', 400, req, requestId)
+      return errorResponse('Legacy provider not configured for this ledger', 400, req, requestId)
     }
     
     const action = body.action || 'list'

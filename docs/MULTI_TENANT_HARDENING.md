@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'starter', 'growth', 'enterprise')),
   
   -- Billing
-  stripe_customer_id TEXT,
+  processor_customer_id TEXT,
   subscription_status TEXT DEFAULT 'active',
   
   -- Limits (based on plan)
@@ -686,9 +686,9 @@ SUPABASE_SERVICE_ROLE_KEY=xxx
 SUPABASE_ANON_KEY=xxx
 
 # Optional integrations
-PLAID_CLIENT_ID=xxx
-PLAID_SECRET=xxx
-STRIPE_SECRET_KEY=xxx
+BANK_FEED_CLIENT_ID=xxx
+BANK_FEED_SECRET=xxx
+PROCESSOR_SECRET_KEY=xxx
 SENDGRID_API_KEY=xxx
 
 # Monitoring

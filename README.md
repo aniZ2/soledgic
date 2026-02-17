@@ -93,8 +93,8 @@ curl -X POST "$URL/record-income" \
 ├─────────────────────────────────────────────────────────────────┤
 │  Banking           │ Management         │ Integrations           │
 │  ──────────────    │ ──────────────     │ ─────────────          │
-│  reconcile         │ create-ledger      │ stripe / stripe-webhook│
-│  import-bank-stmt  │ manage-splits      │ plaid                  │
+│  reconcile         │ create-ledger      │ processor / processor-webhook│
+│  import-bank-stmt  │ manage-splits      │ bank-feed                  │
 │  manage-bank-accts │ manage-budgets     │ connected-accounts     │
 │  import-txns       │ manage-contractors │ webhooks               │
 ├─────────────────────────────────────────────────────────────────┤
@@ -115,8 +115,8 @@ curl -X POST "$URL/record-income" \
 **Stack:**
 - **Backend**: Supabase Edge Functions (Deno/TypeScript) + PostgreSQL
 - **Frontend**: Next.js 14 (App Router) + TailwindCSS
-- **Payments**: Stripe Connect
-- **Banking**: Plaid
+- **Payments**: Connected Accounts
+- **Banking**: Bank Feed
 - **Auth**: Supabase Auth + SHA-256 hashed API keys
 - **Testing**: Vitest (unit, integration, stress)
 - **CI/CD**: GitHub Actions (security scanning, CodeQL, secret detection)
@@ -153,7 +153,7 @@ const ledger = new Soledgic('sk_live_xxx')
 ```typescript
 // Marketplace: record sale with automatic split
 const sale = await ledger.recordSale({
-  referenceId: 'stripe_pi_xxx',
+  referenceId: 'processor_pi_xxx',
   creatorId: 'author_123',
   amount: 2999,
   processingFee: 117,
@@ -239,7 +239,7 @@ npm test
 | `POST /import-bank-statement` | Import bank statement (CSV/OFX) |
 | `POST /import-transactions` | Bulk import transactions |
 | `POST /manage-bank-accounts` | CRUD for connected bank accounts |
-| `POST /plaid` | Plaid Link integration |
+| `POST /bank-feed` | Bank Connection integration |
 
 ### Reports & Tax
 
@@ -300,11 +300,11 @@ npm test
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /stripe` | Stripe Connect integration |
-| `POST /stripe-webhook` | Stripe payment event handler |
-| `POST /stripe-billing-webhook` | Stripe subscription event handler |
+| `POST /processor` | Connected Accounts integration |
+| `POST /processor-webhook` | Payment Processor payment event handler |
+| `POST /billing-webhook` | Payment Processor subscription event handler |
 | `POST /connected-accounts` | Manage connected payment accounts |
-| `POST /plaid` | Plaid bank connection |
+| `POST /bank-feed` | Bank Feed bank connection |
 | `POST /webhooks` | Outbound webhook configuration |
 | `POST /process-webhooks` | Process webhook queue |
 
@@ -623,7 +623,7 @@ Error types: `SoledgicError`, `ValidationError`, `AuthenticationError`, `NotFoun
 | `bank_accounts` | Connected bank accounts |
 | `bank_lines` | Imported bank statement lines |
 | `reconciliations` | Bank reconciliation records |
-| `plaid_items` | Plaid connection tokens (encrypted) |
+| `bank_feed_items` | Bank Feed connection tokens (encrypted) |
 
 ### Authorization & Projections
 
@@ -651,14 +651,14 @@ Error types: `SoledgicError`, `ValidationError`, `AuthenticationError`, `NotFoun
 
 ## Integrations
 
-### Stripe
-- **Stripe Connect** — payout to connected accounts
+### Payment Processor
+- **Connected Accounts** — payout to connected accounts
 - **Webhook handlers** — payment succeeded/failed/refunded, subscription events
 - **Checkout** — create checkout sessions
 - **Billing** — subscription management for Soledgic itself
 
-### Plaid
-- **Bank connection** — link bank accounts via Plaid Link
+### Bank Feed
+- **Bank connection** — link bank accounts via Bank Connection
 - **Transaction sync** — import transactions automatically
 - **Balance sync** — real-time balance updates
 
@@ -694,7 +694,7 @@ CSP, HSTS, X-Frame-Options (DENY), X-Content-Type-Options, Referrer-Policy, Perm
 ### Compliance
 - **SOC 2** — Type II audit ready (92% compliant)
 - **GDPR** — data processing agreements available
-- **PCI DSS** — Stripe handles card data (Level 1 certified)
+- **PCI DSS** — Payment Processor handles card data (Level 1 certified)
 
 ### CI/CD Security (GitHub Actions)
 - Dependency audit (`npm audit`)
@@ -785,7 +785,7 @@ soledgic/
 │   │   ├── project-intent/     # Shadow Ledger projections
 │   │   ├── preflight-authorization/  # Policy engine
 │   │   ├── configure-alerts/   # Alert CRUD
-│   │   ├── stripe-webhook/     # Stripe event handler
+│   │   ├── processor-webhook/     # Payment Processor event handler
 │   │   └── ...                 # 55+ more functions
 │   └── migrations/             # 140+ database migrations
 │
@@ -839,11 +839,11 @@ soledgic/
 ### Supabase Edge Functions (secrets)
 
 ```bash
-supabase secrets set STRIPE_SECRET_KEY=sk_xxx
-supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
-supabase secrets set STRIPE_BILLING_WEBHOOK_SECRET=whsec_xxx
-supabase secrets set PLAID_CLIENT_ID=xxx
-supabase secrets set PLAID_SECRET=xxx
+supabase secrets set PROCESSOR_SECRET_KEY=sk_xxx
+supabase secrets set PROCESSOR_WEBHOOK_SECRET=whsec_xxx
+supabase secrets set PROCESSOR_BILLING_WEBHOOK_SECRET=whsec_xxx
+supabase secrets set BANK_FEED_CLIENT_ID=xxx
+supabase secrets set BANK_FEED_SECRET=xxx
 supabase secrets set RESEND_API_KEY=re_xxx
 supabase secrets set CRON_SECRET=xxx
 supabase secrets set ENVIRONMENT=production

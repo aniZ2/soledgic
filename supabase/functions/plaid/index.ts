@@ -93,10 +93,10 @@ const handler = createHandler(
       return errorResponse('Ledger not found', 401, req)
     }
 
-    // Check if Plaid is configured
+    // Check if bank feed is configured
     const plaidClientId = Deno.env.get('PLAID_CLIENT_ID')
     if (!plaidClientId) {
-      return errorResponse('Plaid is not configured. Contact support.', 503, req)
+      return errorResponse('Bank feed is not configured. Contact support.', 503, req)
     }
 
     switch (body.action) {

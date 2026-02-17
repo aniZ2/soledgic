@@ -35,7 +35,7 @@ The `FOR UPDATE` lock is the key. Any concurrent request targeting the same row 
 |---|---|---|
 | `record-sale/index.ts` | `record_sale_atomic` | Returns existing transaction (idempotent) |
 | `process-payout/index.ts` | `process_payout_atomic` | Returns existing transaction (idempotent) |
-| `stripe-webhook/index.ts` (handleChargeRefunded) | `process_stripe_refund` | Returns existing transaction (idempotent) |
+| `processor-webhook/index.ts` (handleChargeRefunded) | `process_stripe_refund` | Returns existing transaction (idempotent) |
 
 ## Defense Layers (Refund Example)
 

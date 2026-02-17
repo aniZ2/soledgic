@@ -187,7 +187,7 @@ function resolveChargeProvider(
     return {
       provider: 'card',
       source: 'request',
-      error: 'Stripe checkout provider is disabled. Use the card processor for charge flows.',
+      error: 'Legacy checkout provider is disabled. Use the default processor for charge flows.',
     }
   }
   if (requestedProvider) {
@@ -271,7 +271,7 @@ const handler = createHandler(
         : null
 
     if (body.payment_provider !== undefined && !requestedProvider) {
-      return errorResponse('Invalid payment_provider: must be card or stripe', 400, req, requestId)
+      return errorResponse('Invalid payment_provider: must be card', 400, req, requestId)
     }
 
     // Validate capture_method if provided
@@ -300,7 +300,7 @@ const handler = createHandler(
     if (resolvedProvider.provider === 'stripe') {
       const stripeKey = await getStripeSecretKey(supabase, ledger.id)
       if (!stripeKey) {
-        return errorResponse('Stripe is selected but STRIPE_SECRET_KEY is not configured', 500, req, requestId)
+        return errorResponse('Legacy provider is selected but not configured', 500, req, requestId)
       }
       provider = getPaymentProvider('stripe', stripeKey)
     } else {

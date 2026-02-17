@@ -33,10 +33,10 @@ These rules are explicit and enforced. They protect the integrity of the ledger.
 
 ### Explicit Behavior
 ```
-POST /record-sale {reference_id: "stripe_pi_123", ...}
+POST /record-sale {reference_id: "processor_pi_123", ...}
 → First call: Creates transaction, returns {success: true, transaction_id: "abc"}
 
-POST /record-sale {reference_id: "stripe_pi_123", ...}
+POST /record-sale {reference_id: "processor_pi_123", ...}
 → Second call: Returns {success: false, error: "Duplicate reference_id", transaction_id: "abc"}
 ```
 
@@ -47,7 +47,7 @@ POST /record-sale {reference_id: "stripe_pi_123", ...}
 - Scoped per ledger (same key can exist in different ledgers)
 
 ### Why This Matters
-- Stripe webhooks retry on failure
+- Payment Processor webhooks retry on failure
 - Network issues cause duplicate requests
 - Distributed systems need this guarantee
 - Prevents double-charging customers

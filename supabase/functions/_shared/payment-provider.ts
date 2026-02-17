@@ -137,7 +137,7 @@ export class StripePaymentProvider implements PaymentProvider {
       if (!response.ok || data.error) {
         return {
           success: false,
-          error: data?.error?.message || `Stripe API request failed (${response.status})`,
+          error: data?.error?.message || `Processor API request failed (${response.status})`,
         }
       }
 
@@ -145,7 +145,7 @@ export class StripePaymentProvider implements PaymentProvider {
     } catch (err: any) {
       return {
         success: false,
-        error: `Stripe request failed: ${err.message}`,
+        error: `Processor request failed: ${err.message}`,
       }
     }
   }
@@ -534,7 +534,7 @@ export function getPaymentProvider(
         ? options
         : options.stripeApiKey || ''
     if (!apiKey) {
-      throw new Error('Stripe API key is required')
+      throw new Error('Processor API key is required')
     }
     return new StripePaymentProvider(apiKey)
   }

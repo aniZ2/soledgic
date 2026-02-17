@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
   }
 
   if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
-    return jsonResponse({ error: 'Stripe legacy endpoints are disabled' }, 410, req)
+    return jsonResponse({ error: 'Legacy endpoints are disabled' }, 410, req)
   }
 
   const supabase = getSupabaseClient()
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
         ip: clientIp,
         webhook: 'connect',
       })
-      return jsonResponse({ error: 'Missing stripe-signature header' }, 401, req)
+      return jsonResponse({ error: 'Missing signature header' }, 401, req)
     }
 
     const verification = await verifyStripeSignature(body, signature, webhookSecret)

@@ -422,20 +422,20 @@ async function checkSecurityMetrics(supabase: any, requestId: string): Promise<S
     const estimatedCount = stripeTransactions.filter((t: any) => t.fee_estimated === true).length
     const estimatedPercent = Math.round((estimatedCount / stripeTransactions.length) * 100)
     
-    if (estimatedPercent >= THRESHOLDS.estimated_fees_percent) {
-      alerts.push({
-        type: 'High Estimated Fee Rate',
-        severity: estimatedPercent >= 30 ? 'warning' : 'info',
-        message: `${estimatedPercent}% of Stripe transactions using estimated fees`,
-        details: {
-          total_transactions: stripeTransactions.length,
-          estimated_count: estimatedCount,
-          estimated_percent: estimatedPercent,
-          action_required: 'Check Stripe API connectivity and balance transaction access',
-        },
-        timestamp: new Date().toISOString(),
-      })
-    }
+	    if (estimatedPercent >= THRESHOLDS.estimated_fees_percent) {
+	      alerts.push({
+	        type: 'High Estimated Fee Rate',
+	        severity: estimatedPercent >= 30 ? 'warning' : 'info',
+	        message: `${estimatedPercent}% of processor transactions using estimated fees`,
+	        details: {
+	          total_transactions: stripeTransactions.length,
+	          estimated_count: estimatedCount,
+	          estimated_percent: estimatedPercent,
+	          action_required: 'Check processor API connectivity and balance-transaction access',
+	        },
+	        timestamp: new Date().toISOString(),
+	      })
+	    }
   }
   
   // 9. Check for SSRF attempts

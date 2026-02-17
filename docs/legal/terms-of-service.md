@@ -36,7 +36,7 @@ Soledgic is **not**:
 - A legal or financial advisor
 - An escrow service
 
-We do not hold, transmit, or have custody of your funds. All money movement occurs through your own accounts with Stripe, your bank, or other financial institutions you connect.
+We do not hold, transmit, or have custody of your funds. All money movement occurs through your own accounts with Payment Processor, your bank, or other financial institutions you connect.
 
 ---
 
@@ -129,8 +129,8 @@ We retain Your Data for as long as your account is active. After account termina
 ### 6.1 Integrations
 
 Soledgic integrates with third-party services including:
-- Stripe (payment processing)
-- Plaid (bank connections)
+- Payment Processor (payment processing)
+- Bank Feed (bank connections)
 - Resend (email delivery)
 
 ### 6.2 Your Responsibility

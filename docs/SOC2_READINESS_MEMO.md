@@ -155,7 +155,7 @@ Soledgic's API infrastructure has undergone comprehensive security hardening and
 | Control | Status | Evidence |
 |---------|--------|----------|
 | Data Classification | ✅ Implemented | PII removed, only financial amounts stored |
-| Sensitive Data Handling | ✅ Implemented | Plaid tokens encrypted in Vault |
+| Sensitive Data Handling | ✅ Implemented | Bank Feed tokens encrypted in Vault |
 
 **Architecture Decision:**
 > Soledgic stores payment amounts only. Platforms maintain recipient PII.

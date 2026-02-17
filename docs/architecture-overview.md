@@ -7,7 +7,7 @@
 If money moves through your platform, Soledgic can:
 - **Account for it** (double-entry ledger)
 - **Verify it** (triple-entry proof via external sources)
-- **Reconcile it** (match Stripe + bank + internal records)
+- **Reconcile it** (match Payment Processor + bank + internal records)
 - **Audit it** (full history, period locking, frozen statements)
 - **Tax it** (1099 generation for creators)
 
@@ -66,14 +66,14 @@ ledgers                    # One per business/slug
 │   ├── transaction_id, account_id, entry_type (debit/credit), amount
 │   └── Sum(debits) always equals Sum(credits)
 │
-├── stripe_events         # Raw Stripe webhooks
-│   └── stripe_event_id, event_type, raw_data, status
+├── processor_events         # Raw Payment Processor webhooks
+│   └── processor_event_id, event_type, raw_data, status
 │
-├── stripe_transactions   # Processed Stripe activity
-│   └── stripe_id, stripe_type, amount, match_status, bank_transaction_id
+├── processor_transactions   # Processed Payment Processor activity
+│   └── processor_id, processor_type, amount, match_status, bank_transaction_id
 │
-├── plaid_transactions    # Bank feed transactions
-│   └── amount, date, description, match_status, stripe_payout_id
+├── bank_feed_transactions    # Bank feed transactions
+│   └── amount, date, description, match_status, processor_payout_id
 │
 ├── payouts               # Creator payouts
 │   └── creator_id, amount, status, payout_method
@@ -95,11 +95,11 @@ ledgers                    # One per business/slug
 | `/record-expense` | Record a business expense |
 | `/record-refund` | Process a refund |
 | `/create-payout` | Initiate creator payout |
-| `/stripe-webhook` | Process Stripe events (money movement) |
-| `/stripe-billing-webhook` | Process billing events (subscriptions) |
-| `/stripe` | Stripe transaction management |
+| `/processor-webhook` | Process Payment Processor events (money movement) |
+| `/billing-webhook` | Process billing events (subscriptions) |
+| `/processor` | Payment Processor transaction management |
 | `/import-transactions` | Bank CSV/OFX import |
-| `/plaid-*` | Plaid bank connection management |
+| `/bank-feed-*` | Bank Feed bank connection management |
 | `/generate-pdf` | PDF report generation |
 | `/tax-documents` | 1099 generation and management |
 | `/health-check` | Ledger integrity verification |
@@ -111,11 +111,11 @@ ledgers                    # One per business/slug
 
 ### 1. Webhook Separation
 
-Two Stripe webhook endpoints:
-- **`/stripe-webhook`** - Money movement (charges, payouts, disputes)
+Two Payment Processor webhook endpoints:
+- **`/processor-webhook`** - Money movement (charges, payouts, disputes)
   - Creates ledger entries
   - Touches `transactions`, `entries`, `accounts`
-- **`/stripe-billing-webhook`** - Billing (subscriptions, invoices)
+- **`/billing-webhook`** - Billing (subscriptions, invoices)
   - Syncs state only
   - Never touches ledger
 
@@ -137,9 +137,9 @@ Once a month is closed:
 - Hash of all transactions is computed
 - No edits allowed without reversing entries
 
-### 4. Stripe Payout ↔ Bank Matching
+### 4. Payment Processor Payout ↔ Bank Matching
 
-Problem: Stripe payout and bank deposit are the same money, but appear as two records.
+Problem: Payment Processor payout and bank deposit are the same money, but appear as two records.
 
 Solution: Auto-match by amount + date + description. Bank transaction marked `is_stripe_payout = true`. No duplicate ledger entry.
 
@@ -161,7 +161,7 @@ One Soledgic instance can serve many businesses.
 |-------|-----------|
 | API Access | API key per ledger |
 | Row-Level Security | Postgres RLS by ledger_id |
-| Webhook Verification | Stripe signature validation |
+| Webhook Verification | Payment Processor signature validation |
 | Audit Trail | All changes logged to audit_log |
 | TIN Storage | Should be encrypted (flag for production) |
 
@@ -170,9 +170,9 @@ One Soledgic instance can serve many businesses.
 ## What Makes This "Triple-Entry"
 
 ```
-Entry #1: Stripe's Record
-└── Immutable. You can't edit Stripe's database.
-└── Stored: stripe_events.raw_data
+Entry #1: Payment Processor's Record
+└── Immutable. You can't edit Payment Processor's database.
+└── Stored: processor_events.raw_data
 
 Entry #2: Your Ledger
 └── Your accounting truth.
@@ -180,7 +180,7 @@ Entry #2: Your Ledger
 
 Entry #3: Bank Statement
 └── External verification.
-└── Stored: plaid_transactions
+└── Stored: bank_feed_transactions
 ```
 
 If any entry is tampered with, the others expose the discrepancy. Health checks run daily to catch drift.
@@ -197,8 +197,8 @@ supabase db push --include-all
 supabase functions deploy
 
 # Specific functions
-supabase functions deploy stripe-webhook --no-verify-jwt
-supabase functions deploy stripe-billing-webhook --no-verify-jwt
+supabase functions deploy processor-webhook --no-verify-jwt
+supabase functions deploy billing-webhook --no-verify-jwt
 supabase functions deploy health-check --no-verify-jwt
 ```
 
@@ -211,15 +211,15 @@ supabase functions deploy health-check --no-verify-jwt
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# Stripe
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=         # For /stripe-webhook
-STRIPE_BILLING_WEBHOOK_SECRET= # For /stripe-billing-webhook
+# Payment Processor
+PROCESSOR_SECRET_KEY=
+PROCESSOR_WEBHOOK_SECRET=         # For /processor-webhook
+PROCESSOR_BILLING_WEBHOOK_SECRET= # For /billing-webhook
 
-# Plaid (optional)
-PLAID_CLIENT_ID=
-PLAID_SECRET=
-PLAID_ENV=sandbox|development|production
+# Bank Feed (optional)
+BANK_FEED_CLIENT_ID=
+BANK_FEED_SECRET=
+BANK_FEED_ENV=sandbox|development|production
 
 # Email (optional)
 RESEND_API_KEY=
@@ -260,7 +260,7 @@ await soledgic.recordSale({
 | Feature | Status |
 |---------|--------|
 | Core Ledger Engine | ✅ |
-| Stripe Integration | ✅ |
+| Payment Processor Integration | ✅ |
 | Bank Reconciliation | ✅ |
 | Payout ↔ Bank Matching | ✅ |
 | Health Checks | ✅ |

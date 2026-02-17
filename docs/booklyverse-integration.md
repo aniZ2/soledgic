@@ -25,26 +25,26 @@ SOLEDGIC_API_KEY=sk_live_booklyverse_xxx
 
 ## Integration Points
 
-### 1. Stripe Webhook (After Payment Success)
+### 1. Payment Processor Webhook (After Payment Success)
 
-In your Stripe webhook handler:
+In your Payment Processor webhook handler:
 
 ```typescript
-// app/api/webhooks/stripe/route.ts
+// app/api/webhooks/processor/route.ts
 import { soledgic } from '@/lib/soledgic'
 
 export async function POST(req: Request) {
-  const event = stripe.webhooks.constructEvent(...)
+  const event = processor.webhooks.constructEvent(...)
 
   if (event.type === 'payment_intent.succeeded') {
     const pi = event.data.object
 
     // Record the sale in Soledgic
     const sale = await soledgic.recordSale({
-      referenceId: pi.id,                           // Stripe payment ID
+      referenceId: pi.id,                           // Payment Processor payment ID
       creatorId: pi.metadata.author_id,             // Your author ID
       amount: pi.amount_received,                   // Amount in cents
-      processingFee: Math.round(pi.amount * 0.029 + 30), // Stripe fee
+      processingFee: Math.round(pi.amount * 0.029 + 30), // Payment Processor fee
       productId: pi.metadata.book_id,
       productName: pi.metadata.book_title,
     })
@@ -57,12 +57,12 @@ export async function POST(req: Request) {
 }
 ```
 
-### 2. Author Payout (After Stripe Connect Transfer)
+### 2. Author Payout (After Connected Accounts Transfer)
 
 ```typescript
 // app/api/payouts/process/route.ts
 import { soledgic } from '@/lib/soledgic'
-import Stripe from 'stripe'
+import Payment Processor from 'processor'
 
 export async function POST(req: Request) {
   const { authorId, amount } = await req.json()
@@ -74,11 +74,11 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Insufficient balance' }, { status: 400 })
   }
 
-  // 2. Execute Stripe Connect transfer
-  const transfer = await stripe.transfers.create({
+  // 2. Execute Connected Accounts transfer
+  const transfer = await processor.transfers.create({
     amount,
     currency: 'usd',
-    destination: author.stripe_account_id,
+    destination: author.processor_account_id,
   })
 
   // 3. Record in Soledgic
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     referenceId: transfer.id,
     creatorId: authorId,
     amount,
-    payoutMethod: 'stripe_connect',
+    payoutMethod: 'processor_connect',
   })
 
   return Response.json({ 
@@ -223,8 +223,8 @@ export default async function TaxPage() {
 
 ## Key Points
 
-1. **Every sale goes through Stripe first** - Soledgic records, not processes
-2. **Payouts happen in Stripe Connect** - Soledgic tracks the accounting
+1. **Every sale goes through Payment Processor first** - Soledgic records, not processes
+2. **Payouts happen in Connected Accounts** - Soledgic tracks the accounting
 3. **80/20 split is automatic** - Configure tiers in Soledgic dashboard
 4. **14-day refund buffer** - Already configured in Booklyverse ledger
 5. **Real-time balances** - Authors see accurate available amounts

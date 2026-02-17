@@ -37,7 +37,7 @@ const BANK_PRESETS = [
   { id: 'bofa', name: 'Bank of America' },
   { id: 'wells_fargo', name: 'Wells Fargo' },
   { id: 'citi', name: 'Citibank' },
-  { id: 'stripe', name: 'Stripe' },
+  { id: 'stripe', name: 'Card Processor (Legacy)' },
   { id: 'relay', name: 'Relay' },
   { id: 'mercury', name: 'Mercury' },
   { id: 'generic', name: 'Other / Generic CSV' },

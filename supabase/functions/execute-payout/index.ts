@@ -94,12 +94,12 @@ class StripeConnectRail implements PaymentRail {
   async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
     const stripeKey = config.credentials?.secret_key || Deno.env.get('STRIPE_SECRET_KEY')
     if (!stripeKey) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Stripe key not configured' }
+      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Legacy provider key not configured' }
     }
 
     const connectedAccountId = payout.payout_method?.account_id
     if (!connectedAccountId) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'No Stripe Connect account ID' }
+      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'No connected account ID' }
     }
 
     try {
@@ -154,7 +154,7 @@ class StripeConnectRail implements PaymentRail {
         rail: this.name,
         external_id: externalId,
         status: 'failed',
-        error: 'Stripe key not configured',
+        error: 'Legacy provider key not configured',
       }
     }
     
@@ -176,7 +176,7 @@ class StripeConnectRail implements PaymentRail {
   validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = []
     if (!config.credentials?.secret_key && !Deno.env.get('STRIPE_SECRET_KEY')) {
-      errors.push('Stripe secret key required')
+      errors.push('Legacy provider secret key required')
     }
     return { valid: errors.length === 0, errors }
   }
@@ -419,7 +419,7 @@ class PlaidTransferRail implements PaymentRail {
     const env = config.settings?.environment || 'sandbox'
 
     if (!clientId || !secret) {
-      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Plaid credentials not configured' }
+      return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Bank feed credentials not configured' }
     }
 
     const bankAccount = payout.payout_method?.bank_account
@@ -443,7 +443,7 @@ class PlaidTransferRail implements PaymentRail {
       })
       
       if (!accessToken) {
-        return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Plaid connection not found' }
+        return { success: false, payout_id: payout.payout_id, rail: this.name, status: 'failed', error: 'Bank feed connection not found' }
       }
 
       // Create transfer authorization first
@@ -555,10 +555,10 @@ class PlaidTransferRail implements PaymentRail {
   validateConfig(config: RailConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = []
     if (!config.credentials?.client_id && !Deno.env.get('PLAID_CLIENT_ID')) {
-      errors.push('Plaid client ID required')
+      errors.push('Bank feed client ID required')
     }
     if (!config.credentials?.secret && !Deno.env.get('PLAID_SECRET')) {
-      errors.push('Plaid secret required')
+      errors.push('Bank feed secret required')
     }
     return { valid: errors.length === 0, errors }
   }

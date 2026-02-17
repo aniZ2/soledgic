@@ -57,8 +57,8 @@ SELECT * FROM security_events_hourly;
 -- Top offending IPs
 SELECT * FROM security_top_offending_ips;
 
--- Stripe fee reconciliation status
-SELECT * FROM stripe_fee_reconciliation_status;
+-- Payment Processor fee reconciliation status
+SELECT * FROM processor_fee_reconciliation_status;
 ```
 
 ### Alert Thresholds
@@ -203,7 +203,7 @@ The security-alerts function monitors these thresholds:
 
 - [ ] Review `security_summary_hourly` daily
 - [ ] Check `security_top_offending_ips` weekly
-- [ ] Review `stripe_fee_reconciliation_status` weekly
+- [ ] Review `processor_fee_reconciliation_status` weekly
 - [ ] Run `cleanup_old_reference_ids()` monthly
 - [ ] Rotate webhook secrets quarterly
 - [ ] Review and update blocked countries list

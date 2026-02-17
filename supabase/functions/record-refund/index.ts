@@ -261,7 +261,7 @@ const handler = createHandler(
           stripeRefundResult = { success: false, error: err.message }
         }
       } else {
-        stripeRefundResult = { success: false, error: 'Stripe not configured for this ledger' }
+        stripeRefundResult = { success: false, error: 'Legacy provider not configured for this ledger' }
       }
     }
 

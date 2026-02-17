@@ -18,13 +18,13 @@ Soledgic is a platform finance system: a double-entry ledger plus payment orches
 
 | Action | Example |
 |--------|---------|
-| Record completed event | "Stripe payout completed" → record |
-| Record failed event | "Stripe payout failed" → record |
-| Mirror external balances | "Creator balance per Stripe" → mirror |
+| Record completed event | "Payment Processor payout completed" → record |
+| Record failed event | "Payment Processor payout failed" → record |
+| Mirror external balances | "Creator balance per Payment Processor" → mirror |
 | Generate reports | "Export earnings report" → generate |
-| Verify consistency | "Reconcile Stripe vs ledger" → verify |
+| Verify consistency | "Reconcile Payment Processor vs ledger" → verify |
 | Track history | "Show all transactions for creator" → query |
-| Initiate payout | "Execute payout via Stripe" → instruct |
+| Initiate payout | "Execute payout via Payment Processor" → instruct |
 
 ---
 
@@ -61,7 +61,7 @@ Soledgic is a platform finance system: a double-entry ledger plus payment orches
 │  • Initiates payouts and records outcomes                    │
 │  • Maintains audit trail                                     │
 │  • Generates reports and exports                             │
-│  • Reconciles with Stripe                                    │
+│  • Reconciles with Payment Processor                                    │
 │  • Proves history                                            │
 │  • NEVER custodies funds                                     │
 └─────────────────────────────────────────────────────────────┘
@@ -80,13 +80,13 @@ If an auditor asks:
 > "Who controls payouts?"
 
 Your answer:
-> "Stripe executes payouts. We initiate and record them."
+> "Payment Processor executes payouts. We initiate and record them."
 
 If a regulator asks:
 > "Where is tax information stored?"
 
 Your answer:
-> "With Stripe (or the configured rail). We do not store raw tax IDs."
+> "With Payment Processor (or the configured rail). We do not store raw tax IDs."
 
 ---
 
@@ -95,7 +95,7 @@ Your answer:
 These add credibility without crossing the line:
 
 - **Daily ledger hash** - Prove no tampering
-- **Stripe webhook signature verification** - Prove authenticity
+- **Payment Processor webhook signature verification** - Prove authenticity
 - **Export fingerprints** - Hash of every CSV/PDF generated
 - **Read-only attestation snapshots** - Point-in-time proofs
 
@@ -118,7 +118,7 @@ Before merging any PR, verify:
 - [ ] Does this feature record events or make decisions?
 - [ ] Does this block/delay/condition any payout?
 - [ ] Does this store SSN, EIN, or tax forms?
-- [ ] Does this create a "pending" state not from Stripe?
+- [ ] Does this create a "pending" state not from Payment Processor?
 - [ ] Does this enforce any threshold or requirement?
 
 If any answer is YES → reject or refactor.

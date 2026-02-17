@@ -67,7 +67,7 @@ const checkout = await soledgic.createCheckout({
   productId: 'book_abc',              // Optional
   productName: 'Book purchase',       // Optional
   customerEmail: 'reader@example.com',// Optional
-  paymentProvider: 'card',            // Optional: 'card' | 'stripe'
+  paymentProvider: 'card',            // Optional: 'card' | 'processor'
   metadata: { orderId: 'order_123' }, // Optional
 })
 

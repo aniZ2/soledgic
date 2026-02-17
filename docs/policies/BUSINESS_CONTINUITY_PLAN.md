@@ -54,8 +54,8 @@ This plan covers:
 | Rate Limiting | Upstash Redis | High | Database fallback |
 | DDoS Protection | Cloudflare | High | Supabase native |
 | Email Delivery | Resend | Medium | Queue and retry |
-| Payments | Stripe | Medium | Queue transactions |
-| Bank Data | Plaid | Low | Manual entry |
+| Payments | Payment Processor | Medium | Queue transactions |
+| Bank Data | Bank Feed | Low | Manual entry |
 
 ---
 
@@ -238,10 +238,10 @@ This plan covers:
 3. **Monitor Recovery** - Supabase handles infrastructure
 4. **Validate** - Run health checks after recovery
 
-**Stripe Failure:**
+**Payment Processor Failure:**
 
 1. **Queue Transactions** - Store locally, process later
-2. **Monitor Status** - status.stripe.com
+2. **Monitor Status** - status.processor.com
 3. **Retry** - Process queued transactions after recovery
 
 ---
@@ -271,16 +271,16 @@ This plan covers:
    ```bash
    supabase secrets set UPSTASH_REDIS_URL=<url>
    supabase secrets set UPSTASH_REDIS_TOKEN=<token>
-   supabase secrets set STRIPE_SECRET_KEY=<key>
-   supabase secrets set STRIPE_WEBHOOK_SECRET=<secret>
-   supabase secrets set PLAID_CLIENT_ID=<id>
-   supabase secrets set PLAID_SECRET=<secret>
+   supabase secrets set PROCESSOR_SECRET_KEY=<key>
+   supabase secrets set PROCESSOR_WEBHOOK_SECRET=<secret>
+   supabase secrets set BANK_FEED_CLIENT_ID=<id>
+   supabase secrets set BANK_FEED_SECRET=<secret>
    supabase secrets set RESEND_API_KEY=<key>
    ```
 
 5. **Update DNS/Integrations**
    - Update API URL in customer integrations
-   - Update webhook URLs in Stripe, Plaid
+   - Update webhook URLs in Payment Processor, Bank Feed
 
 6. **Validate**
    - Run full test suite
@@ -377,8 +377,8 @@ We apologize for any inconvenience.
 |--------|-----------------|------------|
 | Supabase | support@supabase.io | Dashboard ticket |
 | Upstash | support@upstash.com | Dashboard |
-| Stripe | Dashboard | Phone (Enterprise) |
-| Plaid | Dashboard | Support ticket |
+| Payment Processor | Dashboard | Phone (Enterprise) |
+| Bank Feed | Dashboard | Support ticket |
 
 ---
 

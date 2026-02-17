@@ -20,7 +20,7 @@
 | Next.js CSP Headers | ✅ |
 | CSRF Protection | ✅ |
 | Web API Rate Limiting | ✅ |
-| Stripe Webhook Vault | ✅ |
+| Payment Processor Webhook Vault | ✅ |
 | Error Sanitization | ✅ |
 | **NACHA Secure Storage** | ✅ NEW |
 | **Compliance Monitoring Views** | ✅ NEW |
@@ -39,7 +39,7 @@
 | H1 | 🟠 High | Supabase key duplication | ✅ Consolidated |
 | H2 | 🟠 High | Missing CSRF protection | ✅ Added CSRF lib |
 | M1 | 🟡 Medium | Billing endpoint auth pattern | ✅ Fixed with comment |
-| M2 | 🟡 Medium | Stripe webhook secrets plaintext | ✅ Moved to Vault |
+| M2 | 🟡 Medium | Payment Processor webhook secrets plaintext | ✅ Moved to Vault |
 | M3 | 🟡 Medium | Error message leakage | ✅ Added sanitization |
 | L1 | 🟢 Low | No request size limit on web API | ✅ Added to handler |
 | L2 | 🟢 Low | Missing rate limiting on web API | ✅ Added rate-limit.ts |

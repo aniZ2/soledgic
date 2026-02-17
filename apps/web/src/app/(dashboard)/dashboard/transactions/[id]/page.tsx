@@ -94,7 +94,7 @@ export default async function TransactionDetailPage({
         reference: bankTx.reference,
         dedup_hash: bankTx.dedup_hash,
       }
-      sourceName = bankTx.source === 'plaid' ? 'Plaid Bank Feed' : 'CSV Import'
+      sourceName = bankTx.source === 'plaid' ? 'Bank Feed' : 'CSV Import'
       sourceVerified = bankTx.match_status === 'matched' || bankTx.match_status === 'auto_matched'
       transaction._bankTx = bankTx
     }

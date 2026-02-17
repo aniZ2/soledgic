@@ -12,7 +12,7 @@
 Soledgic is programmable accounting infrastructure designed for platforms that collect money and pay creators. This document details how Soledgic maintains ledger integrity, handles sensitive data, and ensures your business is audit-ready from day one.
 
 **Key Claims:**
-- Every transaction is cryptographically linked to external proof (Stripe, bank records)
+- Every transaction is cryptographically linked to external proof (Payment Processor, bank records)
 - Ledger entries cannot be silently modified—all changes create audit trails
 - Daily automated health checks verify internal records match external reality
 - Tax documents are generated automatically for creators earning $600+
@@ -43,7 +43,7 @@ Each transaction has up to three independent records:
 
 | Entry | Source | Mutability |
 |-------|--------|------------|
-| **Entry 1** | Payment processor (Stripe) | Immutable—controlled by Stripe |
+| **Entry 1** | Payment processor (Payment Processor) | Immutable—controlled by Payment Processor |
 | **Entry 2** | Soledgic ledger | Append-only—changes create reversals |
 | **Entry 3** | Bank statement | Immutable—controlled by bank |
 
@@ -90,7 +90,7 @@ Automated verification runs daily:
 |-------|------------------|
 | Ledger Balance | Total debits = Total credits |
 | Transaction Integrity | Each transaction balances internally |
-| Stripe Sync | Cash account ≈ Stripe available balance |
+| Payment Processor Sync | Cash account ≈ Payment Processor available balance |
 | Bank Reconciliation | No stale unmatched transactions |
 | Creator Balances | No impossible negative balances |
 
@@ -99,8 +99,8 @@ Automated verification runs daily:
 ### 2.3 Reconciliation
 
 Soledgic automatically matches:
-- Stripe charges → Ledger sales
-- Stripe payouts → Bank deposits
+- Payment Processor charges → Ledger sales
+- Payment Processor payouts → Bank deposits
 - Bank transactions → Ledger records
 
 **Match Criteria:**
@@ -119,7 +119,7 @@ Soledgic automatically matches:
 | Data Type | Classification | Storage |
 |-----------|---------------|---------|
 | Transaction amounts | Business data | Encrypted at rest |
-| Bank account numbers | Sensitive PII | Tokenized via Plaid |
+| Bank account numbers | Sensitive PII | Tokenized via Bank Feed |
 | TIN/SSN/EIN | Highly sensitive PII | Encrypted, access-logged |
 | API keys | Secret | Hashed, never displayed after creation |
 
@@ -130,7 +130,7 @@ Soledgic automatically matches:
 | API | Per-ledger API keys |
 | Database | Row-level security (RLS) |
 | Dashboard | Email + password, session tokens |
-| Webhooks | Signature verification (Stripe, Plaid) |
+| Webhooks | Signature verification (Payment Processor, Bank Feed) |
 
 ### 3.3 Infrastructure
 
@@ -143,8 +143,8 @@ Soledgic automatically matches:
 
 | Service | Data Shared | Security |
 |---------|-------------|----------|
-| Stripe | Webhook events only | Signature verification |
-| Plaid | Bank credentials (tokenized) | OAuth, never stored by Soledgic |
+| Payment Processor | Webhook events only | Signature verification |
+| Bank Feed | Bank credentials (tokenized) | OAuth, never stored by Soledgic |
 | Resend | Email addresses only | TLS, no PII in body |
 
 ---
@@ -189,7 +189,7 @@ Soledgic **prepares** tax documents but does **not**:
 | Trial Balance | All account balances at any point in time |
 | General Ledger | Complete transaction history |
 | Transaction Detail | Individual transaction with all entries |
-| Source Documents | Raw Stripe webhooks, bank import records |
+| Source Documents | Raw Payment Processor webhooks, bank import records |
 | Reconciliation Status | Matched vs. unmatched items |
 
 ### 5.2 Export Formats
@@ -202,7 +202,7 @@ Soledgic **prepares** tax documents but does **not**:
 
 Every question an auditor might ask:
 - "Show me all transactions for Creator X in Q3" ✓
-- "Prove this $5,000 deposit matches a Stripe payout" ✓
+- "Prove this $5,000 deposit matches a Payment Processor payout" ✓
 - "When was this entry created and by whom?" ✓
 - "What was the account balance on March 15?" ✓
 

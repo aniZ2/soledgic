@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   }
 
   if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
-    return jsonResponse({ error: 'Stripe legacy endpoints are disabled' }, 410, req)
+    return jsonResponse({ error: 'Legacy endpoints are disabled' }, 410, req)
   }
 
   const supabase = getSupabaseClient()
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         ip: clientIp,
         user_agent: req.headers.get('user-agent'),
       })
-      return jsonResponse({ error: 'Missing stripe-signature header' }, 401, req)
+      return jsonResponse({ error: 'Missing signature header' }, 401, req)
     }
 
     // Parse event
@@ -468,7 +468,7 @@ async function handleChargeSucceeded(
 
   const creatorId = charge.metadata?.creator_id
   const productId = charge.metadata?.product_id
-  const description = charge.description || charge.metadata?.product_name || 'Stripe charge'
+  const description = charge.description || charge.metadata?.product_name || 'Processor charge'
 
   const accounts = await getOrCreateAccounts(supabase, ledger.id, creatorId)
   if (!accounts.cash || !accounts.revenue) {
@@ -912,7 +912,7 @@ async function handlePayoutPaid(
       transaction_type: 'payout',
       reference_id: `stripe_payout_${payout.id}`,
       reference_type: 'stripe_payout',
-      description: `Stripe payout to bank`,
+      description: `Payout to bank`,
       amount,
       currency,
       status: 'completed',
@@ -1320,7 +1320,7 @@ async function getOrCreateAccounts(
         ledger_id: ledgerId,
         account_type: 'processing_fees',
         entity_type: 'platform',
-        name: 'Stripe Processing Fees',
+        name: 'Processing Fees',
       })
       .select('id')
       .single()

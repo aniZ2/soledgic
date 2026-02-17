@@ -26,8 +26,8 @@ We are committed to protecting your privacy and handling your data transparently
 **Business Data:**
 - Transaction records (amounts, dates, descriptions)
 - Creator/contractor information (names, email addresses)
-- Bank account identifiers (via Plaid tokens, not raw credentials)
-- Payment processor data (Stripe webhook events)
+- Bank account identifiers (via Bank Feed tokens, not raw credentials)
+- Payment processor data (Payment Processor webhook events)
 
 **Tax Reporting Data:**
 - Payment summaries by recipient ID (amounts only)
@@ -58,17 +58,17 @@ We are committed to protecting your privacy and handling your data transparently
 
 ### 1.3 Information from Third Parties
 
-**Stripe:**
+**Payment Processor:**
 - Webhook events (charges, refunds, payouts, disputes)
 - Transaction metadata
 - No payment card numbers (PCI data)
 
-**Plaid:**
+**Bank Feed:**
 - Bank account balances and transactions
 - Account and routing numbers (tokenized)
 - Institution information
 
-We do not receive or store your bank login credentials. Plaid handles authentication directly.
+We do not receive or store your bank login credentials. Bank Feed handles authentication directly.
 
 ---
 
@@ -117,8 +117,8 @@ We use trusted third parties to help operate our Service:
 | Provider | Purpose | Data Shared |
 |----------|---------|-------------|
 | Supabase | Database hosting | All Service data |
-| Stripe | Payment processing | Billing information |
-| Plaid | Bank connections | Bank account tokens |
+| Payment Processor | Payment processing | Billing information |
+| Bank Feed | Bank connections | Bank account tokens |
 | Resend | Email delivery | Email addresses |
 | Vercel | Web hosting | Usage logs |
 
@@ -297,31 +297,31 @@ If you are a creator or contractor whose information was submitted by a Soledgic
 
 ---
 
-## 9. Plaid Data Handling
+## 9. Bank Feed Data Handling
 
-### 9.1 What Plaid Accesses
+### 9.1 What Bank Feed Accesses
 
-When you connect a bank account via Plaid:
+When you connect a bank account via Bank Feed:
 - Account balances
 - Transaction history
 - Account and routing numbers (tokenized)
 
 ### 9.2 What We Store
 
-- Plaid access tokens (not your bank credentials)
+- Bank Feed access tokens (not your bank credentials)
 - Transaction data for reconciliation
 - Account identifiers
 
 ### 9.3 Revoking Access
 
-You can disconnect Plaid connections at any time through:
+You can disconnect Bank Feed connections at any time through:
 - Soledgic dashboard settings
 - Your bank's connected apps settings
-- Plaid Portal (my.plaid.com)
+- Bank Feed Portal (my.bank-feed.com)
 
-### 9.4 Plaid's Privacy Policy
+### 9.4 Bank Feed's Privacy Policy
 
-Plaid has its own privacy policy. Review it at plaid.com/legal.
+Bank Feed has its own privacy policy. Review it at bank-feed.com/legal.
 
 ---
 

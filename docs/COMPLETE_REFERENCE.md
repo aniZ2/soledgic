@@ -12,7 +12,7 @@
 - **Automatic revenue splits** - 80/20 (or custom) creator/platform splits
 - **Multi-tenant architecture** - Each platform gets an isolated ledger
 - **Audit-ready exports** - CSV/JSON reports for accountants
-- **Stripe reconciliation** - Match ledger to payment processor
+- **Payment Processor reconciliation** - Match ledger to payment processor
 
 ---
 
@@ -21,7 +21,7 @@
 | Does NOT | Why |
 |----------|-----|
 | Custody funds | Requires money transmitter obligations |
-| Replace payment rails | Stripe or other rails execute settlement |
+| Replace payment rails | Payment Processor or other rails execute settlement |
 | Store raw tax IDs | High-risk PII should remain with processor |
 | Bypass compliance | KYC/KYB and tax identity stay with rail |
 | Claim outcomes not executed | We only record completed processor events |
@@ -64,9 +64,9 @@
 | Table | Purpose |
 |-------|---------|
 | `creator_payout_summaries` | Annual aggregates per creator |
-| `reconciliation_records` | Stripe vs ledger matching |
+| `reconciliation_records` | Payment Processor vs ledger matching |
 | `report_exports` | Audit trail of generated reports |
-| `stripe_account_links` | Map creators to Stripe accounts |
+| `processor_account_links` | Map creators to Payment Processor accounts |
 
 ### Account Types
 
@@ -108,7 +108,7 @@ Records a sale with automatic revenue split.
 
 ```json
 {
-  "reference_id": "stripe_pi_xxx",
+  "reference_id": "processor_pi_xxx",
   "creator_id": "author_123",
   "amount": 1999,
   "platform_fee_percent": 20
@@ -185,13 +185,13 @@ Response:
 #### 4. Record Payout
 **POST** `/process-payout`
 
-Records a payout event from Stripe (does NOT initiate payouts).
+Records a payout event from Payment Processor (does NOT initiate payouts).
 
 ```json
 {
   "creator_id": "author_123",
   "amount": 1199,
-  "payment_method": "stripe",
+  "payment_method": "processor",
   "payment_reference": "tr_xxx",
   "status": "completed"
 }
@@ -216,7 +216,7 @@ Records a refund with configurable who-pays policy.
 
 ```json
 {
-  "original_sale_reference": "stripe_pi_xxx",
+  "original_sale_reference": "processor_pi_xxx",
   "reason": "Customer requested refund",
   "refund_from": "both"
 }
@@ -327,7 +327,7 @@ const soledgic = new soledgic({
 
 // Record a sale
 const sale = await soledgic.recordSale({
-  referenceId: 'stripe_pi_xxx',
+  referenceId: 'processor_pi_xxx',
   creatorId: 'author_123',
   amount: 1999
 })
@@ -396,7 +396,7 @@ soledgic/
 │  • Maintains audit trail                                     │
 │  • Calculates revenue splits                                 │
 │  • Generates reports                                         │
-│  • Reconciles with Stripe                                    │
+│  • Reconciles with Payment Processor                                    │
 │  • NEVER decides, blocks, or holds                           │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -430,9 +430,9 @@ curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/export-report" \
 
 ## Next Steps
 
-1. **Integrate with Booklyverse** - Call soledgic from Stripe webhooks
+1. **Integrate with Booklyverse** - Call soledgic from Payment Processor webhooks
 2. **Build admin dashboard** - UI for viewing balances and exports
-3. **Add Stripe reconciliation** - Auto-match Stripe payouts to ledger
+3. **Add Payment Processor reconciliation** - Auto-match Payment Processor payouts to ledger
 4. **Production hardening** - Rate limiting, monitoring, backups
 
 ---

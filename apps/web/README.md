@@ -76,7 +76,7 @@ Open http://localhost:3000
 - `organizations` - Billing entity
 - `organization_members` - Team membership
 - `organization_invitations` - Pending invites
-- `subscriptions` - Stripe subscription sync
+- `subscriptions` - Payment Processor subscription sync
 - `billing_events` - Payment audit trail
 - `pricing_plans` - Plan configuration
 - `api_key_scopes` - Role-based API access
@@ -98,7 +98,7 @@ Open http://localhost:3000
 
 ## Still To Build
 
-1. **Stripe Integration**
+1. **Payment Processor Integration**
    - Checkout flow
    - Webhook handler
    - Customer portal
@@ -132,4 +132,4 @@ Open http://localhost:3000
 - Tailwind CSS
 - Supabase Auth
 - Supabase Database
-- Stripe (pending)
+- Payment Processor (pending)

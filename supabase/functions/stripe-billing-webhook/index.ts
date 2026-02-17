@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
 
   if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
-    return jsonResponse({ error: 'Stripe legacy endpoints are disabled' }, 410, req)
+    return jsonResponse({ error: 'Legacy endpoints are disabled' }, 410, req)
   }
 
   const supabase = getSupabaseClient()
@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     
     const webhookSecret = Deno.env.get('STRIPE_BILLING_WEBHOOK_SECRET')
     if (!webhookSecret) return jsonResponse({ error: 'Webhook secret not configured' }, 500, req)
-    if (!signature) return jsonResponse({ error: 'Missing stripe-signature header' }, 401, req)
+    if (!signature) return jsonResponse({ error: 'Missing signature header' }, 401, req)
     
     const isValid = await verifyStripeSignature(body, signature, webhookSecret)
     if (!isValid) return jsonResponse({ error: 'Invalid signature' }, 401, req)

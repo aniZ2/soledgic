@@ -49,7 +49,7 @@ async function createStripeTransfer(
   params: {
     amount: number  // In cents
     currency: string
-    destination: string  // Stripe Connected Account ID (acct_xxx)
+    destination: string  // Connected account ID (acct_xxx)
     transfer_group?: string
     description?: string
     metadata?: Record<string, string>
@@ -97,7 +97,7 @@ async function createStripeTransfer(
     
     return { success: true, transfer_id: data.id }
   } catch (err: any) {
-    return { success: false, error: `Stripe request failed: ${err.message}` }
+    return { success: false, error: `Processor request failed: ${err.message}` }
   }
 }
 
@@ -139,14 +139,14 @@ async function handleRelease(
     return { success: false, error: 'Failed to fetch release details' }
   }
   
-  // 3. Validate recipient has verified Stripe account
+  // 3. Validate recipient has a verified connected account
   if (!release.recipient_stripe_account) {
     await supabase.rpc('fail_fund_release', {
       p_release_id: releaseId,
       p_error_code: 'no_connected_account',
-      p_error_message: 'Recipient has no connected Stripe account'
+      p_error_message: 'Recipient has no connected account'
     })
-    return { success: false, error: 'Recipient has no connected Stripe account' }
+    return { success: false, error: 'Recipient has no connected account' }
   }
   
   if (release.connected_account && !release.connected_account.can_receive_transfers) {
@@ -370,7 +370,7 @@ const handler = createHandler(
     switch (action) {
       case 'release': {
         if (!stripeKey) {
-          return errorResponse('Stripe not configured', 400, req, requestId)
+          return errorResponse('Legacy provider not configured', 400, req, requestId)
         }
         
         const entryId = body.entry_id ? validateUUID(body.entry_id) : null
@@ -405,7 +405,7 @@ const handler = createHandler(
       
       case 'batch_release': {
         if (!stripeKey) {
-          return errorResponse('Stripe not configured', 400, req, requestId)
+          return errorResponse('Legacy provider not configured', 400, req, requestId)
         }
         
         const entryIds = body.entry_ids?.map(id => validateUUID(id)).filter(Boolean) as string[]
@@ -463,7 +463,7 @@ const handler = createHandler(
       
       case 'auto_release': {
         if (!stripeKey) {
-          return errorResponse('Stripe not configured', 400, req, requestId)
+          return errorResponse('Legacy provider not configured', 400, req, requestId)
         }
         
         const result = await handleAutoRelease(supabase, ledger, stripeKey, requestId)

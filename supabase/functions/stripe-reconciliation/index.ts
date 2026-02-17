@@ -50,11 +50,11 @@ async function stripeGet(
     const data = await response.json()
 
     if (data.error) {
-      return { success: false, error: data.error.message || 'Stripe API error' }
+      return { success: false, error: data.error.message || 'Processor API error' }
     }
     return { success: true, data }
   } catch (err: any) {
-    return { success: false, error: `Stripe request failed: ${err.message}` }
+    return { success: false, error: `Processor request failed: ${err.message}` }
   }
 }
 
@@ -444,7 +444,7 @@ Deno.serve(async (req) => {
   }
 
   if (Deno.env.get('ENABLE_STRIPE_LEGACY') !== 'true') {
-    return new Response(JSON.stringify({ error: 'Stripe legacy endpoints are disabled' }), {
+    return new Response(JSON.stringify({ error: 'Legacy endpoints are disabled' }), {
       status: 410,
       headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
     })
@@ -514,7 +514,7 @@ Deno.serve(async (req) => {
       case 'sync_balance_transactions': {
         const stripeKey = await getStripeSecretKey(supabase, targetLedgerId!)
         if (!stripeKey) {
-          return new Response(JSON.stringify({ error: 'Stripe not configured' }), {
+          return new Response(JSON.stringify({ error: 'Legacy provider not configured' }), {
             status: 400,
             headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
           })
@@ -572,7 +572,7 @@ Deno.serve(async (req) => {
       case 'check_drift': {
         const stripeKey = await getStripeSecretKey(supabase, targetLedgerId!)
         if (!stripeKey) {
-          return new Response(JSON.stringify({ error: 'Stripe not configured' }), {
+          return new Response(JSON.stringify({ error: 'Legacy provider not configured' }), {
             status: 400,
             headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
           })

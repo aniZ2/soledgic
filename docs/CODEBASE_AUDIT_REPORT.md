@@ -24,7 +24,7 @@ All Edge Functions have been migrated to use the `createHandler` pattern. The co
 | Function | Previous Pattern | New Pattern |
 |----------|-----------------|-------------|
 | `billing` | Raw `Deno.serve` + JWT | `createHandler` + JWT |
-| `stripe` | Raw `Deno.serve` | `createHandler` |
+| `processor` | Raw `Deno.serve` | `createHandler` |
 | `close-period` | Raw `Deno.serve` | `createHandler` |
 | `profit-loss` | Raw `Deno.serve` | `createHandler` |
 | `trial-balance` | Raw `Deno.serve` | `createHandler` |
@@ -44,8 +44,8 @@ These functions use specific authentication patterns that are correct for their 
 
 | Function | Auth Pattern | Reason |
 |----------|-------------|--------|
-| `stripe-webhook` | Stripe signature verification | Stripe-specific HMAC validation |
-| `stripe-billing-webhook` | Stripe signature verification | Stripe-specific HMAC validation |
+| `processor-webhook` | Payment Processor signature verification | Payment Processor-specific HMAC validation |
+| `billing-webhook` | Payment Processor signature verification | Payment Processor-specific HMAC validation |
 | `process-webhooks` | CRON_SECRET header | Cron job - scheduled execution |
 | `security-alerts` | CRON_SECRET header | Cron job - scheduled execution |
 

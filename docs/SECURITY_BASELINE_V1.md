@@ -118,8 +118,8 @@ This document certifies that Soledgic API has completed security hardening and e
 These endpoints BLOCK if rate limiting is unavailable:
 - `execute-payout`
 - `process-payout`
-- `stripe-webhook`
-- `plaid`
+- `processor-webhook`
+- `bank-feed`
 - `record-sale`
 - `record-refund`
 - `create-ledger`
@@ -250,7 +250,7 @@ supabase secrets set ALLOWED_API_KEYS=sk_live_key1,sk_live_key2
 | Data | Encryption |
 |------|------------|
 | API Keys | SHA-256 hash (one-way) |
-| Plaid Tokens | Supabase Vault (AES-256) |
+| Bank Feed Tokens | Supabase Vault (AES-256) |
 | Webhook Secrets | Application-level |
 
 ### 7.3 Data Retention ✅

@@ -102,7 +102,7 @@ export default function ReconciliationPage() {
     if (!ledger) return
     setLedgerId(ledger.id)
 
-    // Load Bank (Plaid) transactions
+    // Load bank feed transactions
     try {
       const connRes = await callLedgerFunction('plaid', {
         ledgerId: ledger.id,
@@ -128,7 +128,7 @@ export default function ReconciliationPage() {
       setPlaidConfigured(false)
     }
 
-    // Load Stripe transactions only when legacy Stripe mode is enabled.
+    // Load legacy processor transactions only when legacy mode is enabled.
     if (STRIPE_LEGACY_ENABLED) {
       try {
         const stripeRes = await callLedgerFunction('stripe', {
@@ -139,7 +139,7 @@ export default function ReconciliationPage() {
         const stripeData = await stripeRes.json()
         setStripeTransactions(stripeData.data || [])
       } catch {
-        // Stripe not configured, that's ok
+        // Legacy processor not configured, that's ok
       }
     } else {
       setStripeTransactions([])
@@ -310,7 +310,7 @@ export default function ReconciliationPage() {
             }`}
           >
             <CreditCard className="w-4 h-4" />
-            Stripe (Legacy)
+            Processor (Legacy)
             {stripeStats.unmatched > 0 && (
               <span className="bg-yellow-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                 {stripeStats.unmatched}
@@ -326,7 +326,7 @@ export default function ReconciliationPage() {
           <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">Connect Your Bank</h2>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            Plaid integration is not configured. Import transactions via CSV or contact support.
+            Bank feed integration is not configured. Import transactions via CSV or contact support.
           </p>
           <Link
             href="/dashboard/reconciliation/import"
@@ -338,19 +338,19 @@ export default function ReconciliationPage() {
         </div>
       )}
 
-      {/* Stripe Tab - No Transactions Message */}
+      {/* Processor Tab - No Transactions Message */}
       {STRIPE_LEGACY_ENABLED && activeTab === 'stripe' && stripeTransactions.length === 0 && (
         <div className="bg-card border border-border rounded-lg p-8 text-center mb-8">
           <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-foreground mb-2">No Stripe Transactions</h2>
+          <h2 className="text-xl font-semibold text-foreground mb-2">No Processor Transactions</h2>
           <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            Configure Stripe webhooks to automatically sync charges, refunds, and payouts.
+            Configure processor webhooks to automatically sync charges, refunds, and payouts.
           </p>
           <Link
             href="/dashboard/settings"
             className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90"
           >
-            Configure Stripe
+            Configure Webhooks
           </Link>
         </div>
       )}
@@ -388,7 +388,7 @@ export default function ReconciliationPage() {
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-yellow-500/5">
               <h2 className="text-lg font-semibold text-foreground">
-                {activeTab === 'bank' ? 'Bank Transactions' : 'Stripe Transactions'}
+                {activeTab === 'bank' ? 'Bank Transactions' : 'Processor Transactions'}
               </h2>
               <p className="text-sm text-muted-foreground">Select to match or review</p>
             </div>
