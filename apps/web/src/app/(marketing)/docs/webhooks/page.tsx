@@ -300,7 +300,14 @@ def webhook():
         <div className="bg-card border border-border rounded-lg p-4 mb-4">
           <p className="text-sm text-muted-foreground">
             Configure your processor to send webhooks to <code className="bg-muted px-1.5 py-0.5 rounded">POST /api/webhooks/processor</code>.
-            Protect it with <code className="bg-muted px-1.5 py-0.5 rounded">PROCESSOR_WEBHOOK_TOKEN</code>.
+            Protect it with <code className="bg-muted px-1.5 py-0.5 rounded">PROCESSOR_WEBHOOK_TOKEN</code> using one of:
+            <span className="block mt-2">
+              <code className="bg-muted px-1.5 py-0.5 rounded">Authorization: Bearer &lt;token&gt;</code>
+              {' '}or{' '}
+              <code className="bg-muted px-1.5 py-0.5 rounded">Basic Auth</code> (password = token)
+              {' '}or{' '}
+              <code className="bg-muted px-1.5 py-0.5 rounded">?token=&lt;token&gt;</code>.
+            </span>
           </p>
         </div>
         <p className="text-muted-foreground">

@@ -45,9 +45,39 @@ function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'dis
 
   const authHeader = (request.headers.get('authorization') || '').trim()
   const headerToken = (request.headers.get('x-soledgic-webhook-token') || request.headers.get('x-webhook-token') || '').trim()
-  const candidate = authHeader.toLowerCase().startsWith('bearer ')
-    ? authHeader.slice('bearer '.length).trim()
-    : headerToken
+  const urlToken = (() => {
+    try {
+      const url = new URL(request.url)
+      return (
+        (url.searchParams.get('token') || '').trim() ||
+        (url.searchParams.get('t') || '').trim() ||
+        (url.searchParams.get('webhook_token') || '').trim() ||
+        null
+      )
+    } catch {
+      return null
+    }
+  })()
+
+  const lower = authHeader.toLowerCase()
+  const bearer = lower.startsWith('bearer ') ? authHeader.slice('bearer '.length).trim() : null
+  const basic = lower.startsWith('basic ') ? authHeader.slice('basic '.length).trim() : null
+  const basicPassword = (() => {
+    if (!basic) return null
+    try {
+      const decoded = Buffer.from(basic, 'base64').toString('utf8')
+      const idx = decoded.indexOf(':')
+      if (idx < 0) return null
+      return decoded.slice(idx + 1).trim() || null
+    } catch {
+      return null
+    }
+  })()
+
+  // Most processors let you configure either a static header, a Basic Auth
+  // credential, or (worst-case) a fixed query param. We accept all three so the
+  // receiver stays processor-agnostic.
+  const candidate = bearer || basicPassword || headerToken || urlToken
 
   if (!candidate) return { ok: false, mode: 'token', error: 'Unauthorized' }
   if (!timingSafeEqualString(candidate, token)) return { ok: false, mode: 'token', error: 'Unauthorized' }
