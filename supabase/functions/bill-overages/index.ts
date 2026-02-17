@@ -6,6 +6,7 @@
 //
 // Security:
 // - Requires Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+// - Optional (ops/testing): Authorization: Bearer <BILL_OVERAGES_TOKEN>
 // - Uses idempotent DB claim via claim_overage_billing_charge()
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -23,6 +24,15 @@ function timingSafeEqualString(a: string, b: string): boolean {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i)
   }
   return result === 0
+}
+
+function isAuthorized(authHeader: string, serviceRoleKey: string): boolean {
+  const expectedAuth = `Bearer ${serviceRoleKey}`
+  if (timingSafeEqualString(authHeader, expectedAuth)) return true
+
+  const testingToken = (Deno.env.get('BILL_OVERAGES_TOKEN') || '').trim()
+  if (!testingToken) return false
+  return timingSafeEqualString(authHeader, `Bearer ${testingToken}`)
 }
 
 function json(payload: unknown, status = 200) {
@@ -83,8 +93,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const authHeader = req.headers.get('authorization') || ''
-  const expectedAuth = `Bearer ${serviceRoleKey}`
-  if (!timingSafeEqualString(authHeader, expectedAuth)) {
+  if (!isAuthorized(authHeader, serviceRoleKey)) {
     return json({ success: false, error: 'Unauthorized' }, 401)
   }
 
