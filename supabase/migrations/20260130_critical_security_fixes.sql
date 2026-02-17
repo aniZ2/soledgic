@@ -40,7 +40,7 @@ COMMENT ON TRIGGER audit_log_no_delete ON audit_log IS
 
 CREATE TABLE IF NOT EXISTS vault_access_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  secret_type TEXT NOT NULL,  -- 'plaid_token', 'stripe_webhook', etc.
+  secret_type TEXT NOT NULL,  -- 'bank_aggregator_token', 'processor_webhook', etc.
   secret_id TEXT NOT NULL,    -- Connection ID or ledger ID
   accessed_by TEXT NOT NULL,  -- DB role/user
   access_granted BOOLEAN NOT NULL DEFAULT true,
@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_vault_access_log_secret
 ON vault_access_log(secret_type, secret_id, created_at DESC);
 
 -- Update vault functions to log access
-CREATE OR REPLACE FUNCTION public.get_plaid_token_from_vault(p_connection_id UUID)
+CREATE OR REPLACE FUNCTION public.get_bank_aggregator_token_from_vault(p_connection_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -75,17 +75,17 @@ DECLARE
 BEGIN
   -- Log access attempt
   INSERT INTO public.vault_access_log (secret_type, secret_id, accessed_by, access_granted)
-  VALUES ('plaid_token', p_connection_id::text, current_user, true);
+  VALUES ('bank_aggregator_token', p_connection_id::text, current_user, true);
   
   SELECT decrypted_secret INTO v_token
   FROM vault.decrypted_secrets
-  WHERE name = 'plaid_token_' || p_connection_id::text;
+  WHERE name = 'bank_aggregator_token_' || p_connection_id::text;
   
   RETURN v_token;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.get_stripe_webhook_secret_from_vault(p_ledger_id UUID)
+CREATE OR REPLACE FUNCTION public.get_processor_webhook_secret_from_vault(p_ledger_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -97,9 +97,9 @@ DECLARE
 BEGIN
   -- Log access attempt
   INSERT INTO public.vault_access_log (secret_type, secret_id, accessed_by, access_granted)
-  VALUES ('stripe_webhook', p_ledger_id::text, current_user, true);
+  VALUES ('processor_webhook', p_ledger_id::text, current_user, true);
 
-  SELECT stripe_webhook_secret_vault_id INTO v_vault_id
+  SELECT processor_webhook_secret_vault_id INTO v_vault_id
   FROM public.ledgers
   WHERE id = p_ledger_id;
   
@@ -114,7 +114,7 @@ BEGIN
   END IF;
   
   -- Fallback to settings JSON (legacy)
-  SELECT settings->>'stripe_webhook_secret' INTO v_secret
+  SELECT settings->>'processor_webhook_secret' INTO v_secret
   FROM public.ledgers
   WHERE id = p_ledger_id;
   
@@ -197,7 +197,7 @@ INSERT INTO audit_sensitive_fields (field_path, reason) VALUES
   ('bank_account', 'Bank account object - PCI'),
   ('payout_method.bank_account', 'Nested bank account - PCI'),
   ('metadata.bank_account', 'Nested bank account - PCI'),
-  ('access_token', 'Plaid access token - credential'),
+  ('access_token', 'bank_aggregator access token - credential'),
   ('api_key', 'API key - credential'),
   ('webhook_secret', 'Webhook secret - credential')
 ON CONFLICT (field_path) DO NOTHING;

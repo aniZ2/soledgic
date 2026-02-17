@@ -1,4 +1,4 @@
--- Soledgic: Phase 3 Stripe Billing
+-- Soledgic: Phase 3 processor Billing
 -- Full billing integration: subscriptions, invoices, usage metering
 
 -- ============================================================================
@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS usage_records (
   period_start timestamptz NOT NULL,
   period_end timestamptz NOT NULL,
   
-  -- Stripe sync
-  stripe_usage_record_id text,
-  synced_to_stripe_at timestamptz,
+  -- processor sync
+  processor_usage_record_id text,
+  synced_to_processor_at timestamptz,
   
   -- Aggregation helpers
   recorded_at timestamptz NOT NULL DEFAULT now(),
@@ -60,16 +60,16 @@ CREATE INDEX idx_usage_aggregates_org ON usage_aggregates(organization_id);
 CREATE INDEX idx_usage_aggregates_date ON usage_aggregates(date DESC);
 
 -- ============================================================================
--- INVOICES (synced from Stripe)
+-- INVOICES (synced from processor)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS invoices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   
-  -- Stripe IDs
-  stripe_invoice_id text UNIQUE NOT NULL,
-  stripe_subscription_id text,
-  stripe_customer_id text NOT NULL,
+  -- processor IDs
+  processor_invoice_id text UNIQUE NOT NULL,
+  processor_subscription_id text,
+  processor_customer_id text NOT NULL,
   
   -- Invoice details
   number text,
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 );
 
 CREATE INDEX idx_invoices_org ON invoices(organization_id);
-CREATE INDEX idx_invoices_stripe ON invoices(stripe_invoice_id);
+CREATE INDEX idx_invoices_processor ON invoices(processor_invoice_id);
 CREATE INDEX idx_invoices_status ON invoices(status);
 CREATE INDEX idx_invoices_date ON invoices(created_at DESC);
 
@@ -116,8 +116,8 @@ CREATE TABLE IF NOT EXISTS payment_methods (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   
-  -- Stripe IDs
-  stripe_payment_method_id text UNIQUE NOT NULL,
+  -- processor IDs
+  processor_payment_method_id text UNIQUE NOT NULL,
   
   -- Type
   type text NOT NULL, -- card, bank_account, etc
@@ -143,9 +143,9 @@ CREATE TABLE IF NOT EXISTS subscription_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   subscription_id uuid NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
   
-  -- Stripe IDs
-  stripe_subscription_item_id text UNIQUE NOT NULL,
-  stripe_price_id text NOT NULL,
+  -- processor IDs
+  processor_subscription_item_id text UNIQUE NOT NULL,
+  processor_price_id text NOT NULL,
   
   -- Details
   quantity integer DEFAULT 1,
@@ -159,10 +159,10 @@ CREATE TABLE IF NOT EXISTS subscription_items (
 CREATE INDEX idx_subscription_items_sub ON subscription_items(subscription_id);
 
 -- ============================================================================
--- STRIPE CUSTOMERS (extended from organizations)
+-- processor CUSTOMERS (extended from organizations)
 -- ============================================================================
--- Add more Stripe-related columns to organizations
-ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_default_payment_method_id text;
+-- Add more processor-related columns to organizations
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS processor_default_payment_method_id text;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_email text;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS billing_address jsonb;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tax_id text;
@@ -174,8 +174,8 @@ ALTER TABLE organizations ADD COLUMN IF NOT EXISTS tax_exempt text DEFAULT 'none
 CREATE TABLE IF NOT EXISTS products (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   
-  -- Stripe IDs
-  stripe_product_id text UNIQUE NOT NULL,
+  -- processor IDs
+  processor_product_id text UNIQUE NOT NULL,
   
   -- Details
   name text NOT NULL,
@@ -196,8 +196,8 @@ CREATE TABLE IF NOT EXISTS prices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id uuid NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   
-  -- Stripe IDs
-  stripe_price_id text UNIQUE NOT NULL,
+  -- processor IDs
+  processor_price_id text UNIQUE NOT NULL,
   
   -- Pricing
   unit_amount integer, -- in cents, null for metered
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS prices (
 );
 
 CREATE INDEX idx_prices_product ON prices(product_id);
-CREATE INDEX idx_prices_stripe ON prices(stripe_price_id);
+CREATE INDEX idx_prices_processor ON prices(processor_price_id);
 
 -- ============================================================================
 -- FUNCTIONS
@@ -414,10 +414,10 @@ BEGIN
 END;
 $$;
 
--- Sync subscription from Stripe event
-CREATE OR REPLACE FUNCTION sync_subscription_from_stripe(
+-- Sync subscription from processor event
+CREATE OR REPLACE FUNCTION sync_subscription_from_processor(
   p_organization_id uuid,
-  p_stripe_data jsonb
+  p_processor_data jsonb
 )
 RETURNS uuid
 LANGUAGE plpgsql
@@ -428,9 +428,9 @@ DECLARE
 BEGIN
   INSERT INTO subscriptions (
     organization_id,
-    stripe_subscription_id,
-    stripe_customer_id,
-    stripe_price_id,
+    processor_subscription_id,
+    processor_customer_id,
+    processor_price_id,
     plan,
     status,
     current_period_start,
@@ -442,24 +442,24 @@ BEGIN
     quantity
   ) VALUES (
     p_organization_id,
-    p_stripe_data->>'id',
-    p_stripe_data->>'customer',
-    p_stripe_data->'items'->'data'->0->'price'->>'id',
-    COALESCE(p_stripe_data->'metadata'->>'plan', 'pro'),
-    p_stripe_data->>'status',
-    to_timestamp((p_stripe_data->>'current_period_start')::bigint),
-    to_timestamp((p_stripe_data->>'current_period_end')::bigint),
-    CASE WHEN p_stripe_data->>'cancel_at' IS NOT NULL 
-      THEN to_timestamp((p_stripe_data->>'cancel_at')::bigint) END,
-    CASE WHEN p_stripe_data->>'canceled_at' IS NOT NULL 
-      THEN to_timestamp((p_stripe_data->>'canceled_at')::bigint) END,
-    CASE WHEN p_stripe_data->>'trial_start' IS NOT NULL 
-      THEN to_timestamp((p_stripe_data->>'trial_start')::bigint) END,
-    CASE WHEN p_stripe_data->>'trial_end' IS NOT NULL 
-      THEN to_timestamp((p_stripe_data->>'trial_end')::bigint) END,
-    COALESCE((p_stripe_data->'items'->'data'->0->>'quantity')::int, 1)
+    p_processor_data->>'id',
+    p_processor_data->>'customer',
+    p_processor_data->'items'->'data'->0->'price'->>'id',
+    COALESCE(p_processor_data->'metadata'->>'plan', 'pro'),
+    p_processor_data->>'status',
+    to_timestamp((p_processor_data->>'current_period_start')::bigint),
+    to_timestamp((p_processor_data->>'current_period_end')::bigint),
+    CASE WHEN p_processor_data->>'cancel_at' IS NOT NULL 
+      THEN to_timestamp((p_processor_data->>'cancel_at')::bigint) END,
+    CASE WHEN p_processor_data->>'canceled_at' IS NOT NULL 
+      THEN to_timestamp((p_processor_data->>'canceled_at')::bigint) END,
+    CASE WHEN p_processor_data->>'trial_start' IS NOT NULL 
+      THEN to_timestamp((p_processor_data->>'trial_start')::bigint) END,
+    CASE WHEN p_processor_data->>'trial_end' IS NOT NULL 
+      THEN to_timestamp((p_processor_data->>'trial_end')::bigint) END,
+    COALESCE((p_processor_data->'items'->'data'->0->>'quantity')::int, 1)
   )
-  ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+  ON CONFLICT (processor_subscription_id) DO UPDATE SET
     status = EXCLUDED.status,
     current_period_start = EXCLUDED.current_period_start,
     current_period_end = EXCLUDED.current_period_end,
@@ -472,12 +472,12 @@ BEGIN
   -- Update organization
   UPDATE organizations
   SET 
-    stripe_subscription_id = p_stripe_data->>'id',
-    plan = COALESCE(p_stripe_data->'metadata'->>'plan', plan),
+    processor_subscription_id = p_processor_data->>'id',
+    plan = COALESCE(p_processor_data->'metadata'->>'plan', plan),
     status = CASE 
-      WHEN p_stripe_data->>'status' IN ('active', 'trialing') THEN 'active'
-      WHEN p_stripe_data->>'status' = 'past_due' THEN 'past_due'
-      WHEN p_stripe_data->>'status' = 'canceled' THEN 'canceled'
+      WHEN p_processor_data->>'status' IN ('active', 'trialing') THEN 'active'
+      WHEN p_processor_data->>'status' = 'past_due' THEN 'past_due'
+      WHEN p_processor_data->>'status' = 'canceled' THEN 'canceled'
       ELSE status
     END,
     updated_at = now()
@@ -568,7 +568,7 @@ CREATE TRIGGER trigger_transaction_usage
 
 COMMENT ON TABLE usage_records IS 'Granular usage events for metered billing';
 COMMENT ON TABLE usage_aggregates IS 'Daily rollups of usage for reporting';
-COMMENT ON TABLE invoices IS 'Stripe invoices synced for display';
+COMMENT ON TABLE invoices IS 'processor invoices synced for display';
 COMMENT ON TABLE payment_methods IS 'Customer payment methods for quick reference';
-COMMENT ON TABLE products IS 'Stripe products catalog';
-COMMENT ON TABLE prices IS 'Stripe prices (pricing tiers)';
+COMMENT ON TABLE products IS 'processor products catalog';
+COMMENT ON TABLE prices IS 'processor prices (pricing tiers)';

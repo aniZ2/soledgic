@@ -74,9 +74,9 @@ BEGIN
   IF v_current_count >= v_max_ledgers THEN
     INSERT INTO billing_events (
       organization_id,
-      stripe_event_type,
+      processor_event_type,
       description,
-      stripe_data
+      processor_data
     ) VALUES (
       v_org_id,
       'ledger_overage',

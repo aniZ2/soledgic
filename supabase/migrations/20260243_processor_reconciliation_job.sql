@@ -1,4 +1,4 @@
--- Migration: Stripe Reconciliation Job Schema
+-- Migration: processor Reconciliation Job Schema
 -- Tables for tracking reconciliation runs and drift alerts
 
 -- ============================================================================
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS drift_alerts (
 
   -- Balance comparison
   expected_balance NUMERIC(15,2) NOT NULL,  -- Internal ledger cash balance
-  actual_balance NUMERIC(15,2) NOT NULL,    -- Stripe reported balance
+  actual_balance NUMERIC(15,2) NOT NULL,    -- processor reported balance
   drift_amount NUMERIC(15,2) NOT NULL,
   drift_percent NUMERIC(8,4) NOT NULL,
 
@@ -62,10 +62,10 @@ CREATE INDEX idx_drift_alerts_ledger ON drift_alerts(ledger_id, created_at DESC)
 CREATE INDEX idx_drift_alerts_severity ON drift_alerts(severity) WHERE acknowledged_at IS NULL;
 
 -- ============================================================================
--- 3. Index on stripe_transactions for reconciliation matching
+-- 3. Index on processor_transactions for reconciliation matching
 -- ============================================================================
-CREATE INDEX IF NOT EXISTS idx_stripe_txns_unmatched
-  ON stripe_transactions(ledger_id, amount, created_at)
+CREATE INDEX IF NOT EXISTS idx_processor_txns_unmatched
+  ON processor_transactions(ledger_id, amount, created_at)
   WHERE match_status = 'unmatched';
 
 -- ============================================================================

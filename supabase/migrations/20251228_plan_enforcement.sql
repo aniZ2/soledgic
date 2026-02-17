@@ -63,9 +63,9 @@ BEGIN
     -- Log overage event for billing
     INSERT INTO billing_events (
       organization_id,
-      stripe_event_type,
+      processor_event_type,
       description,
-      stripe_data
+      processor_data
     ) VALUES (
       v_org_id,
       'ledger_overage',
@@ -251,9 +251,9 @@ BEGIN
   IF OLD.plan IS DISTINCT FROM NEW.plan THEN
     INSERT INTO billing_events (
       organization_id,
-      stripe_event_type,
+      processor_event_type,
       description,
-      stripe_data
+      processor_data
     ) VALUES (
       NEW.id,
       'plan_changed',

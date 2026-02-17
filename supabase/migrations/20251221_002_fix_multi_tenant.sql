@@ -10,7 +10,7 @@ ALTER TABLE organizations ADD COLUMN IF NOT EXISTS max_transactions_per_month IN
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS max_creators INTEGER DEFAULT 10;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS allowed_ip_ranges CIDR[];
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS require_2fa BOOLEAN DEFAULT false;
-ALTER TABLE organizations ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS processor_customer_id TEXT;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'active';
 
 -- Add check constraint if not exists (wrapped in DO block to handle if exists)

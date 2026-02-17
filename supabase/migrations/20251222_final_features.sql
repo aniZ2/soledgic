@@ -297,13 +297,13 @@ CREATE TABLE contractors (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ledger_id UUID NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   
-  -- Basic info (no SSN - that's in their system or Stripe)
+  -- Basic info (no SSN - that's in their system or processor)
   name TEXT NOT NULL,
   email TEXT,
   company_name TEXT,
   
   -- External references
-  stripe_account_id TEXT,
+  processor_account_id TEXT,
   
   -- W-9 status (we track status, not the actual W-9)
   w9_status TEXT DEFAULT 'not_requested' CHECK (

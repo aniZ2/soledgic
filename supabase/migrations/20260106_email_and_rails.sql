@@ -28,7 +28,7 @@ ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS payout_rails JSONB DEFAULT '[]'::js
 -- payout_rails structure:
 -- [
 --   {
---     "rail": "stripe_connect",
+--     "rail": "processor_connect",
 --     "enabled": true,
 --     "credentials": { "secret_key": "sk_..." },
 --     "settings": {}
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS payout_executions (
   transaction_id UUID NOT NULL REFERENCES transactions(id),
   
   -- Rail info
-  rail TEXT NOT NULL, -- 'stripe_connect', 'plaid_transfer', 'manual', etc.
+  rail TEXT NOT NULL, -- 'processor_connect', 'bank_aggregator_transfer', 'manual', etc.
   external_id TEXT, -- External system's ID for the payout
   
   -- Status
@@ -125,8 +125,8 @@ CREATE INDEX IF NOT EXISTS idx_payout_exec_status ON payout_executions(status) W
 -- Structure:
 -- {
 --   "payout_method": {
---     "rail": "stripe_connect",
---     "account_id": "acct_xxx", // Stripe connected account
+--     "rail": "processor_connect",
+--     "account_id": "acct_xxx", // processor connected account
 --     "email": "creator@example.com", // Optional payout contact
 --     "bank_account": {
 --       "routing_number": "123456789",

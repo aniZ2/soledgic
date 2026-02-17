@@ -215,32 +215,32 @@ DROP FUNCTION IF EXISTS public.lock_accounting_period(UUID, DATE, DATE, TEXT, TE
 DROP FUNCTION IF EXISTS public.unlock_accounting_period(UUID, TEXT, TEXT);
 
 -- ============================================================================
--- 9. Fix match_stripe_payouts_to_bank - drop broken function
+-- 9. Fix match_processor_payouts_to_bank - drop broken function
 -- ============================================================================
-DROP FUNCTION IF EXISTS public.match_stripe_payouts_to_bank(UUID);
+DROP FUNCTION IF EXISTS public.match_processor_payouts_to_bank(UUID);
 
 -- ============================================================================
--- 10. Fix reprocess_stripe_event - remove unused variable warning
+-- 10. Fix reprocess_processor_event - remove unused variable warning
 -- ============================================================================
-DROP FUNCTION IF EXISTS public.reprocess_stripe_event(TEXT);
-CREATE OR REPLACE FUNCTION public.reprocess_stripe_event(p_event_id TEXT)
+DROP FUNCTION IF EXISTS public.reprocess_processor_event(TEXT);
+CREATE OR REPLACE FUNCTION public.reprocess_processor_event(p_event_id TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-  -- Placeholder - actual implementation depends on stripe event processing
+  -- Placeholder - actual implementation depends on processor event processing
   RETURN jsonb_build_object('status', 'not_implemented', 'event_id', p_event_id);
 END;
 $$;
 
 -- ============================================================================
--- 11. Fix store_plaid_token_in_vault and store_stripe_webhook_secret_in_vault
+-- 11. Fix store_bank_aggregator_token_in_vault and store_processor_webhook_secret_in_vault
 -- These require vault permissions - recreate with proper error handling
 -- ============================================================================
-DROP FUNCTION IF EXISTS public.store_plaid_token_in_vault(UUID, TEXT);
-CREATE OR REPLACE FUNCTION public.store_plaid_token_in_vault(
+DROP FUNCTION IF EXISTS public.store_bank_aggregator_token_in_vault(UUID, TEXT);
+CREATE OR REPLACE FUNCTION public.store_bank_aggregator_token_in_vault(
   p_ledger_id UUID,
   p_access_token TEXT
 )
@@ -257,8 +257,8 @@ BEGIN
     INSERT INTO vault.secrets (secret, name, description)
     VALUES (
       p_access_token,
-      'plaid_token_' || p_ledger_id::TEXT,
-      'Plaid access token for ledger ' || p_ledger_id::TEXT
+      'bank_aggregator_token_' || p_ledger_id::TEXT,
+      'bank_aggregator access token for ledger ' || p_ledger_id::TEXT
     )
     RETURNING id INTO v_secret_id;
 
@@ -270,8 +270,8 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS public.store_stripe_webhook_secret_in_vault(UUID, TEXT);
-CREATE OR REPLACE FUNCTION public.store_stripe_webhook_secret_in_vault(
+DROP FUNCTION IF EXISTS public.store_processor_webhook_secret_in_vault(UUID, TEXT);
+CREATE OR REPLACE FUNCTION public.store_processor_webhook_secret_in_vault(
   p_endpoint_id UUID,
   p_secret TEXT
 )
@@ -288,8 +288,8 @@ BEGIN
     INSERT INTO vault.secrets (secret, name, description)
     VALUES (
       p_secret,
-      'stripe_webhook_' || p_endpoint_id::TEXT,
-      'Stripe webhook secret for endpoint ' || p_endpoint_id::TEXT
+      'processor_webhook_' || p_endpoint_id::TEXT,
+      'processor webhook secret for endpoint ' || p_endpoint_id::TEXT
     )
     RETURNING id INTO v_secret_id;
 
@@ -515,8 +515,8 @@ GRANT EXECUTE ON FUNCTION public.can_add_ledger(UUID) TO authenticated, service_
 GRANT EXECUTE ON FUNCTION public.can_org_create_ledger(UUID) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.auto_match_bank_transaction(UUID) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.check_rate_limit_secure(TEXT, INTEGER, INTEGER, BOOLEAN) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.reprocess_stripe_event(TEXT) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.store_plaid_token_in_vault(UUID, TEXT) TO service_role;
-GRANT EXECUTE ON FUNCTION public.store_stripe_webhook_secret_in_vault(UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.reprocess_processor_event(TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.store_bank_aggregator_token_in_vault(UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.store_processor_webhook_secret_in_vault(UUID, TEXT) TO service_role;
 
 SELECT 'Code quality fixes applied successfully' AS status;

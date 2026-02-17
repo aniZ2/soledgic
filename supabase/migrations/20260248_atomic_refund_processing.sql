@@ -2,7 +2,7 @@
 -- Eliminates TOCTOU race condition by locking the original transaction row
 -- and performing the over-refund check + insert in a single transaction.
 
-CREATE OR REPLACE FUNCTION process_stripe_refund(
+CREATE OR REPLACE FUNCTION process_processor_refund(
   p_ledger_id       UUID,
   p_original_tx_id  UUID,
   p_charge_id       TEXT,
@@ -42,7 +42,7 @@ BEGIN
     FROM transactions
    WHERE ledger_id = p_ledger_id
      AND transaction_type = 'refund'
-     AND metadata->>'stripe_charge_id' = p_charge_id;
+     AND metadata->>'processor_charge_id' = p_charge_id;
 
   -- 3. Over-refund guard (0.5% tolerance for currency rounding)
   IF v_already_refunded + p_amount > v_original_amount * 1.005 THEN
@@ -60,7 +60,7 @@ BEGIN
       ledger_id, transaction_type, reference_id, reference_type,
       description, amount, currency, status, reverses, metadata
     ) VALUES (
-      p_ledger_id, 'refund', p_reference_id, 'stripe_refund',
+      p_ledger_id, 'refund', p_reference_id, 'processor_refund',
       p_description, p_amount, p_currency, 'completed',
       p_original_tx_id, p_metadata
     )
@@ -96,7 +96,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION process_stripe_refund IS
-  'Atomically processes a Stripe refund: locks the original transaction row, '
+COMMENT ON FUNCTION process_processor_refund IS
+  'Atomically processes a processor refund: locks the original transaction row, '
   'checks cumulative refund total, inserts the refund transaction, and marks '
   'full reversals. Eliminates TOCTOU race conditions between concurrent webhooks.';

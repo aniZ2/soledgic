@@ -51,7 +51,7 @@ BEGIN
 END;
 $$;
 
--- Drop all overloaded versions of reprocess_stripe_event
+-- Drop all overloaded versions of reprocess_processor_event
 DO $$
 DECLARE
   r RECORD;
@@ -59,7 +59,7 @@ BEGIN
   FOR r IN
     SELECT oid::regprocedure::text as func_sig
     FROM pg_proc
-    WHERE proname = 'reprocess_stripe_event'
+    WHERE proname = 'reprocess_processor_event'
     AND pronamespace = 'public'::regnamespace
   LOOP
     EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig;
@@ -115,7 +115,7 @@ BEGIN
 END;
 $$;
 
--- Drop store_plaid_token_in_vault (vault permission issues)
+-- Drop store_bank_aggregator_token_in_vault (vault permission issues)
 DO $$
 DECLARE
   r RECORD;
@@ -123,7 +123,7 @@ BEGIN
   FOR r IN
     SELECT oid::regprocedure::text as func_sig
     FROM pg_proc
-    WHERE proname = 'store_plaid_token_in_vault'
+    WHERE proname = 'store_bank_aggregator_token_in_vault'
     AND pronamespace = 'public'::regnamespace
   LOOP
     EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig;
@@ -131,7 +131,7 @@ BEGIN
 END;
 $$;
 
--- Drop store_stripe_webhook_secret_in_vault (vault permission issues)
+-- Drop store_processor_webhook_secret_in_vault (vault permission issues)
 DO $$
 DECLARE
   r RECORD;
@@ -139,7 +139,7 @@ BEGIN
   FOR r IN
     SELECT oid::regprocedure::text as func_sig
     FROM pg_proc
-    WHERE proname = 'store_stripe_webhook_secret_in_vault'
+    WHERE proname = 'store_processor_webhook_secret_in_vault'
     AND pronamespace = 'public'::regnamespace
   LOOP
     EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig;

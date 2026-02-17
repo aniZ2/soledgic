@@ -77,9 +77,9 @@ BEGIN
   IF v_current_count >= v_max_members THEN
     INSERT INTO public.billing_events (
       organization_id,
-      stripe_event_type,
+      processor_event_type,
       description,
-      stripe_data
+      processor_data
     ) VALUES (
       v_org_id,
       'team_member_overage',
@@ -133,9 +133,9 @@ BEGIN
   IF OLD.plan IS DISTINCT FROM NEW.plan THEN
     INSERT INTO public.billing_events (
       organization_id,
-      stripe_event_type,
+      processor_event_type,
       description,
-      stripe_data
+      processor_data
     ) VALUES (
       NEW.id,
       'plan_changed',

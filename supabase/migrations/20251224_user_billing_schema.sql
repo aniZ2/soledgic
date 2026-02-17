@@ -58,8 +58,8 @@ CREATE TABLE IF NOT EXISTS organizations (
   owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   
   -- Billing
-  stripe_customer_id TEXT UNIQUE,
-  stripe_subscription_id TEXT,
+  processor_customer_id TEXT UNIQUE,
+  processor_subscription_id TEXT,
   
   -- Plan
   plan TEXT NOT NULL DEFAULT 'trial' CHECK (
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS organizations (
 
 CREATE INDEX IF NOT EXISTS idx_organizations_owner ON organizations(owner_id);
 CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
-CREATE INDEX IF NOT EXISTS idx_organizations_stripe ON organizations(stripe_customer_id);
+CREATE INDEX IF NOT EXISTS idx_organizations_processor ON organizations(processor_customer_id);
 
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 
@@ -166,17 +166,17 @@ CREATE INDEX IF NOT EXISTS idx_invitations_token ON organization_invitations(tok
 ALTER TABLE organization_invitations ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
--- SUBSCRIPTIONS (Stripe sync)
+-- SUBSCRIPTIONS (processor sync)
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   
-  -- Stripe IDs
-  stripe_subscription_id TEXT UNIQUE NOT NULL,
-  stripe_customer_id TEXT NOT NULL,
-  stripe_price_id TEXT NOT NULL,
+  -- processor IDs
+  processor_subscription_id TEXT UNIQUE NOT NULL,
+  processor_customer_id TEXT NOT NULL,
+  processor_price_id TEXT NOT NULL,
   
   -- Plan details
   plan TEXT NOT NULL,
@@ -205,7 +205,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_org ON subscriptions(organization_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe ON subscriptions(stripe_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_processor ON subscriptions(processor_subscription_id);
 
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 
@@ -217,9 +217,9 @@ CREATE TABLE IF NOT EXISTS billing_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
   
-  -- Stripe event
-  stripe_event_id TEXT UNIQUE,
-  stripe_event_type TEXT NOT NULL,
+  -- processor event
+  processor_event_id TEXT UNIQUE,
+  processor_event_type TEXT NOT NULL,
   
   -- Details
   amount INTEGER, -- in cents
@@ -227,7 +227,7 @@ CREATE TABLE IF NOT EXISTS billing_events (
   description TEXT,
   
   -- Raw data
-  stripe_data JSONB,
+  processor_data JSONB,
   
   -- Processing
   processed_at TIMESTAMPTZ DEFAULT NOW(),
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS billing_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_billing_events_org ON billing_events(organization_id);
-CREATE INDEX IF NOT EXISTS idx_billing_events_stripe ON billing_events(stripe_event_id);
+CREATE INDEX IF NOT EXISTS idx_billing_events_processor ON billing_events(processor_event_id);
 
 ALTER TABLE billing_events ENABLE ROW LEVEL SECURITY;
 
@@ -257,9 +257,9 @@ CREATE TABLE IF NOT EXISTS pricing_plans (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   
-  -- Stripe
-  stripe_price_id_monthly TEXT,
-  stripe_price_id_yearly TEXT,
+  -- processor
+  processor_price_id_monthly TEXT,
+  processor_price_id_yearly TEXT,
   
   -- Pricing
   price_monthly INTEGER NOT NULL, -- cents

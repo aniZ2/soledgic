@@ -77,8 +77,8 @@ CREATE TABLE transactions (
       'transfer'        -- Internal transfer between accounts
     )
   ),
-  reference_id TEXT,          -- External ID (Stripe payment_intent, etc.)
-  reference_type TEXT,        -- 'stripe_payment', 'manual', etc.
+  reference_id TEXT,          -- External ID (processor payment_intent, etc.)
+  reference_type TEXT,        -- 'processor_payment', 'manual', etc.
   description TEXT,
   amount NUMERIC(14,2) NOT NULL,  -- Total transaction amount
   currency TEXT DEFAULT 'USD',
@@ -134,7 +134,7 @@ CREATE TABLE payouts (
   currency TEXT DEFAULT 'USD',
   
   -- Payment details
-  payment_method TEXT CHECK (payment_method IN ('stripe', 'bank_transfer', 'manual')),
+  payment_method TEXT CHECK (payment_method IN ('processor', 'bank_transfer', 'manual')),
   payment_reference TEXT,  -- External payment ID
   
   status TEXT DEFAULT 'pending' CHECK (

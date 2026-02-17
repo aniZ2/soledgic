@@ -160,8 +160,8 @@ CREATE VIEW public.v_payout_reconciliation AS
 SELECT 
   l.id AS ledger_id,
   l.business_name,
-  st.id AS stripe_txn_id,
-  st.stripe_id AS payout_id,
+  st.id AS processor_txn_id,
+  st.processor_id AS payout_id,
   abs(st.amount) AS payout_amount,
   (st.raw_data ->> 'arrival_date'::text) AS expected_arrival,
   st.created_at AS payout_created,
@@ -178,10 +178,10 @@ SELECT
     WHEN (pt.id IS NOT NULL) THEN (abs(st.amount) - pt.amount)
     ELSE NULL::numeric
   END AS amount_difference
-FROM ((stripe_transactions st
+FROM ((processor_transactions st
   JOIN ledgers l ON ((st.ledger_id = l.id)))
-  LEFT JOIN plaid_transactions pt ON ((st.bank_transaction_id = pt.id)))
-WHERE ((st.stripe_type = 'payout'::text) AND (st.status = 'paid'::text))
+  LEFT JOIN bank_aggregator_transactions pt ON ((st.bank_transaction_id = pt.id)))
+WHERE ((st.processor_type = 'payout'::text) AND (st.status = 'paid'::text))
 ORDER BY st.created_at DESC;
 
 COMMENT ON VIEW public.v_payout_reconciliation IS 'Payout reconciliation view - SECURITY INVOKER (default)';

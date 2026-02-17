@@ -6,8 +6,8 @@
 -- 1. RECREATE FUNCTIONS WITH IMMUTABLE SEARCH PATH
 -- ============================================================================
 
--- get_plaid_token_from_vault
-CREATE OR REPLACE FUNCTION public.get_plaid_token_from_vault(p_connection_id UUID)
+-- get_bank_aggregator_token_from_vault
+CREATE OR REPLACE FUNCTION public.get_bank_aggregator_token_from_vault(p_connection_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -18,14 +18,14 @@ DECLARE
 BEGIN
   SELECT decrypted_secret INTO v_token
   FROM vault.decrypted_secrets
-  WHERE name = 'plaid_token_' || p_connection_id::text;
+  WHERE name = 'bank_aggregator_token_' || p_connection_id::text;
   
   RETURN v_token;
 END;
 $$;
 
-COMMENT ON FUNCTION public.get_plaid_token_from_vault IS 
-  'Retrieves Plaid access token from vault. Search path hardened.';
+COMMENT ON FUNCTION public.get_bank_aggregator_token_from_vault IS 
+  'Retrieves bank_aggregator access token from vault. Search path hardened.';
 
 
 -- cleanup_old_payout_files
@@ -55,8 +55,8 @@ COMMENT ON FUNCTION public.cleanup_old_payout_files IS
   'Cleans up payout files older than 90 days. Search path hardened.';
 
 
--- store_stripe_webhook_secret_in_vault
-CREATE OR REPLACE FUNCTION public.store_stripe_webhook_secret_in_vault(
+-- store_processor_webhook_secret_in_vault
+CREATE OR REPLACE FUNCTION public.store_processor_webhook_secret_in_vault(
   p_ledger_id UUID,
   p_webhook_secret TEXT
 )
@@ -69,7 +69,7 @@ DECLARE
   v_secret_id UUID;
   v_secret_name TEXT;
 BEGIN
-  v_secret_name := 'stripe_webhook_' || p_ledger_id::text;
+  v_secret_name := 'processor_webhook_' || p_ledger_id::text;
   
   -- Insert into vault (or update if exists)
   INSERT INTO vault.secrets (name, secret)
@@ -79,25 +79,25 @@ BEGIN
   
   -- Update ledger to reference vault
   UPDATE public.ledgers
-  SET stripe_webhook_secret_vault_id = v_secret_id
+  SET processor_webhook_secret_vault_id = v_secret_id
   WHERE id = p_ledger_id;
   
   -- Remove from settings JSON if present
   UPDATE public.ledgers
-  SET settings = settings - 'stripe_webhook_secret'
+  SET settings = settings - 'processor_webhook_secret'
   WHERE id = p_ledger_id
-    AND settings ? 'stripe_webhook_secret';
+    AND settings ? 'processor_webhook_secret';
   
   RETURN v_secret_id;
 END;
 $$;
 
-COMMENT ON FUNCTION public.store_stripe_webhook_secret_in_vault IS 
-  'Stores Stripe webhook secret in vault and updates ledger reference. Search path hardened.';
+COMMENT ON FUNCTION public.store_processor_webhook_secret_in_vault IS 
+  'Stores processor webhook secret in vault and updates ledger reference. Search path hardened.';
 
 
--- get_stripe_webhook_secret_from_vault
-CREATE OR REPLACE FUNCTION public.get_stripe_webhook_secret_from_vault(p_ledger_id UUID)
+-- get_processor_webhook_secret_from_vault
+CREATE OR REPLACE FUNCTION public.get_processor_webhook_secret_from_vault(p_ledger_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -108,7 +108,7 @@ DECLARE
   v_vault_id UUID;
 BEGIN
   -- First try vault
-  SELECT stripe_webhook_secret_vault_id INTO v_vault_id
+  SELECT processor_webhook_secret_vault_id INTO v_vault_id
   FROM public.ledgers
   WHERE id = p_ledger_id;
   
@@ -123,7 +123,7 @@ BEGIN
   END IF;
   
   -- Fallback to settings JSON (legacy)
-  SELECT settings->>'stripe_webhook_secret' INTO v_secret
+  SELECT settings->>'processor_webhook_secret' INTO v_secret
   FROM public.ledgers
   WHERE id = p_ledger_id;
   
@@ -131,8 +131,8 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.get_stripe_webhook_secret_from_vault IS 
-  'Retrieves Stripe webhook secret from vault with legacy fallback. Search path hardened.';
+COMMENT ON FUNCTION public.get_processor_webhook_secret_from_vault IS 
+  'Retrieves processor webhook secret from vault with legacy fallback. Search path hardened.';
 
 
 -- create_audit_entry

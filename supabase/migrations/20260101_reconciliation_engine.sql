@@ -10,8 +10,8 @@ CREATE TABLE IF NOT EXISTS bank_connections (
   ledger_id UUID NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   
   -- Provider info
-  provider TEXT NOT NULL CHECK (provider IN ('plaid', 'stripe', 'manual')),
-  provider_account_id TEXT,           -- Plaid account_id or Stripe bank account
+  provider TEXT NOT NULL CHECK (provider IN ('bank_aggregator', 'processor', 'manual')),
+  provider_account_id TEXT,           -- bank_aggregator account_id or processor bank account
   provider_institution_id TEXT,       -- Bank institution ID
   
   -- Account details
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS bank_connections (
   
   -- Sync status
   last_sync_at TIMESTAMPTZ,
-  sync_cursor TEXT,                   -- Plaid cursor for incremental sync
+  sync_cursor TEXT,                   -- bank_aggregator cursor for incremental sync
   sync_status TEXT DEFAULT 'active' CHECK (sync_status IN ('active', 'error', 'disconnected')),
   sync_error TEXT,
   
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
   bank_connection_id UUID NOT NULL REFERENCES bank_connections(id) ON DELETE CASCADE,
   
   -- External reference
-  provider_transaction_id TEXT NOT NULL,  -- Plaid/Stripe transaction ID
+  provider_transaction_id TEXT NOT NULL,  -- bank_aggregator/processor transaction ID
   
   -- Transaction details
   amount NUMERIC(14,2) NOT NULL,          -- Positive = credit, Negative = debit
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
   -- Description
   name TEXT,                              -- Merchant/counterparty name
   merchant_name TEXT,                     -- Cleaned merchant name
-  category TEXT[],                        -- Plaid categories
+  category TEXT[],                        -- bank_aggregator categories
   
   -- Reconciliation
   reconciliation_status TEXT DEFAULT 'unmatched' CHECK (
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS reconciliation_rules (
   conditions JSONB NOT NULL,
   /* Example conditions:
   {
-    "merchant_contains": "STRIPE",
+    "merchant_contains": "processor",
     "amount_range": [0, 1000],
     "category_includes": "Payment"
   }

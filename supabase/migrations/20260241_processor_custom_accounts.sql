@@ -1,4 +1,4 @@
--- Soledgic: Stripe Custom Connected Accounts
+-- Soledgic: processor Custom Connected Accounts
 -- Full "Banker Model" infrastructure for controlling fund flow
 -- Money: Platform Account → (Transfer) → Connected Account → (Payout) → Bank
 
@@ -18,12 +18,12 @@ CREATE TABLE IF NOT EXISTS connected_accounts (
   display_name TEXT,
   email TEXT,
   
-  -- Stripe Custom Account
-  stripe_account_id TEXT UNIQUE,  -- acct_xxx
-  stripe_account_type TEXT DEFAULT 'custom' CHECK (stripe_account_type IN ('custom', 'express', 'standard')),
+  -- processor Custom Account
+  processor_account_id TEXT UNIQUE,  -- acct_xxx
+  processor_account_type TEXT DEFAULT 'custom' CHECK (processor_account_type IN ('custom', 'express', 'standard')),
   
-  -- Account Status (synced from Stripe)
-  stripe_status TEXT DEFAULT 'pending' CHECK (stripe_status IN (
+  -- Account Status (synced from processor)
+  processor_status TEXT DEFAULT 'pending' CHECK (processor_status IN (
     'pending',           -- Account created but not yet verified
     'restricted',        -- Missing required info
     'enabled',           -- Fully operational
@@ -62,9 +62,9 @@ CREATE TABLE IF NOT EXISTS connected_accounts (
 );
 
 CREATE INDEX idx_connected_accounts_ledger ON connected_accounts(ledger_id);
-CREATE INDEX idx_connected_accounts_stripe ON connected_accounts(stripe_account_id);
+CREATE INDEX idx_connected_accounts_processor ON connected_accounts(processor_account_id);
 CREATE INDEX idx_connected_accounts_entity ON connected_accounts(entity_type, entity_id);
-CREATE INDEX idx_connected_accounts_status ON connected_accounts(stripe_status) WHERE is_active = true;
+CREATE INDEX idx_connected_accounts_status ON connected_accounts(processor_status) WHERE is_active = true;
 
 -- ============================================================================
 -- 2. RELEASE QUEUE (Escrow Control)
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS escrow_releases (
   
   -- Who receives the release
   connected_account_id UUID REFERENCES connected_accounts(id),
-  recipient_stripe_account TEXT,  -- acct_xxx
+  recipient_processor_account TEXT,  -- acct_xxx
   recipient_entity_type TEXT NOT NULL,
   recipient_entity_id TEXT NOT NULL,
   
@@ -106,11 +106,11 @@ CREATE TABLE IF NOT EXISTS escrow_releases (
     'cancelled'    -- Cancelled before execution
   )),
   
-  -- Stripe Transfer details
-  stripe_transfer_id TEXT,       -- tr_xxx
-  stripe_transfer_group TEXT,    -- For grouping related transfers
-  stripe_error_code TEXT,
-  stripe_error_message TEXT,
+  -- processor Transfer details
+  processor_transfer_id TEXT,       -- tr_xxx
+  processor_transfer_group TEXT,    -- For grouping related transfers
+  processor_error_code TEXT,
+  processor_error_message TEXT,
   
   -- Audit trail
   requested_at TIMESTAMPTZ DEFAULT NOW(),
@@ -158,11 +158,11 @@ CREATE TABLE IF NOT EXISTS payout_requests (
     'failed'       -- Payout failed
   )),
   
-  -- Stripe Payout details
-  stripe_payout_id TEXT,         -- po_xxx
-  stripe_arrival_date DATE,
-  stripe_error_code TEXT,
-  stripe_error_message TEXT,
+  -- processor Payout details
+  processor_payout_id TEXT,         -- po_xxx
+  processor_arrival_date DATE,
+  processor_error_code TEXT,
+  processor_error_message TEXT,
   
   -- Review
   requested_at TIMESTAMPTZ DEFAULT NOW(),
@@ -205,12 +205,12 @@ CREATE INDEX IF NOT EXISTS idx_entries_held ON entries(release_status, hold_unti
 -- 5. FUNCTIONS: CREATE CONNECTED ACCOUNT
 -- ============================================================================
 
--- Record a new connected account (after creating in Stripe)
+-- Record a new connected account (after creating in processor)
 CREATE OR REPLACE FUNCTION register_connected_account(
   p_ledger_id UUID,
   p_entity_type TEXT,
   p_entity_id TEXT,
-  p_stripe_account_id TEXT,
+  p_processor_account_id TEXT,
   p_display_name TEXT DEFAULT NULL,
   p_email TEXT DEFAULT NULL,
   p_created_by UUID DEFAULT NULL
@@ -227,7 +227,7 @@ BEGIN
     ledger_id,
     entity_type,
     entity_id,
-    stripe_account_id,
+    processor_account_id,
     display_name,
     email,
     created_by
@@ -235,14 +235,14 @@ BEGIN
     p_ledger_id,
     p_entity_type,
     p_entity_id,
-    p_stripe_account_id,
+    p_processor_account_id,
     p_display_name,
     p_email,
     p_created_by
   )
   ON CONFLICT (ledger_id, entity_type, entity_id) 
   DO UPDATE SET
-    stripe_account_id = EXCLUDED.stripe_account_id,
+    processor_account_id = EXCLUDED.processor_account_id,
     display_name = COALESCE(EXCLUDED.display_name, connected_accounts.display_name),
     email = COALESCE(EXCLUDED.email, connected_accounts.email),
     updated_at = NOW()
@@ -253,11 +253,11 @@ END;
 $$;
 
 -- ============================================================================
--- 6. FUNCTIONS: SYNC ACCOUNT STATUS FROM STRIPE
+-- 6. FUNCTIONS: SYNC ACCOUNT STATUS FROM processor
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION sync_connected_account_status(
-  p_stripe_account_id TEXT,
+  p_processor_account_id TEXT,
   p_charges_enabled BOOLEAN,
   p_payouts_enabled BOOLEAN,
   p_details_submitted BOOLEAN,
@@ -273,7 +273,7 @@ AS $$
 DECLARE
   v_new_status TEXT;
 BEGIN
-  -- Determine status based on Stripe fields
+  -- Determine status based on processor fields
   IF p_charges_enabled AND p_payouts_enabled THEN
     v_new_status := 'enabled';
   ELSIF p_details_submitted THEN
@@ -284,7 +284,7 @@ BEGIN
   
   UPDATE connected_accounts
   SET 
-    stripe_status = v_new_status,
+    processor_status = v_new_status,
     charges_enabled = p_charges_enabled,
     payouts_enabled = p_payouts_enabled,
     details_submitted = p_details_submitted,
@@ -294,7 +294,7 @@ BEGIN
     -- Enable transfers/payouts only when fully verified
     can_receive_transfers = (v_new_status = 'enabled'),
     updated_at = NOW()
-  WHERE stripe_account_id = p_stripe_account_id;
+  WHERE processor_account_id = p_processor_account_id;
 END;
 $$;
 
@@ -346,7 +346,7 @@ BEGIN
   END IF;
   
   IF NOT v_connected_account.can_receive_transfers THEN
-    RAISE EXCEPTION 'Connected account % cannot receive transfers', v_connected_account.stripe_account_id;
+    RAISE EXCEPTION 'Connected account % cannot receive transfers', v_connected_account.processor_account_id;
   END IF;
   
   -- Generate idempotency key
@@ -358,7 +358,7 @@ BEGIN
     entry_id,
     transaction_id,
     connected_account_id,
-    recipient_stripe_account,
+    recipient_processor_account,
     recipient_entity_type,
     recipient_entity_id,
     amount,
@@ -370,7 +370,7 @@ BEGIN
     p_entry_id,
     v_entry.transaction_id,
     v_connected_account.id,
-    v_connected_account.stripe_account_id,
+    v_connected_account.processor_account_id,
     v_entry.entity_type,
     v_entry.entity_id,
     v_entry.amount,
@@ -390,12 +390,12 @@ END;
 $$;
 
 -- ============================================================================
--- 8. FUNCTIONS: COMPLETE RELEASE (After Stripe Transfer succeeds)
+-- 8. FUNCTIONS: COMPLETE RELEASE (After processor Transfer succeeds)
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION complete_fund_release(
   p_release_id UUID,
-  p_stripe_transfer_id TEXT,
+  p_processor_transfer_id TEXT,
   p_approved_by UUID DEFAULT NULL
 )
 RETURNS VOID
@@ -419,7 +419,7 @@ BEGIN
   UPDATE escrow_releases
   SET 
     status = 'completed',
-    stripe_transfer_id = p_stripe_transfer_id,
+    processor_transfer_id = p_processor_transfer_id,
     approved_by = COALESCE(p_approved_by, approved_by),
     approved_at = COALESCE(approved_at, NOW()),
     executed_at = NOW(),
@@ -432,7 +432,7 @@ BEGIN
     release_status = 'released',
     released_at = NOW(),
     released_by = p_approved_by,
-    release_transfer_id = p_stripe_transfer_id
+    release_transfer_id = p_processor_transfer_id
   WHERE id = v_release.entry_id;
 END;
 $$;
@@ -458,8 +458,8 @@ BEGIN
   UPDATE escrow_releases
   SET 
     status = 'failed',
-    stripe_error_code = p_error_code,
-    stripe_error_message = p_error_message,
+    processor_error_code = p_error_code,
+    processor_error_message = p_error_message,
     updated_at = NOW()
   WHERE id = p_release_id
   RETURNING entry_id INTO v_entry_id;
@@ -494,7 +494,7 @@ RETURNS TABLE (
   recipient_id TEXT,
   recipient_name TEXT,
   has_connected_account BOOLEAN,
-  stripe_account_id TEXT,
+  processor_account_id TEXT,
   transaction_ref TEXT,
   product_name TEXT,
   venture_id TEXT
@@ -518,7 +518,7 @@ BEGIN
     a.entity_id as recipient_id,
     a.name as recipient_name,
     (ca.id IS NOT NULL) as has_connected_account,
-    ca.stripe_account_id,
+    ca.processor_account_id,
     t.reference_id as transaction_ref,
     t.metadata->>'product_name' as product_name,
     t.metadata->>'venture_id' as venture_id
@@ -640,7 +640,7 @@ GRANT EXECUTE ON FUNCTION queue_auto_releases TO service_role;
 -- ============================================================================
 
 COMMENT ON TABLE connected_accounts IS 
-  'Stripe Custom connected accounts for creators/ventures. YOU control these accounts.';
+  'processor Custom connected accounts for creators/ventures. YOU control these accounts.';
 
 COMMENT ON TABLE escrow_releases IS 
   'Queue of fund releases from platform escrow to connected accounts.';

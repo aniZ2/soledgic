@@ -190,7 +190,7 @@ BEGIN
   FOR t IN SELECT unnest(ARRAY[
     'ledgers', 'accounts', 'transactions', 'entries', 'payouts',
     'audit_log', 'organization_members', 'organizations',
-    'plaid_connections', 'stripe_events', 'webhook_events'
+    'bank_aggregator_connections', 'processor_events', 'webhook_events'
   ])
   LOOP
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = t AND table_schema = 'public') THEN
