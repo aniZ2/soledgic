@@ -81,6 +81,7 @@ export interface ProcessorProviderConfig {
   environment?: string | null
   baseUrl?: string | null
   transfersPath?: string | null
+  refundsPathTemplate?: string | null
 }
 
 export interface PaymentProviderFactoryOptions {
@@ -142,6 +143,8 @@ class CardPaymentProvider implements PaymentProvider {
       versionHeader: versionHeader || null,
       apiVersion: apiVersion || null,
       transfersPath: this.cfg.transfersPath || Deno.env.get('PROCESSOR_TRANSFERS_PATH') || '/transfers',
+      refundsPathTemplate:
+        (this.cfg.refundsPathTemplate || Deno.env.get('PROCESSOR_REFUNDS_PATH_TEMPLATE') || '').trim() || null,
       baseUrl,
       configError,
     }
@@ -244,10 +247,71 @@ class CardPaymentProvider implements PaymentProvider {
   }
 
   async refund(_params: RefundParams): Promise<RefundResult> {
-    return {
-      success: false,
-      provider: 'card',
-      error: 'Refunds are not implemented for this provider yet',
+    const { username, password, apiVersion, versionHeader, transfersPath, refundsPathTemplate, baseUrl, configError } =
+      this.resolveConfig()
+
+    if (configError) return { success: false, provider: 'card', error: configError }
+    if (!username || !password) {
+      return { success: false, provider: 'card', error: 'Payment processor credentials are not configured' }
+    }
+
+    const paymentId = (_params?.payment_intent_id || '').trim()
+    if (!paymentId) {
+      return { success: false, provider: 'card', error: 'payment_intent_id is required' }
+    }
+
+    const path =
+      refundsPathTemplate?.length
+        ? refundsPathTemplate.replaceAll('{id}', paymentId)
+        : `${transfersPath}/${paymentId}/reversals`
+
+    const payload: Record<string, unknown> = {}
+    if (typeof _params.amount === 'number' && Number.isFinite(_params.amount) && _params.amount > 0) {
+      payload.amount = Math.round(_params.amount)
+    }
+
+    const tags: Record<string, string> = {}
+    if (_params.metadata && typeof _params.metadata === 'object') {
+      for (const [k, v] of Object.entries(_params.metadata)) {
+        if (typeof k === 'string' && typeof v === 'string') {
+          tags[k] = v.slice(0, 500)
+        }
+      }
+    }
+    if (_params.reason) tags.refund_reason = _params.reason
+    if (Object.keys(tags).length > 0) payload.tags = tags
+
+    try {
+      const versioning = versionHeader && apiVersion ? { [versionHeader]: apiVersion } : {}
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+          ...versioning,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return {
+          success: false,
+          provider: 'card',
+          error: this.parseError(data, `Processor refund failed (${response.status})`),
+        }
+      }
+
+      const amount = typeof data?.amount === 'number' ? data.amount : _params.amount
+      return {
+        success: true,
+        provider: 'card',
+        refund_id: data?.id,
+        amount,
+        status: this.mapStatus(data?.state || data?.status),
+      }
+    } catch (err: any) {
+      return { success: false, provider: 'card', error: err?.message || 'Processor refund failed' }
     }
   }
 

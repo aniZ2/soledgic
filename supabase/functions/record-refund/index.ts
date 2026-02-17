@@ -14,6 +14,7 @@ import {
   getClientIp
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
 interface RefundRequest {
   original_sale_reference: string
@@ -21,6 +22,8 @@ interface RefundRequest {
   reason: string
   refund_from?: 'both' | 'platform_only' | 'creator_only'
   external_refund_id?: string
+  execute_processor_refund?: boolean
+  processor_payment_id?: string
   metadata?: Record<string, any>
 }
 
@@ -59,9 +62,12 @@ const handler = createHandler(
     }
 
     // Validate external_refund_id if provided
-    const externalRefundId = body.external_refund_id 
+    let externalRefundId = body.external_refund_id 
       ? validateId(body.external_refund_id, 255) 
       : null
+
+    const executeProcessorRefund = body.execute_processor_refund === true
+    const processorPaymentId = body.processor_payment_id ? validateId(body.processor_payment_id, 255) : null
 
     // Find original sale transaction
     const { data: originalSale, error: saleError } = await supabase
@@ -97,6 +103,32 @@ const handler = createHandler(
           400, 
           req
         )
+      }
+    }
+
+    // Execute processor-level refund first (optional). This ensures we don't
+    // record a ledger refund if the underlying money movement failed.
+    if (executeProcessorRefund) {
+      const provider = getPaymentProvider('card')
+      const refundCents = Math.round(refundAmount * 100)
+      const paymentId = processorPaymentId || originalRef
+
+      const refundResult = await provider.refund({
+        payment_intent_id: paymentId,
+        amount: refundCents,
+        metadata: {
+          soledgic_ledger_id: ledger.id,
+          soledgic_original_sale_reference: originalRef,
+        },
+      })
+
+      if (!refundResult.success) {
+        return errorResponse(refundResult.error || 'Processor refund failed', 502, req)
+      }
+
+      const providerRefundId = refundResult.refund_id ? validateId(refundResult.refund_id, 255) : null
+      if (providerRefundId && !externalRefundId) {
+        externalRefundId = providerRefundId
       }
     }
 
@@ -180,6 +212,8 @@ const handler = createHandler(
           },
           // Sanitize metadata - don't blindly accept user input
           external_refund_id: externalRefundId,
+          processor_refund_executed: executeProcessorRefund,
+          processor_payment_id: executeProcessorRefund ? (processorPaymentId || originalRef) : null,
         }
       })
       .select('id')
