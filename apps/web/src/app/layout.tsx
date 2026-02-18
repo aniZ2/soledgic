@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono, Space_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -7,23 +7,36 @@ const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
 })
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-space',
+})
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '600', '700'],
+  variable: '--font-ibm-mono',
+})
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+})
 
 export const metadata: Metadata = {
-  title: 'Soledgic - Payments, Splits, and Ledger for Platforms',
-  description: 'Accept payments, split revenue, pay out sellers, and track every dollar with a built-in double-entry ledger. The financial backend for platforms.',
-  keywords: ['payments', 'ledger', 'splits', 'payouts', 'API', 'double-entry', 'fintech', 'platform'],
-  authors: [{ name: 'Soledgic' }],
+  title: 'Soledgic — The Financial Backend for Creator Platforms',
+  description: 'Accept payments, split revenue to creators, handle tax withholding, and pay out sellers — all tracked in an audit-ready double-entry ledger. One API replaces Stripe + QuickBooks + custom code.',
+  keywords: ['payments', 'ledger', 'splits', 'payouts', 'API', 'double-entry', 'fintech', 'platform', 'creator economy', 'revenue share', 'marketplace payments'],
+  authors: [{ name: 'Osifo Holdings L.L.C.' }],
   openGraph: {
-    title: 'Soledgic - Payments, Splits, and Ledger for Platforms',
-    description: 'Accept payments, split revenue, pay out sellers, and track every dollar with a built-in double-entry ledger.',
+    title: 'Soledgic — The Financial Backend for Creator Platforms',
+    description: 'Accept payments, split revenue to creators, handle tax withholding, and pay out sellers — all tracked in an audit-ready double-entry ledger.',
     url: 'https://soledgic.com',
     siteName: 'Soledgic',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Soledgic - Payments, Splits, and Ledger for Platforms',
-    description: 'Accept payments, split revenue, pay out sellers, and track every dollar with a built-in double-entry ledger.',
+    title: 'Soledgic — The Financial Backend for Creator Platforms',
+    description: 'Accept payments, split revenue to creators, handle tax withholding, and pay out sellers — all tracked in an audit-ready double-entry ledger.',
   },
 }
 
@@ -34,7 +47,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} ${jetbrainsMono.variable}`}>{children}</body>
+      <body className={`${inter.className} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
+        {children}
+      </body>
     </html>
   )
 }
