@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              SOLEDGIC PLATFORM                               │
-│                         (Your Stripe Platform Account)                       │
+│                         (Your Payment Processor Platform Account)                       │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                          ESCROW HOLDING                              │   │
@@ -19,7 +19,7 @@
 │                    [ADMIN: Release Funds]                                   │
 │                                    ▼                                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     STRIPE CUSTOM ACCOUNTS                          │   │
+│  │                    CONNECTED ACCOUNTS                               │   │
 │  │   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐           │   │
 │  │   │   Author A   │   │   Trader B   │   │   Author C   │           │   │
 │  │   │ acct_xxx123  │   │ acct_xxx456  │   │ acct_xxx789  │           │   │
@@ -38,13 +38,13 @@
 ## The Two Gates
 
 ### Gate 1: Release (Platform → Connected Account)
-- Money moves from YOUR Stripe balance to the creator's Custom account
+- Money moves from YOUR Payment Processor balance to the creator's Custom account
 - **YOU control this** via `release-funds` endpoint
 - Default: Held for 7 days (dispute window)
 - Can be: Manual only, Auto after X days, or Rule-based
 
 ### Gate 2: Payout (Connected Account → Bank)
-- Money moves from creator's Stripe account to their bank
+- Money moves from creator's Payment Processor account to their bank
 - **YOU control this** via `payouts_paused: true` on Custom accounts
 - Creator must request payout
 - Admin approves → Payout executes
@@ -55,7 +55,7 @@
 
 ### 1. `POST /connected-accounts`
 
-Create and manage Stripe Custom accounts for creators.
+Create and manage Payment Processor Custom accounts for creators.
 
 **Create Account:**
 ```typescript
@@ -75,8 +75,8 @@ Create and manage Stripe Custom accounts for creators.
   success: true,
   account: {
     id: 'uuid',
-    stripe_account_id: 'acct_xxx',
-    stripe_status: 'pending',
+    processor_account_id: 'acct_xxx',
+    processor_status: 'pending',
     charges_enabled: false,
     payouts_enabled: false,
     can_receive_transfers: false  // Must complete onboarding first
@@ -88,7 +88,7 @@ Create and manage Stripe Custom accounts for creators.
 ```typescript
 {
   action: 'create_onboarding_link',
-  stripe_account_id: 'acct_xxx',
+  processor_account_id: 'acct_xxx',
   return_url: 'https://booklyverse.com/author/dashboard',
   refresh_url: 'https://booklyverse.com/author/onboarding'
 }
@@ -142,7 +142,7 @@ The banker's control panel.
       recipient_id: 'author_123',
       recipient_name: 'Jane Author',
       has_connected_account: true,
-      stripe_account_id: 'acct_xxx',
+      processor_account_id: 'acct_xxx',
       product_name: 'The Great Novel'
     }
   ]
@@ -191,8 +191,8 @@ For creators to request payout from their connected account to bank.
 
 ### `connected_accounts`
 ```sql
-- stripe_account_id     -- acct_xxx
-- stripe_status         -- pending, restricted, enabled, disabled
+- processor_account_id     -- acct_xxx
+- processor_status         -- pending, restricted, enabled, disabled
 - charges_enabled       -- Can receive charges
 - payouts_enabled       -- Can receive payouts
 - payouts_paused: true  -- CRITICAL: You control payouts
@@ -206,16 +206,16 @@ For creators to request payout from their connected account to bank.
 - hold_until            -- Auto-release date
 - released_at           -- When released
 - released_by           -- Admin who released
-- release_transfer_id   -- tr_xxx from Stripe
+- release_transfer_id   -- tr_xxx from Payment Processor
 ```
 
 ### `escrow_releases`
 ```sql
 - entry_id              -- What we're releasing
-- recipient_stripe_account  -- acct_xxx
+- recipient_processor_account  -- external account id
 - amount, currency
 - status                -- pending, processing, completed, failed
-- stripe_transfer_id    -- tr_xxx
+- processor_transfer_id    -- tr_xxx
 - approved_by, executed_at
 ```
 
@@ -245,15 +245,15 @@ For creators to request payout from their connected account to bank.
 ```
 1. Reader → Booklyverse → POST /create-checkout
    ↓
-2. Booklyverse shows Stripe Elements checkout
+2. Booklyverse shows Payment Processor Elements checkout
    ↓
 3. Reader pays $9.99
    ↓
-4. Stripe → POST /stripe-webhook (payment_intent.succeeded)
+4. Payment Processor → POST /processor-webhook (payment_intent.succeeded)
    ↓
 5. Soledgic creates entries:
    - DEBIT cash $9.99
-   - DEBIT fees $0.59 (Stripe fee)
+   - DEBIT fees $0.59 (Payment Processor fee)
    - CREDIT author_balance $7.52 (80% of net) [HELD, hold_until: +7 days]
    - CREDIT platform_revenue $1.88 (20% of net)
    ↓
@@ -263,7 +263,7 @@ For creators to request payout from their connected account to bank.
    ↓
 8. POST /release-funds { action: 'release', entry_id: '...' }
    ↓
-9. Soledgic → Stripe Transfer API
+9. Soledgic → Payment Processor Transfer API
    ↓
 10. Author's connected account now has $7.52
     ↓
@@ -275,7 +275,7 @@ For creators to request payout from their connected account to bank.
     ↓
 14. Admin approves (or auto-approve if configured)
     ↓
-15. Stripe Payout → Author's bank
+15. Payment Processor Payout → Author's bank
 ```
 
 ---
@@ -298,14 +298,14 @@ For creators to request payout from their connected account to bank.
 
 - [ ] Apply migrations:
   - `20260240_escrow_control_system.sql`
-  - `20260241_stripe_custom_accounts.sql`
+  - Connected accounts migration (historical)
 
 - [ ] Deploy functions:
   - `create-checkout`
   - `connected-accounts`
   - `release-funds`
 
-- [ ] Configure Stripe:
+- [ ] Configure Payment Processor:
   - Ensure Platform account exists
   - Configure webhook for `account.updated` events
 
@@ -323,14 +323,14 @@ For creators to request payout from their connected account to bank.
 
 ### New Migrations
 - `20260240_escrow_control_system.sql` - Escrow tables and functions
-- `20260241_stripe_custom_accounts.sql` - Connected accounts infrastructure
+- Connected accounts migration - Connected accounts infrastructure
 
 ### New Edge Functions
-- `connected-accounts/index.ts` - Create/manage Stripe Custom accounts
+- `connected-accounts/index.ts` - Create/manage Payment Processor Custom accounts
 - `release-funds/index.ts` - Escrow release control
 
 ### Modified Files
-- `stripe-webhook/index.ts` - Entries now created with `release_status: 'held'`
+- `processor-webhook/index.ts` - Entries now created with `release_status: 'held'`
 - `_shared/utils.ts` - Added Booklyverse CORS, rate limits
 
 ### Documentation

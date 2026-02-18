@@ -1,6 +1,6 @@
 -- Migration: Fix Security Linter Warnings
 -- Date: December 22, 2024
--- Purpose: Enable RLS on tables and remove SECURITY DEFINER from views
+-- Purpose: Enable RLS on tables and remove elevated-permission views
 
 -- ============================================================================
 -- PART 1: Enable RLS on tables missing it
@@ -58,11 +58,11 @@ CREATE POLICY "rate_limits_service_only" ON public.rate_limits
   FOR ALL USING (auth.role() = 'service_role');
 
 -- ============================================================================
--- PART 2: Drop SECURITY DEFINER views and recreate as SECURITY INVOKER
+-- PART 2: Drop elevated-permission views and recreate as SECURITY INVOKER
 -- Note: Views in PostgreSQL are SECURITY INVOKER by default
 -- ============================================================================
 
--- Drop existing views (they were created with SECURITY DEFINER)
+-- Drop existing views (they were created with elevated privileges)
 DROP VIEW IF EXISTS public.v_payout_reconciliation CASCADE;
 DROP VIEW IF EXISTS public.held_funds_summary CASCADE;
 DROP VIEW IF EXISTS public.organization_plan_status CASCADE;
@@ -160,8 +160,8 @@ CREATE VIEW public.v_payout_reconciliation AS
 SELECT 
   l.id AS ledger_id,
   l.business_name,
-  st.id AS stripe_txn_id,
-  st.stripe_id AS payout_id,
+  st.id AS processor_txn_id,
+  st.processor_id AS payout_id,
   abs(st.amount) AS payout_amount,
   (st.raw_data ->> 'arrival_date'::text) AS expected_arrival,
   st.created_at AS payout_created,
@@ -178,10 +178,10 @@ SELECT
     WHEN (pt.id IS NOT NULL) THEN (abs(st.amount) - pt.amount)
     ELSE NULL::numeric
   END AS amount_difference
-FROM ((stripe_transactions st
+FROM ((processor_transactions st
   JOIN ledgers l ON ((st.ledger_id = l.id)))
-  LEFT JOIN plaid_transactions pt ON ((st.bank_transaction_id = pt.id)))
-WHERE ((st.stripe_type = 'payout'::text) AND (st.status = 'paid'::text))
+  LEFT JOIN bank_aggregator_transactions pt ON ((st.bank_transaction_id = pt.id)))
+WHERE ((st.processor_type = 'payout'::text) AND (st.status = 'paid'::text))
 ORDER BY st.created_at DESC;
 
 COMMENT ON VIEW public.v_payout_reconciliation IS 'Payout reconciliation view - SECURITY INVOKER (default)';

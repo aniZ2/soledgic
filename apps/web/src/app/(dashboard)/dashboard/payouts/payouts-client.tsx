@@ -19,7 +19,6 @@ interface PayoutsClientProps {
   ledger: {
     id: string
     business_name: string
-    api_key: string
     payout_rails: any[] | null
   }
   payouts: Payout[]
@@ -34,6 +33,12 @@ interface PayoutsClientProps {
 export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const formatRailLabel = (rail: any) => {
+    const name = String(rail?.rail || '').toLowerCase()
+    if (name === 'card') return 'Card'
+    return name.replaceAll('_', ' ')
+  }
 
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -124,7 +129,7 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
         <div className="p-6">
           {payoutRails.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No payment rails configured. Configure Finix or manual bank transfers.
+              No payment rails configured. Configure your card processor or manual bank transfers.
             </p>
           ) : (
             <div className="flex gap-4">
@@ -138,7 +143,7 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
                   }`}
                 >
                   <span className="text-sm font-medium capitalize">
-                    {rail.rail.replace('_', ' ')}
+                    {formatRailLabel(rail)}
                   </span>
                   <span className={`ml-2 text-xs ${rail.enabled ? 'text-green-600' : 'text-muted-foreground'}`}>
                     {rail.enabled ? 'Active' : 'Disabled'}
@@ -233,7 +238,6 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         onSuccess={handlePayoutSuccess}
       />
     </div>

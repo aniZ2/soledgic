@@ -25,7 +25,7 @@ export default async function TransactionsPage() {
   // Get ledgers, prefer active group
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, api_key, ledger_group_id')
+    .select('id, business_name, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
     .eq('livemode', livemode)
@@ -65,7 +65,6 @@ export default async function TransactionsPage() {
       ledger={{
         id: ledger.id,
         business_name: ledger.business_name,
-        api_key: ledger.api_key,
       }}
       transactions={transactions || []}
     />

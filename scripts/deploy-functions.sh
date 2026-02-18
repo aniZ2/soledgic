@@ -43,8 +43,6 @@ supabase functions deploy create-ledger --no-verify-jwt
 
 # Integration functions
 echo "[6/6] Deploying integration functions..."
-supabase functions deploy stripe-webhook --no-verify-jwt
-supabase functions deploy plaid --no-verify-jwt
 supabase functions deploy webhooks --no-verify-jwt
 
 echo ""
@@ -71,6 +69,6 @@ echo "Management:"
 echo "  ✓ reconcile, manage-splits, create-ledger"
 echo ""
 echo "Integrations:"
-echo "  ✓ stripe-webhook, plaid, webhooks"
+echo "  ✓ webhook handlers"
 echo ""
 echo "Run tests: cd test-data && ./test-api.sh"

@@ -104,7 +104,7 @@ SELECT initialize_tax_buckets('e642627c-bc08-4881-a039-77c14d1c6874');
 - `bank_statements` - Statement PDFs
 - `bank_statement_lines` - Imported line items
 - `reconciliation_sessions` - Reconciliation records
-- `reconciliation_records` - Stripe matching
+- `reconciliation_records` - Payment Processor matching
 
 ### Operations
 - `contractors` - Contractor tracking
@@ -117,7 +117,7 @@ SELECT initialize_tax_buckets('e642627c-bc08-4881-a039-77c14d1c6874');
 ### Reporting
 - `creator_payout_summaries` - Annual aggregates
 - `report_exports` - Export audit trail
-- `stripe_account_links` - Stripe account mapping
+- `processor_account_links` - Payment Processor account mapping
 
 ---
 
@@ -209,7 +209,7 @@ curl "$BASE/manage-budgets" -H "$AUTH" -H "$KEY"
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         STRIPE                               │
+│                    PAYMENT PROCESSOR                         │
 │  • Moves money           • Issues 1099s                      │
 │  • Collects W-9          • KYC/AML                          │
 │  • Blocks/approves payouts                                   │

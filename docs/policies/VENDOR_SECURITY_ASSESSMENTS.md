@@ -181,17 +181,17 @@ Each vendor is evaluated on:
 
 ---
 
-## Vendor Assessment: Stripe
+## Vendor Assessment: Payment Processor
 
 ### Basic Information
 
 | Field | Value |
 |-------|-------|
-| Vendor Name | Stripe, Inc. |
+| Vendor Name | Payment Processor, Inc. |
 | Service | Payment processing (for Soledgic billing) |
 | Contract Start | December 2024 |
 | Data Processed | Payment card data (not stored by Soledgic) |
-| Data Classification | Restricted (handled by Stripe) |
+| Data Classification | Restricted (handled by Payment Processor) |
 | Business Criticality | High |
 
 ### Security Assessment
@@ -227,8 +227,8 @@ Each vendor is evaluated on:
 | Aspect | Details |
 |--------|---------|
 | Data residency | US (configurable) |
-| PCI scope | Stripe handles all card data |
-| Data retention | Per Stripe policy |
+| PCI scope | Payment Processor handles all card data |
+| Data retention | Per Payment Processor policy |
 
 ### Soledgic Integration Security
 
@@ -245,7 +245,7 @@ Each vendor is evaluated on:
 
 | Risk | Mitigation |
 |------|------------|
-| Payment fraud | Stripe Radar, 3D Secure |
+| Payment fraud | Payment Processor Radar, 3D Secure |
 | Webhook spoofing | Signature verification |
 | Key compromise | Immediate rotation capability |
 
@@ -258,13 +258,13 @@ Each vendor is evaluated on:
 
 ---
 
-## Vendor Assessment: Plaid
+## Vendor Assessment: Bank Feed
 
 ### Basic Information
 
 | Field | Value |
 |-------|-------|
-| Vendor Name | Plaid, Inc. |
+| Vendor Name | Bank Feed, Inc. |
 | Service | Bank account connections |
 | Contract Start | December 2024 |
 | Data Processed | Bank account access tokens |
@@ -439,8 +439,8 @@ Cloudflare is a subprocessor of Supabase. Security controls are validated throug
 |--------|-------------|-------------|--------|
 | Supabase | Dec 2024 | Dec 2025 | ✅ Current |
 | Upstash | Dec 2024 | Dec 2025 | ✅ Current |
-| Stripe | Dec 2024 | Dec 2025 | ✅ Current |
-| Plaid | Dec 2024 | Dec 2025 | ✅ Current |
+| Payment Processor | Dec 2024 | Dec 2025 | ✅ Current |
+| Bank Feed | Dec 2024 | Dec 2025 | ✅ Current |
 | Resend | Dec 2024 | Dec 2025 | ✅ Current |
 | Cloudflare | Dec 2024 | Dec 2025 | ✅ Current |
 

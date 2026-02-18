@@ -2,6 +2,7 @@
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { toAppUrl } from '@/lib/public-url'
 
 export async function login(formData: FormData) {
   const email = formData.get('email') as string
@@ -72,7 +73,7 @@ export async function signup(formData: FormData) {
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://soledgic.com'}/auth/callback`,
+      emailRedirectTo: toAppUrl('/auth/callback'),
     },
   })
 

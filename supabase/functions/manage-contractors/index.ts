@@ -21,7 +21,6 @@ interface CreateContractorRequest {
   name: string
   email?: string
   company_name?: string
-  stripe_account_id?: string
 }
 
 interface RecordPaymentRequest {
@@ -188,7 +187,6 @@ Deno.serve(async (req) => {
           name: name,
           email: email,
           company_name: body.company_name ? validateString(body.company_name, 200) : null,
-          stripe_account_id: body.stripe_account_id ? validateId(body.stripe_account_id, 100) : null,
           is_active: true
         })
         .select('id, name, email')

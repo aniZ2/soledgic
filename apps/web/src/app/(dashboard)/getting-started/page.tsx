@@ -26,7 +26,7 @@ export default async function GettingStartedPage() {
   // Get ledgers
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, api_key, ledger_group_id')
+    .select('id, business_name, ledger_group_id')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
     .eq('livemode', livemode)
@@ -36,22 +36,22 @@ export default async function GettingStartedPage() {
   if (!ledger) redirect('/ledgers/new')
 
   // Check onboarding progress
-  const { count: creatorCount } = await supabase
-    .from('accounts')
-    .select('id', { count: 'exact', head: true })
-    .eq('ledger_id', ledger.id)
-    .eq('account_type', 'creator_balance')
-
-  const { count: transactionCount } = await supabase
-    .from('transactions')
-    .select('id', { count: 'exact', head: true })
-    .eq('ledger_id', ledger.id)
-
-  const { count: payoutCount } = await supabase
-    .from('transactions')
-    .select('id', { count: 'exact', head: true })
-    .eq('ledger_id', ledger.id)
-    .eq('transaction_type', 'payout')
+  const [{ count: creatorCount }, { count: transactionCount }, { count: payoutCount }] = await Promise.all([
+    supabase
+      .from('accounts')
+      .select('id', { count: 'exact', head: true })
+      .eq('ledger_id', ledger.id)
+      .eq('account_type', 'creator_balance'),
+    supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('ledger_id', ledger.id),
+    supabase
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('ledger_id', ledger.id)
+      .eq('transaction_type', 'payout'),
+  ])
 
   // Check user preference from metadata
   const userMode = user?.user_metadata?.onboarding_mode as 'dashboard' | 'developer' | undefined
@@ -61,7 +61,6 @@ export default async function GettingStartedPage() {
       ledger={{
         id: ledger.id,
         business_name: ledger.business_name,
-        api_key: ledger.api_key,
       }}
       progress={{
         hasCreator: (creatorCount || 0) > 0,

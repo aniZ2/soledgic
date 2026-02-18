@@ -20,7 +20,7 @@
   --shadow-md: 0 8px 30px rgba(0,0,0,0.08);
   --shadow-lg: 0 20px 60px rgba(0,0,0,0.1);
 
-  font-family: 'Space Grotesk', var(--font-space), system-ui, sans-serif;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', system-ui, sans-serif;
   color: var(--ink);
   line-height: 1.6;
   overflow-x: hidden;
@@ -30,11 +30,11 @@
 
 /* ── Typography ────────────────────────────────────────────── */
 .serif {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .mono {
-  font-family: var(--font-ibm-mono), 'IBM Plex Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 }
 
 /* ── Nav ───────────────────────────────────────────────────── */
@@ -53,7 +53,7 @@
 }
 
 .navLogo {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.35rem;
   font-weight: 600;
   color: var(--ink);
@@ -155,7 +155,7 @@
 .heroTitle {
   position: relative;
   z-index: 1;
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(3rem, 6.5vw, 5.5rem);
   font-weight: 500;
   letter-spacing: -0.03em;
@@ -324,7 +324,7 @@
   font-weight: 700;
   box-shadow: 0 12px 40px rgba(196, 94, 44, 0.3);
   border: none;
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   letter-spacing: -0.02em;
 }
 
@@ -355,7 +355,7 @@
 }
 
 .metricValue {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 2rem;
   font-weight: 600;
   color: var(--ink);
@@ -387,7 +387,7 @@
 }
 
 .sectionTitle {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(2.2rem, 4vw, 3.4rem);
   font-weight: 500;
   letter-spacing: -0.025em;
@@ -422,7 +422,7 @@
 }
 
 .problemSide h2 {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(2rem, 3.5vw, 3rem);
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -482,7 +482,7 @@
 }
 
 .solutionSide h3 {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.5rem;
   font-weight: 500;
   margin-bottom: 0.75rem;
@@ -585,7 +585,7 @@
 }
 
 .capTitle {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.2rem;
   font-weight: 600;
   margin-bottom: 0.75rem;
@@ -645,7 +645,7 @@
 }
 
 .builtForTitle {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.15rem;
   font-weight: 600;
   margin-bottom: 0.75rem;
@@ -669,7 +669,7 @@
 }
 
 .pricingRate {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(2.5rem, 5vw, 4rem);
   font-weight: 500;
   color: var(--ink);
@@ -680,7 +680,7 @@
 .pricingRate span {
   font-size: 1rem;
   color: var(--ink-light);
-  font-family: 'Space Grotesk', var(--font-space), system-ui, sans-serif;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', system-ui, sans-serif;
   font-weight: 500;
 }
 
@@ -751,7 +751,7 @@
 }
 
 .pricingPrice {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: 2.5rem;
   font-weight: 500;
   margin-bottom: 0.25rem;
@@ -761,7 +761,7 @@
 .pricingPrice span {
   font-size: 1rem;
   color: var(--ink-muted);
-  font-family: 'Space Grotesk', var(--font-space), system-ui, sans-serif;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', system-ui, sans-serif;
 }
 
 .pricingSubtext {
@@ -859,7 +859,7 @@
 }
 
 .ctaTitle {
-  font-family: var(--font-fraunces), Georgia, serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 500;
   letter-spacing: -0.02em;

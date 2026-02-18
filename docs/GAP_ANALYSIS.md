@@ -43,7 +43,7 @@ Soledgic is a **production-ready** double-entry accounting API for creator platf
 - `reconcile` - Bank matching
 - `import-bank-statement` - CSV import
 - `manage-splits` - Revenue split config
-- `stripe-webhook` - Payment processor events
+- `processor-webhook` - Payment processor events
 - `create-ledger` - New ledger creation
 - `list-ledgers` - Ledger enumeration
 - + 15 more operational functions
@@ -100,8 +100,8 @@ supabase functions deploy execute-payout --no-verify-jwt
 ```
 
 Features ready:
-- Stripe Connect rail
-- Plaid Transfer rail
+- Connected Accounts rail
+- Bank Feed Transfer rail
 - NACHA file generation (manual bank upload)
 
 ---
@@ -125,7 +125,7 @@ Now present:
 **Status: Implemented in apps/web + /api/billing (as of 2026-02-01)**
 
 Now present:
-- Stripe subscription integration and billing portal
+- Payment Processor subscription integration and billing portal
 - Plan enforcement for ledger and team member limits
 - Usage metering (transactions, API calls) surfaced in billing UI
 - Invoices and payment method management
@@ -149,7 +149,7 @@ Now present:
 - `/settings/organization` - org name, timezone, danger zone
 - `/settings/webhooks` - endpoint config, test webhooks, delivery logs
 - `/settings/security` - security settings
-- `/billing` - Stripe subscription management
+- `/billing` - Payment Processor subscription management
 
 ### 4. Webhook Delivery
 **Priority: MEDIUM**
@@ -186,7 +186,7 @@ Currently:
 - Manual reconciliation works ✅
 
 Missing:
-- [ ] Plaid Link integration for auto-sync
+- [ ] Bank Connection integration for auto-sync
 - [ ] Real-time bank feed updates
 - [ ] Auto-categorization ML
 
@@ -268,13 +268,13 @@ Missing:
 - [x] PDF exports working
 - [ ] Deploy auto-email service
 - [ ] Deploy payout adapter
-- [ ] Configure Stripe Connect for Booklyverse
+- [ ] Configure Connected Accounts for Booklyverse
 - [ ] Set up cron for monthly statements
 
 ### Phase 2: Private Beta (5-10 customers)
 - [ ] Implement Supabase Auth
 - [ ] Build basic dashboard
-- [ ] Add Stripe billing
+- [ ] Add Payment Processor billing
 - [ ] Implement webhook delivery
 - [ ] Set up error monitoring
 
@@ -297,7 +297,7 @@ Missing:
 | Dashboard MVP | HIGH | 5 | Auth |
 | Deploy email/payout | HIGH | 0.5 | None |
 | Webhook delivery | MEDIUM | 2 | None |
-| Bank feed (Plaid) | MEDIUM | 3 | None |
+| Bank feed (Bank Feed) | MEDIUM | 3 | None |
 | Tax documents | MEDIUM | 3 | None |
 | Error monitoring | MEDIUM | 1 | None |
 | Rate limiting | LOW | 1 | None |
@@ -320,8 +320,8 @@ Missing:
    - Add auth helpers to Next.js app
    - Create protected route middleware
 
-3. **Wire up Stripe billing** (2 days)
-   - Create Stripe products/prices
+3. **Wire up Payment Processor billing** (2 days)
+   - Create Payment Processor products/prices
    - Add checkout flow
    - Add billing portal
    - Enforce plan limits

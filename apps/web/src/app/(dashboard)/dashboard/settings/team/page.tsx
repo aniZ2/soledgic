@@ -32,6 +32,7 @@ interface Organization {
   plan: string
   max_team_members: number
   current_member_count: number
+  overage_team_member_price?: number
 }
 
 interface TeamData {
@@ -230,10 +231,13 @@ export default function TeamSettingsPage() {
   const { members, invitations, current_user_role, organization } = data
   const isOwnerOrAdmin = current_user_role === 'owner' || current_user_role === 'admin'
   const isOwner = current_user_role === 'owner'
-  const isAtLimit = organization.max_team_members !== -1 &&
-    organization.current_member_count >= organization.max_team_members
-  const isOverLimit = organization.max_team_members !== -1 &&
-    organization.current_member_count > organization.max_team_members
+  const includedMembers = organization.max_team_members === -1
+    ? organization.current_member_count
+    : organization.max_team_members
+  const additionalMembers = organization.max_team_members === -1
+    ? 0
+    : Math.max(0, organization.current_member_count - organization.max_team_members)
+  const teamMemberOveragePrice = organization.overage_team_member_price ?? 2000
 
   return (
     <div className="max-w-2xl">
@@ -273,20 +277,20 @@ export default function TeamSettingsPage() {
         </div>
       )}
 
-      {/* Plan limit banner */}
-      {(isAtLimit || isOverLimit) && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 mb-6 flex items-center gap-3">
+      <div className="bg-muted/50 border border-border rounded-lg p-4 mb-6 flex items-center gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0" />
           <div className="flex-1">
             <p className="font-medium text-foreground">
-              {organization.current_member_count} of {organization.max_team_members} team member{organization.max_team_members === 1 ? '' : 's'} on the {organization.plan} plan
+              {organization.current_member_count} team member{organization.current_member_count === 1 ? '' : 's'} active
             </p>
             <p className="text-sm text-muted-foreground">
-              Upgrade your plan to add more team members.
+              {includedMembers} included. Additional team members are billed at $
+              {(teamMemberOveragePrice / 100).toFixed(0)}
+              /month each.
+              {additionalMembers > 0 ? ` (${additionalMembers} additional member${additionalMembers === 1 ? '' : 's'} currently billed)` : ''}
             </p>
           </div>
         </div>
-      )}
 
       {/* Invite form — only visible to owner/admin */}
       {isOwnerOrAdmin && (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, DollarSign } from 'lucide-react'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Creator {
   id: string
@@ -17,7 +18,6 @@ interface ProcessPayoutModalProps {
   isOpen: boolean
   onClose: () => void
   ledgerId: string
-  apiKey: string
   preselectedCreator?: Creator
   onSuccess?: () => void
 }
@@ -26,7 +26,6 @@ export function ProcessPayoutModal({
   isOpen,
   onClose,
   ledgerId,
-  apiKey,
   preselectedCreator,
   onSuccess
 }: ProcessPayoutModalProps) {
@@ -91,21 +90,15 @@ export function ProcessPayoutModal({
     setError(null)
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/process-payout`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            creator_id: selectedCreatorId,
-            amount: amountCents,
-            description: description.trim() || undefined,
-          }),
-        }
-      )
+      const response = await callLedgerFunction('process-payout', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          creator_id: selectedCreatorId,
+          amount: amountCents,
+          description: description.trim() || undefined,
+        },
+      })
 
       const data = await response.json()
 

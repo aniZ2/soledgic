@@ -176,7 +176,7 @@ export function createApiHandler(
       if (rateLimit) {
         const rateLimitKey = getRateLimitKey(request, user?.id)
         const config = getRouteLimit(routePath)
-        const result = checkRateLimit(`${routePath}:${rateLimitKey}`, config)
+        const result = await checkRateLimit(rateLimitKey, routePath, config)
         
         if (!result.allowed) {
           const retryAfter = Math.ceil((result.resetAt - Date.now()) / 1000)

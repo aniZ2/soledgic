@@ -54,8 +54,8 @@ Request → Redis (Upstash) → Response
 | `record-refund` | 100 | 10 | 1 min | **Fail-Closed** |
 | `execute-payout` | 50 | 5 | 1 min | **Fail-Closed** |
 | `process-payout` | 50 | 5 | 1 min | **Fail-Closed** |
-| `plaid` | 50 | 5 | 1 min | **Fail-Closed** |
-| `stripe-webhook` | 500 | 50 | 1 min | **Fail-Closed** |
+| `bank-feed` | 50 | 5 | 1 min | **Fail-Closed** |
+| `processor-webhook` | 500 | 50 | 1 min | **Fail-Closed** |
 | `generate-pdf` | 20 | 2 | 1 min | Fail-Open |
 | `generate-report` | 30 | 3 | 1 min | Fail-Open |
 | `export-report` | 20 | 2 | 1 min | Fail-Open |
@@ -74,7 +74,7 @@ When **BOTH Redis AND Database** are unavailable:
 
 **Fail-Closed** (block requests):
 - `execute-payout`, `process-payout`: Prevents double payouts
-- `stripe-webhook`, `plaid`: Prevents replay attacks
+- `processor-webhook`, `bank-feed`: Prevents replay attacks
 - `record-sale`, `record-refund`: Prevents transaction flooding
 - `create-ledger`: Prevents resource exhaustion
 - `send-statements`: Prevents email spam
@@ -133,7 +133,7 @@ done
 ### Payouts (3)
 | Function | Description |
 |----------|-------------|
-| `process-payout` | Initiate payout (Stripe/manual) |
+| `process-payout` | Initiate payout (Payment Processor/manual) |
 | `execute-payout` | Execute approved payout |
 | `check-payout-eligibility` | Verify tax info, holds, minimums |
 
@@ -167,8 +167,8 @@ done
 ### Integrations (3)
 | Function | Description |
 |----------|-------------|
-| `stripe-webhook` | Stripe event processing (replay protection) |
-| `plaid` | Plaid bank integration (Vault encryption) |
+| `processor-webhook` | Payment Processor event processing (replay protection) |
+| `bank-feed` | Bank Feed bank integration (Vault encryption) |
 | `webhooks` | Outbound webhook delivery (SSRF protection) |
 
 ### Standard Mode (4)
@@ -193,8 +193,8 @@ done
 | `import-transactions` | CSV/OFX transaction import |
 | `import-bank-statement` | Bank statement import |
 | `upload-receipt` | Receipt image upload |
-| `stripe` | Stripe transaction management |
-| `stripe-billing-webhook` | Billing lifecycle events |
+| `processor` | Payment Processor transaction management |
+| `billing-webhook` | Billing lifecycle events |
 | `process-webhooks` | Webhook queue processor (cron) |
 
 ---
@@ -204,7 +204,7 @@ done
 ### Authentication
 - ✅ **Hash-based API key validation** - SHA-256, no plaintext in DB
 - ✅ **Timing-safe comparison** - Prevents timing attacks
-- ✅ **Plaid tokens in Vault** - Encrypted at rest
+- ✅ **Bank Feed tokens in Vault** - Encrypted at rest
 
 ### Rate Limiting
 - ✅ **Redis-backed (Upstash)** - Distributed, persistent, primary layer
@@ -233,7 +233,7 @@ done
 - ✅ **Fire-and-forget** - Non-blocking audit writes
 
 ### Webhook Security
-- ✅ **Stripe replay protection** - 5-minute window
+- ✅ **Payment Processor replay protection** - 5-minute window
 - ✅ **Constant-time signatures** - Prevents timing leaks
 - ✅ **SSRF protection** - Private IP blocking
 - ✅ **Domain allowlist** - Outbound restrictions

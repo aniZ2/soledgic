@@ -142,7 +142,7 @@ INSERT INTO reserved_slugs (slug, reason) VALUES
   ('soledgic', 'Brand protection'),
   ('soledgic', 'Brand protection'),
   ('anthropic', 'Brand protection'),
-  ('stripe', 'Brand protection'),
+  ('processor', 'Brand protection'),
   ('supabase', 'Brand protection'),
   ('vercel', 'Brand protection'),
   ('google', 'Brand protection'),

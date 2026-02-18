@@ -93,8 +93,10 @@ export const GET = createApiHandler(
         id: org.id,
         name: org.name,
         plan: org.plan,
+        status: org.status,
         max_team_members: org.max_team_members,
         current_member_count: org.current_member_count,
+        overage_team_member_price: 2000,
       },
     })
   },
@@ -179,7 +181,7 @@ export const POST = createApiHandler(
     // Get org for entitlement check
     const { data: org } = await supabase
       .from('organizations')
-      .select('id, name, plan, status, max_team_members, current_member_count, max_ledgers, current_ledger_count')
+      .select('id, name, plan, status, max_team_members, current_member_count')
       .eq('id', membership.organization_id)
       .single()
 

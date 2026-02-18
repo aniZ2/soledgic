@@ -26,27 +26,26 @@ export default function RefundPolicyPage() {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-3">1. Overview</h2>
             <p>
-              This Refund Policy applies to all subscription fees paid for the Soledgic platform operated by Osifo Holdings LLC. We want you to be satisfied with the Service. If you are not, this policy outlines the circumstances under which refunds may be issued.
+              This Refund Policy applies to paid usage charges on the Soledgic platform operated by Osifo Holdings LLC. We want you to be satisfied with the Service. If you are not, this policy outlines the circumstances under which refunds may be issued.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-3">2. Free Start</h2>
             <p>
-              All new accounts start free with one included ledger. Because no base subscription fee is charged to start, there is no refund scenario for free-plan usage.
+              All new accounts start free with one included ledger and one included team member. Because no base subscription fee is charged to start, there is no refund scenario for free-plan usage.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mt-8 mb-3">3. Paid Subscription Cancellation</h2>
+            <h2 className="text-xl font-semibold mt-8 mb-3">3. Paid Usage Billing Cycle</h2>
             <p>
-              You may cancel your subscription at any time from your account billing settings. When you cancel:
+              Paid usage (such as additional ledgers and additional team members) is billed on your billing cycle. If you remove paid usage before your next cycle:
             </p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
-              <li>Your subscription remains active until the end of the current billing period.</li>
-              <li>You retain full access to the Service until your current period expires.</li>
-              <li>No partial refunds are issued for unused time within a billing period.</li>
-              <li>You will not be charged for subsequent billing periods.</li>
+              <li>You will not be charged for that removed usage in future billing periods.</li>
+              <li>Usage already incurred in the current period remains billable.</li>
+              <li>No partial refunds are issued for usage already incurred in a billing period.</li>
             </ul>
           </section>
 
@@ -64,9 +63,9 @@ export default function RefundPolicyPage() {
               If the Service experiences a significant, sustained outage (more than 72 consecutive hours) that prevents you from using core functionality, you may request a prorated refund for the affected period.
             </p>
 
-            <h3 className="text-lg font-medium mt-4 mb-2">4.3 First-Month Guarantee</h3>
+            <h3 className="text-lg font-medium mt-4 mb-2">4.3 First Paid-Cycle Guarantee</h3>
             <p>
-              If you are dissatisfied with the Service within the first 30 days after your first paid subscription charge, you may request a full refund of that first month&apos;s payment. This applies once per account and only to the first subscription payment.
+              If you are dissatisfied with the Service within 30 days after your first paid usage charge, you may request a full refund of that first paid cycle. This applies once per account.
             </p>
           </section>
 
@@ -74,8 +73,8 @@ export default function RefundPolicyPage() {
             <h2 className="text-xl font-semibold mt-8 mb-3">5. Non-Refundable Charges</h2>
             <p>The following are not eligible for refunds:</p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
-              <li>Subscription fees beyond the first 30 days (except as described in Section 4.2)</li>
-              <li>Overage charges for additional ledgers that were provisioned and used</li>
+              <li>Paid usage charges beyond the first 30 days (except as described in Section 4.2)</li>
+              <li>Overage charges for additional ledgers or additional team members that were provisioned and used</li>
               <li>Charges for prior billing periods where the Service was available</li>
               <li>Accounts terminated for violation of our <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link> or <Link href="/acceptable-use" className="text-primary hover:underline">Acceptable Use Policy</Link></li>
             </ul>

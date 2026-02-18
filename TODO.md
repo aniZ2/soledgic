@@ -20,7 +20,7 @@
 | Next.js CSP Headers | ✅ |
 | CSRF Protection | ✅ |
 | Web API Rate Limiting | ✅ |
-| Stripe Webhook Vault | ✅ |
+| Payment Processor Webhook Vault | ✅ |
 | Error Sanitization | ✅ |
 | **NACHA Secure Storage** | ✅ NEW |
 | **Compliance Monitoring Views** | ✅ NEW |
@@ -39,7 +39,7 @@
 | H1 | 🟠 High | Supabase key duplication | ✅ Consolidated |
 | H2 | 🟠 High | Missing CSRF protection | ✅ Added CSRF lib |
 | M1 | 🟡 Medium | Billing endpoint auth pattern | ✅ Fixed with comment |
-| M2 | 🟡 Medium | Stripe webhook secrets plaintext | ✅ Moved to Vault |
+| M2 | 🟡 Medium | Payment Processor webhook secrets plaintext | ✅ Moved to Vault |
 | M3 | 🟡 Medium | Error message leakage | ✅ Added sanitization |
 | L1 | 🟢 Low | No request size limit on web API | ✅ Added to handler |
 | L2 | 🟢 Low | Missing rate limiting on web API | ✅ Added rate-limit.ts |
@@ -60,8 +60,8 @@
 ### ⚠️ ACTION REQUIRED
 **C1: Rotate the exposed live API key**
 ```bash
-# The key sk_live_28b75b47565bed2c5c6acaa3ffe3038f0dc897a57c83a1f2 
-# in test-data/api-keys.env needs to be rotated manually
+# A previously hardcoded API key was removed from the repo. If you have ever
+# committed a real ledger key to git history, rotate it immediately.
 ```
 
 ---
@@ -90,7 +90,7 @@ apps/web/
 └── next.config.js      # CSP and security headers
 
 supabase/migrations/
-├── 20260126_stripe_webhook_vault.sql      # Vault for webhook secrets
+├── 20260126_webhook_vault.sql             # Vault for webhook secrets
 └── 20260127_compliance_audit_hardening.sql # SOC 2 compliance layer
 
 supabase/functions/_shared/

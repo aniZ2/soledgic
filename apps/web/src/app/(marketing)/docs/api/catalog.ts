@@ -92,61 +92,19 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     "auth": "Public/JWT",
     "internal": false,
     "deprecated": false,
-    "description": "Billing Management API",
+    "description": "Usage-based billing summary (overages). Subscription actions are disabled.",
     "source": "supabase/functions/billing/index.ts",
     "parameters": [
       {
         "in": "body",
         "name": "action",
-        "type": "'get_subscription' | 'get_usage' | 'get_invoices' | 'get_payment_methods' |",
+        "type": "'get_subscription' | 'get_usage' | 'get_plans' | 'get_invoices' | 'get_payment_methods'",
         "required": true
       },
       {
         "in": "body",
         "name": "organization_id",
         "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "price_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "quantity",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "return_url",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "cancel_url",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "payment_method_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "usage_type",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "usage_quantity",
-        "type": "number",
         "required": false
       }
     ]
@@ -407,12 +365,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       },
       {
         "in": "body",
-        "name": "stripe_account_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
         "name": "entity_type_filter",
         "type": "string",
         "required": false
@@ -654,7 +606,7 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "method",
-        "type": "'stripe' | 'bank_transfer'",
+        "type": "'card' | 'manual'",
         "required": false
       },
       {
@@ -1779,87 +1731,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "plaid",
-    "title": "Plaid",
-    "path": "/v1/plaid",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Plaid Integration",
-    "source": "supabase/functions/plaid/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "'create_link_token' | 'exchange_token' | 'list_connections' | 'sync' | 'disco...",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "connection_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "public_token",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "plaid_transaction_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "ledger_transaction_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "rule",
-        "type": "{",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "name",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "conditions",
-        "type": "Record<string, any>",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "action",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "action_config",
-        "type": "Record<string, any>",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "rule_id",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
     "endpoint": "preflight-authorization",
     "title": "Preflight Authorization",
     "path": "/v1/preflight-authorization",
@@ -2570,12 +2441,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       },
       {
         "in": "body",
-        "name": "trigger_stripe_refund",
-        "type": "boolean",
-        "required": false
-      },
-      {
-        "in": "body",
         "name": "metadata",
         "type": "Record<string, any>",
         "required": false
@@ -3047,132 +2912,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "required": false
       }
     ]
-  },
-  {
-    "endpoint": "stripe",
-    "title": "Stripe",
-    "path": "/v1/stripe",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Stripe Management",
-    "source": "supabase/functions/stripe/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "'list_transactions' | 'list_events' | 'match' | 'unmatch' | 'exclude' |",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "stripe_transaction_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "ledger_transaction_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "event_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "bank_transaction_id",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "endpoint": "stripe-billing-webhook",
-    "title": "Stripe Billing Webhook",
-    "path": "/v1/stripe-billing-webhook",
-    "methods": [
-      "POST"
-    ],
-    "auth": "Webhook signature",
-    "internal": false,
-    "deprecated": false,
-    "description": "Stripe Billing Webhook",
-    "source": "supabase/functions/stripe-billing-webhook/index.ts",
-    "parameters": []
-  },
-  {
-    "endpoint": "stripe-connect-webhook",
-    "title": "Stripe Connect Webhook",
-    "path": "/v1/stripe-connect-webhook",
-    "methods": [
-      "POST"
-    ],
-    "auth": "Webhook signature",
-    "internal": false,
-    "deprecated": false,
-    "description": "Stripe Connect Webhook",
-    "source": "supabase/functions/stripe-connect-webhook/index.ts",
-    "parameters": []
-  },
-  {
-    "endpoint": "stripe-reconciliation",
-    "title": "Stripe Reconciliation",
-    "path": "/v1/stripe-reconciliation",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Stripe Reconciliation",
-    "source": "supabase/functions/stripe-reconciliation/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "'sync_balance_transactions' | 'auto_match' | 'check_drift' | 'run_daily'",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "ledger_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "since",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "limit",
-        "type": "number",
-        "required": false
-      }
-    ]
-  },
-  {
-    "endpoint": "stripe-webhook",
-    "title": "Stripe Webhook",
-    "path": "/v1/stripe-webhook",
-    "methods": [
-      "POST"
-    ],
-    "auth": "Webhook signature",
-    "internal": false,
-    "deprecated": true,
-    "description": "Stripe Webhook",
-    "source": "supabase/functions/stripe-webhook/index.ts",
-    "parameters": []
   },
   {
     "endpoint": "submit-tax-info",

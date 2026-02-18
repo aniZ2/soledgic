@@ -25,13 +25,12 @@ export type EntitlementResult =
 export type EntitlementCode =
   | 'payment_past_due'
   | 'subscription_canceled'
-  | 'team_member_limit_reached'
 
 /** Extended org shape for team member entitlement checks. */
 export interface TeamEntitlementOrg {
   status: OrgBillingStatus | string
   plan: string
-  max_team_members: number       // -1 = unlimited (Scale)
+  max_team_members: number       // included members before overage
   current_member_count: number
 }
 
@@ -65,7 +64,7 @@ export function canCreateLiveLedger(org: EntitlementOrg): EntitlementResult {
       code: 'subscription_canceled',
       httpStatus: 403,
       message:
-        'Your subscription has ended. Choose a plan on the Billing page to start creating ledgers again.',
+        'Your billing account is inactive. Update billing on the Billing page to continue creating ledgers.',
     }
   }
 
@@ -86,7 +85,7 @@ export function isOverLedgerLimit(org: EntitlementOrg): boolean {
  * Blocks when:
  * - `past_due`  — payment failed, no new paid resources
  * - `canceled`  — subscription ended
- * - over plan limit (max_team_members !== -1 && count >= max)
+ * Team-member overages are allowed and billed at $20/month per additional member.
  */
 export function canAddTeamMember(org: TeamEntitlementOrg): EntitlementResult {
   if (org.status === 'past_due') {
@@ -105,17 +104,7 @@ export function canAddTeamMember(org: TeamEntitlementOrg): EntitlementResult {
       code: 'subscription_canceled',
       httpStatus: 403,
       message:
-        'Your subscription has ended. Choose a plan on the Billing page to invite team members.',
-    }
-  }
-
-  if (org.max_team_members !== -1 && org.current_member_count >= org.max_team_members) {
-    return {
-      allowed: false,
-      code: 'team_member_limit_reached',
-      httpStatus: 403,
-      message:
-        `You\u2019ve reached your plan\u2019s limit of ${org.max_team_members} team member${org.max_team_members === 1 ? '' : 's'}. Upgrade your plan to invite more people.`,
+        'Your billing account is inactive. Update billing on the Billing page before inviting team members.',
     }
   }
 

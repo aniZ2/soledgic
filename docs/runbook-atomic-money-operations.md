@@ -23,7 +23,7 @@ The `FOR UPDATE` lock is the key. Any concurrent request targeting the same row 
 |---|---|---|---|
 | Record sale | `record_sale_atomic` | Creator account row | Duplicate sales for same reference_id |
 | Process payout | `process_payout_atomic` | Creator account row | Double-payout / overdraw of creator balance |
-| Process refund | `process_stripe_refund` | Original transaction row | Double-refund / over-refund of a charge |
+| Process refund | `process_refund_atomic` | Original transaction row | Double-refund / over-refund of a charge |
 | Send invoice | `send_invoice_atomic` | Invoice row | Duplicate invoice sends |
 | Record invoice payment | `record_invoice_payment_atomic` | Invoice row | Double-payment of an invoice |
 | Void invoice | `void_invoice_atomic` | Invoice row | Double-void of an invoice |
@@ -35,7 +35,7 @@ The `FOR UPDATE` lock is the key. Any concurrent request targeting the same row 
 |---|---|---|
 | `record-sale/index.ts` | `record_sale_atomic` | Returns existing transaction (idempotent) |
 | `process-payout/index.ts` | `process_payout_atomic` | Returns existing transaction (idempotent) |
-| `stripe-webhook/index.ts` (handleChargeRefunded) | `process_stripe_refund` | Returns existing transaction (idempotent) |
+| `record-refund/index.ts` | `process_refund_atomic` | Returns existing transaction (idempotent) |
 
 ## Defense Layers (Refund Example)
 
@@ -76,8 +76,8 @@ ORDER BY COUNT(*) DESC;
 Event types:
 - `payout_duplicate` -- process_payout_atomic returned `duplicate`
 - `refund_duplicate_fast_path` -- Fast-path check caught a duplicate refund
-- `refund_duplicate_rpc` -- process_stripe_refund returned `duplicate`
-- `refund_over_limit` -- process_stripe_refund blocked an over-refund
+- `refund_duplicate_rpc` -- process_refund_atomic returned `duplicate`
+- `refund_over_limit` -- process_refund_atomic blocked an over-refund
 
 ### Invariant Checks
 

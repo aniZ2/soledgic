@@ -289,6 +289,32 @@ def webhook():
           to expose your local server to the internet.
         </p>
       </section>
+
+      {/* Processor Events (Internal) */}
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Processor Events (Internal)</h2>
+        <p className="text-muted-foreground mb-4">
+          Soledgic keeps payouts, refunds, and dispute holds in sync by ingesting events from your underlying payment processor.
+          This is separate from the customer webhooks described above.
+        </p>
+        <div className="bg-card border border-border rounded-lg p-4 mb-4">
+          <p className="text-sm text-muted-foreground">
+            Configure your processor to send webhooks to <code className="bg-muted px-1.5 py-0.5 rounded">POST /api/webhooks/processor</code>.
+            Protect it with <code className="bg-muted px-1.5 py-0.5 rounded">PROCESSOR_WEBHOOK_TOKEN</code> using one of:
+            <span className="block mt-2">
+              <code className="bg-muted px-1.5 py-0.5 rounded">Authorization: Bearer &lt;token&gt;</code>
+              {' '}or{' '}
+              <code className="bg-muted px-1.5 py-0.5 rounded">Basic Auth</code> (password = token)
+              {' '}or{' '}
+              <code className="bg-muted px-1.5 py-0.5 rounded">?token=&lt;token&gt;</code>.
+            </span>
+          </p>
+        </div>
+        <p className="text-muted-foreground">
+          Inbound processor events are persisted and processed asynchronously, and may trigger outbound Soledgic webhooks
+          like <code className="bg-muted px-1.5 py-0.5 rounded">payout.executed</code> after settlement.
+        </p>
+      </section>
     </div>
   )
 }

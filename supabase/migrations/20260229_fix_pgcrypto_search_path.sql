@@ -102,17 +102,17 @@ END;
 $$;
 
 -- ============================================================================
--- 4. Fix reprocess_stripe_event - remove unused variable
+-- 4. Fix reprocess_processor_event - remove unused variable
 -- ============================================================================
-DROP FUNCTION IF EXISTS public.reprocess_stripe_event(TEXT);
-CREATE FUNCTION public.reprocess_stripe_event(p_event_id TEXT)
+DROP FUNCTION IF EXISTS public.reprocess_processor_event(TEXT);
+CREATE FUNCTION public.reprocess_processor_event(p_event_id TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = 'public'
 AS $$
 BEGIN
-  -- Placeholder - actual implementation depends on stripe event processing
+  -- Placeholder - actual implementation depends on processor event processing
   RETURN jsonb_build_object('status', 'not_implemented', 'event_id', p_event_id);
 END;
 $$;
@@ -156,7 +156,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.generate_api_key() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.rotate_webhook_secret(UUID) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.validate_webhook_signature(UUID, TEXT, TEXT) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.reprocess_stripe_event(TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.reprocess_processor_event(TEXT) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.check_rate_limit_secure(TEXT, INTEGER, INTEGER, BOOLEAN) TO authenticated, service_role;
 
 SELECT 'pgcrypto search_path fixes applied' AS status;

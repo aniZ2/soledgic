@@ -18,19 +18,19 @@ ON CONFLICT (action) DO UPDATE SET
 -- 2. Add column to track estimated fees for reconciliation (C1 fix)
 -- ============================================================================
 
--- Add column to stripe_transactions table if not exists
-ALTER TABLE stripe_transactions
+-- Add column to processor_transactions table if not exists
+ALTER TABLE processor_transactions
   ADD COLUMN IF NOT EXISTS fee_estimated BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS fee_estimate_reason TEXT;
 
-COMMENT ON COLUMN stripe_transactions.fee_estimated IS 
-  'True if Stripe fee was estimated rather than fetched from balance transaction';
-COMMENT ON COLUMN stripe_transactions.fee_estimate_reason IS 
+COMMENT ON COLUMN processor_transactions.fee_estimated IS 
+  'True if processor fee was estimated rather than fetched from balance transaction';
+COMMENT ON COLUMN processor_transactions.fee_estimate_reason IS 
   'Reason fee was estimated (for debugging/reconciliation)';
 
 -- Create index for finding transactions with estimated fees (for reconciliation)
-CREATE INDEX IF NOT EXISTS idx_stripe_transactions_estimated_fees 
-ON stripe_transactions(ledger_id, created_at DESC)
+CREATE INDEX IF NOT EXISTS idx_processor_transactions_estimated_fees 
+ON processor_transactions(ledger_id, created_at DESC)
 WHERE fee_estimated = true;
 
 -- ============================================================================
@@ -41,14 +41,14 @@ CREATE OR REPLACE VIEW transactions_needing_fee_reconciliation AS
 SELECT 
   st.id,
   st.ledger_id,
-  st.stripe_id,
-  st.stripe_type,
+  st.processor_id,
+  st.processor_type,
   st.amount,
   st.fee,
   st.fee_estimate_reason,
   st.created_at,
   l.business_name
-FROM stripe_transactions st
+FROM processor_transactions st
 JOIN ledgers l ON l.id = st.ledger_id
 WHERE st.fee_estimated = true
   AND st.created_at > NOW() - INTERVAL '30 days'
@@ -58,14 +58,14 @@ ORDER BY st.created_at DESC;
 ALTER VIEW transactions_needing_fee_reconciliation SET (security_invoker = true);
 
 COMMENT ON VIEW transactions_needing_fee_reconciliation IS 
-  'Transactions with estimated Stripe fees that may need manual reconciliation';
+  'Transactions with estimated processor fees that may need manual reconciliation';
 
 -- ============================================================================
--- 4. Function to retry fetching actual Stripe fee
+-- 4. Function to retry fetching actual processor fee
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION retry_stripe_fee_fetch(
-  p_stripe_transaction_id UUID
+CREATE OR REPLACE FUNCTION retry_processor_fee_fetch(
+  p_processor_transaction_id UUID
 ) RETURNS TABLE (
   success BOOLEAN,
   message TEXT
@@ -75,14 +75,14 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
 DECLARE
-  v_stripe_id TEXT;
+  v_processor_id TEXT;
 BEGIN
   -- This function marks a transaction for re-processing
-  -- The actual Stripe API call should be done in the Edge Function
+  -- The actual processor API call should be done in the Edge Function
   
-  SELECT stripe_id INTO v_stripe_id
-  FROM public.stripe_transactions
-  WHERE id = p_stripe_transaction_id;
+  SELECT processor_id INTO v_processor_id
+  FROM public.processor_transactions
+  WHERE id = p_processor_transaction_id;
   
   IF NOT FOUND THEN
     RETURN QUERY SELECT false, 'Transaction not found'::TEXT;
@@ -90,11 +90,11 @@ BEGIN
   END IF;
   
   -- Mark for reprocessing by setting a flag
-  UPDATE public.stripe_transactions
+  UPDATE public.processor_transactions
   SET raw_data = raw_data || '{"needs_fee_refresh": true}'::jsonb
-  WHERE id = p_stripe_transaction_id;
+  WHERE id = p_processor_transaction_id;
   
-  RETURN QUERY SELECT true, ('Marked for fee refresh: ' || v_stripe_id)::TEXT;
+  RETURN QUERY SELECT true, ('Marked for fee refresh: ' || v_processor_id)::TEXT;
 END;
 $$;
 
@@ -248,8 +248,8 @@ ALTER VIEW security_summary_hourly SET (security_invoker = true);
 COMMENT ON VIEW security_summary_hourly IS 
   'Quick security status summary for the last hour';
 
--- View: Stripe fee reconciliation status
-CREATE OR REPLACE VIEW stripe_fee_reconciliation_status AS
+-- View: processor fee reconciliation status
+CREATE OR REPLACE VIEW processor_fee_reconciliation_status AS
 SELECT 
   l.id as ledger_id,
   l.business_name,
@@ -261,14 +261,14 @@ SELECT
   ) as estimated_fee_percent,
   SUM(st.fee) as total_fees,
   SUM(CASE WHEN st.fee_estimated = true THEN st.fee ELSE 0 END) as estimated_fee_amount
-FROM stripe_transactions st
+FROM processor_transactions st
 JOIN ledgers l ON l.id = st.ledger_id
 WHERE st.created_at > NOW() - INTERVAL '7 days'
 GROUP BY l.id, l.business_name
 HAVING COUNT(*) >= 5  -- At least 5 transactions
 ORDER BY estimated_fee_percent DESC NULLS LAST;
 
-ALTER VIEW stripe_fee_reconciliation_status SET (security_invoker = true);
+ALTER VIEW processor_fee_reconciliation_status SET (security_invoker = true);
 
-COMMENT ON VIEW stripe_fee_reconciliation_status IS 
-  'Stripe fee estimation status by ledger for reconciliation monitoring';
+COMMENT ON VIEW processor_fee_reconciliation_status IS 
+  'processor fee estimation status by ledger for reconciliation monitoring';

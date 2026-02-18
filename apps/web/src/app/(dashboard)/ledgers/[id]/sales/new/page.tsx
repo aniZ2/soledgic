@@ -121,10 +121,10 @@ export default function NewSalePage({
               value={referenceId}
               onChange={(e) => setReferenceId(e.target.value)}
               className="w-full px-4 py-3 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="e.g., stripe_pi_xxx or order_123"
+              placeholder="e.g., tr_xxx or order_123"
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              External reference for reconciliation (Stripe payment ID, order number, etc.)
+              External reference for reconciliation (processor payment ID, order number, etc.)
             </p>
           </div>
 

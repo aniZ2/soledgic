@@ -32,7 +32,7 @@ const THRESHOLDS: AlertThresholds = {
   high_risk_events: 10,                 // 10+ high risk events
   preauth_rate_limit_hits: 50,          // 50+ pre-auth rate limits = brute force
   geo_blocked_requests: 20,             // 20+ geo-blocked = targeted from blocked region
-  estimated_fees_percent: 10,           // 10%+ estimated fees = Stripe API issues
+  estimated_fees_percent: 10,           // 10%+ estimated fees = processor API issues
 }
 
 // Alert severity levels
@@ -412,33 +412,7 @@ async function checkSecurityMetrics(supabase: any, requestId: string): Promise<S
     })
   }
   
-  // 8. SECURITY FIX: Check for high percentage of estimated Stripe fees
-  const { data: stripeTransactions } = await supabase
-    .from('stripe_transactions')
-    .select('id, fee_estimated')
-    .gte('created_at', oneHourAgo)
-  
-  if (stripeTransactions && stripeTransactions.length >= 10) {
-    const estimatedCount = stripeTransactions.filter((t: any) => t.fee_estimated === true).length
-    const estimatedPercent = Math.round((estimatedCount / stripeTransactions.length) * 100)
-    
-    if (estimatedPercent >= THRESHOLDS.estimated_fees_percent) {
-      alerts.push({
-        type: 'High Estimated Fee Rate',
-        severity: estimatedPercent >= 30 ? 'warning' : 'info',
-        message: `${estimatedPercent}% of Stripe transactions using estimated fees`,
-        details: {
-          total_transactions: stripeTransactions.length,
-          estimated_count: estimatedCount,
-          estimated_percent: estimatedPercent,
-          action_required: 'Check Stripe API connectivity and balance transaction access',
-        },
-        timestamp: new Date().toISOString(),
-      })
-    }
-  }
-  
-  // 9. Check for SSRF attempts
+  // 8. Check for SSRF attempts
   const { data: ssrfAttempts } = await supabase
     .from('audit_log')
     .select('id, ip_address, request_body')

@@ -60,15 +60,12 @@ const ENDPOINT_BODY_SIZE_LIMITS: Record<string, number> = {
   'execute-payout': 256 * 1024,              // 256KB - batch payouts
   'process-payout': 64 * 1024,               // 64KB - single payout
   'webhooks': 64 * 1024,                     // 64KB - webhook config
-  'stripe-webhook': 256 * 1024,              // 256KB - Stripe events
-  'plaid': 256 * 1024,                       // 256KB - Plaid data
   'invoices': 128 * 1024,                    // 128KB - invoice with line items
   'record-bill': 64 * 1024,                  // 64KB - single bill
   'pay-bill': 64 * 1024,                     // 64KB - bill payment
   'receive-payment': 64 * 1024,              // 64KB - payment received
   'create-checkout': 64 * 1024,              // 64KB - checkout creation
   'release-funds': 64 * 1024,                // 64KB - fund release requests
-  'stripe-reconciliation': 64 * 1024,        // 64KB - reconciliation requests
   'default': 512 * 1024,                     // 512KB - default
 }
 
@@ -84,15 +81,13 @@ export function getEndpointBodySizeLimit(endpoint: string): number {
 const FAIL_CLOSED_ENDPOINTS = [
   'execute-payout',
   'process-payout', 
-  'stripe-webhook',
-  'plaid',
   'record-sale',
   'record-refund',
   'create-ledger',      // Prevent resource exhaustion attacks
   'send-statements',    // Prevent email spam
   'import-transactions', // Prevent data flooding
   'import-bank-statement',
-  'create-checkout',    // Prevent checkout spam / Stripe rate limit exhaustion
+  'create-checkout',    // Prevent checkout spam / processor rate-limit exhaustion
   'release-funds',      // Critical: Prevent unauthorized fund releases
 ]
 
@@ -438,6 +433,34 @@ export interface LedgerContext {
   organization_id?: string
 }
 
+const INTERNAL_TOKEN_HEADER = 'x-soledgic-internal-token'
+const INTERNAL_LEDGER_HEADER = 'x-ledger-id'
+
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
+}
+
+function getInternalLedgerId(req: Request): string | null {
+  const expectedToken =
+    Deno.env.get('SOLEDGIC_INTERNAL_FUNCTION_TOKEN') ||
+    Deno.env.get('INTERNAL_FUNCTION_TOKEN') ||
+    ''
+
+  if (!expectedToken) return null
+
+  const providedToken = req.headers.get(INTERNAL_TOKEN_HEADER) || ''
+  if (!providedToken) return null
+  if (!timingSafeEqualString(providedToken, expectedToken)) return null
+
+  const ledgerId = req.headers.get(INTERNAL_LEDGER_HEADER)?.trim() || ''
+  return ledgerId.length > 0 ? ledgerId : null
+}
+
 export async function validateApiKey(
   supabase: SupabaseClient, 
   apiKey: string | null,
@@ -490,7 +513,6 @@ export async function validateApiKey(
 //
 // FAIL-CLOSED endpoints (block if ALL rate limiting fails):
 //   - execute-payout, process-payout: Prevents double payouts
-//   - stripe-webhook, plaid: Prevents replay attacks  
 //   - record-sale, record-refund: Prevents transaction flooding
 //   - create-ledger: Prevents resource exhaustion
 //   - send-statements: Prevents email spam
@@ -542,15 +564,12 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'execute-payout': { requests: 50, windowSeconds: 60 },
   'process-payout': { requests: 50, windowSeconds: 60 },
   'health-check': { requests: 5, windowSeconds: 60 },  // SECURITY FIX H2: Reduced from 10 to 5
-  'stripe-webhook': { requests: 500, windowSeconds: 60 },
-  'plaid': { requests: 50, windowSeconds: 60 },
   'webhooks': { requests: 100, windowSeconds: 60 },
   'send-statements': { requests: 20, windowSeconds: 60 },
   'create-ledger': { requests: 10, windowSeconds: 3600 },  // Per hour
   'upload-receipt': { requests: 50, windowSeconds: 60 },
-  'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (matches Stripe limits)
+  'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (processor-safe baseline)
   'release-funds': { requests: 50, windowSeconds: 60 },    // Fund releases (sensitive financial operation)
-  'stripe-reconciliation': { requests: 5, windowSeconds: 60 },  // Reconciliation runs (heavy operations)
   'default': { requests: 100, windowSeconds: 60 },
 }
 
@@ -942,11 +961,12 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         }
       }
       
-      // Get API key
+      // Get API key (external callers) or validated internal ledger context (server proxy)
       const apiKey = req.headers.get('x-api-key')
+      const internalLedgerId = getInternalLedgerId(req)
       
       // 3. Allowlist Mode - Only allow pre-approved API keys
-      if (isAllowlistMode() && !isApiKeyAllowed(apiKey)) {
+      if (isAllowlistMode() && !internalLedgerId && !isApiKeyAllowed(apiKey)) {
         console.warn(`[${requestId}] Blocked non-allowlisted API key`)
         return errorResponse('Service temporarily restricted', 403, req, requestId)
       }
@@ -954,20 +974,41 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       // Validate API key if required
       let ledger: LedgerContext | null = null
       if (options.requireAuth !== false) {
-        if (!apiKey) {
-          return errorResponse('Authentication required', 401, req, requestId)
-        }
-        
-        ledger = await validateApiKey(supabase, apiKey, requestId)
-        if (!ledger) {
-          // Log failed auth attempt
-          await logSecurityEvent(supabase, null, 'auth_failed', {
-            endpoint: options.endpoint,
-            ip: clientIp,
-            user_agent: req.headers.get('user-agent')?.substring(0, 200),
-            request_id: requestId,
-          })
-          return errorResponse('Invalid credentials', 401, req, requestId)
+        if (internalLedgerId) {
+          const { data: internalLedger, error: internalLedgerError } = await supabase
+            .from('ledgers')
+            .select('id, business_name, ledger_mode, status, settings, organization_id')
+            .eq('id', internalLedgerId)
+            .single()
+
+          if (internalLedgerError || !internalLedger) {
+            await logSecurityEvent(supabase, null, 'auth_failed', {
+              endpoint: options.endpoint,
+              ip: clientIp,
+              user_agent: req.headers.get('user-agent')?.substring(0, 200),
+              request_id: requestId,
+              reason: 'invalid_internal_ledger',
+            }).catch(() => {})
+            return errorResponse('Invalid internal credentials', 401, req, requestId)
+          }
+
+          ledger = internalLedger as LedgerContext
+        } else {
+          if (!apiKey) {
+            return errorResponse('Authentication required', 401, req, requestId)
+          }
+          
+          ledger = await validateApiKey(supabase, apiKey, requestId)
+          if (!ledger) {
+            // Log failed auth attempt
+            await logSecurityEvent(supabase, null, 'auth_failed', {
+              endpoint: options.endpoint,
+              ip: clientIp,
+              user_agent: req.headers.get('user-agent')?.substring(0, 200),
+              request_id: requestId,
+            })
+            return errorResponse('Invalid credentials', 401, req, requestId)
+          }
         }
         
         if (ledger.status !== 'active') {

@@ -17,15 +17,15 @@ CREATE TABLE creator_payout_summaries (
   refunds_issued NUMERIC(14,2) DEFAULT 0,
   net_earnings NUMERIC(14,2) DEFAULT 0,
   
-  -- Payouts (reconciled with Stripe)
+  -- Payouts (reconciled with processor)
   total_paid_out NUMERIC(14,2) DEFAULT 0,
   payout_count INTEGER DEFAULT 0,
   
   -- External reference
-  stripe_account_id TEXT,  -- Stripe Connected Account ID (not PII)
+  processor_account_id TEXT,  -- processor Connected Account ID (not PII)
   
   -- Reconciliation status
-  reconciled_with_stripe BOOLEAN DEFAULT false,
+  reconciled_with_processor BOOLEAN DEFAULT false,
   last_reconciled_at TIMESTAMPTZ,
   
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -47,7 +47,7 @@ CREATE POLICY "Ledger isolation" ON creator_payout_summaries
 -- RECONCILIATION
 -- ============================================================================
 
--- Track external payment reconciliation (e.g., Stripe payouts)
+-- Track external payment reconciliation (e.g., processor payouts)
 CREATE TABLE reconciliation_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ledger_id UUID NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
@@ -76,7 +76,7 @@ CREATE TABLE reconciliation_records (
   resolved_by TEXT,
   resolved_at TIMESTAMPTZ,
   
-  -- External references (Stripe payout IDs, etc.)
+  -- External references (processor payout IDs, etc.)
   external_report_ids JSONB DEFAULT '[]',
   
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -148,18 +148,18 @@ CREATE POLICY "Ledger isolation" ON report_exports
   );
 
 -- ============================================================================
--- STRIPE REFERENCES (for reconciliation, no PII)
+-- processor REFERENCES (for reconciliation, no PII)
 -- ============================================================================
 
--- Link soledgic creators to Stripe Connected Accounts
-CREATE TABLE stripe_account_links (
+-- Link soledgic creators to processor Connected Accounts
+CREATE TABLE processor_account_links (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ledger_id UUID NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   entity_id TEXT NOT NULL,
   
-  -- Stripe identifiers (not PII)
-  stripe_account_id TEXT NOT NULL,  -- acct_xxx
-  stripe_account_type TEXT CHECK (stripe_account_type IN ('express', 'standard', 'custom')),
+  -- processor identifiers (not PII)
+  processor_account_id TEXT NOT NULL,  -- acct_xxx
+  processor_account_type TEXT CHECK (processor_account_type IN ('express', 'standard', 'custom')),
   
   -- Status
   payouts_enabled BOOLEAN DEFAULT false,
@@ -173,14 +173,14 @@ CREATE TABLE stripe_account_links (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   
   UNIQUE(ledger_id, entity_id),
-  UNIQUE(ledger_id, stripe_account_id)
+  UNIQUE(ledger_id, processor_account_id)
 );
 
-CREATE INDEX idx_stripe_links_ledger ON stripe_account_links(ledger_id);
+CREATE INDEX idx_processor_links_ledger ON processor_account_links(ledger_id);
 
-ALTER TABLE stripe_account_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE processor_account_links ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Ledger isolation" ON stripe_account_links
+CREATE POLICY "Ledger isolation" ON processor_account_links
   FOR ALL USING (
     ledger_id = current_setting('app.current_ledger_id', true)::uuid
   );
@@ -199,7 +199,7 @@ CREATE TRIGGER trigger_reconciliation_updated
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();
 
-CREATE TRIGGER trigger_stripe_links_updated
-  BEFORE UPDATE ON stripe_account_links
+CREATE TRIGGER trigger_processor_links_updated
+  BEFORE UPDATE ON processor_account_links
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at();

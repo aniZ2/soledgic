@@ -8,13 +8,13 @@ Last updated: 2026-02-01
 
 ## Organization billing states
 
-Every org has a `status` field set by Stripe webhooks:
+Every org has a `status` field set by Payment Processor webhooks:
 
 | Status      | Meaning                                      | How it gets set                          |
 |-------------|----------------------------------------------|------------------------------------------|
 | `trialing`  | 14-day trial, no payment method required yet  | Org creation / checkout with trial       |
 | `active`    | Paid and current                              | Successful payment via webhook           |
-| `past_due`  | Payment failed, Stripe is retrying            | `invoice.payment_failed` webhook         |
+| `past_due`  | Payment failed, Payment Processor is retrying            | `invoice.payment_failed` webhook         |
 | `canceled`  | Subscription fully ended                      | `customer.subscription.deleted` webhook  |
 
 Note: `cancel_at_period_end` (user clicked "Cancel" but period hasn't ended) keeps `status = active` with a `cancel_at` timestamp. This is **not** the same as `canceled`.
@@ -79,7 +79,7 @@ Shows sticky banners for `past_due`, `canceled`, and over-limit states. These ar
 ### Billing page: `src/app/(dashboard)/billing/page.tsx`
 
 Shows detailed banners with action buttons:
-- `past_due`: "Update Payment Method" button opens Stripe portal
+- `past_due`: "Update Payment Method" button opens Payment Processor portal
 - Over-limit: Explains what happened and suggests upgrade or archive
 - `canceled`: Red badge on the plan card, distinct from "Cancels [date]"
 
@@ -87,9 +87,9 @@ Shows detailed banners with action buttons:
 
 `get_subscription` response includes `max_ledgers` and `current_ledger_count` in the organization object so the billing page can render limit info without extra queries.
 
-### Stripe webhooks: `src/app/api/webhooks/stripe/route.ts`
+### Payment Processor webhooks: `src/app/api/webhooks/processor/route.ts`
 
-Sets `org.status` based on Stripe events. This is the source of truth for billing state.
+Sets `org.status` based on Payment Processor events. This is the source of truth for billing state.
 
 ---
 

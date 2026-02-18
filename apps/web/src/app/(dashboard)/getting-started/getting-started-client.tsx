@@ -9,12 +9,12 @@ import {
   ExternalLink, Loader2, Play
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface GettingStartedClientProps {
   ledger: {
     id: string
     business_name: string
-    api_key: string
   }
   progress: {
     hasCreator: boolean
@@ -57,11 +57,9 @@ export function GettingStartedClient({
     setTestResult(null)
 
     try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/health-check`, {
+      const response = await callLedgerFunction('health-check', {
+        ledgerId: ledger.id,
         method: 'GET',
-        headers: {
-          'x-api-key': ledger.api_key,
-        },
       })
 
       if (response.ok) {
@@ -322,26 +320,17 @@ export function GettingStartedClient({
       <div className="bg-card border border-border rounded-lg p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <Key className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Your API Key</h2>
+          <h2 className="text-lg font-semibold text-foreground">API Authentication</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Use this key in the <code className="text-xs bg-muted px-1.5 py-0.5 rounded">x-api-key</code> header for all API requests.
+          API keys are masked by default and managed in the API Keys settings page.
         </p>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 bg-muted px-4 py-3 rounded-md text-sm font-mono overflow-x-auto">
-            {ledger.api_key}
-          </code>
-          <button
-            onClick={() => copyToClipboard(ledger.api_key, 'api-key')}
-            className="p-2 hover:bg-muted rounded-md transition-colors"
-          >
-            {copied === 'api-key' ? (
-              <Check className="w-5 h-5 text-green-500" />
-            ) : (
-              <Copy className="w-5 h-5 text-muted-foreground" />
-            )}
-          </button>
-        </div>
+        <Link
+          href="/settings/api-keys"
+          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+        >
+          Open API Keys <ExternalLink className="w-3 h-3" />
+        </Link>
 
         {/* Test Connection */}
         <div className="mt-4 pt-4 border-t border-border">
@@ -402,7 +391,7 @@ export function GettingStartedClient({
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
 {`curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\
   -H 'Content-Type: application/json' \\
-  -H 'x-api-key: ${ledger.api_key}' \\
+  -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
     "creator_id": "creator_123",
     "display_name": "John Smith",
@@ -411,7 +400,7 @@ export function GettingStartedClient({
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: ${ledger.api_key}' \\\n  -d '{"creator_id": "creator_123", "display_name": "John Smith", "email": "john@example.com"}'`,
+                  `curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "display_name": "John Smith", "email": "john@example.com"}'`,
                   'create-creator'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
@@ -435,7 +424,7 @@ export function GettingStartedClient({
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
 {`curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\
   -H 'Content-Type: application/json' \\
-  -H 'x-api-key: ${ledger.api_key}' \\
+  -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
     "reference_id": "sale_abc123",
     "creator_id": "creator_123",
@@ -445,7 +434,7 @@ export function GettingStartedClient({
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: ${ledger.api_key}' \\\n  -d '{"reference_id": "sale_abc123", "creator_id": "creator_123", "amount": 5000, "description": "Product sale"}'`,
+                  `curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"reference_id": "sale_abc123", "creator_id": "creator_123", "amount": 5000, "description": "Product sale"}'`,
                   'record-sale'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
@@ -469,7 +458,7 @@ export function GettingStartedClient({
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
 {`curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\
   -H 'Content-Type: application/json' \\
-  -H 'x-api-key: ${ledger.api_key}' \\
+  -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
     "creator_id": "creator_123",
     "amount": 4000,
@@ -478,7 +467,7 @@ export function GettingStartedClient({
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: ${ledger.api_key}' \\\n  -d '{"creator_id": "creator_123", "amount": 4000, "description": "Weekly payout"}'`,
+                  `curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "amount": 4000, "description": "Weekly payout"}'`,
                   'process-payout'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
@@ -503,9 +492,7 @@ export function GettingStartedClient({
           Manage API Keys <ExternalLink className="w-3 h-3" />
         </Link>
         <a
-          href="https://docs.soledgic.com"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/docs/api"
           className="text-primary hover:underline flex items-center gap-1"
         >
           Full API Documentation <ExternalLink className="w-3 h-3" />

@@ -73,14 +73,14 @@ Fail-Closed (sensitive) or Fail-Open (read-only)
 
 ---
 
-### 3. Stripe Webhook Security (9/10)
+### 3. Payment Processor Webhook Security (9/10)
 
 **Implementation:** Multiple layers of protection
 
 ```typescript
-// stripe-webhook/index.ts
+// webhook handler
 // 1. Signature verification with HMAC-SHA256
-const signatureResult = await verifyStripeSignature(body, signature, webhookSecret)
+const signatureResult = await verifyWebhookSignature(body, signature, webhookSecret)
 
 // 2. Constant-time comparison (prevents timing attacks)
 let result = 0
@@ -94,9 +94,9 @@ if (eventAge > MAX_TIMESTAMP_AGE) { /* reject */ }
 
 // 4. Idempotency check
 const { data: existing } = await supabase
-  .from('stripe_events')
+  .from('processor_events')
   .select('id')
-  .eq('stripe_event_id', event.id)
+  .eq('processor_event_id', event.id)
 ```
 
 **Positives:**
@@ -136,21 +136,21 @@ function isUrlSafe(urlString: string): boolean {
 
 ---
 
-### 5. Plaid Token Security (9/10)
+### 5. Bank Feed Token Security (9/10)
 
 **Implementation:** Vault-based encryption
 
 ```sql
 -- Migration: 20260119_security_hardening.sql
-CREATE FUNCTION store_plaid_token_in_vault(p_connection_id UUID, p_access_token TEXT)
+CREATE FUNCTION store_bank_feed_token_in_vault(p_connection_id UUID, p_access_token TEXT)
 -- Stores token encrypted in vault.secrets
 
-CREATE FUNCTION get_plaid_token_from_vault(p_connection_id UUID)
+CREATE FUNCTION get_bank_feed_token_from_vault(p_connection_id UUID)
 -- Retrieves from vault.decrypted_secrets (SECURITY DEFINER)
 ```
 
 ```typescript
-// plaid/index.ts
+// bank-feed/index.ts
 const accessToken = await getAccessToken(supabase, conn.id) // From vault
 ```
 
@@ -378,10 +378,10 @@ SELECT cron.schedule(
 |--------|---------|--------|
 | `SUPABASE_URL` | Database connection | ✅ Required |
 | `SUPABASE_SERVICE_ROLE_KEY` | Admin access | ✅ Required |
-| `STRIPE_SECRET_KEY` | Payment processing | ✅ Required |
-| `STRIPE_WEBHOOK_SECRET` | Webhook verification | ✅ Required |
-| `PLAID_CLIENT_ID` | Bank connections | Optional |
-| `PLAID_SECRET` | Bank connections | Optional |
+| `PROCESSOR_SECRET_KEY` | Payment processing | ✅ Required |
+| `PROCESSOR_WEBHOOK_SECRET` | Webhook verification | ✅ Required |
+| `BANK_FEED_CLIENT_ID` | Bank connections | Optional |
+| `BANK_FEED_SECRET` | Bank connections | Optional |
 | `UPSTASH_REDIS_URL` | Rate limiting | ✅ Required |
 | `UPSTASH_REDIS_TOKEN` | Rate limiting | ✅ Required |
 | `RESEND_API_KEY` | Email alerts | Optional |
@@ -413,8 +413,8 @@ SELECT cron.schedule(
 
 | Requirement | Status |
 |-------------|--------|
-| No card data storage | ✅ Stripe handles all card data |
-| Tokenization | ✅ Stripe tokens only |
+| No card data storage | ✅ Payment Processor handles all card data |
+| Tokenization | ✅ Payment Processor tokens only |
 | Access controls | ✅ API key + RLS |
 | Logging | ✅ All transactions logged |
 

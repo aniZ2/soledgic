@@ -79,9 +79,58 @@ const handler = createHandler(
       case 'import': {
         if (!body.transactions?.length) return errorResponse('No transactions to import', 400, req)
 
-        const { data: accounts } = await supabase.from('accounts').select('id, name, entity_id').eq('ledger_id', ledger.id).eq('is_active', true)
+        const { data: accounts } = await supabase
+          .from('accounts')
+          .select('id, name')
+          .eq('ledger_id', ledger.id)
+          .eq('is_active', true)
         const accountNameMap = new Map<string, string>()
-        for (const acc of accounts || []) accountNameMap.set(acc.name.toLowerCase(), acc.entity_id || acc.id)
+        for (const acc of accounts || []) accountNameMap.set(acc.name.toLowerCase(), acc.id)
+
+        // Ensure a stable "manual import" bank connection exists for this ledger.
+        // bank_transactions requires bank_connection_id, even for CSV imports.
+        const providerAccountId = 'manual_import'
+        const connectionName = body.account_name?.trim() || 'Manual Import'
+        const linkedAccountId = accountNameMap.get(connectionName.toLowerCase()) || null
+
+        const { data: existingConn, error: existingConnError } = await supabase
+          .from('bank_connections')
+          .select('id')
+          .eq('ledger_id', ledger.id)
+          .eq('provider', 'manual')
+          .eq('provider_account_id', providerAccountId)
+          .maybeSingle()
+
+        if (existingConnError) {
+          return errorResponse('Failed to access bank connections', 500, req)
+        }
+
+        let bankConnectionId = existingConn?.id as string | undefined
+        if (!bankConnectionId) {
+          const { data: insertedConn, error: insertConnError } = await supabase
+            .from('bank_connections')
+            .insert({
+              ledger_id: ledger.id,
+              provider: 'manual',
+              provider_account_id: providerAccountId,
+              provider_institution_id: null,
+              account_name: connectionName,
+              account_type: 'other',
+              account_mask: null,
+              institution_name: 'Manual Import',
+              linked_account_id: linkedAccountId,
+              sync_status: 'active',
+            } as any)
+            .select('id')
+            .single()
+
+          if (insertConnError || !insertedConn?.id) {
+            console.error('Failed creating manual bank connection:', insertConnError)
+            return errorResponse('Failed to prepare bank import', 500, req)
+          }
+
+          bankConnectionId = insertedConn.id as string
+        }
 
         let imported = 0, skipped = 0
         const errors: string[] = [], seenHashes = new Set<string>()
@@ -94,13 +143,32 @@ const handler = createHandler(
             if (seenHashes.has(txnHash)) txnHash = `${txnHash}_${i}`
             seenHashes.add(txnHash)
 
-            const { data: existing } = await supabase.from('plaid_transactions').select('id').eq('ledger_id', ledger.id).eq('plaid_transaction_id', txnHash).single()
+            const { data: existing } = await supabase
+              .from('bank_transactions')
+              .select('id')
+              .eq('bank_connection_id', bankConnectionId)
+              .eq('provider_transaction_id', txnHash)
+              .maybeSingle()
             if (existing) { skipped++; continue }
 
-            let matchedAccountId: string | null = null
-            if (txn.account_name) matchedAccountId = accountNameMap.get(txn.account_name.toLowerCase()) || null
-
-            await supabase.from('plaid_transactions').insert({ ledger_id: ledger.id, connection_id: null, plaid_transaction_id: txnHash, plaid_account_id: matchedAccountId || 'manual_import', amount: txn.amount, date: txn.date, name: txn.description, merchant_name: extractMerchant(txn.description), pending: false, match_status: 'unmatched', raw_data: { source: 'csv_import', account_name: txn.account_name, reference: txn.reference, row_index: txn.row_index, ...txn.raw_data } })
+            await supabase.from('bank_transactions').insert({
+              ledger_id: ledger.id,
+              bank_connection_id: bankConnectionId,
+              provider_transaction_id: txnHash,
+              amount: txn.amount,
+              transaction_date: txn.date,
+              posted_date: txn.date,
+              name: txn.description,
+              merchant_name: extractMerchant(txn.description),
+              reconciliation_status: 'unmatched',
+              raw_data: {
+                source: 'csv_import',
+                account_name: txn.account_name,
+                reference: txn.reference,
+                row_index: txn.row_index,
+                ...txn.raw_data,
+              },
+            } as any)
             imported++
           } catch (err: any) { errors.push(`Row ${i + 1}: ${err.message}`) }
         }

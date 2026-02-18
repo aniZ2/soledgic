@@ -322,7 +322,7 @@ export default function HomePage() {
             3.5% + $0.55 <span>per transaction</span>
           </div>
           <p className={s.pricingDetails}>
-            No monthly fees · No hidden costs · 1 ledger included · $20/month per additional ledger
+            No monthly fees · No hidden costs · 1 ledger included · 1 team member included · $20/month per additional ledger · $20/month per additional team member
           </p>
 
           <div className={s.pricingSingle}>
@@ -340,6 +340,8 @@ export default function HomePage() {
                 <li>Scheduled &amp; on-demand payouts</li>
                 <li>1 ledger included</li>
                 <li>1 team member</li>
+                <li>$20/month per additional ledger</li>
+                <li>$20/month per additional team member</li>
                 <li>Email support</li>
               </ul>
               <Link href="/signup" className={`${s.pricingBtn} ${s.pricingBtnFeatured}`}>
@@ -349,7 +351,7 @@ export default function HomePage() {
           </div>
 
           <p className={s.pricingFootnote}>
-            No credit card required. Additional ledgers: $20/month each.
+            No credit card required. Additional ledgers: $20/month each. Additional team members: $20/month each.
             Need custom terms? <a href="mailto:sales@soledgic.com">Talk to us.</a>
           </p>
         </div>

@@ -26,7 +26,6 @@ interface TransactionsClientProps {
   ledger: {
     id: string
     business_name: string
-    api_key: string
   }
   transactions: Transaction[]
 }
@@ -259,28 +258,24 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
         isOpen={incomeModalOpen}
         onClose={() => setIncomeModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         onSuccess={handleSuccess}
       />
       <RecordRefundModal
         isOpen={refundModalOpen}
         onClose={() => setRefundModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         onSuccess={handleSuccess}
       />
       <RecordTransferModal
         isOpen={transferModalOpen}
         onClose={() => setTransferModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         onSuccess={handleSuccess}
       />
       <RecordAdjustmentModal
         isOpen={adjustmentModalOpen}
         onClose={() => setAdjustmentModalOpen(false)}
         ledgerId={ledger.id}
-        apiKey={ledger.api_key}
         onSuccess={handleSuccess}
       />
     </div>

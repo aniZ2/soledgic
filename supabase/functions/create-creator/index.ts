@@ -36,7 +36,7 @@ interface CreateCreatorRequest {
   payout_preferences?: {
     schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
     minimum_amount?: number // cents
-    method?: 'finix' | 'stripe' | 'bank_transfer'
+    method?: 'card' | 'manual'
   }
   metadata?: Record<string, any>
 }
@@ -86,6 +86,8 @@ const handler = createHandler(
       return errorResponse('Creator already exists', 409, req, requestId)
     }
 
+    const payoutPreferences = (body.payout_preferences || { schedule: 'manual' }) as any
+
     // Create creator account
     const { data: account, error: accountError } = await supabase
       .from('accounts')
@@ -100,7 +102,7 @@ const handler = createHandler(
           display_name: displayName,
           default_split_percent: splitPercent,
           tax_info: body.tax_info || null,
-          payout_preferences: body.payout_preferences || { schedule: 'manual' },
+          payout_preferences: payoutPreferences,
           ...(body.metadata || {})
         }
       })
@@ -110,21 +112,6 @@ const handler = createHandler(
     if (accountError) {
       console.error('Failed to create creator account:', accountError)
       return errorResponse('Failed to create creator', 500, req, requestId)
-    }
-
-    // Create connected_account record if email provided (for Stripe Connect later)
-    if (email) {
-      await supabase
-        .from('connected_accounts')
-        .insert({
-          ledger_id: ledger.id,
-          entity_type: 'creator',
-          entity_id: creatorId,
-          display_name: displayName,
-          email: email,
-          payout_schedule: { interval: body.payout_preferences?.schedule || 'manual' }
-        })
-        .single()
     }
 
     // Audit log

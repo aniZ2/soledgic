@@ -7,7 +7,7 @@ Soledgic operates as an **Escrow Agent** with full control over cash flow:
 ```
 Reader pays $10 for book
          ↓
-Money lands in → Soledgic Platform Stripe Account (YOUR account)
+Money lands in → Soledgic Platform Payment Processor Account (YOUR account)
          ↓
 Ledger entry created: status = HELD
          ↓
@@ -15,7 +15,7 @@ Ledger entry created: status = HELD
          ↓
 Admin clicks "Release" OR auto-release triggers
          ↓
-Stripe Transfer → Author's Connected Account (Custom)
+Payment Processor Transfer → Author's Connected Account (Custom)
          ↓
 Ledger entry updated: status = RELEASED
          ↓
@@ -38,7 +38,7 @@ Author requests payout → You approve → Bank transfer
 
 With Custom accounts:
 - You collect creator KYC info
-- You submit it to Stripe
+- You submit it to Payment Processor
 - You control when funds transfer to their account
 - You control when payouts go to their bank
 - Auto-payouts are **disabled**
@@ -48,7 +48,7 @@ With Custom accounts:
 ## The Two-Step Release
 
 ### Step 1: Release to Wallet (Internal Transfer)
-Moving money from YOUR Stripe balance → Creator's Connected Account
+Moving money from YOUR Payment Processor balance → Creator's Connected Account
 
 ```
 Soledgic Platform Balance: $1000
@@ -113,7 +113,7 @@ When payment succeeds, Soledgic automatically:
 2. Creates entries with `release_status = 'held'`
 3. Sets `hold_until = NOW() + 7 days` (configurable)
 
-**No funds move yet.** Money sits in YOUR Stripe account.
+**No funds move yet.** Money sits in YOUR Payment Processor account.
 
 ### 3. View Held Funds (Admin Dashboard)
 
@@ -171,7 +171,7 @@ When payment succeeds, Soledgic automatically:
 
 **What happens:**
 1. Validates entry is `held` and past `hold_until`
-2. Creates Stripe Transfer to creator's Connected Account
+2. Creates Payment Processor Transfer to creator's Connected Account
 3. Updates entry to `released`
 4. Logs audit trail
 
@@ -247,12 +247,12 @@ INSERT INTO ventures (
 ### Creating a Creator's Connected Account
 
 ```sql
-INSERT INTO stripe_connected_accounts (
+INSERT INTO processor_connected_accounts (
   ledger_id,
   entity_type,
   entity_id,
   entity_name,
-  stripe_account_id,
+  processor_account_id,
   status,
   payouts_enabled
 ) VALUES (
@@ -260,7 +260,7 @@ INSERT INTO stripe_connected_accounts (
   'creator',
   'author_123',
   'Jane Doe',
-  'acct_xxx',  -- Created via Stripe API
+  'acct_xxx',  -- Created via Payment Processor API
   'active',
   true
 );
@@ -277,13 +277,13 @@ If a reader uses a stolen card:
 - Simply void the held entry
 
 ### 2. Dispute Window
-Stripe disputes can come up to 120 days later, but most come within 7-14 days:
+Payment Processor disputes can come up to 120 days later, but most come within 7-14 days:
 - Hold funds for the high-risk period
 - Auto-release after window passes
 - Or hold indefinitely and release manually
 
 ### 3. Treasury Yield
-While funds sit in your Stripe account:
+While funds sit in your Payment Processor account:
 - They contribute to your balance
 - You can earn interest on cash management products
 - Float is money
@@ -304,7 +304,7 @@ If you suspect fraud, a bad actor, or need to investigate:
 - `supabase/migrations/20260240_escrow_control_system.sql` - Escrow schema
 
 ### Updated Files
-- `supabase/functions/stripe-webhook/index.ts` - Entries now created with `release_status='held'`
+- `supabase/functions/processor-webhook/index.ts` - Entries now created with `release_status='held'`
 - `supabase/functions/_shared/utils.ts` - Booklyverse CORS, rate limits
 
 ---
@@ -314,7 +314,7 @@ If you suspect fraud, a bad actor, or need to investigate:
 - [ ] Run migration: `20260240_escrow_control_system.sql`
 - [ ] Deploy functions: `create-checkout`, `release-funds`
 - [ ] Create Booklyverse venture record
-- [ ] Configure Stripe Custom accounts (disable auto-payouts!)
+- [ ] Configure Payment Processor Custom accounts (disable auto-payouts!)
 - [ ] Set up admin dashboard to view/release held funds
 - [ ] Configure cron job for auto-release (optional)
-- [ ] Update Booklyverse to call Soledgic instead of Stripe directly
+- [ ] Update Booklyverse to call Soledgic instead of Payment Processor directly

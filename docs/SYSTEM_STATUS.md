@@ -6,7 +6,7 @@
 | Migration | Status | Contents |
 |-----------|--------|----------|
 | `20251218_initial_schema.sql` | ✅ Applied | Core ledger, accounts, transactions, entries, payouts |
-| `20251219_reporting_reconciliation.sql` | ✅ Applied | Payout summaries, reconciliation, exports, Stripe links |
+| `20251219_reporting_reconciliation.sql` | ✅ Applied | Payout summaries, reconciliation, exports, Payment Processor links |
 | `20251220_accounting_controls.sql` | ✅ Applied | Periods, trial balance, idempotency, corrections |
 | `20251221_expense_tracking.sql` | ✅ Applied | Categories, bank accounts, receipts, mileage |
 | `20251222_final_features.sql` | ⚠️ **NEEDS DEPLOY** | Adjustments, transfers, recurring, contractors, budgets, runway |
@@ -51,7 +51,7 @@
 **Solution:** Explicit `owner_equity` and `owner_draw` account types + `record-owner-transaction` endpoint
 
 ### 3. Reconciliation
-**Problem:** No way to match soledgic records to bank/Stripe statements.
+**Problem:** No way to match soledgic records to bank/Payment Processor statements.
 **Impact:** Still need spreadsheets to verify "does this match reality?"
 **Solution:** Bank statement import + matching engine + reconciliation queue
 

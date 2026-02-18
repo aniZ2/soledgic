@@ -5,6 +5,8 @@ import {
   ValidationError,
   NotFoundError,
   ConflictError,
+  CreateCheckoutRequest,
+  CreateCheckoutResponse,
   RecordSaleRequest,
   RecordSaleResponse,
   GetBalanceResponse,
@@ -58,7 +60,7 @@ function createSecureKeyHolder(key: string): () => string {
  * 
  * // Record a sale
  * const sale = await soledgic.recordSale({
- *   referenceId: 'stripe_pi_xxx',
+ *   referenceId: 'sale_123',
  *   creatorId: 'author_123',
  *   amount: 1999
  * })
@@ -266,12 +268,39 @@ export class Soledgic {
   // ============================================================================
 
   /**
+   * Create a hosted checkout payment
+   *
+   * @example
+   * ```typescript
+   * const checkout = await soledgic.createCheckout({
+   *   amount: 1999,
+   *   creatorId: 'author_123',
+   *   productName: 'Book purchase',
+   *   customerEmail: 'reader@example.com'
+   * })
+   *
+   * console.log(checkout.checkoutUrl)
+   * ```
+   */
+  async createCheckout(request: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {
+    if (!request.creatorId) throw new ValidationError('creatorId is required')
+    if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
+
+    const response = await this.request<Record<string, unknown>>('create-checkout', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<CreateCheckoutResponse>(response)
+  }
+
+  /**
    * Record a sale with automatic revenue split
    * 
    * @example
    * ```typescript
    * const sale = await soledgic.recordSale({
-   *   referenceId: 'stripe_pi_xxx',
+   *   referenceId: 'sale_123',
    *   creatorId: 'author_123',
    *   amount: 1999, // $19.99 in cents
    *   platformFeePercent: 20
@@ -336,8 +365,8 @@ export class Soledgic {
    * ```typescript
    * const payout = await soledgic.processPayout({
    *   creatorId: 'author_123',
-   *   paymentMethod: 'stripe',
-   *   paymentReference: 'tr_xxx'
+   *   paymentMethod: 'card',
+   *   paymentReference: 'payout_123'
    * })
    * ```
    */
@@ -359,7 +388,7 @@ export class Soledgic {
    * @example
    * ```typescript
    * const refund = await soledgic.recordRefund({
-   *   originalSaleReference: 'stripe_pi_xxx',
+   *   originalSaleReference: 'sale_123',
    *   reason: 'Customer requested refund',
    *   refundFrom: 'both' // Split refund proportionally
    * })

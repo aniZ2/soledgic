@@ -13,8 +13,8 @@
 | `execute-payout` | ✅ Updated | Vault integration, IP logging |
 | `get-balance` | ✅ Updated | Hash-based auth |
 | `get-transactions` | ✅ Updated | Hash-based auth, input validation |
-| `stripe-webhook` | ✅ Updated | Replay protection, constant-time sig |
-| `plaid` | ✅ Updated | Vault storage |
+| `processor-webhook` | ✅ Updated | Replay protection, constant-time sig |
+| `bank-feed` | ✅ Updated | Vault storage |
 | `webhooks` | ✅ Updated | SSRF protection |
 
 ## Functions Still Using Old Pattern ⚠️
@@ -64,8 +64,8 @@ These functions still use `.eq('api_key', apiKey)` and need to be updated:
 - `send-statements`
 - `health-check`
 - `billing`
-- `stripe`
-- `stripe-billing-webhook`
+- `processor`
+- `billing-webhook`
 - `process-webhooks`
 
 ## Quick Fix Pattern
@@ -103,8 +103,8 @@ supabase functions deploy process-payout --no-verify-jwt
 supabase functions deploy execute-payout --no-verify-jwt
 supabase functions deploy get-balance --no-verify-jwt
 supabase functions deploy get-transactions --no-verify-jwt
-supabase functions deploy stripe-webhook --no-verify-jwt
-supabase functions deploy plaid --no-verify-jwt
+supabase functions deploy processor-webhook --no-verify-jwt
+supabase functions deploy bank-feed --no-verify-jwt
 supabase functions deploy webhooks --no-verify-jwt
 
 # Set production mode

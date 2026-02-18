@@ -131,7 +131,7 @@ Upon termination or role change:
 |-----------|----------------|------------------|-----------|
 | Transaction amounts | Confidential | Supabase (encrypted) | Indefinite |
 | API key hashes | Restricted | Supabase (encrypted) | Until rotation |
-| Plaid tokens | Restricted | Supabase Vault | Until revocation |
+| Bank Feed tokens | Restricted | Supabase Vault | Until revocation |
 | Audit logs | Confidential | Supabase (encrypted) | 90-180 days |
 | Webhook secrets | Restricted | Environment variables | Until rotation |
 
@@ -373,8 +373,8 @@ All vendors with access to confidential data must:
 |--------|---------|-------|-----|-------------|
 | Supabase | Database, Auth, Functions | Yes | Yes | Dec 2024 |
 | Upstash | Redis (rate limiting) | Yes | Yes | Dec 2024 |
-| Stripe | Payment processing | Yes | Yes | Dec 2024 |
-| Plaid | Bank connections | Yes | Yes | Dec 2024 |
+| Payment Processor | Payment processing | Yes | Yes | Dec 2024 |
+| Bank Feed | Bank connections | Yes | Yes | Dec 2024 |
 | Resend | Email delivery | Yes | Yes | Dec 2024 |
 | Cloudflare | CDN, DDoS (via Supabase) | Yes | Yes | Dec 2024 |
 
@@ -389,7 +389,7 @@ All vendors with access to confidential data must:
 | SOC 2 Type II | Yes | In progress |
 | GDPR | Limited (no EU PII) | Compliant by design |
 | CCPA | Limited (no CA PII) | Compliant by design |
-| PCI DSS | No (Stripe handles card data) | N/A |
+| PCI DSS | No (Payment Processor handles card data) | N/A |
 
 ### 14.2 Audit Schedule
 

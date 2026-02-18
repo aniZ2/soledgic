@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, RotateCcw, Search } from 'lucide-react'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordRefundModalProps {
   isOpen: boolean
   onClose: () => void
   ledgerId: string
-  apiKey: string
   preselectedSaleRef?: string
   onSuccess?: () => void
 }
@@ -16,7 +16,6 @@ export function RecordRefundModal({
   isOpen,
   onClose,
   ledgerId,
-  apiKey,
   preselectedSaleRef,
   onSuccess
 }: RecordRefundModalProps) {
@@ -31,7 +30,6 @@ export function RecordRefundModal({
   const [refundAmount, setRefundAmount] = useState('')
   const [reason, setReason] = useState('')
   const [refundFrom, setRefundFrom] = useState<'both' | 'platform_only' | 'creator_only'>('both')
-  const [triggerStripeRefund, setTriggerStripeRefund] = useState(false)
 
   useEffect(() => {
     if (isOpen && preselectedSaleRef) {
@@ -94,23 +92,16 @@ export function RecordRefundModal({
     setError(null)
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/record-refund`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            original_sale_reference: saleReference.trim(),
-            amount: amountCents,
-            reason: reason.trim(),
-            refund_from: refundFrom,
-            trigger_stripe_refund: triggerStripeRefund,
-          }),
-        }
-      )
+      const response = await callLedgerFunction('record-refund', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          original_sale_reference: saleReference.trim(),
+          amount: amountCents,
+          reason: reason.trim(),
+          refund_from: refundFrom,
+        },
+      })
 
       const data = await response.json()
 
@@ -137,7 +128,6 @@ export function RecordRefundModal({
     setRefundAmount('')
     setReason('')
     setRefundFrom('both')
-    setTriggerStripeRefund(false)
     setSaleInfo(null)
     setError(null)
   }
@@ -258,20 +248,6 @@ export function RecordRefundModal({
                   <option value="platform_only">Platform Only</option>
                   <option value="creator_only">Creator Only</option>
                 </select>
-              </div>
-
-              {/* Provider Refund */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="stripeRefund"
-                  checked={triggerStripeRefund}
-                  onChange={(e) => setTriggerStripeRefund(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="stripeRefund" className="text-sm text-foreground">
-                  Also trigger provider refund (legacy Stripe path)
-                </label>
               </div>
 
               {error && (

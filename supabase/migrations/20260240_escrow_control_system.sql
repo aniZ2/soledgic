@@ -1,6 +1,6 @@
 -- Soledgic: Escrow Control System
 -- Implements "Manual Override" model where all funds are held until explicitly released
--- Supports Stripe Custom accounts for ventures and creators
+-- Supports processor Custom accounts for ventures and creators
 
 -- ============================================================================
 -- 1. ADD RELEASE STATUS TO ENTRIES
@@ -13,7 +13,7 @@ ALTER TABLE entries
   ADD COLUMN IF NOT EXISTS released_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS released_by UUID,
   ADD COLUMN IF NOT EXISTS release_idempotency_key TEXT UNIQUE,
-  ADD COLUMN IF NOT EXISTS release_transfer_id TEXT,  -- Stripe transfer ID once released
+  ADD COLUMN IF NOT EXISTS release_transfer_id TEXT,  -- processor transfer ID once released
   ADD COLUMN IF NOT EXISTS hold_reason TEXT,          -- Why funds are held (dispute_window, manual_review, etc.)
   ADD COLUMN IF NOT EXISTS hold_until TIMESTAMPTZ;    -- Auto-release date (e.g., after dispute window)
 
@@ -28,11 +28,11 @@ CREATE INDEX IF NOT EXISTS idx_entries_release_pending
   WHERE release_status IN ('held', 'pending_release');
 
 -- ============================================================================
--- 2. STRIPE CONNECTED ACCOUNTS TABLE
+-- 2. processor CONNECTED ACCOUNTS TABLE
 -- ============================================================================
 
--- Track Stripe Custom accounts for ventures and creators
-CREATE TABLE IF NOT EXISTS stripe_connected_accounts (
+-- Track processor Custom accounts for ventures and creators
+CREATE TABLE IF NOT EXISTS processor_connected_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ledger_id UUID NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
   
@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS stripe_connected_accounts (
   entity_id TEXT NOT NULL,  -- venture_id or creator_id
   entity_name TEXT,
   
-  -- Stripe details
-  stripe_account_id TEXT NOT NULL,  -- acct_xxx
-  stripe_account_type TEXT DEFAULT 'custom' CHECK (stripe_account_type IN ('custom', 'express', 'standard')),
+  -- processor details
+  processor_account_id TEXT NOT NULL,  -- acct_xxx
+  processor_account_type TEXT DEFAULT 'custom' CHECK (processor_account_type IN ('custom', 'express', 'standard')),
   
   -- Account status
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'restricted', 'disabled')),
@@ -64,14 +64,14 @@ CREATE TABLE IF NOT EXISTS stripe_connected_accounts (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   
-  -- Ensure unique Stripe account per entity
+  -- Ensure unique processor account per entity
   UNIQUE(ledger_id, entity_type, entity_id),
-  UNIQUE(stripe_account_id)
+  UNIQUE(processor_account_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_stripe_accounts_ledger ON stripe_connected_accounts(ledger_id);
-CREATE INDEX IF NOT EXISTS idx_stripe_accounts_entity ON stripe_connected_accounts(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_stripe_accounts_stripe_id ON stripe_connected_accounts(stripe_account_id);
+CREATE INDEX IF NOT EXISTS idx_processor_accounts_ledger ON processor_connected_accounts(ledger_id);
+CREATE INDEX IF NOT EXISTS idx_processor_accounts_entity ON processor_connected_accounts(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_processor_accounts_processor_id ON processor_connected_accounts(processor_account_id);
 
 -- ============================================================================
 -- 3. RELEASE QUEUE TABLE
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS release_queue (
   -- Who receives the release
   recipient_type TEXT NOT NULL CHECK (recipient_type IN ('venture', 'creator')),
   recipient_id TEXT NOT NULL,
-  recipient_stripe_account_id TEXT,  -- Target Stripe Custom account
+  recipient_processor_account_id TEXT,  -- Target processor Custom account
   
   -- Amount details
   amount NUMERIC(14,2) NOT NULL,
@@ -102,9 +102,9 @@ CREATE TABLE IF NOT EXISTS release_queue (
   -- Execution status
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
   
-  -- Stripe execution
-  stripe_transfer_id TEXT,
-  stripe_error TEXT,
+  -- processor execution
+  processor_transfer_id TEXT,
+  processor_error TEXT,
   
   -- Audit
   requested_by UUID,
@@ -140,8 +140,8 @@ CREATE TABLE IF NOT EXISTS ventures (
   venture_id TEXT NOT NULL,  -- 'booklyverse', 'mtf_prop', etc.
   name TEXT NOT NULL,
   
-  -- Stripe Custom account
-  stripe_account_id TEXT,
+  -- processor Custom account
+  processor_account_id TEXT,
   
   -- Release policy
   release_policy TEXT DEFAULT 'manual' CHECK (release_policy IN ('manual', 'auto_after_window', 'instant')),
@@ -224,9 +224,9 @@ BEGIN
   FROM transactions
   WHERE id = v_entry.transaction_id;
   
-  -- Find recipient's Stripe account
+  -- Find recipient's processor account
   SELECT * INTO v_recipient_account
-  FROM stripe_connected_accounts
+  FROM processor_connected_accounts
   WHERE ledger_id = v_entry.ledger_id
     AND entity_id = v_entry.entity_id
     AND status = 'active';
@@ -241,7 +241,7 @@ BEGIN
     transaction_id,
     recipient_type,
     recipient_id,
-    recipient_stripe_account_id,
+    recipient_processor_account_id,
     amount,
     currency,
     release_type,
@@ -253,7 +253,7 @@ BEGIN
     v_entry.transaction_id,
     v_entry.entity_type,
     v_entry.entity_id,
-    v_recipient_account.stripe_account_id,
+    v_recipient_account.processor_account_id,
     v_entry.amount,
     'USD',
     p_release_type,
@@ -273,10 +273,10 @@ BEGIN
 END;
 $$;
 
--- Function to complete release (called after Stripe transfer succeeds)
+-- Function to complete release (called after processor transfer succeeds)
 CREATE OR REPLACE FUNCTION complete_release(
   p_release_id UUID,
-  p_stripe_transfer_id TEXT,
+  p_processor_transfer_id TEXT,
   p_approved_by UUID DEFAULT NULL
 )
 RETURNS VOID
@@ -301,7 +301,7 @@ BEGIN
   UPDATE release_queue
   SET 
     status = 'completed',
-    stripe_transfer_id = p_stripe_transfer_id,
+    processor_transfer_id = p_processor_transfer_id,
     approved_by = COALESCE(p_approved_by, approved_by),
     approved_at = COALESCE(approved_at, NOW()),
     executed_at = NOW(),
@@ -314,7 +314,7 @@ BEGIN
     release_status = 'released',
     released_at = NOW(),
     released_by = p_approved_by,
-    release_transfer_id = p_stripe_transfer_id
+    release_transfer_id = p_processor_transfer_id
   WHERE id = v_release.entry_id;
 END;
 $$;
@@ -397,12 +397,12 @@ $$;
 -- 6. RLS POLICIES
 -- ============================================================================
 
-ALTER TABLE stripe_connected_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE processor_connected_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE release_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ventures ENABLE ROW LEVEL SECURITY;
 
 -- API key access
-CREATE POLICY "stripe_accounts_api_key_access" ON stripe_connected_accounts
+CREATE POLICY "processor_accounts_api_key_access" ON processor_connected_accounts
   FOR ALL USING (
     ledger_id IN (
       SELECT id FROM ledgers 
@@ -440,11 +440,11 @@ GRANT EXECUTE ON FUNCTION auto_release_ready_funds TO service_role;
 -- 8. COMMENTS
 -- ============================================================================
 
-COMMENT ON TABLE stripe_connected_accounts IS 
-  'Stripe Custom accounts for ventures and creators. Used for controlled fund releases.';
+COMMENT ON TABLE processor_connected_accounts IS 
+  'processor Custom accounts for ventures and creators. Used for controlled fund releases.';
 
 COMMENT ON TABLE release_queue IS 
-  'Queue of pending fund releases. Entries wait here until approved and executed via Stripe Transfer.';
+  'Queue of pending fund releases. Entries wait here until approved and executed via processor Transfer.';
 
 COMMENT ON TABLE ventures IS 
   'Configuration for each venture (Booklyverse, MTF Prop, etc.) including release policies.';
@@ -456,4 +456,4 @@ COMMENT ON FUNCTION request_release IS
   'Queue a held entry for release. Returns release_queue.id. Does NOT execute the transfer.';
 
 COMMENT ON FUNCTION complete_release IS 
-  'Mark a release as complete after Stripe transfer succeeds.';
+  'Mark a release as complete after processor transfer succeeds.';

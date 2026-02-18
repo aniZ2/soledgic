@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
 import { ArrowLeft, Upload, FileText, Check, AlertCircle, ChevronRight, ArrowRight } from 'lucide-react'
 
@@ -36,11 +37,12 @@ const BANK_PRESETS = [
   { id: 'bofa', name: 'Bank of America' },
   { id: 'wells_fargo', name: 'Wells Fargo' },
   { id: 'citi', name: 'Citibank' },
-  { id: 'stripe', name: 'Stripe' },
   { id: 'relay', name: 'Relay' },
   { id: 'mercury', name: 'Mercury' },
   { id: 'generic', name: 'Other / Generic CSV' },
 ]
+
+const visibleBankPresets = BANK_PRESETS
 
 export default function ImportTransactionsPage() {
   const livemode = useLivemode()
@@ -50,7 +52,7 @@ export default function ImportTransactionsPage() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
   // Column mapping state
@@ -66,10 +68,10 @@ export default function ImportTransactionsPage() {
 
   // Load API key on mount
   useEffect(() => {
-    const loadApiKey = async () => {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
-      if (!user) return
+	    const loadApiKey = async () => {
+	      const supabase = createClient()
+	      const { data: { user } } = await supabase.auth.getUser()
+	      if (!user) return
 
       const { data: membership } = await supabase
         .from('organization_members')
@@ -81,14 +83,14 @@ export default function ImportTransactionsPage() {
 
       const { data: ledgers } = await supabase
         .from('ledgers')
-        .select('api_key, ledger_group_id')
+        .select('id, ledger_group_id')
         .eq('organization_id', membership.organization_id)
         .eq('status', 'active')
         .eq('livemode', livemode)
 
       const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
       if (ledger) {
-        setApiKey(ledger.api_key)
+        setLedgerId(ledger.id)
       }
     }
     loadApiKey()
@@ -96,7 +98,7 @@ export default function ImportTransactionsPage() {
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
-    if (!selectedFile || !apiKey) return
+    if (!selectedFile || !ledgerId) return
 
     setFile(selectedFile)
     setLoading(true)
@@ -109,14 +111,11 @@ export default function ImportTransactionsPage() {
         const base64 = (reader.result as string).split(',')[1]
 
         // Parse preview
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/import-transactions`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-            body: JSON.stringify({ action: 'parse_preview', data: base64 }),
-          }
-        )
+        const res = await callLedgerFunction('import-transactions', {
+          ledgerId,
+          method: 'POST',
+          body: { action: 'parse_preview', data: base64 },
+        })
         const data = await res.json()
 
         if (data.success) {
@@ -138,27 +137,24 @@ export default function ImportTransactionsPage() {
       setError(err.message)
       setLoading(false)
     }
-  }, [apiKey])
+  }, [ledgerId])
 
   const handleImport = async () => {
-    if (!apiKey || !parseResult) return
+    if (!ledgerId || !parseResult) return
 
     setLoading(true)
     setError(null)
 
     try {
       // Step 1: Import transactions
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/import-transactions`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({
-            action: 'import',
-            transactions: parseResult.all_transactions,
-          }),
-        }
-      )
+      const res = await callLedgerFunction('import-transactions', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          action: 'import',
+          transactions: parseResult.all_transactions,
+        },
+      })
       const data = await res.json()
 
       if (data.success) {
@@ -168,28 +164,6 @@ export default function ImportTransactionsPage() {
           errors: data.data.errors,
           auto_matched: 0,
           needs_review: data.data.imported,
-        }
-
-        // Step 2: Run auto-match if we imported any transactions
-        if (data.data.imported > 0) {
-          try {
-            const matchRes = await fetch(
-              `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/plaid`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                body: JSON.stringify({ action: 'auto_match_all' }),
-              }
-            )
-            const matchData = await matchRes.json()
-            
-            if (matchData.success && matchData.data?.matched) {
-              result.auto_matched = matchData.data.matched
-              result.needs_review = data.data.imported - matchData.data.matched
-            }
-          } catch {
-            // Auto-match failed, but import succeeded - not critical
-          }
         }
 
         setImportResult(result)
@@ -288,7 +262,7 @@ export default function ImportTransactionsPage() {
             <div className="mt-8">
               <h4 className="text-sm font-medium text-foreground mb-3">Supported Banks</h4>
               <div className="grid grid-cols-3 gap-2">
-                {BANK_PRESETS.map((bank) => (
+                {visibleBankPresets.map((bank) => (
                   <div key={bank.id} className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Check className="w-4 h-4 text-green-500" />
                     {bank.name}

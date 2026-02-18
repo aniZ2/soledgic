@@ -2,9 +2,9 @@
 -- The previous migration created new function overloads instead of fixing existing ones
 
 -- ============================================================================
--- 1. process_stripe_refund - has 8 parameters
+-- 1. process_processor_refund - has 8 parameters
 -- ============================================================================
-ALTER FUNCTION public.process_stripe_refund(
+ALTER FUNCTION public.process_processor_refund(
   UUID,      -- p_ledger_id
   UUID,      -- p_original_tx_id
   TEXT,      -- p_charge_id
@@ -29,7 +29,7 @@ SET search_path = public;
 DROP FUNCTION IF EXISTS public.process_automatic_releases();
 
 -- Drop the 5-parameter version we accidentally created
-DROP FUNCTION IF EXISTS public.process_stripe_refund(UUID, TEXT, TEXT, INTEGER, TEXT);
+DROP FUNCTION IF EXISTS public.process_processor_refund(UUID, TEXT, TEXT, INTEGER, TEXT);
 
 -- ============================================================================
 -- Verification
@@ -43,7 +43,7 @@ BEGIN
   FROM pg_proc p
   JOIN pg_namespace n ON p.pronamespace = n.oid
   WHERE n.nspname = 'public'
-    AND p.proname IN ('process_stripe_refund', 'process_automatic_releases')
+    AND p.proname IN ('process_processor_refund', 'process_automatic_releases')
     AND p.proconfig IS NOT NULL
     AND 'search_path=public' = ANY(p.proconfig);
 

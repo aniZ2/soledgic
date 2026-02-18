@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { 
   CheckCircle, AlertTriangle, XCircle, RefreshCw, 
   Activity, ChevronDown, ChevronUp
@@ -31,7 +32,7 @@ export default function HealthCheckWidget() {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<HealthResult | null>(null)
   const [expanded, setExpanded] = useState(false)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [ledgerId, setLedgerId] = useState<string | null>(null)
 
   useEffect(() => {
     loadHealthStatus()
@@ -52,36 +53,30 @@ export default function HealthCheckWidget() {
 
     const { data: ledgers } = await supabase
       .from('ledgers')
-      .select('api_key')
+      .select('id')
       .eq('organization_id', membership.organization_id)
       .eq('status', 'active')
       .limit(1)
 
-    const key = ledgers?.[0]?.api_key
-    if (!key) return
-    setApiKey(key)
+    const nextLedgerId = ledgers?.[0]?.id
+    if (!nextLedgerId) return
+    setLedgerId(nextLedgerId)
 
     // Get latest health status
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/health-check`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': key },
-          body: JSON.stringify({ action: 'status' }),
-        }
-      )
+      const res = await callLedgerFunction('health-check', {
+        ledgerId: nextLedgerId,
+        method: 'POST',
+        body: { action: 'status' },
+      })
       const data = await res.json()
       if (data.success && data.data?.status !== 'unknown') {
         // Load full result if we have one
-        const histRes = await fetch(
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/health-check`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': key },
-            body: JSON.stringify({ action: 'history' }),
-          }
-        )
+        const histRes = await callLedgerFunction('health-check', {
+          ledgerId: nextLedgerId,
+          method: 'POST',
+          body: { action: 'history' },
+        })
         const histData = await histRes.json()
         if (histData.data?.[0]) {
           // Get the full check details from the most recent
@@ -114,18 +109,15 @@ export default function HealthCheckWidget() {
   }
 
   const runHealthCheck = async () => {
-    if (!apiKey) return
+    if (!ledgerId) return
     setRunning(true)
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/health-check`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-          body: JSON.stringify({ action: 'run' }),
-        }
-      )
+      const res = await callLedgerFunction('health-check', {
+        ledgerId,
+        method: 'POST',
+        body: { action: 'run' },
+      })
       const data = await res.json()
       if (data.success) {
         setResult(data.data)

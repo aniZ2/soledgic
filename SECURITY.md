@@ -72,8 +72,8 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 Fail-closed endpoints (block if rate limiting unavailable):
 - `execute-payout`
 - `process-payout`
-- `stripe-webhook`
-- `plaid`
+- `processor-webhook`
+- `bank-feed`
 
 ## Input Validation
 
@@ -111,7 +111,7 @@ Audit logs are **immutable** - cannot be modified or deleted.
 
 - **SOC 2**: Type II audit in progress
 - **GDPR**: Data processing agreements available
-- **PCI DSS**: Stripe handles card data (Level 1 certified)
+- **PCI DSS**: Payment Processor handles card data (Level 1 certified)
 
 ## Security Checklist for Developers
 

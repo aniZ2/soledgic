@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, ArrowRightLeft } from 'lucide-react'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordTransferModalProps {
   isOpen: boolean
   onClose: () => void
   ledgerId: string
-  apiKey: string
   onSuccess?: () => void
 }
 
@@ -24,7 +24,6 @@ const TRANSFER_TYPES = [
 
 const ACCOUNT_TYPES = [
   { value: 'cash', label: 'Cash / Bank Account' },
-  { value: 'stripe', label: 'Finix Balance' },
   { value: 'platform_revenue', label: 'Platform Revenue' },
   { value: 'tax_reserve', label: 'Tax Reserve' },
   { value: 'payout_reserve', label: 'Payout Reserve' },
@@ -37,7 +36,6 @@ export function RecordTransferModal({
   isOpen,
   onClose,
   ledgerId,
-  apiKey,
   onSuccess
 }: RecordTransferModalProps) {
   const [loading, setLoading] = useState(false)
@@ -69,23 +67,17 @@ export function RecordTransferModal({
     setError(null)
 
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/record-transfer`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            from_account_type: fromAccount,
-            to_account_type: toAccount,
-            amount: amountCents,
-            transfer_type: transferType,
-            description: description.trim() || undefined,
-          }),
-        }
-      )
+      const response = await callLedgerFunction('record-transfer', {
+        ledgerId,
+        method: 'POST',
+        body: {
+          from_account_type: fromAccount,
+          to_account_type: toAccount,
+          amount: amountCents,
+          transfer_type: transferType,
+          description: description.trim() || undefined,
+        },
+      })
 
       const data = await response.json()
 

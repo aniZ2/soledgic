@@ -41,6 +41,7 @@ CREATE OR REPLACE FUNCTION run_ledger_health_check(p_ledger_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_checks jsonb := '[]'::jsonb;
@@ -132,22 +133,22 @@ BEGIN
   ELSE v_failed := v_failed + 1; END IF;
 
   -- =========================================================================
-  -- CHECK 4: Cash Account vs Stripe Balance
+  -- CHECK 4: Cash Account vs processor Balance
   -- =========================================================================
   SELECT jsonb_build_object(
-    'name', 'stripe_balance_sync',
-    'description', 'Cash account approximates Stripe available balance',
+    'name', 'processor_balance_sync',
+    'description', 'Cash account approximates processor available balance',
     'status', CASE 
       WHEN bs.id IS NULL THEN 'skipped'
-      WHEN ABS(cash_balance - stripe_available) < 100 THEN 'passed' -- Within $100
-      WHEN ABS(cash_balance - stripe_available) < 1000 THEN 'warning' -- Within $1000
+      WHEN ABS(cash_balance - processor_available) < 100 THEN 'passed' -- Within $100
+      WHEN ABS(cash_balance - processor_available) < 1000 THEN 'warning' -- Within $1000
       ELSE 'failed' 
     END,
     'details', jsonb_build_object(
       'cash_account_balance', cash_balance,
-      'stripe_available_balance', stripe_available,
-      'difference', ABS(cash_balance - COALESCE(stripe_available, 0)),
-      'last_stripe_sync', bs.snapshot_at
+      'processor_available_balance', processor_available,
+      'difference', ABS(cash_balance - COALESCE(processor_available, 0)),
+      'last_processor_sync', bs.snapshot_at
     )
   ) INTO v_check
   FROM (
@@ -165,8 +166,8 @@ BEGIN
     SELECT 
       id,
       snapshot_at,
-      (available->0->>'amount')::numeric / 100 as stripe_available
-    FROM stripe_balance_snapshots
+      (available->0->>'amount')::numeric / 100 as processor_available
+    FROM processor_balance_snapshots
     WHERE ledger_id = p_ledger_id
     ORDER BY snapshot_at DESC
     LIMIT 1
@@ -194,7 +195,7 @@ BEGIN
       'total_unmatched_amount', COALESCE(SUM(ABS(amount)), 0)
     )
   ) INTO v_check
-  FROM plaid_transactions
+  FROM bank_aggregator_transactions
   WHERE ledger_id = p_ledger_id
     AND match_status = 'unmatched'
     AND created_at < now() - interval '7 days';
@@ -205,11 +206,11 @@ BEGIN
   ELSE v_failed := v_failed + 1; END IF;
 
   -- =========================================================================
-  -- CHECK 6: Unmatched Stripe Transactions
+  -- CHECK 6: Unmatched processor Transactions
   -- =========================================================================
   SELECT jsonb_build_object(
-    'name', 'stripe_reconciliation_backlog',
-    'description', 'Stripe transactions awaiting review',
+    'name', 'processor_reconciliation_backlog',
+    'description', 'processor transactions awaiting review',
     'status', CASE 
       WHEN COUNT(*) = 0 THEN 'passed'
       WHEN COUNT(*) < 5 THEN 'warning'
@@ -221,7 +222,7 @@ BEGIN
       'total_unmatched_amount', COALESCE(SUM(ABS(amount)), 0)
     )
   ) INTO v_check
-  FROM stripe_transactions
+  FROM processor_transactions
   WHERE ledger_id = p_ledger_id
     AND match_status = 'unmatched'
     AND created_at < now() - interval '3 days';
@@ -414,6 +415,7 @@ CREATE OR REPLACE FUNCTION run_all_health_checks()
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_ledger RECORD;
@@ -448,6 +450,7 @@ CREATE OR REPLACE FUNCTION get_quick_health_status(p_ledger_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_result jsonb;

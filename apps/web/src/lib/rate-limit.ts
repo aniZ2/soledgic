@@ -1,23 +1,16 @@
 // Rate limiting utilities for Next.js API routes
-// Uses in-memory store for development, should use Redis in production
+// Uses Postgres-backed rate limit function in production (distributed),
+// with an in-memory fallback for local dev.
+
+import { createServerClient } from '@supabase/ssr'
 
 interface RateLimitEntry {
   count: number
   resetAt: number
 }
 
-// Simple in-memory store - use Upstash Redis in production
+// Simple in-memory store - only used as a fallback.
 const rateLimitStore = new Map<string, RateLimitEntry>()
-
-// Clean up old entries periodically
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.resetAt < now) {
-      rateLimitStore.delete(key)
-    }
-  }
-}, 60000) // Clean every minute
 
 export interface RateLimitConfig {
   requests: number      // Max requests allowed
@@ -30,19 +23,90 @@ export interface RateLimitResult {
   resetAt: number
 }
 
+let cachedServiceClient: ReturnType<typeof createServerClient> | null = null
+
+function getServiceClient() {
+  if (cachedServiceClient) return cachedServiceClient
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceKey) return null
+
+  cachedServiceClient = createServerClient(supabaseUrl, serviceKey, {
+    cookies: {
+      getAll() {
+        return []
+      },
+      setAll() {},
+    },
+  })
+
+  return cachedServiceClient
+}
+
 /**
  * Check rate limit for a given key
  */
-export function checkRateLimit(
+export async function checkRateLimit(
   key: string,
+  endpoint: string,
   config: RateLimitConfig = { requests: 100, windowMs: 60000 }
-): RateLimitResult {
+): Promise<RateLimitResult> {
   const now = Date.now()
-  const entry = rateLimitStore.get(key)
+  const isProd = process.env.NODE_ENV === 'production'
+  const serviceClient = getServiceClient()
+
+  // In production, do not fall back to in-memory limits. Rate limiting must be
+  // distributed and durable across instances.
+  if (isProd && !serviceClient) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: now + config.windowMs,
+    }
+  }
+
+  if (serviceClient) {
+    const windowSeconds = Math.max(1, Math.ceil(config.windowMs / 1000))
+
+    try {
+      const { data, error } = await serviceClient.rpc('check_rate_limit_secure', {
+        p_key: key,
+        p_endpoint: endpoint,
+        p_max_requests: config.requests,
+        p_window_seconds: windowSeconds,
+        p_fail_closed: isProd,
+      })
+
+      const row = Array.isArray(data) ? data[0] : null
+      if (!error && row && typeof row.allowed === 'boolean' && row.reset_at) {
+        const resetAt = new Date(row.reset_at).getTime()
+        const remaining = typeof row.remaining === 'number' ? row.remaining : 0
+        const allowed = Boolean(row.allowed) && !Boolean(row.blocked)
+
+        return {
+          allowed,
+          remaining: allowed ? Math.max(0, remaining) : 0,
+          resetAt: Number.isFinite(resetAt) ? resetAt : now + config.windowMs,
+        }
+      }
+    } catch {
+      if (isProd) {
+        return {
+          allowed: false,
+          remaining: 0,
+          resetAt: now + config.windowMs,
+        }
+      }
+    }
+  }
+
+  // Fallback: in-memory token bucket (dev only, non-distributed)
+  const entry = rateLimitStore.get(`${endpoint}:${key}`)
   
   // No existing entry or expired
   if (!entry || entry.resetAt < now) {
-    rateLimitStore.set(key, {
+    rateLimitStore.set(`${endpoint}:${key}`, {
       count: 1,
       resetAt: now + config.windowMs
     })

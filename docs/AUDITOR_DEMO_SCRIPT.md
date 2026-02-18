@@ -103,7 +103,7 @@ seedDemoData()
 3. Show navigation: Inflow, Outflow, Reconciliation, Reports, Audit
 
 **Key Points:**
-- Payment-processor agnostic (works with Stripe, Plaid, crypto)
+- Payment-processor agnostic (works with Payment Processor, Bank Feed, crypto)
 - Real-time balance calculations
 - Period locking for historical integrity
 - Complete audit trail

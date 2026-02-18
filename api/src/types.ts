@@ -5,7 +5,7 @@
 // ---- Request Types ----
 
 export interface RecordSaleRequest {
-  /** Your external sale ID (Stripe payment_intent, order ID, etc.) */
+  /** Your external sale ID (order ID, payment ID, etc.) */
   referenceId: string
   /** The creator receiving funds */
   creatorId: string
@@ -17,20 +17,37 @@ export interface RecordSaleRequest {
   platformFeePercent?: number
   /** Sale description */
   description?: string
-  /** Reference type (e.g., 'stripe_payment', 'manual') */
+  /** Reference type (e.g., 'processor_payment', 'manual') */
   referenceType?: string
   /** Additional metadata */
   metadata?: Record<string, unknown>
+}
+
+export interface CreateCheckoutRequest {
+  amount: number
+  creatorId: string
+  currency?: string
+  productId?: string
+  productName?: string
+  customerEmail?: string
+  customerId?: string
+  captureMethod?: 'automatic' | 'manual'
+  setupFutureUsage?: 'off_session' | 'on_session'
+  /** Buyer payment method / payment instrument id (required). */
+  paymentMethodId?: string
+  /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
+  sourceId?: string
+  metadata?: Record<string, string>
 }
 
 export interface ProcessPayoutRequest {
   /** Creator to pay */
   creatorId: string
   /** Payment method */
-  paymentMethod: 'finix' | 'stripe' | 'bank_transfer' | 'manual'
+  paymentMethod: 'card' | 'manual'
   /** Amount in cents (optional - defaults to full balance) */
   amount?: number
-  /** External payment reference (Stripe transfer ID, etc.) */
+  /** External payment reference (payout ID, transfer ID, etc.) */
   paymentReference?: string
   /** Payout description */
   description?: string
@@ -47,7 +64,7 @@ export interface RecordRefundRequest {
   amount?: number
   /** Who absorbs the refund cost */
   refundFrom?: 'both' | 'platform_only' | 'creator_only'
-  /** External refund ID (Stripe refund ID, etc.) */
+  /** External refund ID (refund ID, transaction ID, etc.) */
   externalRefundId?: string
   /** Additional metadata */
   metadata?: Record<string, unknown>
@@ -96,6 +113,28 @@ export interface RecordSaleResponse {
   success: boolean
   transactionId?: string
   breakdown?: SaleBreakdown
+  error?: string
+}
+
+export interface CheckoutBreakdown {
+  grossAmount: number
+  creatorAmount: number
+  platformAmount: number
+  creatorPercent: number
+}
+
+export interface CreateCheckoutResponse {
+  success: boolean
+  provider?: 'card'
+  paymentId?: string
+  paymentIntentId?: string
+  clientSecret?: string | null
+  checkoutUrl?: string | null
+  status?: string | null
+  requiresAction?: boolean
+  amount?: number
+  currency?: string
+  breakdown?: CheckoutBreakdown
   error?: string
 }
 

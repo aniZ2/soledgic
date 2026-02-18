@@ -1,7 +1,7 @@
--- Migration: Tax Document Versioning + Explicit Stripe Account Linking
+-- Migration: Tax Document Versioning + Explicit processor Account Linking
 --
 -- 1. Tax documents: version column, status_history audit trail, fix UNIQUE constraint
--- 2. Accounts: connected_account_id FK for direct link to Stripe connected accounts
+-- 2. Accounts: connected_account_id FK for direct link to processor connected accounts
 
 -- ============================================================================
 -- 1. TAX DOCUMENT VERSIONING
@@ -162,7 +162,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- 2. EXPLICIT STRIPE ACCOUNT LINKING
+-- 2. EXPLICIT processor ACCOUNT LINKING
 -- ============================================================================
 -- Add direct FK from accounts (creator_balance) to connected_accounts
 -- Currently the link is implicit via matching (ledger_id, entity_type, entity_id)
@@ -189,7 +189,7 @@ CREATE OR REPLACE FUNCTION register_connected_account(
   p_ledger_id UUID,
   p_entity_type TEXT,
   p_entity_id TEXT,
-  p_stripe_account_id TEXT,
+  p_processor_account_id TEXT,
   p_display_name TEXT DEFAULT NULL,
   p_email TEXT DEFAULT NULL,
   p_created_by UUID DEFAULT NULL
@@ -206,7 +206,7 @@ BEGIN
     ledger_id,
     entity_type,
     entity_id,
-    stripe_account_id,
+    processor_account_id,
     display_name,
     email,
     created_by
@@ -214,14 +214,14 @@ BEGIN
     p_ledger_id,
     p_entity_type,
     p_entity_id,
-    p_stripe_account_id,
+    p_processor_account_id,
     p_display_name,
     p_email,
     p_created_by
   )
   ON CONFLICT (ledger_id, entity_type, entity_id)
   DO UPDATE SET
-    stripe_account_id = EXCLUDED.stripe_account_id,
+    processor_account_id = EXCLUDED.processor_account_id,
     display_name = COALESCE(EXCLUDED.display_name, connected_accounts.display_name),
     email = COALESCE(EXCLUDED.email, connected_accounts.email),
     updated_at = NOW()

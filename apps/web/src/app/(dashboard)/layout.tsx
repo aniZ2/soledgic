@@ -197,20 +197,20 @@ export default async function DashboardLayout({
         )}
         {org.status === 'canceled' && (
           <div className="sticky top-0 z-[9] bg-slate-700 text-white text-center text-sm font-medium py-2 px-4">
-            Your subscription has ended. Your data is safe — {' '}
+            Your billing account is inactive. Your data is safe — {' '}
             <Link href="/billing" className="underline hover:no-underline">
-              choose a plan
+              update billing
             </Link>{' '}
-            to pick up where you left off.
+            to continue paid usage.
           </div>
         )}
         {isOverLedgerLimit(org) && (
           <div className="sticky top-0 z-[9] bg-amber-600 text-white text-center text-sm font-medium py-2 px-4">
-            You have {org.current_ledger_count} of {org.max_ledgers} ledgers — new ledger creation is paused.{' '}
+            You have {org.current_ledger_count} ledgers ({org.max_ledgers} included) — additional ledgers are billed at $20/month each.{' '}
             <Link href="/billing" className="underline hover:no-underline">
-              Upgrade your plan
+              View billing
             </Link>{' '}
-            or archive a ledger to continue.
+            for details.
           </div>
         )}
         <div className="p-4 lg:p-8">

@@ -8,6 +8,7 @@ export {
   SoledgicConfig,
   
   // Request types
+  CreateCheckoutRequest,
   RecordSaleRequest,
   ProcessPayoutRequest,
   RecordRefundRequest,
@@ -15,6 +16,7 @@ export {
   GetTransactionsRequest,
   
   // Response types
+  CreateCheckoutResponse,
   RecordSaleResponse,
   GetBalanceResponse,
   ProcessPayoutResponse,
@@ -23,6 +25,7 @@ export {
   GetTransactionsResponse,
   
   // Data types
+  CheckoutBreakdown,
   SaleBreakdown,
   CreatorBalance,
   CreatorBalanceSummary,

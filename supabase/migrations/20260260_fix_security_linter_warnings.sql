@@ -4,14 +4,14 @@
 -- 3. RLS policies with unrestricted USING(true)
 
 -- ============================================================================
--- 1. Fix function search_path for process_stripe_refund
+-- 1. Fix function search_path for process_processor_refund
 -- ============================================================================
 -- First get the current function definition and recreate with search_path set
 
--- Drop and recreate process_stripe_refund with search_path
-CREATE OR REPLACE FUNCTION public.process_stripe_refund(
+-- Drop and recreate process_processor_refund with search_path
+CREATE OR REPLACE FUNCTION public.process_processor_refund(
   p_ledger_id UUID,
-  p_stripe_refund_id TEXT,
+  p_processor_refund_id TEXT,
   p_original_charge_id TEXT,
   p_amount_cents INTEGER,
   p_reason TEXT DEFAULT NULL
@@ -26,7 +26,7 @@ DECLARE
   v_original_sale transactions%ROWTYPE;
   v_creator_id UUID;
 BEGIN
-  -- Find the original sale by stripe charge ID
+  -- Find the original sale by processor charge ID
   SELECT * INTO v_original_sale
   FROM transactions
   WHERE ledger_id = p_ledger_id
@@ -58,13 +58,13 @@ BEGIN
     -p_amount_cents,
     -p_amount_cents,
     0,
-    p_stripe_refund_id,
+    p_processor_refund_id,
     jsonb_build_object(
       'original_charge_id', p_original_charge_id,
       'original_transaction_id', v_original_sale.id,
       'reason', COALESCE(p_reason, 'requested_by_customer')
     ),
-    'Stripe refund: ' || COALESCE(p_reason, 'Customer refund')
+    'processor refund: ' || COALESCE(p_reason, 'Customer refund')
   )
   RETURNING id INTO v_transaction_id;
 
@@ -187,7 +187,7 @@ BEGIN
   FROM pg_proc p
   JOIN pg_namespace n ON p.pronamespace = n.oid
   WHERE n.nspname = 'public'
-    AND p.proname IN ('process_stripe_refund', 'process_automatic_releases')
+    AND p.proname IN ('process_processor_refund', 'process_automatic_releases')
     AND p.proconfig IS NOT NULL
     AND 'search_path=public' = ANY(p.proconfig);
 

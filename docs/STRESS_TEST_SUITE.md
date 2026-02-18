@@ -39,7 +39,7 @@ describe('Bank Feed Amount Mismatch', () => {
     const bankTx = {
       id: 'bank_001',
       amount: 9950, // $99.50 (bank may have deducted fee)
-      description: 'STRIPE TRANSFER',
+      description: 'PROCESSOR TRANSFER',
       date: new Date().toISOString(),
     }
 

@@ -159,23 +159,23 @@ export async function sendWelcomeEmail({
 // Free Plan Billing Reminder Email
 // ════════════════════════════════════════════════════════════════════════════
 
-interface SendTrialEndingEmailParams {
+interface SendBillingReminderEmailParams {
   to: string
   orgName: string
   daysLeft: number
 }
 
-export async function sendTrialEndingEmail({
+export async function sendBillingReminderEmail({
   to,
   orgName,
   daysLeft,
-}: SendTrialEndingEmailParams): Promise<EmailResult> {
+}: SendBillingReminderEmailParams): Promise<EmailResult> {
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
       Billing reminder for ${orgName}
     </h1>
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
-      Soledgic starts free with one included ledger. Additional ledgers are billed at $20/month each, and payment processing fees apply.
+      Soledgic starts free with one included ledger and one included team member. Additional ledgers and additional team members are billed at $20/month each, and payment processing fees apply.
     </p>
     <a href="${APP_URL}/billing" style="${buttonStyle}">
       View Billing
@@ -194,7 +194,7 @@ export async function sendTrialEndingEmail({
     })
     return { success: true }
   } catch (err: any) {
-    console.error('Failed to send trial ending email:', err.message)
+    console.error('Failed to send billing reminder email:', err.message)
     return { success: false, error: err.message }
   }
 }

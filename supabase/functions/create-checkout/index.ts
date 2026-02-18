@@ -1,7 +1,7 @@
 // Soledgic Edge Function: Create Checkout
 // POST /create-checkout
-// Creates a Stripe PaymentIntent and returns client_secret for frontend checkout
-// This is the ENTRY POINT for payment flows - Booklyverse calls this, NOT Stripe directly
+// Creates a provider-backed checkout payment (processor-first).
+// This is the ENTRY POINT for payment flows.
 // SECURITY HARDENED VERSION
 
 import {
@@ -16,7 +16,10 @@ import {
   createAuditLogAsync,
   sanitizeForAudit
 } from '../_shared/utils.ts'
-import { getStripeSecretKey, getPaymentProvider } from '../_shared/payment-provider.ts'
+import {
+  getPaymentProvider,
+  type PaymentProviderName,
+} from '../_shared/payment-provider.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // ============================================================================
@@ -31,22 +34,32 @@ interface CreateCheckoutRequest {
   // Optional
   currency?: string           // Default: USD
   product_id?: string         // For tracking
-  product_name?: string       // Human-readable, appears on Stripe receipt
-  customer_email?: string     // Pre-fill Stripe checkout
+  product_name?: string       // Human-readable descriptor
+  customer_email?: string     // Customer email for provider receipt metadata
   customer_id?: string        // Your platform's customer ID
   
   // Advanced
   capture_method?: 'automatic' | 'manual'  // Default: automatic
   setup_future_usage?: 'off_session' | 'on_session'  // For saving cards
+  // Payment method (buyer instrument) for charge-side flows.
+  // NOTE: `source_id` is accepted as a backwards-compatible alias.
+  payment_method_id?: string
+  source_id?: string
   
   // Pass-through
-  metadata?: Record<string, string>  // Additional metadata (limited to strings by Stripe)
+  metadata?: Record<string, string>  // Additional metadata
 }
 
 interface CreateCheckoutResponse {
   success: boolean
-  client_secret: string
+  provider: PaymentProviderName
+  payment_id: string
+  // Backward-compat alias retained for existing clients.
   payment_intent_id: string
+  client_secret?: string | null
+  checkout_url?: string | null
+  status?: string | null
+  requires_action?: boolean
   amount: number
   currency: string
   
@@ -59,7 +72,10 @@ interface CreateCheckoutResponse {
   }
 }
 
-// Stripe API helpers moved to _shared/payment-provider.ts
+interface OrganizationSettings {
+  // Reserved for future org-level payment preferences. Soledgic runs as a shared merchant.
+  payments?: Record<string, unknown> | null
+}
 
 // ============================================================================
 // SPLIT CALCULATION
@@ -128,6 +144,22 @@ async function getCreatorSplit(
   return 80
 }
 
+async function getOrganizationSettings(
+  supabase: SupabaseClient,
+  organizationId?: string
+): Promise<OrganizationSettings | null> {
+  if (!organizationId) return null
+
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('settings')
+    .eq('id', organizationId)
+    .maybeSingle()
+
+  if (error || !data?.settings) return null
+  return data.settings as OrganizationSettings
+}
+
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -149,7 +181,7 @@ const handler = createHandler(
       return errorResponse('Invalid amount: must be a positive integer (cents)', 400, req, requestId)
     }
     
-    // Stripe minimum is 50 cents for most currencies
+    // Processor minimum for this flow is 50 cents.
     if (amount < 50) {
       return errorResponse('Amount must be at least 50 cents', 400, req, requestId)
     }
@@ -172,7 +204,18 @@ const handler = createHandler(
     const productName = body.product_name ? validateString(body.product_name, 200) : null
     const customerEmail = body.customer_email ? validateEmail(body.customer_email) : null
     const customerId = body.customer_id ? validateId(body.customer_id, 100) : null
-    
+    const paymentMethodIdRaw = body.payment_method_id || body.source_id || null
+    const paymentMethodId = paymentMethodIdRaw ? validateString(paymentMethodIdRaw, 200) : null
+    if (!paymentMethodId) {
+      return errorResponse('payment_method_id is required', 400, req, requestId)
+    }
+
+    // Merchant-of-record invariant: never allow per-request merchant overrides.
+    const merchantOverride = typeof (body as any)?.merchant_id === 'string' ? String((body as any).merchant_id).trim() : ''
+    if (merchantOverride.length > 0) {
+      return errorResponse('merchant_id is not allowed', 400, req, requestId)
+    }
+
     // Validate capture_method if provided
     if (body.capture_method && !['automatic', 'manual'].includes(body.capture_method)) {
       return errorResponse('Invalid capture_method: must be automatic or manual', 400, req, requestId)
@@ -184,15 +227,11 @@ const handler = createHandler(
     }
     
     // ========================================================================
-    // GET STRIPE KEY
+    // RESOLVE PROVIDER (processor-first)
     // ========================================================================
-    
-    const stripeKey = await getStripeSecretKey(supabase, ledger.id)
-    if (!stripeKey) {
-      return errorResponse('Stripe not configured for this ledger', 500, req, requestId)
-    }
 
-    const provider = getPaymentProvider('stripe', stripeKey)
+    // Soledgic runs as a shared merchant. Charge provider is platform-managed.
+    const provider = getPaymentProvider('card')
     
     // ========================================================================
     // CALCULATE SPLIT (for breakdown in response)
@@ -203,7 +242,7 @@ const handler = createHandler(
     const platformAmount = amount - creatorAmount
     
     // ========================================================================
-    // CREATE STRIPE PAYMENT INTENT
+    // CREATE PAYMENT
     // ========================================================================
     
     // Build description
@@ -211,48 +250,65 @@ const handler = createHandler(
       ? `${productName}` 
       : `Purchase from ${(ledger.settings as any)?.platform_name || ledger.business_name}`
     
-    // Build metadata - this is CRITICAL for webhook processing
-    // The stripe-webhook handler uses these to route the payment
-    const stripeMetadata: Record<string, string> = {
+    // Build metadata used by provider-side records and downstream webhooks.
+    const checkoutMetadata: Record<string, string> = {
       ledger_id: ledger.id,
       creator_id: creatorId,
       soledgic_request_id: requestId,
+      checkout_provider: 'card',
     }
     
-    if (productId) stripeMetadata.product_id = productId
-    if (productName) stripeMetadata.product_name = productName
-    if (customerId) stripeMetadata.customer_id = customerId
-    
+    if (productId) checkoutMetadata.product_id = productId
+    if (productName) checkoutMetadata.product_name = productName
+    if (customerId) checkoutMetadata.customer_id = customerId
     // Pass through any additional metadata (sanitized)
     if (body.metadata) {
       for (const [key, value] of Object.entries(body.metadata)) {
-        // Stripe metadata keys must be <= 40 chars, values <= 500 chars
         const safeKey = validateId(key, 40)
         const safeValue = typeof value === 'string' ? value.substring(0, 500) : String(value).substring(0, 500)
         if (safeKey && safeValue) {
-          stripeMetadata[safeKey] = safeValue
+          checkoutMetadata[safeKey] = safeValue
         }
       }
     }
     
-    const stripeResult = await provider.createPaymentIntent({
+    const checkoutResult = await provider.createPaymentIntent({
       amount,
       currency,
-      metadata: stripeMetadata,
+      metadata: checkoutMetadata,
       description,
       receipt_email: customerEmail || undefined,
       capture_method: body.capture_method,
       setup_future_usage: body.setup_future_usage,
+      payment_method_id: paymentMethodId,
     })
 
-    if (!stripeResult.success || !stripeResult.id) {
-      console.error(`[${requestId}] Stripe PaymentIntent creation failed:`, stripeResult.error)
-      return errorResponse('Failed to create payment', 500, req, requestId)
+    if (!checkoutResult.success || !checkoutResult.id) {
+      console.error(`[${requestId}] Checkout creation failed:`, {
+        provider: 'card',
+        error: checkoutResult.error,
+      })
+
+      const isProviderConfigError =
+        (checkoutResult.error || '').toLowerCase().includes('no payment method') ||
+        (checkoutResult.error || '').toLowerCase().includes('no destination') ||
+        (checkoutResult.error || '').toLowerCase().includes('configured') ||
+        (checkoutResult.error || '').toLowerCase().includes('disabled')
+
+      return errorResponse(
+        checkoutResult.error || 'Failed to create payment',
+        isProviderConfigError ? 400 : 500,
+        req,
+        requestId
+      )
     }
 
-    const paymentIntent = {
-      id: stripeResult.id,
-      client_secret: stripeResult.client_secret,
+    const checkoutPayment = {
+      id: checkoutResult.id,
+      client_secret: checkoutResult.client_secret || null,
+      checkout_url: checkoutResult.redirect_url || null,
+      status: checkoutResult.status || null,
+      requires_action: Boolean(checkoutResult.requires_action),
     }
     
     // ========================================================================
@@ -262,8 +318,8 @@ const handler = createHandler(
     createAuditLogAsync(supabase, req, {
       ledger_id: ledger.id,
       action: 'checkout_created',
-      entity_type: 'payment_intent',
-      entity_id: paymentIntent.id,
+      entity_type: 'payment_transfer',
+      entity_id: checkoutPayment.id,
       actor_type: 'api',
       request_body: sanitizeForAudit({
         amount,
@@ -271,6 +327,7 @@ const handler = createHandler(
         creator_id: creatorId,
         product_id: productId,
         creator_percent: creatorPercent,
+        provider: 'card',
       }),
       response_status: 200,
       risk_score: 10,
@@ -282,8 +339,13 @@ const handler = createHandler(
     
     const response: CreateCheckoutResponse = {
       success: true,
-      client_secret: paymentIntent.client_secret,
-      payment_intent_id: paymentIntent.id,
+      provider: 'card',
+      payment_id: checkoutPayment.id,
+      payment_intent_id: checkoutPayment.id,
+      client_secret: checkoutPayment.client_secret,
+      checkout_url: checkoutPayment.checkout_url,
+      status: checkoutPayment.status,
+      requires_action: checkoutPayment.requires_action,
       amount: amount,
       currency: currency,
       breakdown: {

@@ -22,11 +22,17 @@ fi
 API_URL="${SOLEDGIC_API_URL:-https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1}"
 API_KEY="${SOLEDGIC_API_KEY:-}"
 # Supabase anon key - required to access Edge Functions
-SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9janJjc21vZWlreGZvb2VnbGt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQ4MjA4ODEsImV4cCI6MjA1MDM5Njg4MX0.DzRfAGVDxBPiKjqSlhBqVKziLvGFsyCoPVNfcBLmqrU}"
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-}"
 
 if [[ -z "$API_KEY" ]]; then
   echo "⚠️  No API key found!"
   echo "   Create test-data/api-keys.env or set SOLEDGIC_API_KEY"
+  exit 1
+fi
+
+if [[ -z "$SUPABASE_ANON_KEY" ]]; then
+  echo "⚠️  Missing SUPABASE_ANON_KEY!"
+  echo "   Set SUPABASE_ANON_KEY to your project's anon key."
   exit 1
 fi
 

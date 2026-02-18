@@ -289,8 +289,8 @@ In case of conflict between this DPA and the Agreement, this DPA prevails regard
 | Sub-processor | Location | Purpose |
 |---------------|----------|---------|
 | Supabase, Inc. | USA | Database hosting and authentication |
-| Stripe, Inc. | USA | Payment processing integration |
-| Plaid, Inc. | USA | Bank account connectivity |
+| Payment Processor, Inc. | USA | Payment processing integration |
+| Bank Feed, Inc. | USA | Bank account connectivity |
 | Resend, Inc. | USA | Transactional email delivery |
 | Vercel, Inc. | USA | Web application hosting |
 

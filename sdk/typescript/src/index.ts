@@ -22,6 +22,27 @@ export interface RecordSaleRequest {
   transactionDate?: string // For backdated entries
 }
 
+export type CheckoutProvider = 'card'
+
+export interface CreateCheckoutRequest {
+  amount: number
+  creatorId: string
+  currency?: string
+  productId?: string
+  productName?: string
+  customerEmail?: string
+  customerId?: string
+  captureMethod?: 'automatic' | 'manual'
+  setupFutureUsage?: 'off_session' | 'on_session'
+  // The active checkout provider is the whitelabeled card processor.
+  paymentProvider?: CheckoutProvider
+  /** Buyer payment method / payment instrument id (required). */
+  paymentMethodId?: string
+  /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
+  sourceId?: string
+  metadata?: Record<string, string>
+}
+
 export interface RecordIncomeRequest {
   referenceId: string
   amount: number
@@ -299,6 +320,27 @@ export interface SaleResponse {
   }
 }
 
+export interface CheckoutBreakdown {
+  grossAmount: number
+  creatorAmount: number
+  platformAmount: number
+  creatorPercent: number
+}
+
+export interface CreateCheckoutResponse {
+  success: boolean
+  provider: CheckoutProvider
+  paymentId: string
+  paymentIntentId: string
+  clientSecret?: string | null
+  checkoutUrl?: string | null
+  status?: string | null
+  requiresAction: boolean
+  amount: number
+  currency: string
+  breakdown?: CheckoutBreakdown
+}
+
 export interface ReverseResponse {
   success: boolean
   voidType: 'soft_delete' | 'reversing_entry'
@@ -383,6 +425,46 @@ export class Soledgic {
   }
 
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
+
+  async createCheckout(req: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {
+    const response = await this.request<any>('create-checkout', {
+      amount: req.amount,
+      creator_id: req.creatorId,
+      currency: req.currency,
+      product_id: req.productId,
+      product_name: req.productName,
+      customer_email: req.customerEmail,
+      customer_id: req.customerId,
+      capture_method: req.captureMethod,
+      setup_future_usage: req.setupFutureUsage,
+      payment_method_id: req.paymentMethodId,
+      source_id: req.sourceId,
+      metadata: req.metadata,
+    })
+
+    const breakdown = response.breakdown
+      ? {
+          grossAmount: response.breakdown.gross_amount,
+          creatorAmount: response.breakdown.creator_amount,
+          platformAmount: response.breakdown.platform_amount,
+          creatorPercent: response.breakdown.creator_percent,
+        }
+      : undefined
+
+    return {
+      success: Boolean(response.success),
+      provider: response.provider,
+      paymentId: response.payment_id ?? response.payment_intent_id,
+      paymentIntentId: response.payment_intent_id ?? response.payment_id,
+      clientSecret: response.client_secret ?? null,
+      checkoutUrl: response.checkout_url ?? null,
+      status: response.status ?? null,
+      requiresAction: Boolean(response.requires_action),
+      amount: response.amount,
+      currency: response.currency,
+      breakdown,
+    }
+  }
 
   async recordSale(req: RecordSaleRequest): Promise<SaleResponse> {
     return this.request('record-sale', {
@@ -743,7 +825,7 @@ export class Soledgic {
     return this.request('execute-payout', { action: 'list_rails' })
   }
 
-  async configurePayoutRail(rail: 'finix' | 'stripe_connect' | 'plaid_transfer' | 'wise' | 'manual' | 'crypto', config: {
+  async configurePayoutRail(rail: 'card' | 'wise' | 'manual' | 'crypto', config: {
     enabled: boolean
     credentials?: Record<string, string>
     settings?: Record<string, any>
@@ -1062,81 +1144,6 @@ export class Soledgic {
     return this.request('import-transactions', {
       action: 'save_template',
       template,
-    })
-  }
-
-  // === STRIPE RECONCILIATION ===
-
-  async listStripeTransactions() {
-    return this.request('stripe', { action: 'list_transactions' })
-  }
-
-  async listStripeEvents() {
-    return this.request('stripe', { action: 'list_events' })
-  }
-
-  async getStripeReconciliationSummary() {
-    return this.request('stripe', { action: 'get_summary' })
-  }
-
-  async matchStripeTransaction(stripeTransactionId: string, ledgerTransactionId: string) {
-    return this.request('stripe', {
-      action: 'match',
-      stripe_transaction_id: stripeTransactionId,
-      ledger_transaction_id: ledgerTransactionId,
-    })
-  }
-
-  async unmatchStripeTransaction(stripeTransactionId: string) {
-    return this.request('stripe', {
-      action: 'unmatch',
-      stripe_transaction_id: stripeTransactionId,
-    })
-  }
-
-  async excludeStripeTransaction(stripeTransactionId: string) {
-    return this.request('stripe', {
-      action: 'exclude',
-      stripe_transaction_id: stripeTransactionId,
-    })
-  }
-
-  async markStripeTransactionReviewed(stripeTransactionId: string) {
-    return this.request('stripe', {
-      action: 'mark_reviewed',
-      stripe_transaction_id: stripeTransactionId,
-    })
-  }
-
-  async restoreStripeTransaction(stripeTransactionId: string) {
-    return this.request('stripe', {
-      action: 'restore',
-      stripe_transaction_id: stripeTransactionId,
-    })
-  }
-
-  async reprocessStripeEvent(eventId: string) {
-    return this.request('stripe', {
-      action: 'reprocess_event',
-      event_id: eventId,
-    })
-  }
-
-  // === PAYOUT ↔ BANK RECONCILIATION ===
-
-  async matchPayoutsToBank() {
-    return this.request('stripe', { action: 'match_payouts_to_bank' })
-  }
-
-  async getPayoutReconciliation() {
-    return this.request('stripe', { action: 'get_payout_reconciliation' })
-  }
-
-  async linkPayoutToBank(stripeTransactionId: string, bankTransactionId: string) {
-    return this.request('stripe', {
-      action: 'link_payout_to_bank',
-      stripe_transaction_id: stripeTransactionId,
-      bank_transaction_id: bankTransactionId,
     })
   }
 

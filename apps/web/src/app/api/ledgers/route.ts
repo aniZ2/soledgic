@@ -5,6 +5,11 @@ import { getLivemode } from '@/lib/livemode-server'
 import { ACTIVE_LEDGER_GROUP_COOKIE } from '@/lib/livemode'
 import { canCreateLiveLedger } from '@/lib/entitlements'
 import { sendSecurityAlertEmail } from '@/lib/email'
+import { createHash } from 'crypto'
+
+function hashApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex')
+}
 
 // POST /api/ledgers - Create a new ledger (paired test + live)
 export const POST = createApiHandler(
@@ -108,8 +113,8 @@ export const POST = createApiHandler(
     const { data: ledgers, error: ledgerError } = await supabase
       .from('ledgers')
       .insert([
-        { ...sharedFields, api_key: testApiKey, livemode: false },
-        { ...sharedFields, api_key: liveApiKey, livemode: true },
+        { ...sharedFields, api_key_hash: hashApiKey(testApiKey), livemode: false },
+        { ...sharedFields, api_key_hash: hashApiKey(liveApiKey), livemode: true },
       ])
       .select()
 
@@ -119,6 +124,41 @@ export const POST = createApiHandler(
         { error: 'Failed to create ledger. Please try again.' },
         { status: 500 }
       )
+    }
+
+    // Best-effort API key registry (hash-only metadata for previews/rotation history)
+    try {
+      const testLedger = ledgers?.find((l) => l.livemode === false)
+      const liveLedger = ledgers?.find((l) => l.livemode === true)
+      const rows: Array<Record<string, unknown>> = []
+
+      if (testLedger?.id) {
+        rows.push({
+          ledger_id: testLedger.id,
+          name: 'Default Test Key',
+          key_hash: hashApiKey(testApiKey),
+          key_prefix: testApiKey.slice(0, 12),
+          scopes: ['read', 'write', 'admin'],
+          created_by: user!.id,
+        })
+      }
+
+      if (liveLedger?.id) {
+        rows.push({
+          ledger_id: liveLedger.id,
+          name: 'Default Live Key',
+          key_hash: hashApiKey(liveApiKey),
+          key_prefix: liveApiKey.slice(0, 12),
+          scopes: ['read', 'write', 'admin'],
+          created_by: user!.id,
+        })
+      }
+
+      if (rows.length > 0) {
+        await supabase.from('api_keys').insert(rows)
+      }
+    } catch {
+      // Non-blocking: key registry table may be unavailable in some environments.
     }
 
     // Send security alert for new API keys (non-blocking)
@@ -180,7 +220,7 @@ export const GET = createApiHandler(
     // Get ledgers for those organizations, filtered by mode
     const { data: ledgers, error } = await supabase
       .from('ledgers')
-      .select('*')
+      .select('id, organization_id, business_name, status, livemode, ledger_group_id, settings, created_at')
       .in('organization_id', orgIds)
       .eq('livemode', livemode)
       .order('created_at', { ascending: false })

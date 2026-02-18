@@ -1,5 +1,5 @@
 -- Soledgic: Critical Security Hardening
--- Fixes: Plaid token encryption, API key cleanup, RLS policy hardening
+-- Fixes: bank_aggregator token encryption, API key cleanup, RLS policy hardening
 -- Run this migration AFTER backing up your database
 
 -- ============================================================================
@@ -9,15 +9,15 @@
 CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA vault;
 
 -- ============================================================================
--- 2. PLAID TOKEN ENCRYPTION VIA VAULT
+-- 2. bank_aggregator TOKEN ENCRYPTION VIA VAULT
 -- ============================================================================
 
 -- Add vault reference column
-ALTER TABLE plaid_connections 
+ALTER TABLE bank_aggregator_connections 
   ADD COLUMN IF NOT EXISTS access_token_vault_id UUID;
 
 -- Create a function to store token in vault and return the secret ID
-CREATE OR REPLACE FUNCTION store_plaid_token_in_vault(
+CREATE OR REPLACE FUNCTION store_bank_aggregator_token_in_vault(
   p_connection_id UUID,
   p_access_token TEXT
 ) RETURNS UUID AS $$
@@ -25,30 +25,30 @@ DECLARE
   v_vault_id UUID;
   v_secret_name TEXT;
 BEGIN
-  v_secret_name := 'plaid_token_' || p_connection_id::TEXT;
+  v_secret_name := 'bank_aggregator_token_' || p_connection_id::TEXT;
   
   -- Insert into vault
   INSERT INTO vault.secrets (name, secret, description)
   VALUES (
     v_secret_name,
     p_access_token,
-    'Plaid access token for connection ' || p_connection_id::TEXT
+    'bank_aggregator access token for connection ' || p_connection_id::TEXT
   )
   RETURNING id INTO v_vault_id;
   
   -- Update the connection with vault reference
-  UPDATE plaid_connections
+  UPDATE bank_aggregator_connections
   SET access_token_vault_id = v_vault_id,
       access_token = '[ENCRYPTED]' -- Mark as migrated but don't delete yet for safety
   WHERE id = p_connection_id;
   
   RETURN v_vault_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create a function to retrieve token from vault (for Edge Functions)
 -- SECURITY FIX: Properly handle marker strings from incomplete migrations
-CREATE OR REPLACE FUNCTION get_plaid_token_from_vault(p_connection_id UUID)
+CREATE OR REPLACE FUNCTION get_bank_aggregator_token_from_vault(p_connection_id UUID)
 RETURNS TEXT AS $
 DECLARE
   v_vault_id UUID;
@@ -56,13 +56,13 @@ DECLARE
 BEGIN
   -- Get vault ID from connection
   SELECT access_token_vault_id INTO v_vault_id
-  FROM plaid_connections
+  FROM bank_aggregator_connections
   WHERE id = p_connection_id;
   
   IF v_vault_id IS NULL THEN
     -- Fallback to plaintext for unmigrated connections
     SELECT access_token INTO v_token
-    FROM plaid_connections
+    FROM bank_aggregator_connections
     WHERE id = p_connection_id;
     
     -- SECURITY FIX: Reject marker strings from incomplete migrations
@@ -80,7 +80,7 @@ BEGIN
   
   RETURN v_token;
 END;
-$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Migrate existing plaintext tokens to vault
 DO $$
@@ -89,19 +89,19 @@ DECLARE
 BEGIN
   FOR conn IN 
     SELECT id, access_token 
-    FROM plaid_connections 
+    FROM bank_aggregator_connections 
     WHERE access_token IS NOT NULL 
       AND access_token != '[ENCRYPTED]'
       AND access_token_vault_id IS NULL
   LOOP
-    PERFORM store_plaid_token_in_vault(conn.id, conn.access_token);
-    RAISE NOTICE 'Migrated Plaid token for connection %', conn.id;
+    PERFORM store_bank_aggregator_token_in_vault(conn.id, conn.access_token);
+    RAISE NOTICE 'Migrated bank_aggregator token for connection %', conn.id;
   END LOOP;
 END;
 $$;
 
-COMMENT ON FUNCTION store_plaid_token_in_vault IS 'Securely store Plaid access token in Supabase Vault';
-COMMENT ON FUNCTION get_plaid_token_from_vault IS 'Retrieve Plaid access token from Vault (SECURITY DEFINER)';
+COMMENT ON FUNCTION store_bank_aggregator_token_in_vault IS 'Securely store bank_aggregator access token in Supabase Vault';
+COMMENT ON FUNCTION get_bank_aggregator_token_from_vault IS 'Retrieve bank_aggregator access token from Vault';
 
 -- ============================================================================
 -- 3. API KEY HASH ENFORCEMENT
@@ -149,7 +149,7 @@ BEGIN
   FROM ledgers l
   WHERE l.api_key_hash = v_hash;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION validate_api_key_secure IS 'Validate API key using hash comparison only - no plaintext';
 
@@ -163,11 +163,11 @@ DROP POLICY IF EXISTS "Webhook endpoints via API key" ON webhook_endpoints;
 -- Webhook deliveries  
 DROP POLICY IF EXISTS "Webhook deliveries via API key" ON webhook_deliveries;
 
--- Plaid connections
-DROP POLICY IF EXISTS "Plaid connections via API key" ON plaid_connections;
+-- bank_aggregator connections
+DROP POLICY IF EXISTS "bank_aggregator connections via API key" ON bank_aggregator_connections;
 
--- Plaid transactions
-DROP POLICY IF EXISTS "Plaid transactions via API key" ON plaid_transactions;
+-- bank_aggregator transactions
+DROP POLICY IF EXISTS "bank_aggregator transactions via API key" ON bank_aggregator_transactions;
 
 -- Auto match rules
 DROP POLICY IF EXISTS "Auto match rules via API key" ON auto_match_rules;
@@ -175,14 +175,14 @@ DROP POLICY IF EXISTS "Auto match rules via API key" ON auto_match_rules;
 -- Import templates
 DROP POLICY IF EXISTS "Import templates via API key" ON import_templates;
 
--- Stripe events
-DROP POLICY IF EXISTS "API key access stripe_events" ON stripe_events;
+-- processor events
+DROP POLICY IF EXISTS "API key access processor_events" ON processor_events;
 
--- Stripe transactions
-DROP POLICY IF EXISTS "API key access stripe_transactions" ON stripe_transactions;
+-- processor transactions
+DROP POLICY IF EXISTS "API key access processor_transactions" ON processor_transactions;
 
--- Stripe balance snapshots
-DROP POLICY IF EXISTS "API key access stripe_balance_snapshots" ON stripe_balance_snapshots;
+-- processor balance snapshots
+DROP POLICY IF EXISTS "API key access processor_balance_snapshots" ON processor_balance_snapshots;
 
 -- Health check results
 DROP POLICY IF EXISTS "API key access health_check_results" ON health_check_results;
@@ -215,9 +215,9 @@ CREATE POLICY "Webhook deliveries via org membership"
     )
   );
 
--- Plaid connections
-CREATE POLICY "Plaid connections via org membership"
-  ON plaid_connections FOR ALL
+-- bank_aggregator connections
+CREATE POLICY "bank_aggregator connections via org membership"
+  ON bank_aggregator_connections FOR ALL
   USING (
     ledger_id IN (
       SELECT l.id FROM ledgers l
@@ -227,9 +227,9 @@ CREATE POLICY "Plaid connections via org membership"
     )
   );
 
--- Plaid transactions
-CREATE POLICY "Plaid transactions via org membership"
-  ON plaid_transactions FOR ALL
+-- bank_aggregator transactions
+CREATE POLICY "bank_aggregator transactions via org membership"
+  ON bank_aggregator_transactions FOR ALL
   USING (
     ledger_id IN (
       SELECT l.id FROM ledgers l
@@ -269,12 +269,12 @@ BEGIN
 END;
 $$;
 
--- Stripe events (if table exists)
+-- processor events (if table exists)
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'stripe_events') THEN
-    EXECUTE 'CREATE POLICY "Stripe events via org membership"
-      ON stripe_events FOR ALL
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'processor_events') THEN
+    EXECUTE 'CREATE POLICY "processor events via org membership"
+      ON processor_events FOR ALL
       USING (
         ledger_id IN (
           SELECT l.id FROM ledgers l
@@ -287,12 +287,12 @@ BEGIN
 END;
 $$;
 
--- Stripe transactions (if table exists)
+-- processor transactions (if table exists)
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'stripe_transactions') THEN
-    EXECUTE 'CREATE POLICY "Stripe transactions via org membership"
-      ON stripe_transactions FOR ALL
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'processor_transactions') THEN
+    EXECUTE 'CREATE POLICY "processor transactions via org membership"
+      ON processor_transactions FOR ALL
       USING (
         ledger_id IN (
           SELECT l.id FROM ledgers l
@@ -305,12 +305,12 @@ BEGIN
 END;
 $$;
 
--- Stripe balance snapshots (if table exists)
+-- processor balance snapshots (if table exists)
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'stripe_balance_snapshots') THEN
-    EXECUTE 'CREATE POLICY "Stripe balance snapshots via org membership"
-      ON stripe_balance_snapshots FOR ALL
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'processor_balance_snapshots') THEN
+    EXECUTE 'CREATE POLICY "processor balance snapshots via org membership"
+      ON processor_balance_snapshots FOR ALL
       USING (
         ledger_id IN (
           SELECT l.id FROM ledgers l

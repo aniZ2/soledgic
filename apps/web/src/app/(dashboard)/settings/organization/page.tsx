@@ -58,7 +58,7 @@ export default function OrganizationSettingsPage() {
 
   const loadOrganization = async () => {
     const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession(); const user = session?.user
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
       router.push('/login')
