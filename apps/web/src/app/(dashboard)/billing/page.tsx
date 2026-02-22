@@ -58,6 +58,9 @@ interface BillingSummaryResponse {
       last_attempt_at: string | null
       processor_payment_id: string | null
       error: string | null
+      next_retry_at?: string | null
+      retries_remaining?: number
+      dunning_exhausted?: boolean
     } | null
   }
   is_owner: boolean
@@ -419,8 +422,24 @@ export default function BillingPage() {
                         {formatCurrency(billing.last_charge.amount_cents)}
                       </span>
                     </div>
+                    {typeof billing.last_charge.attempts === 'number' ? (
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-muted-foreground">Attempts</span>
+                        <span className="text-foreground">{billing.last_charge.attempts} / 3</span>
+                      </div>
+                    ) : null}
                     {billing.last_charge.error ? (
                       <p className="mt-3 text-xs text-destructive">{billing.last_charge.error}</p>
+                    ) : null}
+                    {billing.last_charge.status === 'failed' &&
+                    typeof billing.last_charge.retries_remaining === 'number' &&
+                    billing.last_charge.retries_remaining > 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Automatic retry in progress.
+                        {billing.last_charge.next_retry_at
+                          ? ` Next retry: ${formatDate(billing.last_charge.next_retry_at)}.`
+                          : ''}
+                      </p>
                     ) : null}
                   </div>
                 ) : (

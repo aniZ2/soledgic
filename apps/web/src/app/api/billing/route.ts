@@ -3,6 +3,9 @@ import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
 import { PLANS } from '@/lib/plans'
 
+const DUNNING_RETRY_SCHEDULE_DAYS = [0, 3, 7] as const
+const MAX_DUNNING_ATTEMPTS = DUNNING_RETRY_SCHEDULE_DAYS.length
+
 interface BillingRequest {
   action:
     | 'get_subscription'
@@ -54,6 +57,41 @@ function currentBillingPeriodUtc() {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0))
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0))
   return { start, end }
+}
+
+function parseIsoTime(value: unknown): Date | null {
+  if (typeof value !== 'string' || value.trim().length === 0) return null
+  const d = new Date(value)
+  return Number.isFinite(d.getTime()) ? d : null
+}
+
+function retryDelayDaysAfterAttempt(attemptsCompleted: number): number | null {
+  const nextAttemptIndex = attemptsCompleted
+  if (nextAttemptIndex < 0 || nextAttemptIndex >= DUNNING_RETRY_SCHEDULE_DAYS.length) return null
+
+  const previousAttemptIndex = Math.max(0, nextAttemptIndex - 1)
+  const delay =
+    DUNNING_RETRY_SCHEDULE_DAYS[nextAttemptIndex] -
+    DUNNING_RETRY_SCHEDULE_DAYS[previousAttemptIndex]
+  return delay >= 0 ? delay : null
+}
+
+function computeNextRetryAt(
+  attemptsCompleted: number,
+  lastAttemptAtIso: string | null
+): string | null {
+  const delayDays = retryDelayDaysAfterAttempt(attemptsCompleted)
+  if (delayDays === null) return null
+
+  const last = parseIsoTime(lastAttemptAtIso)
+  if (!last) return null
+
+  const next = new Date(last.getTime() + delayDays * 24 * 60 * 60 * 1000)
+  return next.toISOString()
+}
+
+function retriesRemainingAfterAttempt(attemptNumber: number): number {
+  return Math.max(0, MAX_DUNNING_ATTEMPTS - attemptNumber)
 }
 
 export const POST = createApiHandler(
@@ -204,6 +242,15 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       .maybeSingle()
 
     lastCharge = charge || null
+    if (lastCharge && String(lastCharge.status || '').toLowerCase() === 'failed') {
+      const attempts =
+        typeof lastCharge.attempts === 'number' && Number.isFinite(lastCharge.attempts)
+          ? Math.max(0, Math.trunc(lastCharge.attempts))
+          : 0
+      lastCharge.retries_remaining = retriesRemainingAfterAttempt(attempts)
+      lastCharge.next_retry_at = computeNextRetryAt(attempts, lastCharge.last_attempt_at || null)
+      lastCharge.dunning_exhausted = attempts >= MAX_DUNNING_ATTEMPTS
+    }
   }
 
   let creators = 0
@@ -281,18 +328,18 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
 }
 
 async function handleGetPlans() {
-	  const plansList = Object.entries(PLANS).map(([id, config]) => ({
-	    id,
-	    name: config.name,
-	    price_monthly: config.price_monthly,
-	    max_ledgers: config.max_ledgers,
-	    max_team_members: config.max_team_members,
-	    overage_ledger_price_monthly: config.overage_ledger_price_monthly ?? 2000,
-	    overage_team_member_price_monthly: config.overage_team_member_price_monthly ?? 2000,
-	    features: config.features,
-	    price_id_monthly: null,
-	    contact_sales: config.contact_sales || false,
-	  }))
+  const plansList = Object.entries(PLANS).map(([id, config]) => ({
+    id,
+    name: config.name,
+    price_monthly: config.price_monthly,
+    max_ledgers: config.max_ledgers,
+    max_team_members: config.max_team_members,
+    overage_ledger_price_monthly: config.overage_ledger_price_monthly ?? 2000,
+    overage_team_member_price_monthly: config.overage_team_member_price_monthly ?? 2000,
+    features: config.features,
+    price_id_monthly: null,
+    contact_sales: config.contact_sales || false,
+  }))
 
   return NextResponse.json({ success: true, data: plansList })
 }
@@ -316,6 +363,8 @@ async function handleActivateFreePlan(org: Record<string, any>, planId?: string)
       trial_ends_at: null,
       max_ledgers: plan.max_ledgers,
       max_team_members: plan.max_team_members,
+      overage_ledger_price: plan.overage_ledger_price_monthly ?? 2000,
+      overage_team_member_price: plan.overage_team_member_price_monthly ?? 2000,
     })
     .eq('id', org.id)
 

@@ -1,124 +1,90 @@
 # Billing States & Enforcement
 
-Internal reference for how Soledgic handles subscription states, plan limits, and feature gating.
+Internal reference for Soledgic billing behavior in the shared-merchant model.
 
-Last updated: 2026-02-01
+Last updated: 2026-02-22
+
+---
+
+## Pricing model (active)
+
+Soledgic currently runs a single plan:
+
+- Base plan: `Free`
+- Included: `1` live ledger + `1` active team member
+- Overage: `$20/month` per additional live ledger
+- Overage: `$20/month` per additional active team member
+- Processing fees apply per transaction
+
+Overages are billed monthly in arrears.
 
 ---
 
 ## Organization billing states
 
-Every org has a `status` field set by Payment Processor webhooks:
+`organizations.status` is used for enforcement:
 
-| Status      | Meaning                                      | How it gets set                          |
-|-------------|----------------------------------------------|------------------------------------------|
-| `trialing`  | 14-day trial, no payment method required yet  | Org creation / checkout with trial       |
-| `active`    | Paid and current                              | Successful payment via webhook           |
-| `past_due`  | Payment failed, Payment Processor is retrying            | `invoice.payment_failed` webhook         |
-| `canceled`  | Subscription fully ended                      | `customer.subscription.deleted` webhook  |
+| Status     | Meaning | Enforcement impact |
+|------------|---------|--------------------|
+| `active`   | Billing healthy | Full access |
+| `past_due` | Overage charge retries exhausted | New paid-resource creation blocked |
+| `canceled` | Billing disabled/closed | New paid-resource creation blocked |
+| `trialing` | Legacy state; treated like active for current model | Full access |
 
-Note: `cancel_at_period_end` (user clicked "Cancel" but period hasn't ended) keeps `status = active` with a `cancel_at` timestamp. This is **not** the same as `canceled`.
+---
+
+## Dunning policy for monthly overages
+
+When a monthly overage charge fails:
+
+1. Attempt `#1` on day `0` (initial monthly run)
+2. Attempt `#2` on day `3`
+3. Attempt `#3` on day `7`
+
+Rules:
+
+- Org is **not** moved to `past_due` on attempts 1 or 2.
+- Org is moved to `past_due` only after attempt 3 fails.
+- A successful overage charge moves org back to `active`.
+
+Implementation:
+
+- Scheduler: `supabase/migrations/20260289_billing_overage_cron.sql`
+- Job: `supabase/functions/bill-overages/index.ts`
+- Claim/idempotency: `public.claim_overage_billing_charge(...)`
 
 ---
 
 ## Enforcement matrix
 
-| Status     | Read data | Write to existing ledgers | Create live ledgers      | Create test ledgers |
-|------------|-----------|---------------------------|--------------------------|---------------------|
-| `active`   | Yes       | Yes                       | Yes (within plan limit)  | Yes (spam cap only) |
-| `trialing` | Yes       | Yes                       | Yes (within plan limit)  | Yes (spam cap only) |
-| `past_due` | Yes       | Yes                       | **No** (402)             | Yes (spam cap only) |
-| `canceled` | Yes       | Yes                       | **No** (403)             | Yes (spam cap only) |
+| Status     | Read data | Write existing ledgers | Create live ledgers | Invite team members | Test mode |
+|------------|-----------|------------------------|---------------------|---------------------|-----------|
+| `active`   | Yes       | Yes                    | Yes                 | Yes                 | Yes       |
+| `trialing` | Yes       | Yes                    | Yes                 | Yes                 | Yes       |
+| `past_due` | Yes       | Yes                    | No                  | No                  | Yes       |
+| `canceled` | Yes       | Yes                    | No                  | No                  | Yes       |
 
-Design principles:
-- **Reads are never gated.** Users can always see their data.
-- **Existing writes are never gated.** A past-due org can still record transactions, pay creators, etc. We don't break running operations.
-- **New paid resource creation is gated.** Live ledgers are the billing unit. Blocking creation is the least disruptive enforcement.
-- **Test mode is ungated.** Developers can always experiment in test mode regardless of billing state.
+Design intent:
 
----
-
-## Plan limits
-
-| Plan     | Max live ledgers | Max team members | Price        |
-|----------|------------------|------------------|--------------|
-| Pro      | 3                | 1                | $49/month    |
-| Business | 10               | 10               | $249/month   |
-| Scale    | Unlimited (-1)   | Unlimited (-1)   | Custom       |
-
-`max_ledgers = -1` means unlimited (Scale plan). The limit check skips entirely when max is -1.
-
-### Over-limit vs at-limit
-
-- **At limit** (`count >= max`): Blocks creation of the *next* ledger. User sees the limit in the billing page usage stats.
-- **Over limit** (`count > max`): Happens after a downgrade (e.g., Business with 7 ledgers downgrades to Pro with max 3). Existing ledgers keep working. Only new creation is blocked. Dashboard shows a banner.
-
-We never auto-archive or delete ledgers on downgrade.
+- Reads are always allowed.
+- Existing operations are not blocked.
+- New paid-resource creation is gated (`live` ledger creation + team invitations).
+- Test mode remains available.
 
 ---
 
-## Where enforcement lives
+## Where checks live
 
-### Centralized helper: `src/lib/entitlements.ts`
-
-All "can the org do X?" logic lives here:
-
-- `canCreateLiveLedger(org)` — returns `{ allowed: true }` or `{ allowed: false, code, message, httpStatus }`
-- `isOverLedgerLimit(org)` — boolean for UI banners
-
-API routes call `canCreateLiveLedger()` and return the result directly. This keeps enforcement consistent and makes it easy to add new checks (e.g., `canAddTeamMember(org)` for team invitations).
-
-### API route: `src/app/api/ledgers/route.ts`
-
-POST handler calls `canCreateLiveLedger(org)` before creating the ledger pair. Returns the entitlement error as JSON with a structured `code` field for client-side handling.
-
-### Dashboard layout: `src/app/(dashboard)/layout.tsx`
-
-Shows sticky banners for `past_due`, `canceled`, and over-limit states. These are informational — they link to `/billing` but don't block navigation.
-
-### Billing page: `src/app/(dashboard)/billing/page.tsx`
-
-Shows detailed banners with action buttons:
-- `past_due`: "Update Payment Method" button opens Payment Processor portal
-- Over-limit: Explains what happened and suggests upgrade or archive
-- `canceled`: Red badge on the plan card, distinct from "Cancels [date]"
-
-### Billing API: `src/app/api/billing/route.ts`
-
-`get_subscription` response includes `max_ledgers` and `current_ledger_count` in the organization object so the billing page can render limit info without extra queries.
-
-### Payment Processor webhooks: `src/app/api/webhooks/processor/route.ts`
-
-Sets `org.status` based on Payment Processor events. This is the source of truth for billing state.
+- Ledger creation gating: `apps/web/src/lib/entitlements.ts` -> `canCreateLiveLedger`
+- Team invite gating: `apps/web/src/lib/entitlements.ts` -> `canAddTeamMember`
+- Billing summary + usage: `apps/web/src/app/api/billing/route.ts`
+- Billing method setup: `apps/web/src/app/api/billing-method/route.ts`
+- Billing dashboard: `apps/web/src/app/(dashboard)/billing/page.tsx`
 
 ---
 
-## HTTP status codes
+## Notes
 
-| Code | Used for          | Notes                                                    |
-|------|-------------------|----------------------------------------------------------|
-| 402  | `past_due`        | Semantically correct. If clients have trouble, 403 with `code: 'payment_past_due'` is an acceptable fallback. |
-| 403  | `canceled`, limit | Standard forbidden. Structured `code` field distinguishes reasons. |
-
-All error responses include a `code` field (e.g., `payment_past_due`, `subscription_canceled`, `ledger_limit_reached`) for programmatic handling.
-
----
-
-## What we intentionally don't do
-
-- **No middleware-level gating.** Billing checks happen in specific routes, not globally. Most routes (reads, existing writes) should never be gated.
-- **No auto-deletion on downgrade.** Ledgers are financial records. We block forward motion, never prune.
-- **No volume limits yet.** Transaction count, creator count, and API call volume are tracked but not enforced. Defer until pricing evidence justifies it.
-- **No `suspended` status.** Not in current scope. If added, it would block all writes (not just creation).
-- **Team member gating is enforced.** Invitations are blocked when past due, canceled, or over the plan limit via `canAddTeamMember(org)` in `src/lib/entitlements.ts`.
-
----
-
-## Future additions
-
-When adding a new gated feature:
-
-1. Add a check function to `src/lib/entitlements.ts` (e.g., `canAddTeamMember`)
-2. Call it in the relevant API route
-3. Add a banner to the billing page if the user is over the limit
-4. Update this doc
+- Workspace-level processor onboarding is disabled in shared-merchant mode.
+- Billing method is stored per organization for overage collection.
+- The job is idempotent per org+period via `billing_overage_charges` unique key.

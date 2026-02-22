@@ -120,16 +120,16 @@ Now present:
 
 **Note:** Verify email verification settings in Supabase and confirm password reset templates.
 
-### 2. Billing & Subscription
+### 2. Billing & Overage Charging
 **Priority: CRITICAL for monetization**
 **Status: Implemented in apps/web + /api/billing (as of 2026-02-01)**
 
 Now present:
-- Payment Processor subscription integration and billing portal
+- Shared-merchant billing method setup (no per-workspace processor account)
 - Plan enforcement for ledger and team member limits
 - Usage metering (transactions, API calls) surfaced in billing UI
-- Invoices and payment method management
-- Past-due handling and cancel/resume flows
+- Monthly overage charging for additional ledgers and team members
+- Dunning retries before `past_due` enforcement
 
 ### 3. Dashboard UI
 **Priority: HIGH for usability**
@@ -149,7 +149,7 @@ Now present:
 - `/settings/organization` - org name, timezone, danger zone
 - `/settings/webhooks` - endpoint config, test webhooks, delivery logs
 - `/settings/security` - security settings
-- `/billing` - Payment Processor subscription management
+- `/billing` - usage overage billing + billing method management
 
 ### 4. Webhook Delivery
 **Priority: MEDIUM**
@@ -320,11 +320,10 @@ Missing:
    - Add auth helpers to Next.js app
    - Create protected route middleware
 
-3. **Wire up Payment Processor billing** (2 days)
-   - Create Payment Processor products/prices
-   - Add checkout flow
-   - Add billing portal
-   - Enforce plan limits
+3. **Refine overage billing operations** (2 days)
+   - Improve dunning/retry observability
+   - Expand billing exports and invoice artifacts
+   - Keep docs/copy aligned with active free+overage model
 
 4. **Build dashboard skeleton** (2 days)
    - Transaction list page

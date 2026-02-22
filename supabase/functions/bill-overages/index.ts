@@ -17,6 +17,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Retry cadence for failed monthly overage charges.
+// Attempt 1: day 0 (initial monthly run)
+// Attempt 2: day 3
+// Attempt 3: day 7
+const DUNNING_RETRY_SCHEDULE_DAYS = [0, 3, 7] as const
+const MAX_DUNNING_ATTEMPTS = DUNNING_RETRY_SCHEDULE_DAYS.length
+
 function timingSafeEqualString(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let result = 0
@@ -59,6 +66,63 @@ function isValidDateOnly(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
 
+function asPositiveInt(value: unknown, fallback = 0): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  const v = Math.trunc(value)
+  return v >= 0 ? v : fallback
+}
+
+function parseIsoTime(value: unknown): Date | null {
+  if (typeof value !== 'string' || value.trim().length === 0) return null
+  const d = new Date(value)
+  return Number.isFinite(d.getTime()) ? d : null
+}
+
+function retryDelayDaysAfterAttempt(attemptsCompleted: number): number | null {
+  const nextAttemptIndex = attemptsCompleted
+  if (nextAttemptIndex < 0 || nextAttemptIndex >= DUNNING_RETRY_SCHEDULE_DAYS.length) return null
+
+  const previousAttemptIndex = Math.max(0, nextAttemptIndex - 1)
+  const delay =
+    DUNNING_RETRY_SCHEDULE_DAYS[nextAttemptIndex] -
+    DUNNING_RETRY_SCHEDULE_DAYS[previousAttemptIndex]
+  return delay >= 0 ? delay : null
+}
+
+function computeNextRetryAt(
+  attemptsCompleted: number,
+  lastAttemptAtIso: string | null
+): string | null {
+  const delayDays = retryDelayDaysAfterAttempt(attemptsCompleted)
+  if (delayDays === null) return null
+
+  const last = parseIsoTime(lastAttemptAtIso)
+  if (!last) return null
+
+  const next = new Date(last.getTime() + delayDays * 24 * 60 * 60 * 1000)
+  return next.toISOString()
+}
+
+function isRetryDueNow(
+  attemptsCompleted: number,
+  lastAttemptAtIso: string | null,
+  now: Date
+): boolean {
+  if (attemptsCompleted <= 0) return true
+  if (attemptsCompleted >= MAX_DUNNING_ATTEMPTS) return false
+
+  const nextRetryAt = computeNextRetryAt(attemptsCompleted, lastAttemptAtIso)
+  if (!nextRetryAt) return true
+
+  const next = parseIsoTime(nextRetryAt)
+  if (!next) return true
+  return next.getTime() <= now.getTime()
+}
+
+function retriesRemainingAfterAttempt(attemptNumber: number): number {
+  return Math.max(0, MAX_DUNNING_ATTEMPTS - attemptNumber)
+}
+
 interface BillOveragesRequest {
   period_start?: string
   period_end?: string
@@ -75,6 +139,13 @@ type OrgRow = {
   overage_ledger_price: number | null
   overage_team_member_price: number | null
   settings: any
+}
+
+type ExistingChargeRow = {
+  id: string
+  status: string | null
+  attempts: number | null
+  last_attempt_at: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -207,6 +278,89 @@ Deno.serve(async (req: Request) => {
         ? billingSettings.payment_method_id.trim()
         : null
 
+    // Load existing monthly charge state to enforce retry cadence and avoid
+    // claiming rows that are not due yet.
+    const { data: existingCharge, error: existingChargeError } = await supabase
+      .from('billing_overage_charges')
+      .select('id, status, attempts, last_attempt_at')
+      .eq('organization_id', org.id)
+      .eq('period_start', periodStart)
+      .maybeSingle()
+
+    if (existingChargeError) {
+      failed++
+      results.push({
+        organization_id: org.id,
+        status: 'error',
+        error: existingChargeError.message || 'Failed to load monthly billing charge',
+      })
+      continue
+    }
+
+    const existing = (existingCharge as ExistingChargeRow | null) || null
+    const existingStatus = String(existing?.status || '').toLowerCase()
+    const existingAttempts = asPositiveInt(existing?.attempts ?? 0, 0)
+    const existingLastAttemptAt = existing?.last_attempt_at || null
+
+    if (existingStatus === 'succeeded') {
+      skipped++
+      results.push({
+        organization_id: org.id,
+        status: 'skipped',
+        reason: 'already_succeeded',
+        period_start: periodStart,
+      })
+      continue
+    }
+
+    if (existingStatus === 'processing') {
+      skipped++
+      results.push({
+        organization_id: org.id,
+        status: 'skipped',
+        reason: 'already_processing',
+        period_start: periodStart,
+      })
+      continue
+    }
+
+    if (existingStatus === 'failed') {
+      if (existingAttempts >= MAX_DUNNING_ATTEMPTS) {
+        if (!dryRun && orgStatus !== 'past_due') {
+          await supabase
+            .from('organizations')
+            .update({ status: 'past_due' })
+            .eq('id', org.id)
+        }
+
+        skipped++
+        results.push({
+          organization_id: org.id,
+          status: dryRun ? 'dry_run' : 'skipped',
+          reason: 'dunning_exhausted',
+          attempts: existingAttempts,
+          retries_remaining: 0,
+          period_start: periodStart,
+          would_mark_past_due: dryRun ? true : undefined,
+        })
+        continue
+      }
+
+      if (!isRetryDueNow(existingAttempts, existingLastAttemptAt, now)) {
+        skipped++
+        results.push({
+          organization_id: org.id,
+          status: dryRun ? 'dry_run' : 'skipped',
+          reason: 'retry_not_due',
+          attempts: existingAttempts,
+          retries_remaining: retriesRemainingAfterAttempt(existingAttempts),
+          next_retry_at: computeNextRetryAt(existingAttempts, existingLastAttemptAt),
+          period_start: periodStart,
+        })
+        continue
+      }
+    }
+
     if (dryRun) {
       results.push({
         organization_id: org.id,
@@ -217,6 +371,8 @@ Deno.serve(async (req: Request) => {
         additional_team_members: additionalMembers,
         amount_cents: amountCents,
         billing_source_configured: Boolean(billingSourceId),
+        existing_charge_status: existingStatus || null,
+        existing_attempts: existingAttempts,
       })
       continue
     }
@@ -260,6 +416,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const chargeId = String((claimed as any).id || '')
+    const attemptNumber = asPositiveInt((claimed as any).attempts ?? 1, 1)
+    const claimedLastAttemptAt =
+      typeof (claimed as any).last_attempt_at === 'string'
+        ? (claimed as any).last_attempt_at
+        : new Date().toISOString()
+    const retriesRemaining = retriesRemainingAfterAttempt(attemptNumber)
+    const nextRetryAt = computeNextRetryAt(attemptNumber, claimedLastAttemptAt)
 
     if (!billingSourceId) {
       await supabase
@@ -271,10 +434,12 @@ Deno.serve(async (req: Request) => {
         })
         .eq('id', chargeId)
 
-      await supabase
-        .from('organizations')
-        .update({ status: 'past_due' })
-        .eq('id', org.id)
+      if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+        await supabase
+          .from('organizations')
+          .update({ status: 'past_due' })
+          .eq('id', org.id)
+      }
 
       failed++
       results.push({
@@ -282,6 +447,9 @@ Deno.serve(async (req: Request) => {
         status: 'failed',
         charge_id: chargeId,
         error: 'billing_method_not_configured',
+        attempts: attemptNumber,
+        retries_remaining: retriesRemaining,
+        next_retry_at: nextRetryAt,
       })
       continue
     }
@@ -297,12 +465,22 @@ Deno.serve(async (req: Request) => {
         })
         .eq('id', chargeId)
 
+      if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+        await supabase
+          .from('organizations')
+          .update({ status: 'past_due' })
+          .eq('id', org.id)
+      }
+
       failed++
       results.push({
         organization_id: org.id,
         status: 'failed',
         charge_id: chargeId,
         error: 'platform_billing_not_configured',
+        attempts: attemptNumber,
+        retries_remaining: retriesRemaining,
+        next_retry_at: nextRetryAt,
       })
       continue
     }
@@ -334,10 +512,12 @@ Deno.serve(async (req: Request) => {
         })
         .eq('id', chargeId)
 
-      await supabase
-        .from('organizations')
-        .update({ status: 'past_due' })
-        .eq('id', org.id)
+      if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+        await supabase
+          .from('organizations')
+          .update({ status: 'past_due' })
+          .eq('id', org.id)
+      }
 
       failed++
       results.push({
@@ -345,6 +525,9 @@ Deno.serve(async (req: Request) => {
         status: 'failed',
         charge_id: chargeId,
         error: checkout.error || 'processor_charge_failed',
+        attempts: attemptNumber,
+        retries_remaining: retriesRemaining,
+        next_retry_at: nextRetryAt,
       })
       continue
     }

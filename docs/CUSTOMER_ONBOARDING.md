@@ -15,7 +15,7 @@ Before onboarding, verify the customer meets these criteria:
 | Criteria | Requirement | Notes |
 |----------|-------------|-------|
 | Business Type | Creator platform, marketplace, or SaaS | Must have revenue splits or contractor payments |
-| Transaction Volume | 100-100,000/month | Starter to Growth plans |
+| Transaction Volume | 100-100,000/month | Free base plan + usage overages |
 | Technical Capability | Can integrate via API | REST API, webhooks |
 | Compliance Needs | 1099 reporting, audit trail | US-based or similar requirements |
 
@@ -431,43 +431,21 @@ Call agenda:
 
 ## 5. Pricing & Billing
 
-### Plan Tiers
+### Active Billing Model
 
-| Plan | Monthly Price | Transactions | Creators | Ledgers | Support |
-|------|---------------|--------------|----------|---------|---------|
-| Starter | $49 | 1,000 | 25 | 1 | Email |
-| Growth | $199 | 10,000 | 100 | 3 | Priority |
-| Enterprise | Custom | Unlimited | Unlimited | Unlimited | Dedicated |
+| Item | Price |
+|------|-------|
+| Base plan | Free |
+| Included usage | 1 live ledger + 1 active team member |
+| Additional live ledger | $20/month |
+| Additional active team member | $20/month |
 
-### Overage Pricing
+### Monthly Billing Flow
 
-- Additional transactions: $0.02 each
-- Additional creators: $1/creator/month
-- Additional ledgers: $29/ledger/month
-
-### Billing Setup
-
-```javascript
-// Recurring billing setup (processor-backed)
-const subscription = await processor.subscriptions.create({
-  customer: processorCustomerId,
-  items: [
-    { price: 'price_soledgic_growth' }
-  ],
-  metadata: {
-    soledgic_org_id: orgId
-  }
-})
-
-// Update organization
-await supabase
-  .from('organizations')
-  .update({ 
-    processor_customer_id: processorCustomerId,
-    subscription_status: 'active'
-  })
-  .eq('id', orgId)
-```
+1. Soledgic computes monthly overages in arrears.
+2. Soledgic charges the saved billing method for the overage amount.
+3. If charge fails, retries happen on day 0, day 3, and day 7.
+4. Organization moves to `past_due` only after retries are exhausted.
 
 ---
 
@@ -507,8 +485,8 @@ Soledgic is a double-entry accounting API that:
 - Handles 1099 compliance out of the box
 - Provides audit-grade financial reports
 
-We're currently onboarding our first external customers and offering 
-extended trials. Would you be open to a 15-minute call to see if it's a fit?
+We're currently onboarding our first external customers. Would you be open to
+a 15-minute call to see if it's a fit?
 
 Best,
 [Your name]
