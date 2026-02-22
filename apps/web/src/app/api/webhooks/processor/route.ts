@@ -203,7 +203,7 @@ export const POST = createApiHandler(
     const finalEventId = eventId || fallbackEventId(rawBody)
 
     const supabase = createServiceClient()
-    const { error } = await supabase.from('processor_webhook_inbox').insert({
+    const inboxRow = {
       ledger_id: ledgerId,
       event_id: finalEventId,
       event_type: eventType,
@@ -215,7 +215,19 @@ export const POST = createApiHandler(
       signature_error: null,
       status: 'pending',
       attempts: 0,
-    })
+    }
+
+    let { error } = await supabase.from('processor_webhook_inbox').insert(inboxRow)
+
+    // If the payload contains an invalid/non-existent ledger_id tag, keep the
+    // webhook instead of dropping it.
+    if (error && String((error as any).code || '') === '23503' && inboxRow.ledger_id) {
+      const retry = await supabase.from('processor_webhook_inbox').insert({
+        ...inboxRow,
+        ledger_id: null,
+      })
+      error = retry.error
+    }
 
     if (error) {
       // Idempotency: accept duplicate event ids.
