@@ -1,21 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { canAddTeamMember } from '@/lib/entitlements'
 import { sendTeamInviteEmail } from '@/lib/email'
+import { createServiceRoleClient, getServerServiceKey, getServerSupabaseUrl } from '@/lib/supabase/service'
+
+interface AuthUsersResponse {
+  users?: Array<{ id: string; email?: string | null }>
+}
 
 function createServiceClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return [] },
-        setAll() {},
-      },
-    }
-  )
+  return createServiceRoleClient()
 }
 
 // GET /api/team — List members, invitations, and org info
@@ -126,10 +121,11 @@ export const POST = createApiHandler(
     }
 
     const { email, role } = body
+    const normalizedEmail = (email || '').trim().toLowerCase()
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!email || !emailRegex.test(email)) {
+    if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
       return NextResponse.json(
         { error: 'A valid email address is required' },
         { status: 400 }
@@ -206,10 +202,10 @@ export const POST = createApiHandler(
       .from('organization_invitations')
       .select('id')
       .eq('organization_id', org.id)
-      .eq('email', email.toLowerCase())
+      .eq('email', normalizedEmail)
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())
-      .single()
+      .maybeSingle()
 
     if (existingInvite) {
       return NextResponse.json(
@@ -221,13 +217,12 @@ export const POST = createApiHandler(
     // Check if email belongs to an existing user who is already a member.
     // GoTrue admin API doesn't support email filtering, so we fetch the user
     // via a direct REST call to the admin endpoint with email filter.
-    const serviceClient = createServiceClient()
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabaseUrl = getServerSupabaseUrl()
+    const serviceKey = getServerServiceKey()
 
     try {
       const res = await fetch(
-        `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(email.toLowerCase())}`,
+        `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(normalizedEmail)}`,
         {
           headers: {
             Authorization: `Bearer ${serviceKey}`,
@@ -237,9 +232,9 @@ export const POST = createApiHandler(
       )
 
       if (res.ok) {
-        const { users } = await res.json()
+        const { users } = (await res.json()) as AuthUsersResponse
         const existingUser = users?.find(
-          (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+          (u) => u.email?.toLowerCase() === normalizedEmail
         )
 
         if (existingUser) {
@@ -271,7 +266,7 @@ export const POST = createApiHandler(
       .from('organization_invitations')
       .insert({
         organization_id: org.id,
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         role,
         token,
         invited_by: user!.id,
@@ -290,7 +285,7 @@ export const POST = createApiHandler(
     // Send email (non-blocking — invite is created regardless)
     const inviterName = user!.email?.split('@')[0] || 'A team member'
     const emailResult = await sendTeamInviteEmail({
-      to: email.toLowerCase(),
+      to: normalizedEmail,
       orgName: org.name,
       inviterName,
       role,

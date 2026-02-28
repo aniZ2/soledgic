@@ -38,6 +38,10 @@ const EXPENSE_CATEGORIES = [
   { code: 'other', name: 'Other Expenses', schedule_c_line: '27a' },
 ]
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function NewExpensePage({
   params,
 }: {
@@ -80,8 +84,8 @@ export default function NewExpensePage({
       }
 
       router.push(`/ledgers/${ledgerId}`)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to record expense'))
       setLoading(false)
     }
   }

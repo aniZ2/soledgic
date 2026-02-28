@@ -1,5 +1,6 @@
 import { type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
+import { generateCsrfToken } from '@/lib/csrf-token'
 
 const CSRF_COOKIE = '__csrf_token'
 
@@ -11,7 +12,7 @@ export async function proxy(request: NextRequest) {
 
   // Set CSRF cookie if not already present (double-submit cookie pattern)
   if (!request.cookies.get(CSRF_COOKIE)) {
-    response.cookies.set(CSRF_COOKIE, crypto.randomUUID(), {
+    response.cookies.set(CSRF_COOKIE, generateCsrfToken(), {
       httpOnly: false, // must be JS-readable for double-submit
       sameSite: 'strict',
       secure: process.env.NODE_ENV === 'production',

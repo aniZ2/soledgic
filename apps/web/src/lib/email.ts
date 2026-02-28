@@ -55,6 +55,11 @@ interface EmailResult {
   error?: string
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message
+  return 'Unknown email error'
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Team Invitation Email
 // ════════════════════════════════════════════════════════════════════════════
@@ -99,9 +104,10 @@ export async function sendTeamInviteEmail({
       html: emailTemplate(content),
     })
     return { success: true }
-  } catch (err: any) {
-    console.error('Failed to send invite email:', err.message)
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    const message = getErrorMessage(err)
+    console.error('Failed to send invite email:', message)
+    return { success: false, error: message }
   }
 }
 
@@ -149,9 +155,10 @@ export async function sendWelcomeEmail({
       html: emailTemplate(content),
     })
     return { success: true }
-  } catch (err: any) {
-    console.error('Failed to send welcome email:', err.message)
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    const message = getErrorMessage(err)
+    console.error('Failed to send welcome email:', message)
+    return { success: false, error: message }
   }
 }
 
@@ -177,6 +184,9 @@ export async function sendBillingReminderEmail({
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
       Soledgic starts free with one included ledger and one included team member. Additional ledgers and additional team members are billed at $20/month each, and payment processing fees apply.
     </p>
+    <p style="margin:0 0 16px;font-size:14px;color:#6b7280;line-height:1.5;">
+      This reminder was sent ${daysLeft} day${daysLeft === 1 ? '' : 's'} before your current billing checkpoint.
+    </p>
     <a href="${APP_URL}/billing" style="${buttonStyle}">
       View Billing
     </a>
@@ -193,9 +203,10 @@ export async function sendBillingReminderEmail({
       html: emailTemplate(content),
     })
     return { success: true }
-  } catch (err: any) {
-    console.error('Failed to send billing reminder email:', err.message)
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    const message = getErrorMessage(err)
+    console.error('Failed to send billing reminder email:', message)
+    return { success: false, error: message }
   }
 }
 
@@ -244,9 +255,10 @@ export async function sendPaymentFailedEmail({
       html: emailTemplate(content),
     })
     return { success: true }
-  } catch (err: any) {
-    console.error('Failed to send payment failed email:', err.message)
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    const message = getErrorMessage(err)
+    console.error('Failed to send payment failed email:', message)
+    return { success: false, error: message }
   }
 }
 
@@ -294,9 +306,10 @@ export async function sendPayoutProcessedEmail({
       html: emailTemplate(content),
     })
     return { success: true }
-  } catch (err: any) {
-    console.error('Failed to send payout processed email:', err.message)
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    const message = getErrorMessage(err)
+    console.error('Failed to send payout processed email:', message)
+    return { success: false, error: message }
   }
 }
 
@@ -349,8 +362,9 @@ export async function sendSecurityAlertEmail({
       html: emailTemplate(content),
     })
     return { success: true }
-  } catch (err: any) {
-    console.error('Failed to send security alert email:', err.message)
-    return { success: false, error: err.message }
+  } catch (err: unknown) {
+    const message = getErrorMessage(err)
+    console.error('Failed to send security alert email:', message)
+    return { success: false, error: message }
   }
 }

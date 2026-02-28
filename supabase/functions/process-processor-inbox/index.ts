@@ -16,34 +16,21 @@ import {
   type NormalizedProcessorEvent,
   type ProcessorWebhookInboxRow,
 } from '../_shared/processor-webhook-adapters.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-function timingSafeEqualString(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  return result === 0
-}
+import { getCorsHeaders, timingSafeEqual } from '../_shared/utils.ts'
 
 function isAuthorized(authHeader: string, serviceRoleKey: string): boolean {
   const expectedAuth = `Bearer ${serviceRoleKey}`
-  if (timingSafeEqualString(authHeader, expectedAuth)) return true
+  if (timingSafeEqual(authHeader, expectedAuth)) return true
 
   const testingToken = (Deno.env.get('PROCESS_PROCESSOR_INBOX_TOKEN') || '').trim()
   if (!testingToken) return false
-  return timingSafeEqualString(authHeader, `Bearer ${testingToken}`)
+  return timingSafeEqual(authHeader, `Bearer ${testingToken}`)
 }
 
-function json(payload: unknown, status = 200) {
+function json(req: Request, payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
   })
 }
 
@@ -345,18 +332,18 @@ interface ProcessInboxRequest {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
-  if (req.method !== 'POST') return json({ success: false, error: 'Method not allowed' }, 405)
+  if (req.method === 'OPTIONS') return new Response(null, { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return json(req, { success: false, error: 'Method not allowed' }, 405)
 
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') || '').trim()
   const serviceRoleKey = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim()
   if (!supabaseUrl || !serviceRoleKey) {
-    return json({ success: false, error: 'Supabase environment is not configured' }, 503)
+    return json(req, { success: false, error: 'Supabase environment is not configured' }, 503)
   }
 
   const authHeader = req.headers.get('authorization') || ''
   if (!isAuthorized(authHeader, serviceRoleKey)) {
-    return json({ success: false, error: 'Unauthorized' }, 401)
+    return json(req, { success: false, error: 'Unauthorized' }, 401)
   }
 
   let body: ProcessInboxRequest = {}
@@ -375,12 +362,12 @@ Deno.serve(async (req: Request) => {
 
   const { data: claimed, error: claimError } = await supabase.rpc('claim_processor_webhook_inbox', { p_limit: limit })
   if (claimError) {
-    return json({ success: false, error: 'Failed to claim inbox rows' }, 500)
+    return json(req, { success: false, error: 'Failed to claim inbox rows' }, 500)
   }
 
   const rows = (claimed || []) as ProcessorWebhookInboxRow[]
   if (!rows.length) {
-    return json({ success: true, processed: 0, message: 'No pending inbox rows' }, 200)
+    return json(req, { success: true, processed: 0, message: 'No pending inbox rows' }, 200)
   }
 
   const results = {
@@ -450,6 +437,5 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return json({ success: true, adapter: adapter.name, dry_run: dryRun, results }, 200)
+  return json(req, { success: true, adapter: adapter.name, dry_run: dryRun, results }, 200)
 })
-

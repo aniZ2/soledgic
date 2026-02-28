@@ -14,6 +14,8 @@ interface PayoutScheduleSettingsProps {
   }
 }
 
+type PayoutSchedule = 'manual' | 'weekly' | 'biweekly' | 'monthly'
+
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Sunday' },
   { value: 1, label: 'Monday' },
@@ -28,7 +30,7 @@ export function PayoutScheduleSettings({
   ledgerId,
   initialSettings
 }: PayoutScheduleSettingsProps) {
-  const [schedule, setSchedule] = useState(initialSettings?.schedule || 'manual')
+  const [schedule, setSchedule] = useState<PayoutSchedule>(initialSettings?.schedule || 'manual')
   const [dayOfWeek, setDayOfWeek] = useState(initialSettings?.day_of_week ?? 1)
   const [dayOfMonth, setDayOfMonth] = useState(initialSettings?.day_of_month ?? 1)
   const [minimumAmount, setMinimumAmount] = useState(
@@ -63,8 +65,8 @@ export function PayoutScheduleSettings({
         const error = await response.json()
         throw new Error(error.error || 'Failed to save')
       }
-    } catch (error: any) {
-      alert(error.message)
+    } catch (error: unknown) {
+      alert(error instanceof Error && error.message ? error.message : 'Failed to save')
     } finally {
       setSaving(false)
     }
@@ -85,7 +87,7 @@ export function PayoutScheduleSettings({
           </label>
           <select
             value={schedule}
-            onChange={(e) => setSchedule(e.target.value as any)}
+            onChange={(e) => setSchedule(e.target.value as PayoutSchedule)}
             className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             <option value="manual">Manual (request payouts individually)</option>

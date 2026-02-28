@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -73,7 +74,7 @@ export default function ResetPasswordPage() {
     }
 
     // Send security alert email (non-blocking)
-    fetch('/api/auth/password-changed', { method: 'POST' }).catch(() => {})
+    fetchWithCsrf('/api/auth/password-changed', { method: 'POST' }).catch(() => {})
 
     setSuccess(true)
   }

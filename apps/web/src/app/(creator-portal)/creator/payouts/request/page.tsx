@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
@@ -18,6 +18,24 @@ interface ConnectedAccount {
   ledger_name: string
 }
 
+interface ConnectedAccountRow {
+  id: string
+  ledger_id: string
+  entity_id: string
+  display_name: string
+  payouts_enabled: boolean
+  default_bank_last4: string
+  default_bank_name: string
+  ledger?: { business_name?: string } | null
+}
+
+function getLedgerBusinessName(value: ConnectedAccountRow['ledger']): string {
+  if (!value || typeof value.business_name !== 'string' || value.business_name.trim().length === 0) {
+    return 'Unknown'
+  }
+  return value.business_name
+}
+
 export default function RequestPayoutPage() {
   const router = useRouter()
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
@@ -28,11 +46,7 @@ export default function RequestPayoutPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
-
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -60,7 +74,7 @@ export default function RequestPayoutPage() {
     if (connectedAccounts) {
       const accountsWithBalance: ConnectedAccount[] = []
 
-      for (const account of connectedAccounts) {
+      for (const account of connectedAccounts as ConnectedAccountRow[]) {
         // Get balance
         const { data: creatorAccount } = await supabase
           .from('accounts')
@@ -73,7 +87,7 @@ export default function RequestPayoutPage() {
         accountsWithBalance.push({
           ...account,
           balance: Number(creatorAccount?.balance || 0),
-          ledger_name: (account.ledger as any)?.business_name || 'Unknown'
+          ledger_name: getLedgerBusinessName(account.ledger),
         })
       }
 
@@ -84,7 +98,14 @@ export default function RequestPayoutPage() {
     }
 
     setLoading(false)
-  }
+  }, [router])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadAccounts()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [loadAccounts])
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount)
   const maxAmount = selectedAccountData?.balance || 0

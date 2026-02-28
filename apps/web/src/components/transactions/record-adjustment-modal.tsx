@@ -19,6 +19,10 @@ interface Entry {
   amount: string
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 const ADJUSTMENT_TYPES = [
   { value: 'correction', label: 'Correction', description: 'Fix an error in previous entry' },
   { value: 'reclassification', label: 'Reclassification', description: 'Move between categories' },
@@ -148,8 +152,8 @@ export function RecordAdjustmentModal({
         onClose()
         resetForm()
       }, 1500)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to record adjustment'))
     } finally {
       setLoading(false)
     }

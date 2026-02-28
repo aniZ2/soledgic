@@ -2,32 +2,30 @@
 // Implements double-submit cookie pattern and origin validation
 
 import { cookies } from 'next/headers'
+import { generateCsrfToken } from './csrf-token'
 
 const CSRF_COOKIE_NAME = '__csrf_token'
 const CSRF_HEADER_NAME = 'x-csrf-token'
-const CSRF_TOKEN_LENGTH = 32
+
+const EXTRA_ALLOWED_ORIGINS = (process.env.CSRF_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 
 // Allowed origins for CSRF validation
 const ALLOWED_ORIGINS = [
   'https://soledgic.com',
   'https://www.soledgic.com',
   'https://app.soledgic.com',
+  'https://booklyverse.com',
+  'https://www.booklyverse.com',
+  'https://app.booklyverse.com',
   // Development
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
+  ...EXTRA_ALLOWED_ORIGINS,
 ]
-
-/**
- * Generate a cryptographically secure CSRF token
- */
-export function generateCsrfToken(): string {
-  const array = new Uint8Array(CSRF_TOKEN_LENGTH)
-  crypto.getRandomValues(array)
-  return Array.from(array)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-}
 
 /**
  * Set CSRF token cookie
@@ -90,17 +88,25 @@ export async function validateCsrfToken(request: Request): Promise<boolean> {
 /**
  * Validate origin header
  */
-export function validateOrigin(request: Request): boolean {
+export function validateOrigin(
+  request: Request,
+  options: { requireExplicitOrigin?: boolean } = {}
+): boolean {
   const origin = request.headers.get('origin')
+  const requireExplicitOrigin = options.requireExplicitOrigin === true
+  const requestOrigin = new URL(request.url).origin
   
   // No origin header - could be same-origin request or server-to-server
-  // Be more permissive here, but log for monitoring
+  // For mutating session-auth routes, require an explicit same-origin signal.
   if (!origin) {
     // Check referer as fallback
     const referer = request.headers.get('referer')
     if (referer) {
       try {
         const refererUrl = new URL(referer)
+        if (refererUrl.origin === requestOrigin) {
+          return true
+        }
         return ALLOWED_ORIGINS.some(allowed => {
           const allowedUrl = new URL(allowed)
           return refererUrl.origin === allowedUrl.origin
@@ -109,11 +115,19 @@ export function validateOrigin(request: Request): boolean {
         return false
       }
     }
-    
-    // No origin or referer - allow but could tighten this
+
+    if (requireExplicitOrigin) {
+      const requestedWith = (request.headers.get('x-requested-with') || '').toLowerCase().trim()
+      return requestedWith === 'fetch' || requestedWith === 'xmlhttprequest'
+    }
+
     return true
   }
-  
+
+  if (origin === requestOrigin) {
+    return true
+  }
+
   return ALLOWED_ORIGINS.includes(origin)
 }
 
@@ -121,14 +135,16 @@ export function validateOrigin(request: Request): boolean {
  * Full CSRF validation: origin + token
  */
 export async function validateCsrf(request: Request): Promise<{ valid: boolean; error?: string }> {
+  const method = request.method.toUpperCase()
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+
   // Validate origin first
-  if (!validateOrigin(request)) {
+  if (!validateOrigin(request, { requireExplicitOrigin: isMutation })) {
     return { valid: false, error: 'Invalid origin' }
   }
   
   // Then validate CSRF token for state-changing methods
-  const method = request.method.toUpperCase()
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+  if (isMutation) {
     const tokenValid = await validateCsrfToken(request)
     if (!tokenValid) {
       return { valid: false, error: 'Invalid CSRF token' }

@@ -103,9 +103,13 @@ export interface GetTransactionsRequest {
 // ---- Response Types ----
 
 export interface SaleBreakdown {
+  /** Gross sale amount in major currency units (e.g. dollars). */
   total: number
+  /** Creator share in major currency units (e.g. dollars). */
   creatorAmount: number
+  /** Platform share in major currency units (e.g. dollars). */
   platformAmount: number
+  /** Processing fee in major currency units (e.g. dollars). */
   processingFee?: number
 }
 

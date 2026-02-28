@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
-import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, AlertCircle, Clock, Info } from 'lucide-react'
+import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info } from 'lucide-react'
 
 interface TaxDocument {
   id: string
@@ -41,16 +41,12 @@ export default function TaxDocumentsPage() {
   const [taxYear, setTaxYear] = useState(new Date().getFullYear() - 1)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadData()
-  }, [taxYear, livemode])
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    const supabase = createClient()
 
-	  const loadData = async () => {
-	    setLoading(true)
-	    const supabase = createClient()
-	    
-	    const { data: { user } } = await supabase.auth.getUser()
-	    if (!user) return
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
     const { data: membership } = await supabase
       .from('organization_members')
@@ -93,7 +89,11 @@ export default function TaxDocumentsPage() {
     }
 
     setLoading(false)
-  }
+  }, [activeLedgerGroupId, livemode, taxYear])
+
+  useEffect(() => {
+    void loadData()
+  }, [loadData])
 
   const generateAll = async () => {
     if (!ledgerId) return
@@ -113,7 +113,7 @@ export default function TaxDocumentsPage() {
       } else {
         alert(`Error: ${result.error}`)
       }
-    } catch (err) {
+    } catch {
       alert('Failed to generate documents')
     } finally {
       setGenerating(false)
@@ -143,7 +143,7 @@ export default function TaxDocumentsPage() {
         const result = await res.json()
         alert(`Error: ${result.error}`)
       }
-    } catch (err) {
+    } catch {
       alert('Failed to export')
     } finally {
       setExporting(false)
@@ -165,7 +165,7 @@ export default function TaxDocumentsPage() {
       if (result.success) {
         loadData()
       }
-    } catch (err) {
+    } catch {
       alert('Failed to update status')
     }
   }
@@ -299,7 +299,7 @@ export default function TaxDocumentsPage() {
         <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">No tax documents for {taxYear}</p>
-          <p className="text-sm text-gray-400 mt-1">Click "Calculate All" to generate summaries for qualifying creators</p>
+          <p className="text-sm text-gray-400 mt-1">Click &quot;Calculate All&quot; to generate summaries for qualifying creators</p>
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

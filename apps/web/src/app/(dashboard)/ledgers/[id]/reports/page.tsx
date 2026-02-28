@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Download, FileText, TrendingUp, Scale } from 'lucide-react'
+import { ArrowLeft, Download, TrendingUp, Scale } from 'lucide-react'
 import { callLedgerFunctionServer, jsonFromResponse } from '@/lib/ledger-functions-server'
 
 async function getProfitLoss(ledgerId: string, year: number) {
@@ -158,10 +158,10 @@ export default async function ReportsPage({
         <div className="mt-8 bg-card border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">Expenses by Category</h2>
           <div className="space-y-3">
-            {Object.entries(plData.expenses.by_category).map(([category, amount]: [string, any]) => (
+            {Object.entries((plData.expenses.by_category || {}) as Record<string, number>).map(([category, amount]) => (
               <div key={category} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                 <span className="text-muted-foreground capitalize">{category.replace(/_/g, ' ')}</span>
-                <span className="font-medium text-foreground">${amount.toFixed(2)}</span>
+                <span className="font-medium text-foreground">${Number(amount).toFixed(2)}</span>
               </div>
             ))}
           </div>

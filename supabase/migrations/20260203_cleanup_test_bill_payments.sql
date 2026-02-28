@@ -1,9 +1,5 @@
--- Delete old bill payment transactions with test reference IDs
--- This prevents duplicate key errors in stress tests
-
-DELETE FROM entries
-WHERE transaction_id IN (
-  SELECT id FROM transactions
-  WHERE reference_id = 'CC-TXN-12345'
-    AND transaction_type = 'bill_payment'
-)
+-- NOTE: Historical one-off data cleanup migration.
+-- Converted to a NO-OP to prevent data mutation on new environments.
+DO $$ BEGIN
+  -- no-op
+END $$;

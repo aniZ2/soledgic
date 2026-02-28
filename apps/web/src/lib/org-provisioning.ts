@@ -1,5 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
 import { createHash } from 'crypto'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export type ProvisionLedgerMode = 'standard' | 'marketplace'
 
@@ -28,6 +28,16 @@ export interface ProvisionOrganizationResult {
 
 type JsonObject = Record<string, unknown>
 
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null
+}
+
+function getStringField(value: unknown, key: string): string | null {
+  if (!isJsonObject(value)) return null
+  const raw = value[key]
+  return typeof raw === 'string' ? raw : null
+}
+
 type ExistingOrganization = {
   id: string
   name: string
@@ -43,25 +53,10 @@ type ExistingLedger = {
   api_key_hash: string | null
 }
 
-let cachedServiceClient: ReturnType<typeof createServerClient> | null = null
+let cachedServiceClient: ReturnType<typeof createServiceRoleClient> | null = null
 
 function createServiceClient() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
-  }
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      cookies: {
-        getAll() {
-          return []
-        },
-        setAll() {},
-      },
-    }
-  )
+  return createServiceRoleClient()
 }
 
 function getServiceClient() {
@@ -159,7 +154,7 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
       .select('id')
       .single()
 
-    const createdId = (created as any)?.id
+    const createdId = getStringField(created, 'id')
     if (!createError && typeof createdId === 'string' && createdId.length > 0) {
       return {
         organizationId: createdId,
@@ -208,7 +203,7 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
   // Safety check: never grant ownership/membership if the org isn't owned by
   // the caller. This prevents bootstrap/service flows from accidentally (or
   // maliciously) escalating access to an unrelated org.
-  if ((orgOwner as any)?.owner_id !== userId) {
+  if (getStringField(orgOwner, 'owner_id') !== userId) {
     throw new Error('Refusing to provision membership for non-owner user')
   }
 
@@ -353,23 +348,50 @@ async function insertLedgersWithSchemaFallback(
 ): Promise<ExistingLedger[]> {
   const supabase = getServiceClient()
 
-  const attempts: Array<Array<Record<string, unknown>>> = [
-    rows,
-    rows.map(({ owner_email, ...rest }) => rest),
-    rows.map(({ platform_name, ...rest }) => rest),
-    rows.map(({ owner_email, platform_name, ...rest }) => rest),
+  const attempts: Array<{ label: string; payload: Array<Record<string, unknown>> }> = [
+    { label: 'primary', payload: rows },
+    {
+      label: 'drop_owner_email',
+      payload: rows.map((row) => {
+        const next = { ...row }
+        delete next.owner_email
+        return next
+      }),
+    },
+    {
+      label: 'drop_platform_name',
+      payload: rows.map((row) => {
+        const next = { ...row }
+        delete next.platform_name
+        return next
+      }),
+    },
+    {
+      label: 'drop_owner_email_and_platform_name',
+      payload: rows.map((row) => {
+        const next = { ...row }
+        delete next.owner_email
+        delete next.platform_name
+        return next
+      }),
+    },
   ]
 
   let lastError: { message?: string } | null = null
 
-  for (const payload of attempts) {
+  for (const attempt of attempts) {
     const { data, error } = await supabase
       .from('ledgers')
-      .insert(payload)
+      .insert(attempt.payload)
       .select('id, livemode, ledger_group_id, api_key_hash')
-      .returns()
+      .returns<ExistingLedger[]>()
 
     if (!error) {
+      if (attempt.label !== 'primary') {
+        console.warn(
+          `[org-provisioning] insertLedgersWithSchemaFallback used non-primary path: ${attempt.label}`
+        )
+      }
       return (data || []) as ExistingLedger[]
     }
 
@@ -394,7 +416,7 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
     .select('id, livemode, ledger_group_id, api_key_hash')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: true })
-    .returns()
+    .returns<ExistingLedger[]>()
 
   if (fetchError) {
     throw new Error(`Failed fetching ledgers: ${fetchError.message}`)

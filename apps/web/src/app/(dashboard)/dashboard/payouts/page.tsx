@@ -5,6 +5,11 @@ import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { PayoutsClient } from './payouts-client'
 
+interface PayoutRail {
+  rail?: string
+  enabled?: boolean
+}
+
 export default async function PayoutsPage() {
   const supabase = await createClient()
   const livemode = await getLivemode()
@@ -73,7 +78,7 @@ export default async function PayoutsPage() {
       ledger={{
         id: ledger.id,
         business_name: ledger.business_name,
-        payout_rails: ledger.payout_rails as any[] | null,
+        payout_rails: ledger.payout_rails as PayoutRail[] | null,
       }}
       payouts={payouts || []}
       stats={stats}

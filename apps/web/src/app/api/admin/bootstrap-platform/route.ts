@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 import {
   provisionOrganizationWithLedgers,
   type ProvisionLedgerMode,
 } from '@/lib/org-provisioning'
+import { createServiceRoleClient, getServerServiceKey, getServerSupabaseUrl } from '@/lib/supabase/service'
+import { checkRateLimit, getRateLimitKey } from '@/lib/rate-limit'
 
 interface BootstrapPlatformBody {
   admin_email?: string
@@ -22,22 +23,22 @@ interface AuthUserRow {
 export const runtime = 'nodejs'
 
 function createServiceClient() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
-  }
+  return createServiceRoleClient()
+}
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      cookies: {
-        getAll() {
-          return []
-        },
-        setAll() {},
-      },
-    }
-  )
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let mismatch = 0
+  for (let i = 0; i < a.length; i += 1) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return mismatch === 0
+}
+
+function isProductionRuntime(): boolean {
+  const nodeEnv = (process.env.NODE_ENV || '').toLowerCase()
+  const vercelEnv = (process.env.VERCEL_ENV || '').toLowerCase()
+  return nodeEnv === 'production' || vercelEnv === 'production'
 }
 
 function getProvidedBootstrapToken(request: Request): string {
@@ -45,18 +46,15 @@ function getProvidedBootstrapToken(request: Request): string {
   if (headerToken) return headerToken
 
   const authHeader = request.headers.get('authorization') || ''
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.replace('Bearer ', '').trim()
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice('bearer '.length).trim()
   }
   return ''
 }
 
 async function findAuthUserByEmail(email: string): Promise<AuthUserRow | null> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
-  }
+  const supabaseUrl = getServerSupabaseUrl()
+  const serviceKey = getServerServiceKey()
 
   const response = await fetch(
     `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(email.toLowerCase())}`,
@@ -82,11 +80,27 @@ async function findAuthUserByEmail(email: string): Promise<AuthUserRow | null> {
 export async function POST(request: Request) {
   // This endpoint is a one-time bootstrap tool. It should never be callable in
   // production once the platform org exists.
-  if (process.env.NODE_ENV === 'production') {
+  if (isProductionRuntime()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const expectedToken = process.env.PLATFORM_BOOTSTRAP_TOKEN || process.env.BOOTSTRAP_TOKEN
+  const rateLimitResult = await checkRateLimit(
+    getRateLimitKey(request),
+    '/api/admin/bootstrap-platform',
+    { requests: 10, windowMs: 60_000 }
+  )
+  if (!rateLimitResult.allowed) {
+    const retryAfter = Math.max(1, Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000))
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(retryAfter) },
+      }
+    )
+  }
+
+  const expectedToken = (process.env.PLATFORM_BOOTSTRAP_TOKEN || process.env.BOOTSTRAP_TOKEN || '').trim()
   if (!expectedToken) {
     return NextResponse.json(
       { error: 'Bootstrap token is not configured' },
@@ -95,7 +109,7 @@ export async function POST(request: Request) {
   }
 
   const providedToken = getProvidedBootstrapToken(request)
-  if (!providedToken || providedToken !== expectedToken) {
+  if (!providedToken || !timingSafeEqualString(providedToken, expectedToken)) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
@@ -202,9 +216,10 @@ export async function POST(request: Request) {
         live: provisioned.liveApiKey,
       },
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to provision platform organization'
     return NextResponse.json(
-      { error: error?.message || 'Failed to provision platform organization' },
+      { error: message },
       { status: 500 }
     )
   }

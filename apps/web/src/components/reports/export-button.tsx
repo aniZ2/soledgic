@@ -11,6 +11,10 @@ interface ExportButtonProps {
   className?: string
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export function ExportButton({
   reportType,
   ledgerId,
@@ -54,9 +58,9 @@ export function ExportButton({
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export error:', error)
-      alert(error.message || 'Failed to export report')
+      alert(getErrorMessage(error, 'Failed to export report'))
     } finally {
       setLoading(null)
     }

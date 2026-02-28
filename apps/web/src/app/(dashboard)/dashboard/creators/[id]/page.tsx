@@ -4,6 +4,39 @@ import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { CreatorDetailClient } from './creator-detail-client'
 
+interface CreatorAccountRow {
+  id: string
+  entity_id: string
+  name: string
+  created_at: string
+  metadata: Record<string, unknown> | null
+}
+
+interface EntryTransaction {
+  id: string
+  transaction_type: string
+  reference_id: string
+  description: string | null
+  status: string
+  created_at: string
+}
+
+interface EntryRow {
+  id: string
+  entry_type: 'credit' | 'debit' | string
+  amount: number
+  created_at: string
+  release_status: 'held' | 'pending_release' | 'released' | 'immediate' | 'voided' | string | null
+  hold_reason: string | null
+  hold_until: string | null
+  transactions: EntryTransaction | null
+}
+
+interface CreatorTransaction extends EntryTransaction {
+  amount: number
+  entry_type: 'credit' | 'debit' | string
+}
+
 export default async function CreatorDetailPage({
   params,
 }: {
@@ -37,7 +70,7 @@ export default async function CreatorDetailPage({
   if (!ledger) notFound()
 
   // Get creator account
-  const { data: creatorAccount } = await supabase
+  const { data: creatorAccountRaw } = await supabase
     .from('accounts')
     .select('*')
     .eq('ledger_id', ledger.id)
@@ -45,13 +78,14 @@ export default async function CreatorDetailPage({
     .eq('entity_id', creatorId)
     .single()
 
+  const creatorAccount = creatorAccountRaw as CreatorAccountRow | null
   if (!creatorAccount) notFound()
 
   // Get all entries for this creator
   const { data: entries } = await supabase
     .from('entries')
     .select(`
-      id, entry_type, amount, created_at,
+      id, entry_type, amount, created_at, release_status, hold_reason, hold_until,
       transactions!inner(
         id, transaction_type, reference_id, description, status, created_at
       )
@@ -63,19 +97,43 @@ export default async function CreatorDetailPage({
   let totalEarnings = 0
   let totalPayouts = 0
   let currentBalance = 0
+  let totalWithheld = 0
 
-  const transactions: any[] = []
+  const transactions: CreatorTransaction[] = []
+  const heldFunds: Array<{
+    entry_id: string
+    hold_reason: string | null
+    held_amount: number
+    release_eligible_at: string | null
+    release_status: 'held' | 'pending_release'
+  }> = []
   const seenTxIds = new Set()
 
-  for (const e of entries || []) {
-    const tx = e.transactions as any
+  for (const e of ((entries as EntryRow[] | null) ?? [])) {
+    const tx = e.transactions
+    if (!tx) continue
 
     // Calculate balance
     if (tx.status !== 'voided' && tx.status !== 'reversed') {
       if (e.entry_type === 'credit') {
-        currentBalance += Number(e.amount)
+        const amount = Number(e.amount)
+        currentBalance += amount
         if (tx.transaction_type === 'sale') {
-          totalEarnings += Number(e.amount)
+          totalEarnings += amount
+        }
+
+        const releaseStatus = String(e.release_status || '')
+        if (releaseStatus === 'held' || releaseStatus === 'pending_release') {
+          totalWithheld += amount
+
+          const releaseAt = e.hold_until
+          heldFunds.push({
+            entry_id: e.id,
+            hold_reason: e.hold_reason,
+            held_amount: amount,
+            release_eligible_at: releaseAt,
+            release_status: releaseStatus,
+          })
         }
       } else {
         currentBalance -= Number(e.amount)
@@ -94,19 +152,6 @@ export default async function CreatorDetailPage({
         entry_type: e.entry_type,
       })
     }
-  }
-
-  // Get held funds
-  const { data: heldFunds } = await supabase
-    .from('held_funds')
-    .select('*')
-    .eq('ledger_id', ledger.id)
-    .eq('creator_id', creatorId)
-    .is('released_at', null)
-
-  let totalWithheld = 0
-  for (const hold of heldFunds || []) {
-    totalWithheld += Number(hold.held_amount)
   }
 
   const availableBalance = currentBalance - totalWithheld
@@ -130,7 +175,7 @@ export default async function CreatorDetailPage({
         entity_id: creatorAccount.entity_id,
         name: creatorAccount.name,
         created_at: creatorAccount.created_at,
-        metadata: creatorAccount.metadata as Record<string, any> | null,
+        metadata: creatorAccount.metadata,
       }}
       stats={{
         totalEarnings,
@@ -140,12 +185,7 @@ export default async function CreatorDetailPage({
         availableBalance,
       }}
       transactions={transactions}
-      heldFunds={(heldFunds || []).map(h => ({
-        id: h.id,
-        hold_reason: h.hold_reason,
-        held_amount: Number(h.held_amount),
-        release_eligible_at: h.release_eligible_at,
-      }))}
+      heldFunds={heldFunds}
       hasTaxInfo={!!taxInfo}
     />
   )

@@ -1,5 +1,69 @@
 const PUBLIC_PRICING_URL = 'https://soledgic.com/pricing'
 
+type JsonRecord = Record<string, unknown>
+
+interface ProcessorIdentity {
+  id?: string
+  _links?: {
+    application?: { href?: string }
+    applications?: { href?: string }
+  }
+  application_id?: string
+  application?: string
+}
+
+export interface ProcessorOnboardingLinkResponse {
+  id?: string
+  link_url?: string
+  onboarding_link_url?: string
+  expires_at?: string
+  _embedded?: {
+    links?: Array<{ link_url?: string }>
+  }
+}
+
+interface ProcessorMerchantsResponse {
+  _embedded?: {
+    merchants?: unknown[]
+  }
+}
+
+interface ProcessorPaymentInstrumentsResponse {
+  _embedded?: {
+    payment_instruments?: unknown[]
+  }
+}
+
+interface ProcessorErrorBody {
+  error?: unknown
+  message?: unknown
+  _embedded?: {
+    errors?: Array<{ message?: unknown }>
+  }
+}
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getProcessorRequestTimeoutMs(): number {
+  const raw = Number(process.env.PROCESSOR_REQUEST_TIMEOUT_MS || 30000)
+  if (!Number.isFinite(raw) || raw < 1000) return 30000
+  return Math.floor(raw)
+}
+
+function extractProcessorErrorMessage(payload: unknown): string | null {
+  if (!isJsonRecord(payload)) return null
+  const body = payload as ProcessorErrorBody
+  if (typeof body.error === 'string' && body.error.trim().length > 0) return body.error
+  if (typeof body.message === 'string' && body.message.trim().length > 0) return body.message
+  const firstEmbedded = body._embedded?.errors?.[0]
+  if (firstEmbedded && typeof firstEmbedded.message === 'string' && firstEmbedded.message.trim().length > 0) {
+    return firstEmbedded.message
+  }
+  return null
+}
+
 function getProcessorEnvironment(): 'production' | 'sandbox' {
   const raw = (process.env.PROCESSOR_ENV || '').toLowerCase().trim()
   if (['production', 'prod', 'live'].includes(raw)) return 'production'
@@ -31,11 +95,15 @@ export interface ProcessorRequestOptions {
   body?: Record<string, unknown>
 }
 
-export async function processorRequest<T = any>(
+export async function processorRequest<T = unknown>(
   path: string,
   options: ProcessorRequestOptions = {}
 ): Promise<T> {
   const { method = 'GET', body } = options
+  if (!path.startsWith('/')) {
+    throw new Error('Processor request path must start with "/"')
+  }
+
   const baseUrl = getProcessorBaseUrl().replace(/\/$/, '')
   const env = getProcessorEnvironment()
 
@@ -53,28 +121,38 @@ export async function processorRequest<T = any>(
     throw new Error('Payment processor versioning is misconfigured (set both PROCESSOR_VERSION_HEADER and PROCESSOR_API_VERSION)')
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: getProcessorAuthHeader(),
-      ...(versionHeader ? { [versionHeader]: apiVersion } : {}),
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    cache: 'no-store',
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), getProcessorRequestTimeoutMs())
 
-  const json = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    const message =
-      json?.error ||
-      json?.message ||
-      json?._embedded?.errors?.[0]?.message ||
-      `Processor request failed (${response.status})`
-    throw new Error(message)
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: getProcessorAuthHeader(),
+        ...(versionHeader ? { [versionHeader]: apiVersion } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
+      redirect: 'error',
+      signal: controller.signal,
+    })
+
+    const json: unknown = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const message = extractProcessorErrorMessage(json) || `Processor request failed (${response.status})`
+      throw new Error(message)
+    }
+
+    return json as T
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Processor request timed out')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  return json as T
 }
 
 export interface CreateOnboardingLinkParams {
@@ -144,7 +222,7 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     payload.entity = applicationId
   }
 
-  return processorRequest(`/onboarding_forms/${onboardingFormId}/links`, {
+  return processorRequest<ProcessorOnboardingLinkResponse>(`/onboarding_forms/${onboardingFormId}/links`, {
     method: 'POST',
     body: payload,
   })
@@ -156,7 +234,7 @@ function extractApplicationIdFromHref(href: unknown): string | null {
   return match?.[1] || null
 }
 
-function extractIdentityApplicationId(identity: any): string | null {
+function extractIdentityApplicationId(identity: ProcessorIdentity): string | null {
   return (
     extractApplicationIdFromHref(identity?._links?.application?.href) ||
     extractApplicationIdFromHref(identity?._links?.applications?.href) ||
@@ -167,7 +245,7 @@ function extractIdentityApplicationId(identity: any): string | null {
 }
 
 export async function fetchProcessorIdentity(identityId: string) {
-  const identity = await processorRequest<any>(`/identities/${identityId}`)
+  const identity = await processorRequest<ProcessorIdentity>(`/identities/${identityId}`)
 
   // Defense-in-depth: ensure a redirected identity belongs to our configured application.
   const expectedAppId = process.env.PROCESSOR_APPLICATION_ID
@@ -185,12 +263,14 @@ export async function fetchProcessorIdentity(identityId: string) {
 }
 
 export async function fetchProcessorMerchantForIdentity(identityId: string) {
-  const response = await processorRequest<any>(`/identities/${identityId}/merchants`)
-  const merchants = response?._embedded?.merchants || []
+  const response = await processorRequest<ProcessorMerchantsResponse>(`/identities/${identityId}/merchants`)
+  const merchants = Array.isArray(response?._embedded?.merchants) ? response._embedded!.merchants : []
   return merchants[0] || null
 }
 
 export async function fetchProcessorPaymentInstrumentsForIdentity(identityId: string) {
-  const response = await processorRequest<any>(`/identities/${identityId}/payment_instruments?limit=20`)
-  return response?._embedded?.payment_instruments || []
+  const response = await processorRequest<ProcessorPaymentInstrumentsResponse>(`/identities/${identityId}/payment_instruments?limit=20`)
+  return Array.isArray(response?._embedded?.payment_instruments)
+    ? response._embedded!.payment_instruments
+    : []
 }

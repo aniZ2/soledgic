@@ -6,7 +6,7 @@ import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provi
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
-import { ArrowLeft, Upload, FileText, Check, AlertCircle, ChevronRight, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Upload, Check, AlertCircle, ChevronRight, ArrowRight } from 'lucide-react'
 
 interface ParsedTransaction {
   date: string
@@ -44,11 +44,14 @@ const BANK_PRESETS = [
 
 const visibleBankPresets = BANK_PRESETS
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function ImportTransactionsPage() {
   const livemode = useLivemode()
   const activeLedgerGroupId = useActiveLedgerGroupId()
   const [step, setStep] = useState<'upload' | 'map' | 'preview' | 'done'>('upload')
-  const [file, setFile] = useState<File | null>(null)
   const [parseResult, setParseResult] = useState<ParseResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,12 +69,12 @@ export default function ImportTransactionsPage() {
   })
   const [useSeparateDebitCredit, setUseSeparateDebitCredit] = useState(false)
 
-  // Load API key on mount
+  // Load active ledger
   useEffect(() => {
-	    const loadApiKey = async () => {
-	      const supabase = createClient()
-	      const { data: { user } } = await supabase.auth.getUser()
-	      if (!user) return
+    const loadApiKey = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
       const { data: membership } = await supabase
         .from('organization_members')
@@ -93,14 +96,13 @@ export default function ImportTransactionsPage() {
         setLedgerId(ledger.id)
       }
     }
-    loadApiKey()
-  }, [])
+    void loadApiKey()
+  }, [activeLedgerGroupId, livemode])
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile || !ledgerId) return
 
-    setFile(selectedFile)
     setLoading(true)
     setError(null)
 
@@ -133,8 +135,8 @@ export default function ImportTransactionsPage() {
         setLoading(false)
       }
       reader.readAsDataURL(selectedFile)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to parse file'))
       setLoading(false)
     }
   }, [ledgerId])
@@ -158,7 +160,7 @@ export default function ImportTransactionsPage() {
       const data = await res.json()
 
       if (data.success) {
-        let result: ImportResult = {
+        const result: ImportResult = {
           imported: data.data.imported,
           skipped: data.data.skipped,
           errors: data.data.errors,
@@ -171,8 +173,8 @@ export default function ImportTransactionsPage() {
       } else {
         setError(data.error || 'Failed to import')
       }
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to import'))
     }
     setLoading(false)
   }
@@ -552,7 +554,6 @@ export default function ImportTransactionsPage() {
             <button
               onClick={() => {
                 setStep('upload')
-                setFile(null)
                 setParseResult(null)
                 setImportResult(null)
               }}

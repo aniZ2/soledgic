@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
-  User, CreditCard, Key, Bell, Building, Users, Shield
+  CreditCard, Key, Bell, Building, Users, Shield
 } from 'lucide-react'
 
 const settingsNav = [

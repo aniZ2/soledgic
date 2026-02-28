@@ -86,6 +86,7 @@ Author_A's Bank Account: $80
 {
   amount: 999,              // In cents ($9.99)
   creator_id: "author_123",
+  payment_method_id: "src_xxx", // Required buyer payment source/instrument
   product_id: "book_456",
   product_name: "The Great Novel",
   customer_email: "reader@example.com"
@@ -247,21 +248,23 @@ INSERT INTO ventures (
 ### Creating a Creator's Connected Account
 
 ```sql
-INSERT INTO processor_connected_accounts (
+INSERT INTO connected_accounts (
   ledger_id,
   entity_type,
   entity_id,
-  entity_name,
+  display_name,
   processor_account_id,
-  status,
-  payouts_enabled
+  processor_status,
+  payouts_enabled,
+  is_active
 ) VALUES (
   'your-ledger-uuid',
   'creator',
   'author_123',
   'Jane Doe',
   'acct_xxx',  -- Created via Payment Processor API
-  'active',
+  'enabled',
+  true,
   true
 );
 ```
@@ -274,7 +277,7 @@ INSERT INTO processor_connected_accounts (
 If a reader uses a stolen card:
 - Money is still in YOUR account
 - You don't have to chase the author for a refund
-- Simply void the held entry
+- Keep the entry held until your investigation is complete, then release or refund
 
 ### 2. Dispute Window
 Payment Processor disputes can come up to 120 days later, but most come within 7-14 days:
@@ -304,7 +307,8 @@ If you suspect fraud, a bad actor, or need to investigate:
 - `supabase/migrations/20260240_escrow_control_system.sql` - Escrow schema
 
 ### Updated Files
-- `supabase/functions/processor-webhook/index.ts` - Entries now created with `release_status='held'`
+- `apps/web/src/app/api/webhooks/processor/route.ts` - Inbound processor events persisted
+- `supabase/functions/process-processor-inbox/index.ts` - Normalized processor events update escrow/refund/payout state
 - `supabase/functions/_shared/utils.ts` - Booklyverse CORS, rate limits
 
 ---

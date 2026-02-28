@@ -12,14 +12,22 @@ interface Payout {
   description: string | null
   status: string
   created_at: string
-  metadata: any
+  metadata: {
+    creator_id?: string
+    rail_used?: string
+  } | null
+}
+
+interface PayoutRail {
+  rail?: string
+  enabled?: boolean
 }
 
 interface PayoutsClientProps {
   ledger: {
     id: string
     business_name: string
-    payout_rails: any[] | null
+    payout_rails: PayoutRail[] | null
   }
   payouts: Payout[]
   stats: {
@@ -32,9 +40,8 @@ interface PayoutsClientProps {
 
 export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
 
-  const formatRailLabel = (rail: any) => {
+  const formatRailLabel = (rail: PayoutRail) => {
     const name = String(rail?.rail || '').toLowerCase()
     if (name === 'card') return 'Card'
     return name.replaceAll('_', ' ')
@@ -133,9 +140,9 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
             </p>
           ) : (
             <div className="flex gap-4">
-              {payoutRails.map((rail: any) => (
+              {payoutRails.map((rail) => (
                 <div
-                  key={rail.rail}
+                  key={rail.rail || 'unknown'}
                   className={`px-4 py-2 rounded-lg border ${
                     rail.enabled
                       ? 'border-green-500/50 bg-green-500/10'

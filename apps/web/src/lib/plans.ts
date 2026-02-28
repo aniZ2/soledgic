@@ -3,8 +3,10 @@ export interface PlanConfig {
   price_monthly: number // cents
   max_ledgers: number
   max_team_members: number
+  max_transactions_per_month?: number
   overage_ledger_price_monthly?: number // cents
   overage_team_member_price_monthly?: number // cents
+  overage_transaction_price?: number // cents per additional transaction
   features: string[]
   contact_sales?: boolean
 }
@@ -57,15 +59,19 @@ export const PLANS: Record<string, PlanConfig> = {
     price_monthly: 0,
     max_ledgers: 1,
     max_team_members: 1,
+    max_transactions_per_month: 1000,
     overage_ledger_price_monthly: 2000,
     overage_team_member_price_monthly: 2000,
+    overage_transaction_price: 2,
     features: [
       'Payment processing',
       'Core finance features',
       '1 ledger included',
       '1 team member included',
+      '1,000 transactions/month included',
       '$20/month per additional ledger',
       '$20/month per additional team member',
+      '$0.02 per additional transaction',
       'API access',
       'Receipts & reconciliation',
       'Email support',

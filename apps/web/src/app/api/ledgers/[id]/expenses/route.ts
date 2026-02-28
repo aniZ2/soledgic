@@ -11,6 +11,19 @@ type ExpenseBody = {
   expense_date?: string
 }
 
+type JsonRecord = Record<string, unknown>
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message
+  return fallback
+}
+
+function getPayloadError(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object') return fallback
+  const maybeError = (payload as JsonRecord).error
+  return typeof maybeError === 'string' && maybeError.trim().length > 0 ? maybeError : fallback
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -67,6 +80,13 @@ export async function POST(
         )
       }
 
+      if (membership.role === 'viewer') {
+        return NextResponse.json(
+          { error: 'Insufficient permissions', request_id: requestId },
+          { status: 403 }
+        )
+      }
+
       let response: Response
       try {
         response = await callLedgerFunctionServer('record-expense', {
@@ -81,9 +101,9 @@ export async function POST(
             reference_id: `exp_${Date.now()}`,
           },
         })
-      } catch (error: any) {
+      } catch (error: unknown) {
         return NextResponse.json(
-          { error: error?.message || 'Failed to reach ledger function', request_id: requestId },
+          { error: getErrorMessage(error, 'Failed to reach ledger function'), request_id: requestId },
           { status: 500 }
         )
       }
@@ -92,7 +112,7 @@ export async function POST(
 
       if (!response.ok) {
         return NextResponse.json(
-          { error: (result as any)?.error || 'Failed to record expense', request_id: requestId },
+          { error: getPayloadError(result, 'Failed to record expense'), request_id: requestId },
           { status: response.status }
         )
       }

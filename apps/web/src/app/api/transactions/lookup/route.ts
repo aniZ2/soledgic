@@ -30,6 +30,7 @@ export const GET = createApiHandler(
       .select('organization_id')
       .eq('user_id', user!.id)
       .eq('organization_id', ledger.organization_id)
+      .eq('status', 'active')
       .single()
 
     if (!membership) {
@@ -50,5 +51,8 @@ export const GET = createApiHandler(
 
     return NextResponse.json({ transaction })
   },
-  { csrfProtection: false } // GET requests don't need CSRF
+  {
+    csrfProtection: false, // GET requests don't need CSRF
+    routePath: '/api/transactions/lookup',
+  }
 )

@@ -33,7 +33,37 @@ interface OrganizationSettings {
     last_setup_state_expires_at?: string | null
     last_updated_at?: string | null
   }
-  [key: string]: any
+  [key: string]: unknown
+}
+
+type JsonRecord = Record<string, unknown>
+
+interface BillingInstrumentSelection {
+  id: string
+  type: string
+  label: string | null
+  last4: string | null
+  brand: string | null
+  exp_month: number | null
+  exp_year: number | null
+}
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getNestedValue(value: unknown, ...path: string[]): unknown {
+  let current: unknown = value
+  for (const key of path) {
+    if (!isJsonRecord(current)) return null
+    current = current[key]
+  }
+  return current
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message
+  return fallback
 }
 
 function getAppUrl() {
@@ -66,20 +96,20 @@ function requireActiveSetupState(
   }
 }
 
-function normalizePaymentInstrumentType(pi: any): string {
-  const type = String(pi?.type || pi?.instrument_type || '').toUpperCase()
+function normalizePaymentInstrumentType(pi: unknown): string {
+  const type = String(getNestedValue(pi, 'type') || getNestedValue(pi, 'instrument_type') || '').toUpperCase()
   if (type.includes('CARD')) return 'card'
   if (type.includes('BANK')) return 'bank_account'
   return type ? type.toLowerCase() : 'unknown'
 }
 
-function extractLast4(pi: any): string | null {
+function extractLast4(pi: unknown): string | null {
   const candidates = [
-    pi?.card?.last4,
-    pi?.last4,
-    pi?.last_four,
-    pi?.account_last4,
-    pi?.bank_account?.last4,
+    getNestedValue(pi, 'card', 'last4'),
+    getNestedValue(pi, 'last4'),
+    getNestedValue(pi, 'last_four'),
+    getNestedValue(pi, 'account_last4'),
+    getNestedValue(pi, 'bank_account', 'last4'),
   ]
   for (const v of candidates) {
     if (typeof v === 'string' && v.trim().length === 4) return v.trim()
@@ -91,31 +121,35 @@ function extractLast4(pi: any): string | null {
   return null
 }
 
-function extractCardBrand(pi: any): string | null {
-  const candidates = [pi?.card?.brand, pi?.brand, pi?.card_brand]
+function extractCardBrand(pi: unknown): string | null {
+  const candidates = [
+    getNestedValue(pi, 'card', 'brand'),
+    getNestedValue(pi, 'brand'),
+    getNestedValue(pi, 'card_brand'),
+  ]
   for (const v of candidates) {
     if (typeof v === 'string' && v.trim().length > 0) return v.trim()
   }
   return null
 }
 
-function extractExpMonth(pi: any): number | null {
-  const candidates = [pi?.card?.exp_month, pi?.exp_month]
+function extractExpMonth(pi: unknown): number | null {
+  const candidates = [getNestedValue(pi, 'card', 'exp_month'), getNestedValue(pi, 'exp_month')]
   for (const v of candidates) {
     if (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 12) return v
   }
   return null
 }
 
-function extractExpYear(pi: any): number | null {
-  const candidates = [pi?.card?.exp_year, pi?.exp_year]
+function extractExpYear(pi: unknown): number | null {
+  const candidates = [getNestedValue(pi, 'card', 'exp_year'), getNestedValue(pi, 'exp_year')]
   for (const v of candidates) {
     if (typeof v === 'number' && Number.isFinite(v) && v >= 2020 && v <= 3000) return v
   }
   return null
 }
 
-function buildMethodLabel(pi: any): string | null {
+function buildMethodLabel(pi: unknown): string | null {
   const type = normalizePaymentInstrumentType(pi)
   const last4 = extractLast4(pi)
   const brand = extractCardBrand(pi)
@@ -132,18 +166,19 @@ function buildMethodLabel(pi: any): string | null {
   return null
 }
 
-function pickBillingInstrument(instruments: any[]) {
+function pickBillingInstrument(instruments: unknown[]): BillingInstrumentSelection | null {
   if (!Array.isArray(instruments) || instruments.length === 0) return null
-  const enabled = instruments.filter((pi: any) => pi?.enabled !== false)
+  const enabled = instruments.filter((pi) => getNestedValue(pi, 'enabled') !== false)
   const list = enabled.length > 0 ? enabled : instruments
 
-  const cards = list.filter((pi: any) => normalizePaymentInstrumentType(pi) === 'card')
-  const bankAccounts = list.filter((pi: any) => normalizePaymentInstrumentType(pi) === 'bank_account')
+  const cards = list.filter((pi) => normalizePaymentInstrumentType(pi) === 'card')
+  const bankAccounts = list.filter((pi) => normalizePaymentInstrumentType(pi) === 'bank_account')
   const first = cards[0] || bankAccounts[0] || list[0]
 
-  if (!first?.id) return null
+  const idRaw = getNestedValue(first, 'id')
+  if (typeof idRaw !== 'string' || idRaw.trim().length === 0) return null
   return {
-    id: String(first.id),
+    id: idRaw,
     type: normalizePaymentInstrumentType(first),
     label: buildMethodLabel(first),
     last4: extractLast4(first),
@@ -169,17 +204,24 @@ async function getUserOrganization(userId: string) {
 
   if (!membership) return null
 
-  const orgRaw = membership?.organization as any
+  const orgRaw = (membership as { organization?: unknown }).organization
   const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
-  if (!organization) return null
+  if (!isJsonRecord(organization)) return null
+  const organizationId = typeof organization.id === 'string' ? organization.id : null
+  const organizationName = typeof organization.name === 'string' ? organization.name : null
+  if (!organizationId || !organizationName) return null
+
+  const settings = isJsonRecord(organization.settings)
+    ? (organization.settings as OrganizationSettings)
+    : null
 
   return {
     role: membership.role as string,
     isOwner: membership.role === 'owner',
-    organization: organization as {
-      id: string
-      name: string
-      settings?: OrganizationSettings | null
+    organization: {
+      id: organizationId,
+      name: organizationName,
+      settings,
     },
   }
 }
@@ -309,9 +351,9 @@ export const POST = createApiHandler(
           billingSettings.last_setup_state_expires_at || null,
           body.state || null
         )
-      } catch (err: any) {
+      } catch (err: unknown) {
         return NextResponse.json(
-          { error: err.message || 'Invalid billing setup state' },
+          { error: getErrorMessage(err, 'Invalid billing setup state') },
           { status: 403 }
         )
       }
@@ -321,11 +363,11 @@ export const POST = createApiHandler(
         return NextResponse.json({ error: 'identity_id is required' }, { status: 400 })
       }
 
-      let identity: any
+      let identity: { id?: string }
       try {
         identity = await fetchProcessorIdentity(identityId)
-      } catch (err: any) {
-        return NextResponse.json({ error: err.message || 'Invalid identity' }, { status: 400 })
+      } catch (err: unknown) {
+        return NextResponse.json({ error: getErrorMessage(err, 'Invalid identity') }, { status: 400 })
       }
 
       const instruments = await fetchProcessorPaymentInstrumentsForIdentity(identityId).catch(() => [])

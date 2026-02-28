@@ -3,7 +3,13 @@
 # ==========================
 
 # Load API key
-source "$(dirname "$0")/api-keys.env"
+ENV_FILE="$(dirname "$0")/api-keys.env"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "Missing $ENV_FILE"
+  echo "Create it from test-data/api-keys.env.example and set local test keys."
+  exit 1
+fi
+source "$ENV_FILE"
 
 BASE_URL="$SOLEDGIC_API_URL"
 API_KEY="$SOLEDGIC_API_KEY"

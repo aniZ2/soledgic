@@ -470,6 +470,18 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       },
       {
         "in": "body",
+        "name": "payment_method_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "in": "body",
+        "name": "source_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
         "name": "metadata",
         "type": "Record<string, string>",
         "required": false
@@ -2616,7 +2628,7 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "action",
-        "type": "'release' | 'batch_release' | 'void' | 'get_held' | 'get_summary' | 'auto_rel...",
+        "type": "'get_summary' | 'get_held' | 'release' | 'batch_release' | 'auto_release'",
         "required": true
       },
       {
@@ -2629,12 +2641,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "in": "body",
         "name": "entry_ids",
         "type": "string[]",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "void_reason",
-        "type": "string",
         "required": false
       },
       {
@@ -2663,8 +2669,8 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       },
       {
         "in": "body",
-        "name": "offset",
-        "type": "number",
+        "name": "execute_transfer",
+        "type": "boolean",
         "required": false
       }
     ]

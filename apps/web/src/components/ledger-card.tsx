@@ -20,7 +20,8 @@ export function LedgerCard({ ledger }: LedgerCardProps) {
 
   const handleClick = async () => {
     // Set this ledger's group as the active group before navigating
-    await setActiveLedgerGroupAction(ledger.ledger_group_id)
+    const result = await setActiveLedgerGroupAction(ledger.ledger_group_id)
+    if (!result.success) return
     router.push(`/ledgers/${ledger.id}`)
     router.refresh()
   }

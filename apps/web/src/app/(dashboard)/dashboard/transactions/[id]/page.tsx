@@ -1,10 +1,68 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect, notFound } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft, ExternalLink,
   FileText, Database, Clock
 } from 'lucide-react'
+
+interface TransactionEntry {
+  id: string
+  account_id: string | null
+  entry_type: 'debit' | 'credit' | string
+  amount: number
+  accounts: {
+    id: string
+    name: string
+    account_type: string
+    entity_id: string | null
+  } | null
+}
+
+interface TransactionMetadataBreakdown {
+  gross_amount?: number
+  processing_fee?: number
+  net_amount?: number
+}
+
+interface TransactionMetadata {
+  creator_id?: string
+  breakdown?: TransactionMetadataBreakdown
+}
+
+interface TransactionRow {
+  id: string
+  transaction_type: string
+  amount: number
+  description: string | null
+  status: string
+  reference_id: string | null
+  reference_type: string | null
+  reverses: string | null
+  reversed_by: string | null
+  created_at: string
+  metadata: TransactionMetadata | null
+  entries: TransactionEntry[] | null
+}
+
+interface LinkedTransactionRow {
+  id: string
+  transaction_type: string
+  amount: number
+  status: string
+  created_at: string
+}
+
+interface LinkedTransactionWithRelation extends LinkedTransactionRow {
+  relation: 'reverses' | 'reversed_by'
+}
+
+interface AuditLogRow {
+  id: string
+  action: string
+  actor_type: string | null
+  created_at: string
+}
 
 export default async function TransactionDetailPage({
   params,
@@ -15,7 +73,7 @@ export default async function TransactionDetailPage({
   const supabase = await createClient()
 
   // Get transaction with entries
-  const { data: transaction } = await supabase
+  const { data: transactionRaw } = await supabase
     .from('transactions')
     .select(`
       *,
@@ -35,31 +93,35 @@ export default async function TransactionDetailPage({
     .eq('id', id)
     .single()
 
+  const transaction = transactionRaw as TransactionRow | null
   if (!transaction) notFound()
 
   // Get audit log entries for this transaction
-  const { data: auditLogs } = await supabase
+  const { data: auditLogsRaw } = await supabase
     .from('audit_log')
     .select('*')
     .or(`entity_id.eq.${transaction.id},details->transaction_id.eq.${transaction.id}`)
     .order('created_at', { ascending: true })
     .limit(20)
+  const auditLogs = (auditLogsRaw as AuditLogRow[] | null) ?? []
 
   // Get linked transactions (reversals, etc)
-  let linkedTransactions: any[] = []
+  const linkedTransactions: LinkedTransactionWithRelation[] = []
   if (transaction.reverses) {
     const { data } = await supabase
       .from('transactions')
       .select('id, transaction_type, amount, status, created_at')
       .eq('id', transaction.reverses)
-    if (data) linkedTransactions.push(...data.map(t => ({ ...t, relation: 'reverses' })))
+    const related = (data as LinkedTransactionRow[] | null) ?? []
+    linkedTransactions.push(...related.map((t): LinkedTransactionWithRelation => ({ ...t, relation: 'reverses' })))
   }
   if (transaction.reversed_by) {
     const { data } = await supabase
       .from('transactions')
       .select('id, transaction_type, amount, status, created_at')
       .eq('id', transaction.reversed_by)
-    if (data) linkedTransactions.push(...data.map(t => ({ ...t, relation: 'reversed_by' })))
+    const related = (data as LinkedTransactionRow[] | null) ?? []
+    linkedTransactions.push(...related.map((t): LinkedTransactionWithRelation => ({ ...t, relation: 'reversed_by' })))
   }
 
   const formatCurrency = (amount: number) => {
@@ -82,10 +144,10 @@ export default async function TransactionDetailPage({
 
   // Calculate entry totals
   const totalDebits = transaction.entries?.reduce(
-    (sum: number, e: any) => sum + (e.entry_type === 'debit' ? e.amount : 0), 0
+    (sum: number, e) => sum + (e.entry_type === 'debit' ? e.amount : 0), 0
   ) || 0
   const totalCredits = transaction.entries?.reduce(
-    (sum: number, e: any) => sum + (e.entry_type === 'credit' ? e.amount : 0), 0
+    (sum: number, e) => sum + (e.entry_type === 'credit' ? e.amount : 0), 0
   ) || 0
   const isBalanced = Math.abs(totalDebits - totalCredits) < 0.01
 
@@ -200,7 +262,7 @@ export default async function TransactionDetailPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {transaction.entries?.map((entry: any) => (
+              {transaction.entries?.map((entry) => (
                 <tr key={entry.id}>
                   <td className="px-6 py-3">
                     <p className="font-medium text-foreground">{entry.accounts?.name}</p>
@@ -262,7 +324,7 @@ export default async function TransactionDetailPage({
         )}
 
         {/* Audit Trail */}
-        {auditLogs && auditLogs.length > 0 && (
+        {auditLogs.length > 0 && (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-muted/30">
               <h2 className="font-semibold text-foreground flex items-center gap-2">
@@ -271,7 +333,7 @@ export default async function TransactionDetailPage({
               </h2>
             </div>
             <div className="divide-y divide-border">
-              {auditLogs.map((log: any) => (
+              {auditLogs.map((log) => (
                 <div key={log.id} className="px-6 py-3 flex items-start gap-4">
                   <div className="w-2 h-2 rounded-full bg-muted-foreground mt-2 flex-shrink-0" />
                   <div className="flex-1 min-w-0">

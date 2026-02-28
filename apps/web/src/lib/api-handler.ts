@@ -6,8 +6,67 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { validateCsrf } from './csrf'
-import { checkRateLimit, getRateLimitKey, getRouteLimit } from './rate-limit'
+import { checkRateLimit, getRateLimitKey, getRouteLimit, type RateLimitConfig } from './rate-limit'
 import { getReadonly } from './livemode-server'
+
+interface PendingAuthCookie {
+  name: string
+  value: string
+  options?: {
+    domain?: string
+    path?: string
+    maxAge?: number
+    expires?: Date
+    httpOnly?: boolean
+    secure?: boolean
+    sameSite?: 'strict' | 'lax' | 'none'
+    priority?: 'low' | 'medium' | 'high'
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parsePendingAuthCookies(cookiesToSet: unknown): PendingAuthCookie[] {
+  if (!Array.isArray(cookiesToSet)) return []
+
+  const parsed: PendingAuthCookie[] = []
+  for (const item of cookiesToSet) {
+    if (!isRecord(item)) continue
+    const name = typeof item.name === 'string' ? item.name : null
+    const value = typeof item.value === 'string' ? item.value : null
+    if (!name || value === null) continue
+
+    const rawOptions = isRecord(item.options) ? item.options : null
+    const options: PendingAuthCookie['options'] = rawOptions
+      ? {
+          ...(typeof rawOptions.domain === 'string' ? { domain: rawOptions.domain } : {}),
+          ...(typeof rawOptions.path === 'string' ? { path: rawOptions.path } : {}),
+          ...(typeof rawOptions.maxAge === 'number' ? { maxAge: rawOptions.maxAge } : {}),
+          ...(rawOptions.expires instanceof Date ? { expires: rawOptions.expires } : {}),
+          ...(typeof rawOptions.httpOnly === 'boolean' ? { httpOnly: rawOptions.httpOnly } : {}),
+          ...(typeof rawOptions.secure === 'boolean' ? { secure: rawOptions.secure } : {}),
+          ...(rawOptions.sameSite === 'strict' || rawOptions.sameSite === 'lax' || rawOptions.sameSite === 'none'
+            ? { sameSite: rawOptions.sameSite }
+            : {}),
+          ...(rawOptions.priority === 'low' || rawOptions.priority === 'medium' || rawOptions.priority === 'high'
+            ? { priority: rawOptions.priority }
+            : {}),
+        }
+      : undefined
+
+    parsed.push({ name, value, options })
+  }
+  return parsed
+}
+
+function getErrorDetails(error: unknown): { name: string; message: string } {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message }
+  }
+  return { name: 'UnknownError', message: 'An unexpected error occurred' }
+}
 
 export interface ApiContext {
   user: { id: string; email?: string } | null
@@ -26,6 +85,10 @@ export interface ApiHandlerOptions {
   maxBodySize?: number
   // Route path for rate limiting
   routePath?: string
+  // Optional custom key builder for rate limiting.
+  rateLimitKey?: (request: Request, context: Pick<ApiContext, 'user'>) => string
+  // Optional route-specific limit override.
+  rateLimitConfig?: RateLimitConfig
   // Exempt this endpoint from read-only mode enforcement (default: false)
   readonlyExempt?: boolean
 }
@@ -46,11 +109,15 @@ function generateRequestId(): string {
  * Get client IP from request headers
  */
 function getClientIp(request: Request): string {
-  const forwardedFor = request.headers.get('x-forwarded-for')
-  const ip = forwardedFor?.split(',')[0].trim() || 
-             request.headers.get('x-real-ip') ||
-             'unknown'
-  return ip
+  const ipCandidates = [
+    request.headers.get('cf-connecting-ip'),
+    request.headers.get('x-real-ip'),
+    request.headers.get('x-vercel-forwarded-for'),
+    request.headers.get('x-forwarded-for'),
+  ]
+  return ipCandidates
+    .map((candidate) => (candidate || '').split(',')[0].trim())
+    .find((candidate) => candidate.length > 0) || 'unknown'
 }
 
 /**
@@ -83,6 +150,8 @@ export function createApiHandler(
     csrfProtection = true,
     maxBodySize = 1024 * 1024, // 1MB default
     routePath = '/api',
+    rateLimitKey: customRateLimitKey,
+    rateLimitConfig,
     readonlyExempt = false,
   } = options
   
@@ -110,7 +179,7 @@ export function createApiHandler(
       // a token refresh would consume the old refresh token but the new
       // tokens would be lost — logging the user out on the next request.
       let user: { id: string; email?: string } | null = null
-      const pendingAuthCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }> = []
+      const pendingAuthCookies: PendingAuthCookie[] = []
 
       if (requireAuth) {
         const cookieStore = await cookies()
@@ -130,7 +199,7 @@ export function createApiHandler(
                 return cookieStore.getAll()
               },
               setAll(cookiesToSet) {
-                pendingAuthCookies.push(...cookiesToSet)
+                pendingAuthCookies.push(...parsePendingAuthCookies(cookiesToSet))
               },
             },
           }
@@ -174,9 +243,22 @@ export function createApiHandler(
       
       // 3. Rate Limiting
       if (rateLimit) {
-        const rateLimitKey = getRateLimitKey(request, user?.id)
-        const config = getRouteLimit(routePath)
-        const result = await checkRateLimit(rateLimitKey, routePath, config)
+        let rateLimitKey = getRateLimitKey(request, user?.id)
+        if (customRateLimitKey) {
+          try {
+            rateLimitKey = customRateLimitKey(request, { user })
+          } catch {
+            console.warn(`[${requestId}] Custom rate-limit key failed; using default key`)
+          }
+        }
+        const config = rateLimitConfig ?? getRouteLimit(routePath)
+        // Some DB limiter implementations may primarily scope by endpoint.
+        // When a custom key is provided, include it in the endpoint scope so
+        // rate buckets stay segmented even in endpoint-scoped implementations.
+        const endpointScope = customRateLimitKey
+          ? `${routePath}:${rateLimitKey.slice(0, 96)}`
+          : routePath
+        const result = await checkRateLimit(rateLimitKey, endpointScope, config)
         
         if (!result.allowed) {
           const retryAfter = Math.ceil((result.resetAt - Date.now()) / 1000)
@@ -227,7 +309,7 @@ export function createApiHandler(
 
       // 6. Merge any auth cookies from Supabase token refresh
       for (const { name, value, options } of pendingAuthCookies) {
-        response.cookies.set(name, value, options as any)
+        response.cookies.set(name, value, options)
       }
 
       // 7. Add security headers directly (no re-wrapping to preserve cookies)
@@ -237,8 +319,9 @@ export function createApiHandler(
 
       return response
       
-    } catch (error: any) {
-      console.error(`[${requestId}] API error:`, error.message)
+    } catch (error: unknown) {
+      const { name: errorName, message: errorMessage } = getErrorDetails(error)
+      console.error(`[${requestId}] API error:`, errorMessage)
       
       // Log to audit (fire-and-forget)
       try {
@@ -250,7 +333,7 @@ export function createApiHandler(
           request_id: requestId,
           request_body: { 
             route: routePath,
-            error_type: error.name,
+            error_type: errorName,
             // Don't log full error message for security
           },
           risk_score: 10,
@@ -261,7 +344,7 @@ export function createApiHandler(
       
       return NextResponse.json(
         { 
-          error: sanitizeError(error.message || 'An unexpected error occurred'),
+          error: sanitizeError(errorMessage),
           request_id: requestId 
         },
         { 

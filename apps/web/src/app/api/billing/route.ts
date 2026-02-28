@@ -20,6 +20,67 @@ interface BillingRequest {
   plan_id?: string
 }
 
+type JsonRecord = Record<string, unknown>
+
+interface OrganizationRecord {
+  id: string
+  name: string
+  plan: string
+  trial_ends_at: string | null
+  status: string
+  max_ledgers: number | null
+  max_team_members: number | null
+  overage_ledger_price: number | null
+  overage_team_member_price: number | null
+  max_transactions_per_month: number | null
+  overage_transaction_price: number | null
+  settings: JsonRecord | null
+}
+
+interface BillingOverageChargeRow {
+  period_start: string | null
+  period_end: string | null
+  amount_cents: number | null
+  status: string | null
+  attempts: number | null
+  last_attempt_at: string | null
+  processor_payment_id: string | null
+  error: string | null
+  retries_remaining?: number
+  next_retry_at?: string | null
+  dunning_exhausted?: boolean
+}
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseOrganization(value: unknown): OrganizationRecord | null {
+  if (!isJsonRecord(value)) return null
+
+  const id = typeof value.id === 'string' ? value.id : null
+  const name = typeof value.name === 'string' ? value.name : null
+  if (!id || !name) return null
+
+  return {
+    id,
+    name,
+    plan: typeof value.plan === 'string' ? value.plan : 'pro',
+    trial_ends_at: typeof value.trial_ends_at === 'string' ? value.trial_ends_at : null,
+    status: typeof value.status === 'string' ? value.status : 'active',
+    max_ledgers: typeof value.max_ledgers === 'number' ? value.max_ledgers : null,
+    max_team_members: typeof value.max_team_members === 'number' ? value.max_team_members : null,
+    overage_ledger_price: typeof value.overage_ledger_price === 'number' ? value.overage_ledger_price : null,
+    overage_team_member_price:
+      typeof value.overage_team_member_price === 'number' ? value.overage_team_member_price : null,
+    max_transactions_per_month:
+      typeof value.max_transactions_per_month === 'number' ? value.max_transactions_per_month : null,
+    overage_transaction_price:
+      typeof value.overage_transaction_price === 'number' ? value.overage_transaction_price : null,
+    settings: isJsonRecord(value.settings) ? value.settings : null,
+  }
+}
+
 async function getUserOrganization(userId: string) {
   const supabase = await createClient()
 
@@ -33,10 +94,15 @@ async function getUserOrganization(userId: string) {
     .eq('status', 'active')
     .single()
 
-  if (!membership?.organization) return null
+  if (!membership) return null
+
+  const orgRaw = (membership as { organization?: unknown } | null)?.organization
+  const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
+  const parsedOrganization = parseOrganization(organization)
+  if (!parsedOrganization) return null
 
   return {
-    organization: membership.organization as Record<string, any>,
+    organization: parsedOrganization,
     role: membership.role as string,
     isOwner: membership.role === 'owner',
   }
@@ -159,7 +225,7 @@ export const POST = createApiHandler(
   }
 )
 
-async function handleGetSubscription(org: Record<string, any>, isOwner: boolean) {
+async function handleGetSubscription(org: OrganizationRecord, isOwner: boolean) {
   const supabase = await createClient()
 
   const { start, end } = currentBillingPeriodUtc()
@@ -179,7 +245,9 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       .eq('status', 'active'),
   ])
 
-  const ledgerIds = (ledgers || []).map((l: any) => l.id)
+  const ledgerIds = (ledgers || [])
+    .map((l: { id?: unknown }) => (typeof l.id === 'string' ? l.id : null))
+    .filter((id): id is string => Boolean(id))
   const currentMemberCount = memberCount || 0
   const planConfig = PLANS[org.plan] || PLANS.pro
 
@@ -206,12 +274,22 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
   const additionalTeamMembers =
     includedTeamMembers === -1 ? 0 : Math.max(0, currentMemberCount - includedTeamMembers)
 
+  // Transaction overage
+  const maxTransactions =
+    org.max_transactions_per_month ??
+    planConfig?.max_transactions_per_month ??
+    1000
+  const transactionOveragePrice =
+    org.overage_transaction_price ??
+    planConfig?.overage_transaction_price ??
+    2
+
   const estimatedMonthlyOverageCents =
     additionalLedgers * ledgerOveragePrice +
     additionalTeamMembers * teamMemberOveragePrice
 
-  const settingsObj = org?.settings && typeof org.settings === 'object' ? org.settings : {}
-  const billingSettings = (settingsObj.billing || {}) as Record<string, any>
+  const settingsObj = org.settings || {}
+  const billingSettings = isJsonRecord(settingsObj.billing) ? settingsObj.billing : {}
 
   const billingMethodIdRaw =
     typeof billingSettings?.payment_method_id === 'string' ? billingSettings.payment_method_id.trim() : ''
@@ -229,7 +307,7 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       process.env.PROCESSOR_MERCHANT_ID
   )
 
-  let lastCharge: Record<string, any> | null = null
+  let lastCharge: BillingOverageChargeRow | null = null
   if (isOwner) {
     const { data: charge } = await supabase
       .from('billing_overage_charges')
@@ -241,14 +319,14 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       .limit(1)
       .maybeSingle()
 
-    lastCharge = charge || null
+    lastCharge = (charge || null) as BillingOverageChargeRow | null
     if (lastCharge && String(lastCharge.status || '').toLowerCase() === 'failed') {
       const attempts =
         typeof lastCharge.attempts === 'number' && Number.isFinite(lastCharge.attempts)
           ? Math.max(0, Math.trunc(lastCharge.attempts))
           : 0
       lastCharge.retries_remaining = retriesRemainingAfterAttempt(attempts)
-      lastCharge.next_retry_at = computeNextRetryAt(attempts, lastCharge.last_attempt_at || null)
+      lastCharge.next_retry_at = computeNextRetryAt(attempts, lastCharge.last_attempt_at)
       lastCharge.dunning_exhausted = attempts >= MAX_DUNNING_ATTEMPTS
     }
   }
@@ -267,7 +345,9 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       supabase
         .from('transactions')
         .select('id', { count: 'exact', head: true })
-        .in('ledger_id', ledgerIds),
+        .in('ledger_id', ledgerIds)
+        .gte('created_at', start.toISOString())
+        .lt('created_at', end.toISOString()),
       supabase
         .from('audit_log')
         .select('id', { count: 'exact', head: true })
@@ -280,6 +360,11 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
     transactions = txCount || 0
     apiCalls = auditCount || 0
   }
+
+  const additionalTransactions =
+    maxTransactions === -1 ? 0 : Math.max(0, transactions - maxTransactions)
+  const transactionOverageCents = additionalTransactions * transactionOveragePrice
+  const totalEstimatedOverageCents = estimatedMonthlyOverageCents + transactionOverageCents
 
   return NextResponse.json({
     success: true,
@@ -312,9 +397,12 @@ async function handleGetSubscription(org: Record<string, any>, isOwner: boolean)
       overage: {
         additional_ledgers: additionalLedgers,
         additional_team_members: additionalTeamMembers,
+        additional_transactions: additionalTransactions,
         overage_ledger_price: ledgerOveragePrice,
         overage_team_member_price: teamMemberOveragePrice,
-        estimated_monthly_cents: estimatedMonthlyOverageCents,
+        overage_transaction_price: transactionOveragePrice,
+        max_transactions_per_month: maxTransactions,
+        estimated_monthly_cents: totalEstimatedOverageCents,
       },
       billing: {
         method_configured: billingMethodConfigured,
@@ -336,6 +424,8 @@ async function handleGetPlans() {
     max_team_members: config.max_team_members,
     overage_ledger_price_monthly: config.overage_ledger_price_monthly ?? 2000,
     overage_team_member_price_monthly: config.overage_team_member_price_monthly ?? 2000,
+    max_transactions_per_month: config.max_transactions_per_month ?? 1000,
+    overage_transaction_price: config.overage_transaction_price ?? 2,
     features: config.features,
     price_id_monthly: null,
     contact_sales: config.contact_sales || false,
@@ -344,7 +434,7 @@ async function handleGetPlans() {
   return NextResponse.json({ success: true, data: plansList })
 }
 
-async function handleActivateFreePlan(org: Record<string, any>, planId?: string) {
+async function handleActivateFreePlan(org: OrganizationRecord, planId?: string) {
   if (!planId) {
     return NextResponse.json({ error: 'plan_id is required' }, { status: 400 })
   }
@@ -365,6 +455,8 @@ async function handleActivateFreePlan(org: Record<string, any>, planId?: string)
       max_team_members: plan.max_team_members,
       overage_ledger_price: plan.overage_ledger_price_monthly ?? 2000,
       overage_team_member_price: plan.overage_team_member_price_monthly ?? 2000,
+      max_transactions_per_month: plan.max_transactions_per_month ?? 1000,
+      overage_transaction_price: plan.overage_transaction_price ?? 2,
     })
     .eq('id', org.id)
 

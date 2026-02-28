@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 interface ApiKeysRequest {
   action: 'reveal' | 'rotate'
@@ -37,26 +37,11 @@ async function getActiveMembership(userId: string) {
 }
 
 function createServiceClient() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
-  }
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      cookies: {
-        getAll() {
-          return []
-        },
-        setAll() {},
-      },
-    }
-  )
+  return createServiceRoleClient()
 }
 
 async function updateLedgerApiKeyHash(
-  serviceClient: ReturnType<typeof createServerClient>,
+  serviceClient: ReturnType<typeof createServiceRoleClient>,
   ledgerId: string,
   keyHash: string
 ) {

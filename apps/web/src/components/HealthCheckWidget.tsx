@@ -12,7 +12,7 @@ interface HealthCheck {
   name: string
   description: string
   status: 'passed' | 'warning' | 'failed' | 'skipped'
-  details: Record<string, any>
+  details: Record<string, unknown>
 }
 
 interface HealthResult {
@@ -34,11 +34,7 @@ export default function HealthCheckWidget() {
   const [expanded, setExpanded] = useState(false)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadHealthStatus()
-  }, [])
-
-  const loadHealthStatus = async () => {
+  async function loadHealthStatus() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -107,6 +103,13 @@ export default function HealthCheckWidget() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadHealthStatus()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [])
 
   const runHealthCheck = async () => {
     if (!ledgerId) return

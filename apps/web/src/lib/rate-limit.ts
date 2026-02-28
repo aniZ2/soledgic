@@ -3,6 +3,7 @@
 // with an in-memory fallback for local dev.
 
 import { createServerClient } from '@supabase/ssr'
+import { getServerServiceKey, getServerSupabaseUrl } from '@/lib/supabase/service'
 
 interface RateLimitEntry {
   count: number
@@ -28,9 +29,14 @@ let cachedServiceClient: ReturnType<typeof createServerClient> | null = null
 function getServiceClient() {
   if (cachedServiceClient) return cachedServiceClient
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseUrl || !serviceKey) return null
+  let supabaseUrl: string
+  let serviceKey: string
+  try {
+    supabaseUrl = getServerSupabaseUrl()
+    serviceKey = getServerServiceKey()
+  } catch {
+    return null
+  }
 
   cachedServiceClient = createServerClient(supabaseUrl, serviceKey, {
     cookies: {
@@ -55,15 +61,16 @@ export async function checkRateLimit(
   const now = Date.now()
   const isProd = process.env.NODE_ENV === 'production'
   const serviceClient = getServiceClient()
+  const failClosedResult: RateLimitResult = {
+    allowed: false,
+    remaining: 0,
+    resetAt: now + config.windowMs,
+  }
 
   // In production, do not fall back to in-memory limits. Rate limiting must be
   // distributed and durable across instances.
   if (isProd && !serviceClient) {
-    return {
-      allowed: false,
-      remaining: 0,
-      resetAt: now + config.windowMs,
-    }
+    return failClosedResult
   }
 
   if (serviceClient) {
@@ -79,7 +86,9 @@ export async function checkRateLimit(
       })
 
       const row = Array.isArray(data) ? data[0] : null
-      if (!error && row && typeof row.allowed === 'boolean' && row.reset_at) {
+      if (error) {
+        if (isProd) return failClosedResult
+      } else if (row && typeof row.allowed === 'boolean' && row.reset_at) {
         const resetAt = new Date(row.reset_at).getTime()
         const remaining = typeof row.remaining === 'number' ? row.remaining : 0
         const allowed = Boolean(row.allowed) && !Boolean(row.blocked)
@@ -89,14 +98,13 @@ export async function checkRateLimit(
           remaining: allowed ? Math.max(0, remaining) : 0,
           resetAt: Number.isFinite(resetAt) ? resetAt : now + config.windowMs,
         }
+      } else if (isProd) {
+        // Malformed or unexpected RPC shape should fail-closed in production.
+        return failClosedResult
       }
     } catch {
       if (isProd) {
-        return {
-          allowed: false,
-          remaining: 0,
-          resetAt: now + config.windowMs,
-        }
+        return failClosedResult
       }
     }
   }
@@ -147,11 +155,17 @@ export function getRateLimitKey(
     return `user:${userId}`
   }
   
-  // Fall back to IP address
-  const forwardedFor = request.headers.get('x-forwarded-for')
-  const ip = forwardedFor?.split(',')[0].trim() || 
-             request.headers.get('x-real-ip') ||
-             'unknown'
+  // Fall back to client IP. Prefer CDN-provided headers before generic
+  // x-forwarded-for to reduce spoofing risk.
+  const ipCandidates = [
+    request.headers.get('cf-connecting-ip'),
+    request.headers.get('x-real-ip'),
+    request.headers.get('x-vercel-forwarded-for'),
+    request.headers.get('x-forwarded-for'),
+  ]
+  const ip = ipCandidates
+    .map((candidate) => (candidate || '').split(',')[0].trim())
+    .find((candidate) => candidate.length > 0) || 'unknown'
   
   return `ip:${ip}`
 }

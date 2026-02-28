@@ -102,6 +102,7 @@ Create payment intent (unchanged from before). Money lands in YOUR platform acco
 {
   amount: 999,              // $9.99 in cents
   creator_id: 'author_123',
+  payment_method_id: 'src_xxx', // Required buyer payment source/instrument
   product_id: 'book_456',
   product_name: 'The Great Novel'
 }
@@ -162,15 +163,6 @@ The banker's control panel.
 {
   action: 'batch_release',
   entry_ids: ['uuid1', 'uuid2', 'uuid3']
-}
-```
-
-**Void (Cancel) Held Funds:**
-```typescript
-{
-  action: 'void',
-  entry_id: 'uuid',
-  void_reason: 'Suspected fraud'
 }
 ```
 
@@ -302,7 +294,7 @@ For creators to request payout from their connected account to bank.
 
 - [ ] Deploy functions:
   - `create-checkout`
-  - `connected-accounts`
+  - `process-processor-inbox`
   - `release-funds`
 
 - [ ] Configure Payment Processor:
@@ -326,11 +318,12 @@ For creators to request payout from their connected account to bank.
 - Connected accounts migration - Connected accounts infrastructure
 
 ### New Edge Functions
-- `connected-accounts/index.ts` - Create/manage Payment Processor Custom accounts
+- `create-checkout/index.ts` - Payment initiation
 - `release-funds/index.ts` - Escrow release control
+- `process-processor-inbox/index.ts` - Processor event normalization/ingestion
 
 ### Modified Files
-- `processor-webhook/index.ts` - Entries now created with `release_status: 'held'`
+- `apps/web/src/app/api/webhooks/processor/route.ts` - Inbound processor events persisted
 - `_shared/utils.ts` - Added Booklyverse CORS, rate limits
 
 ### Documentation

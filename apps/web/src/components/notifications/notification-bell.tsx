@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Bell, Check, X, ExternalLink } from 'lucide-react'
+import { Bell, X, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
@@ -15,35 +15,36 @@ interface Notification {
   created_at: string
 }
 
-const TYPE_ICONS: Record<string, { color: string; bgColor: string }> = {
-  payout_processed: { color: 'text-green-600', bgColor: 'bg-green-500/10' },
-  payout_failed: { color: 'text-red-600', bgColor: 'bg-red-500/10' },
-  sale_recorded: { color: 'text-blue-600', bgColor: 'bg-blue-500/10' },
-  period_closed: { color: 'text-purple-600', bgColor: 'bg-purple-500/10' },
-  reconciliation_mismatch: { color: 'text-amber-600', bgColor: 'bg-amber-500/10' },
-  webhook_failed: { color: 'text-red-600', bgColor: 'bg-red-500/10' },
-  limit_warning: { color: 'text-amber-600', bgColor: 'bg-amber-500/10' },
-  limit_reached: { color: 'text-red-600', bgColor: 'bg-red-500/10' },
-  trial_ending: { color: 'text-amber-600', bgColor: 'bg-amber-500/10' },
-  payment_failed: { color: 'text-red-600', bgColor: 'bg-red-500/10' },
-  security_alert: { color: 'text-red-600', bgColor: 'bg-red-500/10' },
-  team_invite: { color: 'text-blue-600', bgColor: 'bg-blue-500/10' },
-  system: { color: 'text-gray-600', bgColor: 'bg-gray-500/10' },
-}
-
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  async function loadNotifications() {
+    try {
+      const response = await fetch('/api/notifications')
+      if (response.ok) {
+        const data = await response.json()
+        setNotifications(data.notifications)
+        setUnreadCount(data.unreadCount)
+      }
+    } catch (error) {
+      console.error('Failed to load notifications:', error)
+    }
+  }
+
   useEffect(() => {
-    loadNotifications()
+    const timeoutId = setTimeout(() => {
+      void loadNotifications()
+    }, 0)
 
     // Poll for new notifications every 30 seconds
     const interval = setInterval(loadNotifications, 30000)
-    return () => clearInterval(interval)
+    return () => {
+      clearTimeout(timeoutId)
+      clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
@@ -57,19 +58,6 @@ export function NotificationBell() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const loadNotifications = async () => {
-    try {
-      const response = await fetch('/api/notifications')
-      if (response.ok) {
-        const data = await response.json()
-        setNotifications(data.notifications)
-        setUnreadCount(data.unreadCount)
-      }
-    } catch (error) {
-      console.error('Failed to load notifications:', error)
-    }
-  }
 
   const markAsRead = async (notificationId: string) => {
     try {
@@ -168,7 +156,6 @@ export function NotificationBell() {
             ) : (
               <div className="divide-y divide-border">
                 {notifications.map((notification) => {
-                  const typeStyle = TYPE_ICONS[notification.type] || TYPE_ICONS.system
                   return (
                     <div
                       key={notification.id}

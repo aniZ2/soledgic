@@ -11,6 +11,10 @@ interface RecordIncomeModalProps {
   onSuccess?: () => void
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 const CATEGORIES = [
   { value: 'sales', label: 'Sales Revenue' },
   { value: 'services', label: 'Service Revenue' },
@@ -83,8 +87,8 @@ export function RecordIncomeModal({
         onClose()
         resetForm()
       }, 1500)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to record income'))
     } finally {
       setLoading(false)
     }

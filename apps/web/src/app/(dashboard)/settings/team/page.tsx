@@ -23,6 +23,10 @@ interface TeamData {
   }
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function TeamSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,8 +53,8 @@ export default function TeamSettingsPage() {
 
       const data = await res.json()
       setTeamData(data)
-    } catch (err: any) {
-      setError(err.message || 'Failed to load team data')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load team data'))
     } finally {
       setLoading(false)
     }
@@ -76,8 +80,8 @@ export default function TeamSettingsPage() {
       // Reload team data
       await loadTeamData()
       return { success: true }
-    } catch (err: any) {
-      return { success: false, error: err.message || 'An unexpected error occurred' }
+    } catch (err: unknown) {
+      return { success: false, error: getErrorMessage(err, 'An unexpected error occurred') }
     }
   }
 
@@ -93,8 +97,8 @@ export default function TeamSettingsPage() {
       }
 
       await loadTeamData()
-    } catch (err: any) {
-      setError(err.message || 'Failed to remove member')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to remove member'))
     }
   }
 
@@ -110,8 +114,8 @@ export default function TeamSettingsPage() {
       }
 
       await loadTeamData()
-    } catch (err: any) {
-      setError(err.message || 'Failed to revoke invitation')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to revoke invitation'))
     }
   }
 

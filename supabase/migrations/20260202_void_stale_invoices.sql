@@ -1,9 +1,5 @@
--- Void all old invoices that were created before today
--- These are stale test data that's causing AR discrepancies
-
-UPDATE invoices
-SET status = 'void',
-    voided_at = NOW(),
-    void_reason = 'Data cleanup: stale test invoice'
-WHERE status IN ('sent', 'partial', 'overdue')
-  AND created_at < CURRENT_DATE
+-- NOTE: Historical one-off data cleanup migration.
+-- Converted to a NO-OP to prevent data mutation on new environments.
+DO $$ BEGIN
+  -- no-op
+END $$;

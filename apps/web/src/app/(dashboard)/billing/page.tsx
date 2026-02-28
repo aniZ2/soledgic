@@ -19,8 +19,11 @@ interface BillingUsage {
 interface BillingOverageSummary {
   additional_ledgers: number
   additional_team_members: number
+  additional_transactions: number
   overage_ledger_price: number
   overage_team_member_price: number
+  overage_transaction_price: number
+  max_transactions_per_month: number
   estimated_monthly_cents: number
 }
 
@@ -78,6 +81,10 @@ interface Plan {
   contact_sales?: boolean
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 async function billingFetch(action: string) {
   const res = await fetchWithCsrf('/api/billing', {
     method: 'POST',
@@ -117,8 +124,8 @@ export default function BillingPage() {
       if (plansData?.success) {
         setPlans(plansData.data as Plan[])
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load billing data')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load billing data'))
     } finally {
       setLoading(false)
     }
@@ -168,15 +175,15 @@ export default function BillingPage() {
           setInfo('Billing method saved.')
           await loadBilling()
           router.replace('/billing')
-        } catch (err: any) {
-          setError(err.message || 'Failed to finalize billing method setup')
+        } catch (err: unknown) {
+          setError(getErrorMessage(err, 'Failed to finalize billing method setup'))
           router.replace('/billing')
         } finally {
           setConnectingBillingMethod(false)
         }
       })()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [handledCallback, searchParams, router])
 
   const handleSetupBillingMethod = async () => {
@@ -195,8 +202,8 @@ export default function BillingPage() {
       }
 
       window.location.href = result.data.url
-    } catch (err: any) {
-      setError(err.message || 'Failed to start billing method setup')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to start billing method setup'))
       setConnectingBillingMethod(false)
     }
   }
@@ -342,7 +349,7 @@ export default function BillingPage() {
                 : 'Current month'}
             </p>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <p className="text-sm text-muted-foreground">Ledgers</p>
                 <p className="mt-1 text-2xl font-bold text-foreground">{usage.ledgers}</p>
@@ -350,6 +357,10 @@ export default function BillingPage() {
               <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <p className="text-sm text-muted-foreground">Team Members</p>
                 <p className="mt-1 text-2xl font-bold text-foreground">{usage.team_members}</p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">Transactions</p>
+                <p className="mt-1 text-2xl font-bold text-foreground">{usage.transactions.toLocaleString()}</p>
               </div>
               <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <p className="text-sm text-muted-foreground">Creators</p>
@@ -378,6 +389,10 @@ export default function BillingPage() {
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Additional team members</span>
                 <span className="text-foreground font-medium">{overage.additional_team_members}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Additional transactions</span>
+                <span className="text-foreground font-medium">{(overage.additional_transactions || 0).toLocaleString()}</span>
               </div>
               <div className="border-t border-border pt-3 flex items-center justify-between">
                 <span className="text-foreground font-medium">Estimated monthly total</span>

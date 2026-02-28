@@ -13,6 +13,10 @@ interface Ledger {
   has_key: boolean
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function ApiKeysPage() {
   const [ledgers, setLedgers] = useState<Ledger[]>([])
   const [loading, setLoading] = useState(true)
@@ -38,8 +42,8 @@ export default function ApiKeysPage() {
       }
 
       setLedgers(data.ledgers || [])
-    } catch (err: any) {
-      setError(err.message || 'Failed to load API keys')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load API keys'))
     } finally {
       setLoading(false)
     }
@@ -62,8 +66,8 @@ export default function ApiKeysPage() {
 
       setRevealedKeys((prev) => ({ ...prev, [ledgerId]: data.key }))
       await loadLedgers()
-    } catch (err: any) {
-      setError(err.message || 'Failed to rotate key')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to rotate key'))
     } finally {
       setRotatingLedgerId(null)
     }
@@ -78,8 +82,8 @@ export default function ApiKeysPage() {
       await navigator.clipboard.writeText(key)
       setCopiedKey(ledgerId)
       setTimeout(() => setCopiedKey(null), 2000)
-    } catch (err: any) {
-      setError(err.message || 'Failed to copy key')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to copy key'))
     }
   }
 

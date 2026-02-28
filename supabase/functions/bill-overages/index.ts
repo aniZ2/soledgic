@@ -11,11 +11,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getPaymentProvider } from '../_shared/payment-provider.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { getCorsHeaders, timingSafeEqual } from '../_shared/utils.ts'
 
 // Retry cadence for failed monthly overage charges.
 // Attempt 1: day 0 (initial monthly run)
@@ -24,28 +20,19 @@ const corsHeaders = {
 const DUNNING_RETRY_SCHEDULE_DAYS = [0, 3, 7] as const
 const MAX_DUNNING_ATTEMPTS = DUNNING_RETRY_SCHEDULE_DAYS.length
 
-function timingSafeEqualString(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  return result === 0
-}
-
 function isAuthorized(authHeader: string, serviceRoleKey: string): boolean {
   const expectedAuth = `Bearer ${serviceRoleKey}`
-  if (timingSafeEqualString(authHeader, expectedAuth)) return true
+  if (timingSafeEqual(authHeader, expectedAuth)) return true
 
   const testingToken = (Deno.env.get('BILL_OVERAGES_TOKEN') || '').trim()
   if (!testingToken) return false
-  return timingSafeEqualString(authHeader, `Bearer ${testingToken}`)
+  return timingSafeEqual(authHeader, `Bearer ${testingToken}`)
 }
 
-function json(payload: unknown, status = 200) {
+function json(req: Request, payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
   })
 }
 
@@ -138,6 +125,8 @@ type OrgRow = {
   max_team_members: number | null
   overage_ledger_price: number | null
   overage_team_member_price: number | null
+  max_transactions_per_month: number | null
+  overage_transaction_price: number | null
   settings: any
 }
 
@@ -150,22 +139,22 @@ type ExistingChargeRow = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: getCorsHeaders(req) })
   }
 
   if (req.method !== 'POST') {
-    return json({ success: false, error: 'Method not allowed' }, 405)
+    return json(req, { success: false, error: 'Method not allowed' }, 405)
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
   if (!supabaseUrl || !serviceRoleKey) {
-    return json({ success: false, error: 'Supabase environment is not configured' }, 503)
+    return json(req, { success: false, error: 'Supabase environment is not configured' }, 503)
   }
 
   const authHeader = req.headers.get('authorization') || ''
   if (!isAuthorized(authHeader, serviceRoleKey)) {
-    return json({ success: false, error: 'Unauthorized' }, 401)
+    return json(req, { success: false, error: 'Unauthorized' }, 401)
   }
 
   let body: BillOveragesRequest = {}
@@ -182,7 +171,7 @@ Deno.serve(async (req: Request) => {
   const periodEnd = isValidDateOnly(body.period_end) ? body.period_end : defaultPeriod.periodEnd
 
   if (new Date(`${periodStart}T00:00:00Z`).getTime() >= new Date(`${periodEnd}T00:00:00Z`).getTime()) {
-    return json({ success: false, error: 'Invalid period: period_start must be < period_end' }, 400)
+    return json(req, { success: false, error: 'Invalid period: period_start must be < period_end' }, 400)
   }
 
   const dryRun = body.dry_run === true
@@ -195,14 +184,14 @@ Deno.serve(async (req: Request) => {
 
   const orgQuery = supabase
     .from('organizations')
-    .select('id, name, status, max_ledgers, max_team_members, overage_ledger_price, overage_team_member_price, settings')
+    .select('id, name, status, max_ledgers, max_team_members, overage_ledger_price, overage_team_member_price, max_transactions_per_month, overage_transaction_price, settings')
 
   const { data: orgs, error: orgError } = orgFilter
     ? await orgQuery.eq('id', orgFilter)
     : await orgQuery
 
   if (orgError) {
-    return json({ success: false, error: orgError.message || 'Failed to load organizations' }, 500)
+    return json(req, { success: false, error: orgError.message || 'Failed to load organizations' }, 500)
   }
 
   const results: any[] = []
@@ -256,7 +245,35 @@ Deno.serve(async (req: Request) => {
     const additionalMembers =
       includedMembers === -1 ? 0 : Math.max(0, currentMemberCount - includedMembers)
 
-    const amountCents = additionalLedgers * ledgerOveragePrice + additionalMembers * memberOveragePrice
+    // Transaction overage counting
+    const includedTransactions = typeof org.max_transactions_per_month === 'number' ? org.max_transactions_per_month : 1000
+    const transactionOveragePrice = typeof org.overage_transaction_price === 'number' ? org.overage_transaction_price : 2
+
+    // Get all ledger IDs for this org to count transactions
+    const { data: orgLedgers } = await supabase
+      .from('ledgers')
+      .select('id')
+      .eq('organization_id', org.id)
+      .eq('livemode', true)
+      .eq('status', 'active')
+    const orgLedgerIds = (orgLedgers || []).map((l: { id: string }) => l.id)
+
+    let currentTransactionCount = 0
+    if (orgLedgerIds.length > 0) {
+      const { count: txCount } = await supabase
+        .from('transactions')
+        .select('id', { count: 'exact', head: true })
+        .in('ledger_id', orgLedgerIds)
+        .gte('created_at', `${periodStart}T00:00:00Z`)
+        .lt('created_at', `${periodEnd}T00:00:00Z`)
+      currentTransactionCount = txCount || 0
+    }
+
+    const additionalTransactions =
+      includedTransactions === -1 ? 0 : Math.max(0, currentTransactionCount - includedTransactions)
+    const transactionOverageCents = additionalTransactions * transactionOveragePrice
+
+    const amountCents = additionalLedgers * ledgerOveragePrice + additionalMembers * memberOveragePrice + transactionOverageCents
 
     if (amountCents <= 0) {
       skipped++
@@ -266,6 +283,7 @@ Deno.serve(async (req: Request) => {
         reason: 'no_overage',
         additional_ledgers: additionalLedgers,
         additional_team_members: additionalMembers,
+        additional_transactions: additionalTransactions,
         amount_cents: amountCents,
       })
       continue
@@ -369,6 +387,8 @@ Deno.serve(async (req: Request) => {
         period_end: periodEnd,
         additional_ledgers: additionalLedgers,
         additional_team_members: additionalMembers,
+        additional_transactions: additionalTransactions,
+        overage_transaction_price: transactionOveragePrice,
         amount_cents: amountCents,
         billing_source_configured: Boolean(billingSourceId),
         existing_charge_status: existingStatus || null,
@@ -391,6 +411,10 @@ Deno.serve(async (req: Request) => {
       p_additional_team_members: additionalMembers,
       p_overage_ledger_price: ledgerOveragePrice,
       p_overage_team_member_price: memberOveragePrice,
+      p_included_transactions: includedTransactions === -1 ? 0 : includedTransactions,
+      p_current_transaction_count: currentTransactionCount,
+      p_additional_transactions: additionalTransactions,
+      p_overage_transaction_price: transactionOveragePrice,
     })
 
     if (claimError) {
@@ -497,6 +521,8 @@ Deno.serve(async (req: Request) => {
         soledgic_period_end: periodEnd,
         soledgic_additional_ledgers: String(additionalLedgers),
         soledgic_additional_team_members: String(additionalMembers),
+        soledgic_additional_transactions: String(additionalTransactions),
+        soledgic_overage_transaction_price: String(transactionOveragePrice),
       },
       payment_method_id: billingSourceId,
     })
@@ -559,7 +585,7 @@ Deno.serve(async (req: Request) => {
     })
   }
 
-  return json({
+  return json(req, {
     success: true,
     period_start: periodStart,
     period_end: periodEnd,

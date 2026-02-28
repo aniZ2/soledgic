@@ -1,6 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null
+  const code = (error as Record<string, unknown>).code
+  return typeof code === 'string' ? code : null
+}
+
 export async function updateSession(request: NextRequest) {
   // Keep the original response — if getUser() fails we return this
   // instead of a response that might clear auth cookies
@@ -54,7 +60,7 @@ export async function updateSession(request: NextRequest) {
     ) {
       console.warn('Middleware auth refresh failed', {
         path: request.nextUrl.pathname,
-        code: (error as any)?.code ?? null,
+        code: getErrorCode(error),
       })
     }
     // Never propagate cookie-clearing headers on refresh failure.

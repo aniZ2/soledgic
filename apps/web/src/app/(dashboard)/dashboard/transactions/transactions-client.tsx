@@ -19,7 +19,7 @@ interface Transaction {
   description: string | null
   status: string
   created_at: string
-  metadata: any
+  metadata: Record<string, unknown> | null
 }
 
 interface TransactionsClientProps {

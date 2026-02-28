@@ -11,6 +11,10 @@ interface RecordTransferModalProps {
   onSuccess?: () => void
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 const TRANSFER_TYPES = [
   { value: 'tax_reserve', label: 'Tax Reserve', description: 'Set aside funds for taxes' },
   { value: 'payout_reserve', label: 'Payout Reserve', description: 'Reserve for upcoming payouts' },
@@ -91,8 +95,8 @@ export function RecordTransferModal({
         onClose()
         resetForm()
       }, 1500)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to record transfer'))
     } finally {
       setLoading(false)
     }

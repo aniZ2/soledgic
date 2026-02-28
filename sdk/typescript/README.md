@@ -21,6 +21,7 @@ const ledger = new Soledgic('sk_live_your_api_key')
 const checkout = await ledger.createCheckout({
   amount: 2999, // $29.99 in cents
   creatorId: 'author_123',
+  paymentMethodId: 'src_abc123', // Required: buyer payment instrument/source
   productName: 'Book purchase',
   customerEmail: 'reader@example.com',
 })
@@ -83,6 +84,8 @@ const summary = await ledger.get1099Summary(2024)
 | `setCreatorSplit(creatorId, percent)` | Set custom split |
 | `clearCreatorSplit(creatorId)` | Remove custom split |
 | `autoPromoteCreators()` | Promote based on earnings |
+
+`createCheckout` requires `paymentMethodId` (or legacy alias `sourceId`).
 
 ### Standard Functions
 

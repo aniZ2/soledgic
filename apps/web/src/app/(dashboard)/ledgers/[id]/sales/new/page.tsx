@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function NewSalePage({
   params,
 }: {
@@ -45,8 +49,8 @@ export default function NewSalePage({
       }
 
       router.push(`/ledgers/${ledgerId}`)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to record sale'))
       setLoading(false)
     }
   }
@@ -107,7 +111,7 @@ export default function NewSalePage({
               placeholder="Leave empty for platform-only revenue"
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              For marketplace sales, enter the creator's ID to track their revenue split.
+              For marketplace sales, enter the creator&apos;s ID to track their revenue split.
             </p>
           </div>
 

@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import {
-  Monitor, Code2, CheckCircle, Circle, ArrowRight,
+  Monitor, Code2, CheckCircle, ArrowRight,
   Users, DollarSign, Wallet, Key, Copy, Check,
   ExternalLink, Loader2, Play
 } from 'lucide-react'
@@ -31,7 +30,6 @@ export function GettingStartedClient({
   initialMode,
   supabaseUrl
 }: GettingStartedClientProps) {
-  const router = useRouter()
   const [mode, setMode] = useState<'dashboard' | 'developer' | null>(initialMode || null)
   const [copied, setCopied] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
@@ -68,7 +66,7 @@ export function GettingStartedClient({
         const data = await response.json()
         setTestResult({ success: false, message: data.error || 'Connection failed' })
       }
-    } catch (err) {
+    } catch {
       setTestResult({ success: false, message: 'Network error - check your connection' })
     } finally {
       setTesting(false)
@@ -96,7 +94,7 @@ export function GettingStartedClient({
               <Monitor className="w-7 h-7 text-blue-500" />
             </div>
             <h2 className="text-xl font-semibold text-foreground mb-2">
-              I'll use the Dashboard
+              I&apos;ll use the Dashboard
             </h2>
             <p className="text-muted-foreground mb-4">
               Manage creators, record transactions, and process payouts directly through the web interface. No coding required.
@@ -129,7 +127,7 @@ export function GettingStartedClient({
               <Code2 className="w-7 h-7 text-purple-500" />
             </div>
             <h2 className="text-xl font-semibold text-foreground mb-2">
-              I'll integrate via API
+              I&apos;ll integrate via API
             </h2>
             <p className="text-muted-foreground mb-4">
               Connect Soledgic to your application via REST API. Automate transaction recording from your codebase.
@@ -226,7 +224,7 @@ export function GettingStartedClient({
 
         {/* Steps */}
         <div className="space-y-4">
-          {steps.map((step, index) => (
+          {steps.map((step) => (
             <div
               key={step.id}
               className={`bg-card border rounded-lg p-6 transition-all ${
@@ -282,9 +280,9 @@ export function GettingStartedClient({
         {allComplete && (
           <div className="mt-8 p-6 bg-green-500/10 border border-green-500/20 rounded-lg text-center">
             <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">You're all set!</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">You&apos;re all set!</h3>
             <p className="text-muted-foreground mb-4">
-              You've completed the basic setup. Explore the dashboard to manage your business.
+              You&apos;ve completed the basic setup. Explore the dashboard to manage your business.
             </p>
             <Link
               href="/dashboard"
@@ -452,7 +450,7 @@ export function GettingStartedClient({
           <div className="p-6">
             <h3 className="font-medium text-foreground mb-2">3. Process a Payout</h3>
             <p className="text-sm text-muted-foreground mb-3">
-              Pay out a creator's balance.
+              Pay out a creator&apos;s balance.
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">

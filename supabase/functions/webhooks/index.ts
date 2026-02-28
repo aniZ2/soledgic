@@ -41,11 +41,28 @@ async function generateHmacSignature(payload: string, secret: string): Promise<s
 
 // SECURITY: Check if an IP address is private/internal
 function isPrivateIP(ip: string): boolean {
-  const parts = ip.split('.')
+  const normalized = ip.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '').split('%')[0]
+  const parts = normalized.split('.')
   if (parts.length !== 4) {
-    // Check for IPv6 loopback
-    if (ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc00:') || ip.startsWith('fd')) {
+    // IPv6 loopback / unspecified / private / link-local / multicast / docs
+    if (normalized === '::1' || normalized === '::') {
       return true
+    }
+    if (/^fe[89ab]/.test(normalized)) {
+      return true
+    }
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) {
+      return true
+    }
+    if (normalized.startsWith('ff')) {
+      return true
+    }
+    if (normalized.startsWith('2001:db8:')) {
+      return true
+    }
+    const mappedIpv4Match = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)
+    if (mappedIpv4Match && mappedIpv4Match[1]) {
+      return isPrivateIP(mappedIpv4Match[1])
     }
     return false
   }
@@ -107,30 +124,28 @@ async function isUrlSafeWithDNS(urlString: string): Promise<{ safe: boolean; err
       return { safe: true }
     }
     
-    // Resolve DNS and check if it points to a private IP
-    // This prevents DNS rebinding attacks
-    const addresses = await Deno.resolveDns(hostname, 'A').catch(() => [])
-    
-    for (const addr of addresses) {
-      if (isPrivateIP(addr)) {
-        return { safe: false, error: `DNS resolves to private IP: ${addr}` }
+    // Resolve DNS and check if it points to a private IP.
+    // This prevents DNS rebinding attacks.
+    let validatedAny = false
+    for (const recordType of ['A', 'AAAA'] as const) {
+      const addresses = await Deno.resolveDns(hostname, recordType).catch(() => [])
+      for (const addr of addresses) {
+        validatedAny = true
+        if (isPrivateIP(addr)) {
+          return { safe: false, error: `DNS resolves to private IP: ${addr}` }
+        }
       }
     }
-    
-    // Also check AAAA records for IPv6
-    const addresses6 = await Deno.resolveDns(hostname, 'AAAA').catch(() => [])
-    for (const addr of addresses6) {
-      if (addr === '::1' || addr.startsWith('fe80:') || addr.startsWith('fc00:') || addr.startsWith('fd')) {
-        return { safe: false, error: `DNS resolves to private IPv6: ${addr}` }
-      }
+
+    if (!validatedAny) {
+      return { safe: false, error: 'DNS validation failed for webhook host' }
     }
-    
+
     return { safe: true }
-  } catch (err: any) {
-    // If DNS resolution fails, we allow the request but log it
-    // The actual HTTP request will fail anyway if the host is unreachable
-    console.warn(`DNS resolution failed for webhook URL: ${err.message}`)
-    return { safe: true }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn(`DNS resolution failed for webhook URL: ${message}`)
+    return { safe: false, error: 'DNS validation failed for webhook host' }
   }
 }
 

@@ -1,6 +1,35 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { ArrowDownRight, ArrowUpRight, Filter } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight } from 'lucide-react'
+
+interface ConnectedAccountRow {
+  ledger_id: string
+  entity_id: string
+  display_name: string | null
+  ledger: {
+    business_name: string
+  } | null
+}
+
+interface EntryTransaction {
+  id: string
+  transaction_type: string
+  description: string | null
+  reference_id: string | null
+}
+
+interface EntryRow {
+  id: string
+  amount: number
+  entry_type: 'credit' | 'debit' | string
+  created_at: string
+  transaction: EntryTransaction | null
+}
+
+interface TransactionView extends EntryRow {
+  ledger_name: string
+  platform: string | null
+}
 
 export default async function CreatorEarningsPage() {
   const supabase = await createClient()
@@ -23,10 +52,11 @@ export default async function CreatorEarningsPage() {
     .eq('email', creatorEmail)
     .eq('is_active', true)
 
-  const allTransactions: any[] = []
+  const allTransactions: TransactionView[] = []
 
-  if (connectedAccounts && connectedAccounts.length > 0) {
-    for (const account of connectedAccounts) {
+  const connectedAccountRows = (connectedAccounts as ConnectedAccountRow[] | null) ?? []
+  if (connectedAccountRows.length > 0) {
+    for (const account of connectedAccountRows) {
       // Get creator account
       const { data: creatorAccount } = await supabase
         .from('accounts')
@@ -57,17 +87,16 @@ export default async function CreatorEarningsPage() {
           .order('created_at', { ascending: false })
           .limit(100)
 
-        if (entries) {
-          for (const entry of entries) {
+        const entryRows = (entries as EntryRow[] | null) ?? []
+        for (const entry of entryRows) {
             allTransactions.push({
               ...entry,
-              ledger_name: (account.ledger as any)?.business_name || 'Unknown',
+              ledger_name: account.ledger?.business_name || 'Unknown',
               platform: account.display_name
             })
-          }
-        }
       }
     }
+  }
   }
 
   // Sort by date

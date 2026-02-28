@@ -153,7 +153,7 @@ SELECT cron.schedule('cleanup-nacha-files', '0 4 * * *', 'SELECT cleanup_expired
 
 ### 🔐 Pre-Launch Security Tasks
 - [ ] ⚠️ **CRITICAL**: Rotate live API key in test-data/api-keys.env
-- [ ] Delete or secure test-data/api-keys.env file
+- [x] Delete or secure test-data/api-keys.env file
 - [ ] Set TEST_API_KEY_BOOKLYVERSE and TEST_API_KEY_ACME env vars for tests
 - [ ] Deploy edge functions with security fixes: `supabase functions deploy`
 - [ ] Apply new migrations: `supabase db push`

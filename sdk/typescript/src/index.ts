@@ -24,7 +24,7 @@ export interface RecordSaleRequest {
 
 export type CheckoutProvider = 'card'
 
-export interface CreateCheckoutRequest {
+interface CreateCheckoutRequestBase {
   amount: number
   creatorId: string
   currency?: string
@@ -36,11 +36,26 @@ export interface CreateCheckoutRequest {
   setupFutureUsage?: 'off_session' | 'on_session'
   // The active checkout provider is the whitelabeled card processor.
   paymentProvider?: CheckoutProvider
-  /** Buyer payment method / payment instrument id (required). */
-  paymentMethodId?: string
-  /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
-  sourceId?: string
   metadata?: Record<string, string>
+  // Session mode: when paymentMethodId is omitted, a hosted checkout session
+  // is created. The buyer visits checkoutUrl to enter their card.
+  successUrl?: string
+  cancelUrl?: string
+}
+
+export type CreateCheckoutRequest = CreateCheckoutRequestBase & (
+  { paymentMethodId: string; sourceId?: string } |
+  { paymentMethodId?: string; sourceId: string } |
+  { paymentMethodId?: undefined; sourceId?: undefined; successUrl: string }
+)
+
+export interface CreateCheckoutSessionResponse {
+  success: boolean
+  mode: 'session'
+  sessionId: string
+  checkoutUrl: string
+  expiresAt: string
+  breakdown?: CheckoutBreakdown
 }
 
 export interface RecordIncomeRequest {
@@ -426,7 +441,13 @@ export class Soledgic {
 
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
 
-  async createCheckout(req: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {
+  async createCheckout(req: CreateCheckoutRequest): Promise<CreateCheckoutResponse | CreateCheckoutSessionResponse> {
+    const hasPaymentMethod = Boolean(req.paymentMethodId || req.sourceId)
+
+    if (!hasPaymentMethod && !req.successUrl) {
+      throw new Error('Either paymentMethodId/sourceId or successUrl is required')
+    }
+
     const response = await this.request<any>('create-checkout', {
       amount: req.amount,
       creator_id: req.creatorId,
@@ -439,9 +460,33 @@ export class Soledgic {
       setup_future_usage: req.setupFutureUsage,
       payment_method_id: req.paymentMethodId,
       source_id: req.sourceId,
+      success_url: req.successUrl,
+      cancel_url: req.cancelUrl,
       metadata: req.metadata,
     })
 
+    // Session mode response
+    if (response.mode === 'session') {
+      const breakdown = response.breakdown
+        ? {
+            grossAmount: response.breakdown.gross_amount,
+            creatorAmount: response.breakdown.creator_amount,
+            platformAmount: response.breakdown.platform_amount,
+            creatorPercent: response.breakdown.creator_percent,
+          }
+        : undefined
+
+      return {
+        success: Boolean(response.success),
+        mode: 'session',
+        sessionId: response.session_id,
+        checkoutUrl: response.checkout_url,
+        expiresAt: response.expires_at,
+        breakdown,
+      }
+    }
+
+    // Direct charge response
     const breakdown = response.breakdown
       ? {
           grossAmount: response.breakdown.gross_amount,

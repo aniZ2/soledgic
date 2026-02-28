@@ -4,6 +4,12 @@
 import { loadEnv } from 'vite'
 import { SoledgicTestClient } from './test-client'
 
+function isPlaceholder(value: string | undefined): boolean {
+  const v = (value || '').trim().toLowerCase()
+  if (!v) return true
+  return v.includes('replace_with') || v.includes('your_') || v === 'sk_test_replace_with_local_key'
+}
+
 export default async function globalSetup() {
   console.log('\n🧹 Cleaning up test data before running stress tests...')
 
@@ -14,8 +20,8 @@ export default async function globalSetup() {
   const anonKey = env.SUPABASE_ANON_KEY
   const baseUrl = env.SOLEDGIC_URL || 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
 
-  if (!apiKey || !anonKey) {
-    console.log('⚠️ Missing environment variables - skipping cleanup\n')
+  if (isPlaceholder(apiKey) || isPlaceholder(anonKey)) {
+    console.log('⚠️ Missing real TEST_API_KEY_BOOKLYVERSE or SUPABASE_ANON_KEY - skipping cleanup\n')
     return
   }
 

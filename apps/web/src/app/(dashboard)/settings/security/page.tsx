@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
-  Shield, Smartphone, Key, Clock, AlertTriangle,
+  Shield, Smartphone, Key, AlertTriangle,
   Check, X, Loader2, LogOut, Globe,
 } from 'lucide-react'
 
@@ -15,13 +15,16 @@ interface Session {
   is_current: boolean
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function SecuritySettingsPage() {
   const [loading, setLoading] = useState(true)
   const [mfaEnabled, setMfaEnabled] = useState(false)
   const [mfaEnrolling, setMfaEnrolling] = useState(false)
   const [sessions, setSessions] = useState<Session[]>([])
   const [passwordUpdating, setPasswordUpdating] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordError, setPasswordError] = useState<string | null>(null)
@@ -79,8 +82,8 @@ export default function SecuritySettingsPage() {
         alert('MFA enrollment started. Scan the QR code in your authenticator app.')
         // After user enters code, call verify
       }
-    } catch (err: any) {
-      alert(err.message || 'Failed to enroll MFA')
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, 'Failed to enroll MFA'))
     }
 
     setMfaEnrolling(false)
@@ -126,7 +129,6 @@ export default function SecuritySettingsPage() {
       setPasswordError(error.message)
     } else {
       setPasswordSuccess(true)
-      setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     }

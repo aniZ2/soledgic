@@ -12,6 +12,15 @@ import {
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 
+interface RecentTransaction {
+  id: string
+  transaction_type: string
+  amount: number
+  description: string | null
+  created_at: string
+  status: string
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const livemode = await getLivemode()
@@ -42,14 +51,14 @@ export default async function DashboardPage() {
   const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
 
   // Get summary stats if we have a ledger
-  let stats = {
+  const stats = {
     totalRevenue: 0,
     totalPayouts: 0,
     creatorCount: 0,
     pendingPayouts: 0,
   }
 
-  let recentTransactions: any[] = []
+  let recentTransactions: RecentTransaction[] = []
 
   if (ledger) {
     // Get transaction counts
@@ -61,7 +70,7 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(10)
 
-    recentTransactions = transactions || []
+    recentTransactions = (transactions as RecentTransaction[] | null) ?? []
 
     // Calculate totals
     const { data: totals } = await supabase

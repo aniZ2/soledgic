@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 const ALLOWED_ENDPOINTS = new Set([
   'health-check',
   'create-creator',
+  'release-funds',
   'record-sale',
   'record-expense',
   'record-income',
@@ -20,6 +21,13 @@ const ALLOWED_ENDPOINTS = new Set([
   'trial-balance',
   'generate-pdf',
   'export-report',
+])
+
+const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
+  'process-payout',
+  'release-funds',
+  'import-transactions',
+  'send-statements',
 ])
 
 function getEndpointFromRequest(request: Request): string | null {
@@ -49,7 +57,7 @@ async function assertLedgerAccess(userId: string, ledgerId: string) {
 
   const { data: membership, error: membershipError } = await supabase
     .from('organization_members')
-    .select('id')
+    .select('id, role')
     .eq('organization_id', ledger.organization_id)
     .eq('user_id', userId)
     .eq('status', 'active')
@@ -59,7 +67,7 @@ async function assertLedgerAccess(userId: string, ledgerId: string) {
     return { allowed: false, status: 403, error: 'Access denied' } as const
   }
 
-  return { allowed: true } as const
+  return { allowed: true, role: membership.role as string } as const
 }
 
 async function proxyLedgerFunction(
@@ -115,6 +123,22 @@ async function proxyLedgerFunction(
   const access = await assertLedgerAccess(userId, ledgerId)
   if (!access.allowed) {
     return NextResponse.json({ error: access.error }, { status: access.status })
+  }
+
+  const isReadMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS'
+  if (!isReadMethod && access.role === 'viewer') {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  if (
+    OWNER_ADMIN_ONLY_ENDPOINTS.has(endpoint) &&
+    access.role !== 'owner' &&
+    access.role !== 'admin'
+  ) {
+    return NextResponse.json(
+      { error: 'Only owners and admins can perform this action' },
+      { status: 403 }
+    )
   }
 
   const headers = new Headers()

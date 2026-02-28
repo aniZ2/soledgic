@@ -9,6 +9,20 @@ interface ApiTesterProps {
   onSuccess?: () => void
 }
 
+function readErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === 'object' && payload !== null && 'error' in payload) {
+    const candidate = (payload as Record<string, unknown>).error
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate
+    }
+  }
+  return fallback
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 const COMMANDS = {
   creator: {
     title: 'Create a Creator',
@@ -48,7 +62,7 @@ const COMMANDS = {
 }
 
 export function ApiTester({ apiKey, step, onSuccess }: ApiTesterProps) {
-  const [response, setResponse] = useState<any>(null)
+  const [response, setResponse] = useState<unknown>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -90,13 +104,13 @@ export function ApiTester({ apiKey, step, onSuccess }: ApiTesterProps) {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || `Request failed with status ${res.status}`)
+        setError(readErrorMessage(data, `Request failed with status ${res.status}`))
       } else {
         setResponse(data)
         onSuccess?.()
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to execute request')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to execute request'))
     } finally {
       setLoading(false)
     }

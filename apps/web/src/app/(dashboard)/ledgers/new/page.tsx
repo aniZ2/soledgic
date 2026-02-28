@@ -4,6 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 export default function NewLedgerPage() {
   const [name, setName] = useState('')
@@ -28,9 +33,8 @@ export default function NewLedgerPage() {
         return
       }
 
-      const response = await fetch('/api/ledgers', {
+      const response = await fetchWithCsrf('/api/ledgers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           platform_name: name,
           organization_id: orgData.organizations[0].id,
@@ -47,8 +51,8 @@ export default function NewLedgerPage() {
       }
 
       router.push(`/ledgers/${result.ledger.id}`)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to create ledger'))
       setLoading(false)
     }
   }

@@ -2,6 +2,7 @@
 
 import { cookies } from 'next/headers'
 import { LIVEMODE_COOKIE, ACTIVE_LEDGER_GROUP_COOKIE, READONLY_COOKIE } from './livemode'
+import { createClient } from './supabase/server'
 
 /**
  * Read livemode from cookie in server components / route handlers.
@@ -38,6 +39,32 @@ const COOKIE_OPTIONS = {
   httpOnly: true,
 }
 
+const UUID_V4_OR_V5_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isUuid(value: string): boolean {
+  return UUID_V4_OR_V5_RE.test(value)
+}
+
+async function getAuthenticatedUserId(): Promise<string | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id || null
+}
+
+async function isOwnerOrAdmin(userId: string): Promise<boolean> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('organization_members')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .in('role', ['owner', 'admin'])
+    .limit(1)
+    .maybeSingle()
+
+  return !error && Boolean(data?.id)
+}
+
 /**
  * Server action to toggle livemode.
  * Using a server action (instead of an API route) ensures that
@@ -48,6 +75,15 @@ export async function setLivemodeAction(
   livemode: boolean,
   activeLedgerGroupId: string | null
 ): Promise<{ success: boolean }> {
+  const userId = await getAuthenticatedUserId()
+  if (!userId) {
+    return { success: false }
+  }
+
+  if (activeLedgerGroupId && !isUuid(activeLedgerGroupId)) {
+    return { success: false }
+  }
+
   const cookieStore = await cookies()
 
   cookieStore.set(LIVEMODE_COOKIE, String(livemode), COOKIE_OPTIONS)
@@ -67,6 +103,15 @@ export async function setLivemodeAction(
 export async function setActiveLedgerGroupAction(
   ledgerGroupId: string | null
 ): Promise<{ success: boolean }> {
+  const userId = await getAuthenticatedUserId()
+  if (!userId) {
+    return { success: false }
+  }
+
+  if (ledgerGroupId && !isUuid(ledgerGroupId)) {
+    return { success: false }
+  }
+
   const cookieStore = await cookies()
 
   if (ledgerGroupId) {
@@ -84,6 +129,16 @@ export async function setActiveLedgerGroupAction(
 export async function setReadonlyAction(
   readonly: boolean
 ): Promise<{ success: boolean }> {
+  const userId = await getAuthenticatedUserId()
+  if (!userId) {
+    return { success: false }
+  }
+
+  const canToggleReadonly = await isOwnerOrAdmin(userId)
+  if (!canToggleReadonly) {
+    return { success: false }
+  }
+
   const cookieStore = await cookies()
 
   if (readonly) {

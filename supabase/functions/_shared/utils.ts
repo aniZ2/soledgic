@@ -282,18 +282,6 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   }
 }
 
-// DEPRECATED: Use getCorsHeaders(req) instead
-// Keeping for backward compatibility but logs warning
-export const corsHeaders = (() => {
-  console.warn('DEPRECATED: Using static corsHeaders. Switch to getCorsHeaders(req) for proper CORS.')
-  return {
-    'Access-Control-Allow-Origin': isProduction() 
-      ? ALLOWED_ORIGINS[0] 
-      : '*', // Only allows wildcard in dev
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-  }
-})()
-
 // ============================================================================
 // RESPONSE HELPERS
 // ============================================================================
@@ -436,15 +424,6 @@ export interface LedgerContext {
 const INTERNAL_TOKEN_HEADER = 'x-soledgic-internal-token'
 const INTERNAL_LEDGER_HEADER = 'x-ledger-id'
 
-function timingSafeEqualString(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  return result === 0
-}
-
 function getInternalLedgerId(req: Request): string | null {
   const expectedToken =
     Deno.env.get('SOLEDGIC_INTERNAL_FUNCTION_TOKEN') ||
@@ -455,7 +434,7 @@ function getInternalLedgerId(req: Request): string | null {
 
   const providedToken = req.headers.get(INTERNAL_TOKEN_HEADER) || ''
   if (!providedToken) return null
-  if (!timingSafeEqualString(providedToken, expectedToken)) return null
+  if (!timingSafeEqual(providedToken, expectedToken)) return null
 
   const ledgerId = req.headers.get(INTERNAL_LEDGER_HEADER)?.trim() || ''
   return ledgerId.length > 0 ? ledgerId : null
@@ -550,6 +529,10 @@ function getRedis(): Redis | null {
   return redis
 }
 
+function getWindowString(windowSeconds: number): '1m' | '1h' {
+  return windowSeconds >= 3600 ? '1h' : '1m'
+}
+
 // Endpoint-specific limits (Redis - full throughput)
 const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> = {
   'record-sale': { requests: 200, windowSeconds: 60 },
@@ -581,7 +564,11 @@ const PRE_AUTH_IP_RATE_LIMITS: Record<string, { requests: number; windowSeconds:
   'health-check': { requests: 10, windowSeconds: 60 }, // Health checks can be more frequent
 }
 
-function getRateLimiter(endpoint: string): Ratelimit | null {
+function getOrCreateRateLimiter(
+  cacheKey: string,
+  prefix: string,
+  config: { requests: number; windowSeconds: number }
+): Ratelimit | null {
   // Skip Redis if we know it's unhealthy (circuit breaker)
   if (!redisHealthy && Date.now() - lastRedisCheck < REDIS_HEALTH_CHECK_INTERVAL) {
     return null
@@ -590,21 +577,36 @@ function getRateLimiter(endpoint: string): Ratelimit | null {
   const r = getRedis()
   if (!r) return null
   
-  if (rateLimiters.has(endpoint)) {
-    return rateLimiters.get(endpoint)!
+  if (rateLimiters.has(cacheKey)) {
+    return rateLimiters.get(cacheKey)!
   }
-  
-  const config = RATE_LIMITS[endpoint] || RATE_LIMITS['default']
-  const windowStr = config.windowSeconds >= 3600 ? '1h' : '1m'
-  
+
   const limiter = new Ratelimit({
     redis: r,
-    limiter: Ratelimit.slidingWindow(config.requests, windowStr as any),
-    prefix: `soledgic:${endpoint}`,
+    limiter: Ratelimit.slidingWindow(config.requests, getWindowString(config.windowSeconds) as any),
+    prefix,
   })
   
-  rateLimiters.set(endpoint, limiter)
+  rateLimiters.set(cacheKey, limiter)
   return limiter
+}
+
+function getRateLimiter(endpoint: string): Ratelimit | null {
+  const config = RATE_LIMITS[endpoint] || RATE_LIMITS['default']
+  return getOrCreateRateLimiter(
+    `postauth:${endpoint}`,
+    `soledgic:${endpoint}`,
+    config
+  )
+}
+
+function getPreAuthRateLimiter(endpoint: string): Ratelimit | null {
+  const config = PRE_AUTH_IP_RATE_LIMITS[endpoint] || PRE_AUTH_IP_RATE_LIMITS['default']
+  return getOrCreateRateLimiter(
+    `preauth:${endpoint}`,
+    `soledgic:preauth:${endpoint}`,
+    config
+  )
 }
 
 /**
@@ -673,14 +675,13 @@ export async function checkPreAuthRateLimit(
     return { allowed: true }
   }
 
-  const limiter = getRateLimiter(`preauth:${endpoint}`)
+  const limiter = getPreAuthRateLimiter(endpoint)
   if (!limiter) {
     // Redis unavailable - fail open for pre-auth (we'll still do post-auth rate limit)
     return { allowed: true }
   }
 
   try {
-    const config = PRE_AUTH_IP_RATE_LIMITS[endpoint] || PRE_AUTH_IP_RATE_LIMITS['default']
     const key = `preauth:ip:${clientIp}`
     
     const result = await limiter.limit(key)
@@ -1053,9 +1054,10 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         const maxSize = options.maxBodySize || getEndpointBodySizeLimit(options.endpoint)
         
         // SECURITY: Check content length before reading body
-        const contentLength = parseInt(req.headers.get('content-length') || '0')
+        const contentLengthRaw = req.headers.get('content-length')
+        const contentLength = contentLengthRaw ? parseInt(contentLengthRaw, 10) : 0
         
-        if (contentLength > maxSize) {
+        if (Number.isFinite(contentLength) && contentLength > maxSize) {
           return errorResponse(`Request too large (max: ${Math.round(maxSize / 1024)}KB)`, 413, req, requestId)
         }
         
@@ -1066,8 +1068,20 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
           if (bodyText.length > maxSize) {
             return errorResponse(`Request too large (max: ${Math.round(maxSize / 1024)}KB)`, 413, req, requestId)
           }
-          
-          body = JSON.parse(bodyText)
+
+          const normalizedContentType = (req.headers.get('content-type') || '')
+            .split(';')[0]
+            .trim()
+            .toLowerCase()
+          const isJsonContentType =
+            normalizedContentType === 'application/json' ||
+            normalizedContentType.endsWith('+json')
+
+          if (bodyText.trim().length > 0 && !isJsonContentType) {
+            return errorResponse('Content-Type must be application/json', 415, req, requestId)
+          }
+
+          body = bodyText.trim().length > 0 ? JSON.parse(bodyText) : {}
         } catch {
           return errorResponse('Invalid request format', 400, req, requestId)
         }
@@ -1293,7 +1307,7 @@ export async function storeNachaFile(
     
     // Upload to encrypted private bucket
     const { error: uploadError } = await supabase.storage
-      .from('batch-payouts')
+      .from('payout-files')
       .upload(storagePath, nachaContent, {
         contentType: 'text/plain',
         upsert: false,
@@ -1313,7 +1327,7 @@ export async function storeNachaFile(
     const expiresAt = new Date(Date.now() + expiresIn * 1000)
     
     const { data: signedUrlData, error: signError } = await supabase.storage
-      .from('batch-payouts')
+      .from('payout-files')
       .createSignedUrl(storagePath, expiresIn)
     
     if (signError || !signedUrlData) {
@@ -1496,6 +1510,34 @@ const BLOCKED_IP_PATTERNS = [
   /^240\./,                         // 240.0.0.0/4 (reserved)
 ]
 
+function normalizeIpLiteral(value: string): string {
+  return value.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '').split('%')[0]
+}
+
+function isPrivateIpv6(ip: string): boolean {
+  const normalized = normalizeIpLiteral(ip)
+  if (!normalized.includes(':')) return false
+
+  // Localhost / unspecified
+  if (normalized === '::1' || normalized === '::') return true
+  // Unique local addresses (fc00::/7)
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true
+  // Link-local unicast (fe80::/10)
+  if (/^fe[89ab]/.test(normalized)) return true
+  // Multicast (ff00::/8)
+  if (normalized.startsWith('ff')) return true
+  // Documentation range (2001:db8::/32)
+  if (normalized.startsWith('2001:db8:')) return true
+
+  // IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
+  const mappedIpv4Match = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)
+  if (mappedIpv4Match && mappedIpv4Match[1]) {
+    return BLOCKED_IP_PATTERNS.some((pattern) => pattern.test(mappedIpv4Match[1]))
+  }
+
+  return false
+}
+
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
   'localhost.localdomain',
@@ -1510,7 +1552,9 @@ const BLOCKED_HOSTNAMES = new Set([
  * Check if an IP address is private/internal
  */
 export function isPrivateIP(ip: string): boolean {
-  return BLOCKED_IP_PATTERNS.some(pattern => pattern.test(ip))
+  const normalized = normalizeIpLiteral(ip)
+  if (normalized.includes(':')) return isPrivateIpv6(normalized)
+  return BLOCKED_IP_PATTERNS.some(pattern => pattern.test(normalized))
 }
 
 /**
@@ -1531,6 +1575,7 @@ export function isBlockedHostname(hostname: string): boolean {
 export function validateWebhookUrl(url: string): string | null {
   try {
     const parsed = new URL(url)
+    const normalizedHostname = normalizeIpLiteral(parsed.hostname)
     
     // Only allow HTTPS in production
     if (isProduction() && parsed.protocol !== 'https:') {
@@ -1543,19 +1588,17 @@ export function validateWebhookUrl(url: string): string | null {
     }
     
     // Block dangerous hostnames
-    if (isBlockedHostname(parsed.hostname)) {
+    if (isBlockedHostname(normalizedHostname)) {
       return 'Blocked hostname'
     }
     
     // Check if hostname looks like an IP
-    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(parsed.hostname)) {
-      if (isPrivateIP(parsed.hostname)) {
-        return 'Private IP addresses not allowed'
-      }
+    if (isPrivateIP(normalizedHostname)) {
+      return 'Private IP addresses not allowed'
     }
     
     // Block localhost variants
-    if (parsed.hostname === '0.0.0.0' || parsed.hostname === '[::]') {
+    if (normalizedHostname === '0.0.0.0' || normalizedHostname === '::') {
       return 'Invalid hostname'
     }
     
@@ -1600,30 +1643,49 @@ export async function safeWebhookFetch(
   
   // Step 2: Resolve DNS to get actual IP
   // This prevents DNS rebinding attacks
-  let resolvedIP: string
-  try {
-    const addresses = await Deno.resolveDns(parsed.hostname, 'A')
-    if (!addresses || addresses.length === 0) {
-      throw new Error('DNS resolution failed')
+  let resolvedAny = false
+  const validatedIps: string[] = []
+  for (const recordType of ['A', 'AAAA'] as const) {
+    try {
+      const addresses = await Deno.resolveDns(parsed.hostname, recordType)
+      if (!addresses || addresses.length === 0) continue
+      resolvedAny = true
+      for (const addr of addresses) {
+        if (isPrivateIP(addr)) {
+          // Log DNS rebinding attempt
+          if (options.supabase) {
+            await logSecurityEvent(options.supabase, options.ledgerId || null, 'ssrf_attempt', {
+              url: url.substring(0, 200),
+              hostname: parsed.hostname,
+              resolved_ip: addr,
+              stage: 'dns_rebinding',
+              request_id: options.requestId,
+            }).catch(() => {})
+          }
+          throw new Error(`SSRF Protection: Resolved to private IP ${addr}`)
+        }
+        validatedIps.push(addr)
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('SSRF Protection: Resolved to private IP')) {
+        throw err
+      }
+      // Continue checking other record types; we fail-closed below if none resolve.
+      continue
     }
-    resolvedIP = addresses[0]
-  } catch (err) {
-    throw new Error(`SSRF Protection: Cannot resolve hostname - ${err}`)
   }
   
-  // Step 3: Validate the RESOLVED IP (prevents DNS rebinding)
-  if (isPrivateIP(resolvedIP)) {
-    // Log DNS rebinding attempt
+  // Step 3: Ensure DNS validation succeeded at least once
+  if (!resolvedAny || validatedIps.length === 0) {
     if (options.supabase) {
       await logSecurityEvent(options.supabase, options.ledgerId || null, 'ssrf_attempt', {
         url: url.substring(0, 200),
         hostname: parsed.hostname,
-        resolved_ip: resolvedIP,
-        stage: 'dns_rebinding',
+        stage: 'dns_resolution_failed',
         request_id: options.requestId,
       }).catch(() => {})
     }
-    throw new Error(`SSRF Protection: Resolved to private IP ${resolvedIP}`)
+    throw new Error('SSRF Protection: Cannot resolve hostname')
   }
   
   // Step 4: Make request with timeout

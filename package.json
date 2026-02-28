@@ -15,7 +15,7 @@
     "test:watch": "vitest",
     "test:stress": "vitest run --config vitest.stress.config.ts",
     "test:coverage": "vitest run --coverage",
-    "security-gate": "bash scripts/security-gate.sh --deploy",
+    "security-gate": "bash scripts/security-gate.sh",
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",
     "deploy:migrations": "npm run security-gate && npx supabase db push"
   },

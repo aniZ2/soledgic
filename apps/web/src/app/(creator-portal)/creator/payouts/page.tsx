@@ -1,7 +1,33 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { type LucideIcon } from 'lucide-react'
 import { ArrowUpRight, Clock, CheckCircle, XCircle, Plus } from 'lucide-react'
+
+interface ConnectedAccountRow {
+  id: string
+  ledger_id: string
+  entity_id: string
+  default_bank_last4: string | null
+  default_bank_name: string | null
+  ledger: {
+    business_name: string
+  } | null
+}
+
+interface PayoutRequestRow {
+  id: string
+  created_at: string
+  status: string
+  approved_amount: number | null
+  requested_amount: number
+}
+
+interface PayoutRequestView extends PayoutRequestRow {
+  ledger_name: string
+  bank_last4: string | null
+  bank_name: string | null
+}
 
 export default async function CreatorPayoutsPage() {
   const supabase = await createClient()
@@ -28,11 +54,12 @@ export default async function CreatorPayoutsPage() {
     .eq('is_active', true)
 
   // Get payout requests
-  const payoutRequests: any[] = []
+  const payoutRequests: PayoutRequestView[] = []
   let totalAvailable = 0
 
-  if (connectedAccounts && connectedAccounts.length > 0) {
-    for (const account of connectedAccounts) {
+  const connectedAccountsRows = (connectedAccounts as ConnectedAccountRow[] | null) ?? []
+  if (connectedAccountsRows.length > 0) {
+    for (const account of connectedAccountsRows) {
       // Get payout requests
       const { data: requests } = await supabase
         .from('payout_requests')
@@ -41,15 +68,14 @@ export default async function CreatorPayoutsPage() {
         .order('created_at', { ascending: false })
         .limit(20)
 
-      if (requests) {
-        for (const request of requests) {
-          payoutRequests.push({
-            ...request,
-            ledger_name: (account.ledger as any)?.business_name || 'Unknown',
-            bank_last4: account.default_bank_last4,
-            bank_name: account.default_bank_name
-          })
-        }
+      const requestRows = (requests as PayoutRequestRow[] | null) ?? []
+      for (const request of requestRows) {
+        payoutRequests.push({
+          ...request,
+          ledger_name: account.ledger?.business_name || 'Unknown',
+          bank_last4: account.default_bank_last4,
+          bank_name: account.default_bank_name
+        })
       }
 
       // Get available balance
@@ -86,7 +112,7 @@ export default async function CreatorPayoutsPage() {
   }
 
   const getStatusBadge = (status: string) => {
-    const styles: Record<string, { bg: string; text: string; icon: any }> = {
+    const styles: Record<string, { bg: string; text: string; icon: LucideIcon }> = {
       pending: { bg: 'bg-amber-500/10', text: 'text-amber-600', icon: Clock },
       approved: { bg: 'bg-blue-500/10', text: 'text-blue-600', icon: Clock },
       processing: { bg: 'bg-blue-500/10', text: 'text-blue-600', icon: Clock },

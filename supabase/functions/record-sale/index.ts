@@ -141,7 +141,8 @@ const handler = createHandler(
     const txResult = result?.[0] || result
     // Column names changed to out_* prefix to avoid ambiguity in PL/pgSQL
     const transactionId = txResult?.out_transaction_id || txResult?.transaction_id
-    const creatorBalance = Number(txResult?.out_creator_balance || txResult?.creator_balance || 0)
+    // Recompute from entries to avoid depending on account-balance trigger timing.
+    const creatorBalance = await getCreatorLiveBalance(supabase, ledger.id, creatorId)
 
     // ========================================================================
     // AUDIT LOG
@@ -237,4 +238,33 @@ async function getCreatorPercent(
 
   // 3. Ultimate fallback: 80% to creator
   return 80
+}
+
+async function getCreatorLiveBalance(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  creatorId: string
+): Promise<number> {
+  const { data: account } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('ledger_id', ledgerId)
+    .eq('account_type', 'creator_balance')
+    .eq('entity_id', creatorId)
+    .maybeSingle()
+
+  if (!account?.id) return 0
+
+  const { data: entries } = await supabase
+    .from('entries')
+    .select('entry_type, amount')
+    .eq('account_id', account.id)
+
+  if (!entries?.length) return 0
+
+  // creator_balance is credit-normal: balance = credits - debits.
+  return entries.reduce((sum, row: any) => {
+    const amount = Number(row.amount || 0)
+    return row.entry_type === 'credit' ? sum + amount : sum - amount
+  }, 0)
 }

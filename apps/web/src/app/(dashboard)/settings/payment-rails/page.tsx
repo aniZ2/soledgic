@@ -49,6 +49,10 @@ const RAIL_CONFIG = {
   },
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export default function PaymentRailsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -102,8 +106,8 @@ export default function PaymentRailsPage() {
           is_connected: true,
         },
       ])
-    } catch (err: any) {
-      setError(err.message || 'Failed to load payment rails')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load payment rails'))
       setRails([
         {
           id: 'card',
@@ -165,8 +169,8 @@ export default function PaymentRailsPage() {
           setInfo('Processor account connected successfully.')
           await loadPaymentRails()
           router.replace('/settings/payment-rails')
-        } catch (err: any) {
-          setError(err.message || 'Failed to finalize connection')
+        } catch (err: unknown) {
+          setError(getErrorMessage(err, 'Failed to finalize connection'))
           router.replace('/settings/payment-rails')
         } finally {
           setConnecting(null)
@@ -202,8 +206,8 @@ export default function PaymentRailsPage() {
 
       window.location.href = result.data.url
       return
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to connect'))
       setConnecting(null)
     }
   }
@@ -229,8 +233,8 @@ export default function PaymentRailsPage() {
 
       setInfo('Payout settings saved.')
       await loadPaymentRails()
-    } catch (err: any) {
-      setError(err.message || 'Failed to save payout settings')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to save payout settings'))
     } finally {
       setSavingPayoutSettings(false)
     }

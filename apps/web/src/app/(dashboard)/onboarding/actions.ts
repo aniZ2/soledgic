@@ -3,6 +3,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { provisionOrganizationWithLedgers } from '@/lib/org-provisioning'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export async function createOrganizationWithLedger(input: {
   orgName: string
   selectedPlan: string
@@ -34,7 +38,7 @@ export async function createOrganizationWithLedger(input: {
       ledgerMode,
     })
     return { success: true, data }
-  } catch (error: any) {
-    return { error: error?.message || 'Failed to create organization' }
+  } catch (error: unknown) {
+    return { error: getErrorMessage(error, 'Failed to create organization') }
   }
 }

@@ -328,13 +328,30 @@ export class SoledgicTestClient {
 // NEVER hardcode API keys in source code!
 // ============================================================================
 
+function isPlaceholder(value: string): boolean {
+  const v = value.trim().toLowerCase()
+  if (!v) return true
+  return (
+    v.includes('replace_with') ||
+    v.includes('your_') ||
+    v === 'sk_test_replace_with_local_key' ||
+    v === 'sk_test_your_booklyverse_test_key_here' ||
+    v === 'sk_test_your_acme_test_key_here'
+  )
+}
+
+function cleanSecret(value: string | undefined): string {
+  const normalized = (value || '').trim()
+  return isPlaceholder(normalized) ? '' : normalized
+}
+
 export const TEST_KEYS = {
-  booklyverse: process.env.TEST_API_KEY_BOOKLYVERSE || '',
-  acme: process.env.TEST_API_KEY_ACME || '',
+  booklyverse: cleanSecret(process.env.TEST_API_KEY_BOOKLYVERSE),
+  acme: cleanSecret(process.env.TEST_API_KEY_ACME),
 }
 
 // Supabase anon key for Authorization header
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || ''
+const SUPABASE_ANON_KEY = cleanSecret(process.env.SUPABASE_ANON_KEY)
 
 // Create test client
 export function createTestClient(key: keyof typeof TEST_KEYS = 'booklyverse') {
@@ -344,9 +361,9 @@ export function createTestClient(key: keyof typeof TEST_KEYS = 'booklyverse') {
       `Missing test API key for "${key}". ` +
       `Set TEST_API_KEY_${key.toUpperCase()} environment variable.\n\n` +
       `Example:\n` +
-      `  export TEST_API_KEY_${key.toUpperCase()}=sk_test_your_key_here\n\n` +
+      `  export TEST_API_KEY_${key.toUpperCase()}=sk_test_real_key_here\n\n` +
       `Or add to your .env.test file:\n` +
-      `  TEST_API_KEY_${key.toUpperCase()}=sk_test_your_key_here`
+      `  TEST_API_KEY_${key.toUpperCase()}=sk_test_real_key_here`
     )
   }
   if (!SUPABASE_ANON_KEY) {

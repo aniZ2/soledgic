@@ -1,28 +1,33 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 import { createApiHandler } from '@/lib/api-handler'
 import { createHash } from 'crypto'
+import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export const runtime = 'nodejs'
 
+type JsonRecord = Record<string, unknown>
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getErrorCode(error: unknown): string | null {
+  if (!isJsonRecord(error)) return null
+  const code = error.code
+  return typeof code === 'string' ? code : null
+}
+
 function createServiceClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return []
-        },
-        setAll() {},
-      },
-    }
-  )
+  return createServiceRoleClient()
 }
 
 function getConfiguredWebhookToken(): string | null {
   const token = (process.env.PROCESSOR_WEBHOOK_TOKEN || '').trim()
   return token.length > 0 ? token : null
+}
+
+function isFlagEnabled(value: string | undefined): boolean {
+  return (value || '').trim().toLowerCase() === 'true'
 }
 
 function timingSafeEqualString(a: string, b: string): boolean {
@@ -34,18 +39,10 @@ function timingSafeEqualString(a: string, b: string): boolean {
   return result === 0
 }
 
-function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'disabled'; error?: string } {
-  const token = getConfiguredWebhookToken()
-  if (!token) {
-    if (process.env.NODE_ENV === 'production') {
-      return { ok: false, mode: 'disabled', error: 'Webhook auth is not configured' }
-    }
-    return { ok: true, mode: 'disabled' }
-  }
-
+function extractWebhookAuthCandidate(request: Request, allowQueryToken: boolean): string | null {
   const authHeader = (request.headers.get('authorization') || '').trim()
   const headerToken = (request.headers.get('x-soledgic-webhook-token') || request.headers.get('x-webhook-token') || '').trim()
-  const urlToken = (() => {
+  const urlToken = allowQueryToken ? (() => {
     try {
       const url = new URL(request.url)
       return (
@@ -57,7 +54,7 @@ function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'dis
     } catch {
       return null
     }
-  })()
+  })() : null
 
   const lower = authHeader.toLowerCase()
   const bearer = lower.startsWith('bearer ') ? authHeader.slice('bearer '.length).trim() : null
@@ -74,10 +71,27 @@ function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'dis
     }
   })()
 
-  // Most processors let you configure either a static header, a Basic Auth
-  // credential, or (worst-case) a fixed query param. We accept all three so the
-  // receiver stays processor-agnostic.
-  const candidate = bearer || basicPassword || headerToken || urlToken
+  // Prefer header-based auth. Query param token support is opt-in only.
+  return bearer || basicPassword || headerToken || urlToken
+}
+
+function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'disabled'; error?: string } {
+  const token = getConfiguredWebhookToken()
+  const allowInsecureAuth =
+    process.env.NODE_ENV !== 'production' &&
+    isFlagEnabled(process.env.ALLOW_INSECURE_WEBHOOK_AUTH)
+  const allowQueryToken =
+    process.env.NODE_ENV !== 'production' &&
+    isFlagEnabled(process.env.ALLOW_QUERY_PARAM_WEBHOOK_TOKEN)
+
+  if (!token) {
+    if (allowInsecureAuth) {
+      return { ok: true, mode: 'disabled' }
+    }
+    return { ok: false, mode: 'disabled', error: 'Webhook auth is not configured' }
+  }
+
+  const candidate = extractWebhookAuthCandidate(request, allowQueryToken)
 
   if (!candidate) return { ok: false, mode: 'token', error: 'Unauthorized' }
   if (!timingSafeEqualString(candidate, token)) return { ok: false, mode: 'token', error: 'Unauthorized' }
@@ -86,15 +100,35 @@ function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'dis
 
 function safeHeaders(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {}
+  const blockedKeys = new Set([
+    'authorization',
+    'cookie',
+    'set-cookie',
+    'x-soledgic-webhook-token',
+    'x-webhook-token',
+    'x-api-key',
+    'forwarded',
+    'x-vercel-oidc-token',
+    'x-vercel-proxy-signature',
+    'x-vercel-proxy-signature-ts',
+    'x-vercel-forwarded-for',
+  ])
+
+  const containsSensitiveValue = (value: string): boolean => {
+    if (/bearer\s+[a-z0-9._-]+/i.test(value)) return true
+    if (/"authorization"\s*:\s*"bearer\s+[^\"]+"/i.test(value)) return true
+    if (/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/.test(value)) return true
+    return false
+  }
+
   for (const [k, v] of headers.entries()) {
     const key = k.toLowerCase()
     // Avoid persisting secrets and session material to the database.
-    if (key === 'authorization') continue
-    if (key === 'cookie' || key === 'set-cookie') continue
-    if (key === 'x-soledgic-webhook-token' || key === 'x-webhook-token') continue
-    if (key === 'x-api-key') continue
+    if (blockedKeys.has(key)) continue
+    if (key.startsWith('x-vercel-sc-')) continue
     if (key.length > 64) continue
     const value = String(v).slice(0, 512)
+    if (containsSensitiveValue(value)) continue
     out[key] = value
   }
   return out
@@ -111,21 +145,21 @@ function pickBool(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
 }
 
-function findKeyValueObject(payload: any, maxDepth = 6): Record<string, unknown> | null {
-  const visited = new Set<any>()
-  const stack: Array<{ node: any; depth: number }> = [{ node: payload, depth: 0 }]
+function findKeyValueObject(payload: unknown, maxDepth = 6): JsonRecord | null {
+  const visited = new Set<object>()
+  const stack: Array<{ node: unknown; depth: number }> = [{ node: payload, depth: 0 }]
 
   while (stack.length > 0) {
     const next = stack.pop()
     if (!next) break
     const { node, depth } = next
-    if (!node || typeof node !== 'object') continue
+    if (!isJsonRecord(node)) continue
     if (visited.has(node)) continue
     visited.add(node)
 
     // Different processors call this object different things. We accept either.
-    if (node.tags && typeof node.tags === 'object' && !Array.isArray(node.tags)) return node.tags as Record<string, unknown>
-    if (node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)) return node.metadata as Record<string, unknown>
+    if (isJsonRecord(node.tags)) return node.tags
+    if (isJsonRecord(node.metadata)) return node.metadata
 
     if (depth >= maxDepth) continue
 
@@ -137,38 +171,41 @@ function findKeyValueObject(payload: any, maxDepth = 6): Record<string, unknown>
   return null
 }
 
-function extractLedgerId(payload: any): string | null {
+function extractLedgerId(payload: unknown): string | null {
   const kv = findKeyValueObject(payload)
-  const raw =
-    (kv ? (kv['ledger_id'] as unknown) : null) ??
-    (kv ? (kv['soledgic_ledger_id'] as unknown) : null) ??
-    null
+  const raw = (kv ? kv['ledger_id'] : null) ?? (kv ? kv['soledgic_ledger_id'] : null) ?? null
   const ledgerId = pickString(raw, 64)
   // UUID is expected but we don't strictly validate here; DB FK will enforce if set.
   return ledgerId
 }
 
-function extractWebhookFields(payload: any) {
+function extractWebhookFields(payload: unknown) {
+  const root = isJsonRecord(payload) ? payload : null
+  const resource = root && isJsonRecord(root.resource) ? root.resource : null
+  const data = root && isJsonRecord(root.data) ? root.data : null
+  const dataObject = data && isJsonRecord(data.object) ? data.object : null
+  const entity = root && isJsonRecord(root.entity) ? root.entity : null
+
   const eventId =
-    pickString(payload?.id) ||
-    pickString(payload?.event_id) ||
-    pickString(payload?.eventId) ||
+    pickString(root ? root.id : null) ||
+    pickString(root ? root.event_id : null) ||
+    pickString(root ? root.eventId : null) ||
     null
 
   const eventType =
-    pickString(payload?.type) ||
-    pickString(payload?.event_type) ||
-    pickString(payload?.eventType) ||
+    pickString(root ? root.type : null) ||
+    pickString(root ? root.event_type : null) ||
+    pickString(root ? root.eventType : null) ||
     null
 
-  const livemode = pickBool(payload?.livemode) ?? pickBool(payload?.live_mode) ?? null
+  const livemode = pickBool(root ? root.livemode : null) ?? pickBool(root ? root.live_mode : null) ?? null
 
   // Best-effort resource id extraction. Different processors nest this differently.
   const resourceId =
-    pickString(payload?.resource?.id) ||
-    pickString(payload?.data?.id) ||
-    pickString(payload?.data?.object?.id) ||
-    pickString(payload?.entity?.id) ||
+    pickString(resource ? resource.id : null) ||
+    pickString(data ? data.id : null) ||
+    pickString(dataObject ? dataObject.id : null) ||
+    pickString(entity ? entity.id : null) ||
     null
 
   return { eventId, eventType, resourceId, livemode }
@@ -187,14 +224,14 @@ export const POST = createApiHandler(
     }
 
     const rawBody = await request.text()
-    let payload: any
+    let payload: unknown
     try {
       payload = rawBody ? JSON.parse(rawBody) : null
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body', request_id: requestId }, { status: 400 })
     }
 
-    if (!payload || typeof payload !== 'object') {
+    if (!isJsonRecord(payload)) {
       return NextResponse.json({ error: 'Invalid payload', request_id: requestId }, { status: 400 })
     }
 
@@ -221,7 +258,7 @@ export const POST = createApiHandler(
 
     // If the payload contains an invalid/non-existent ledger_id tag, keep the
     // webhook instead of dropping it.
-    if (error && String((error as any).code || '') === '23503' && inboxRow.ledger_id) {
+    if (error && getErrorCode(error) === '23503' && inboxRow.ledger_id) {
       const retry = await supabase.from('processor_webhook_inbox').insert({
         ...inboxRow,
         ledger_id: null,
@@ -231,7 +268,7 @@ export const POST = createApiHandler(
 
     if (error) {
       // Idempotency: accept duplicate event ids.
-      if (String((error as any).code || '') === '23505') {
+      if (getErrorCode(error) === '23505') {
         return NextResponse.json({ success: true, duplicate: true }, { status: 200 })
       }
       return NextResponse.json({ error: 'Failed to store webhook', request_id: requestId }, { status: 500 })
@@ -242,7 +279,9 @@ export const POST = createApiHandler(
   {
     requireAuth: false,
     csrfProtection: false,
-    rateLimit: true,
+    // Webhook traffic is authenticated via shared secret and idempotent by event_id.
+    // Disable generic pre-auth limiter to avoid cross-tenant/shared-IP throttling.
+    rateLimit: false,
     routePath: '/api/webhooks/processor',
     readonlyExempt: true,
     maxBodySize: 2 * 1024 * 1024,

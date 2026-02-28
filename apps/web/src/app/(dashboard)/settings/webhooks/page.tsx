@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
@@ -51,18 +51,13 @@ export default function WebhooksPage() {
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
-  const [testResult, setTestResult] = useState<{ success: boolean; status?: number } | null>(null)
 
-  useEffect(() => {
-    loadData()
-  }, [livemode])
-
-  const loadData = async () => {
-	    const supabase = createClient()
-	    
-	    // Get user's organization and ledger
-	    const { data: { user } } = await supabase.auth.getUser()
-	    if (!user) return
+  const loadData = useCallback(async () => {
+    const supabase = createClient()
+    
+    // Get user's organization and ledger
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
     const { data: membership } = await supabase
       .from('organization_members')
@@ -107,7 +102,14 @@ export default function WebhooksPage() {
     }
 
     setLoading(false)
-  }
+  }, [activeLedgerGroupId, livemode])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadData()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [loadData])
 
   const createEndpoint = async () => {
     if (!ledgerId || !newEndpoint.url) return
@@ -127,7 +129,7 @@ export default function WebhooksPage() {
     if (data.success) {
       setCreatedSecret(data.data.secret)
       setNewEndpoint({ url: '', description: '', events: ['*'] })
-      loadData()
+      void loadData()
     }
   }
 
@@ -139,21 +141,19 @@ export default function WebhooksPage() {
       method: 'POST',
       body: { action: 'delete', endpoint_id: id },
     })
-    loadData()
+    void loadData()
   }
 
   const testEndpoint = async (id: string) => {
     if (!ledgerId) return
     setTestingId(id)
-    setTestResult(null)
 
     const res = await callLedgerFunction('webhooks', {
       ledgerId,
       method: 'POST',
       body: { action: 'test', endpoint_id: id },
     })
-    const data = await res.json()
-    setTestResult({ success: data.data?.delivered, status: data.data?.status })
+    await res.json()
     setTestingId(null)
   }
 
@@ -165,7 +165,7 @@ export default function WebhooksPage() {
       method: 'POST',
       body: { action: 'update', endpoint_id: id, is_active: !isActive },
     })
-    loadData()
+    void loadData()
   }
 
   const getStatusIcon = (status: string) => {

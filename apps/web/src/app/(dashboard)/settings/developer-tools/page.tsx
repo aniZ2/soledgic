@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Wrench, Trash2, AlertTriangle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useReadonly } from '@/components/livemode-provider'
 import { setReadonlyAction } from '@/lib/livemode-server'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 export default function DeveloperToolsPage() {
   const router = useRouter()
@@ -33,6 +34,7 @@ export default function DeveloperToolsPage() {
 
   // Read-only toggle state
   const [togglingReadonly, setTogglingReadonly] = useState(false)
+  const [readonlyError, setReadonlyError] = useState<string | null>(null)
 
   const handleRepairOrphans = async () => {
     setRepairing(true)
@@ -40,7 +42,7 @@ export default function DeveloperToolsPage() {
     setRepairError(null)
 
     try {
-      const res = await fetch('/api/admin/repair-orphans', { method: 'POST' })
+      const res = await fetchWithCsrf('/api/admin/repair-orphans', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
         setRepairError(data.error || 'Repair failed')
@@ -60,9 +62,8 @@ export default function DeveloperToolsPage() {
     setResetError(null)
 
     try {
-      const res = await fetch('/api/admin/reset-test-data', {
+      const res = await fetchWithCsrf('/api/admin/reset-test-data', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmation: 'RESET TEST DATA' }),
       })
       const data = await res.json()
@@ -81,8 +82,13 @@ export default function DeveloperToolsPage() {
 
   const handleToggleReadonly = async () => {
     setTogglingReadonly(true)
+    setReadonlyError(null)
     try {
-      await setReadonlyAction(!currentReadonly)
+      const result = await setReadonlyAction(!currentReadonly)
+      if (!result.success) {
+        setReadonlyError('You do not have permission to change read-only mode.')
+        return
+      }
       router.refresh()
     } finally {
       setTogglingReadonly(false)
@@ -155,6 +161,11 @@ export default function DeveloperToolsPage() {
                     ? 'Disable Read-Only Mode'
                     : 'Enable Read-Only Mode'}
               </button>
+              {readonlyError && (
+                <div className="mt-3 text-sm text-red-600">
+                  {readonlyError}
+                </div>
+              )}
             </div>
           </div>
         </div>

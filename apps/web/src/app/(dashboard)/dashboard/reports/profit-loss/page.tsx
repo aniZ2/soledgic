@@ -43,7 +43,6 @@ export default async function ProfitLossPage() {
   // Get current month/year
   const now = new Date()
   const year = now.getFullYear()
-  const month = now.getMonth() + 1
 
   // Calculate revenue (platform_revenue credits)
   const { data: revenueAccount } = await supabase

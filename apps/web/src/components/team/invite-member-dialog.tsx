@@ -10,6 +10,10 @@ interface InviteMemberDialogProps {
   currentUserRole: string
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 const ROLES = [
   {
     id: 'admin',
@@ -71,8 +75,8 @@ export function InviteMemberDialog({
       } else {
         setError(result.error || 'Failed to send invitation')
       }
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'An unexpected error occurred'))
     } finally {
       setLoading(false)
     }

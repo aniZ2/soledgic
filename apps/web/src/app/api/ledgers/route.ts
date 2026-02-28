@@ -53,6 +53,14 @@ export const POST = createApiHandler(
       )
     }
 
+    // Creating ledgers can change billing; limit to owner/admin.
+    if (!['owner', 'admin'].includes(membership.role)) {
+      return NextResponse.json(
+        { error: 'Only owners and admins can create new ledgers' },
+        { status: 403 }
+      )
+    }
+
     // Check plan limits
     const { data: org } = await supabase
       .from('organizations')

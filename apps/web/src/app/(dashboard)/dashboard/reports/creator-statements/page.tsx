@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
-import { ArrowLeft, FileText, Download, Mail, User, Send } from 'lucide-react'
+import { ArrowLeft, Download, Mail, User, Send } from 'lucide-react'
 
 interface Creator {
   id: string
@@ -14,6 +14,12 @@ interface Creator {
   name: string
   balance: number
   email?: string
+}
+
+function extractEmail(metadata: unknown): string | undefined {
+  if (!metadata || typeof metadata !== 'object') return undefined
+  const email = (metadata as Record<string, unknown>).email
+  return typeof email === 'string' && email.trim().length > 0 ? email : undefined
 }
 
 export default function CreatorStatementsPage() {
@@ -26,15 +32,11 @@ export default function CreatorStatementsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [sendingAll, setSendingAll] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [livemode])
-
-	  const loadData = async () => {
-	    const supabase = createClient()
-	    
-	    const { data: { user } } = await supabase.auth.getUser()
-	    if (!user) return
+  const loadData = useCallback(async () => {
+    const supabase = createClient()
+    
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
     const { data: membership } = await supabase
       .from('organization_members')
@@ -81,14 +83,21 @@ export default function CreatorStatementsPage() {
         return {
           ...account,
           balance: Math.round(balance * 100) / 100,
-          email: (account.metadata as any)?.email,
+          email: extractEmail(account.metadata),
         }
       })
     )
 
     setCreators(creatorsWithBalances)
     setLoading(false)
-  }
+  }, [activeLedgerGroupId, livemode])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadData()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [loadData])
 
   const getPeriodRange = () => {
     const start = new Date(selectedYear, selectedMonth - 1, 1)

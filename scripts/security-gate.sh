@@ -15,7 +15,23 @@ set -euo pipefail
 #   --deploy    Runs all checks including Next.js build (default)
 # =============================================================================
 
-MODE="${1:---deploy}"
+MODE="--deploy"
+if [ "$#" -gt 0 ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      --pre-push|--ci|--deploy)
+        MODE="$arg"
+        ;;
+      --)
+        ;;
+      *)
+        echo "Unknown argument: $arg"
+        echo "Usage: ./scripts/security-gate.sh [--pre-push | --ci | --deploy]"
+        exit 2
+        ;;
+    esac
+  done
+fi
 FAILURES=0
 CHECKS_RUN=0
 CHECKS_PASSED=0
@@ -118,14 +134,28 @@ fi
 CHECKS_RUN=$((CHECKS_RUN + 1))
 echo "--- Check 3: CSRF protection disabled ---"
 
-# Known CSRF-exempt paths (read-only or session-toggle endpoints reviewed and accepted)
-# Known CSRF-exempt paths: webhooks, read-only endpoints, GET-only handlers
-CSRF_ALLOWLIST="webhook|readonly|active-ledger-group|livemode|GET requests"
-
-CSRF_ISSUES=$(grep -rn 'csrfProtection:\s*false' \
-  --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
-  --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.git \
-  . 2>/dev/null | grep -viE "$CSRF_ALLOWLIST" || true)
+# Method-aware scan:
+# - Allow csrfProtection:false on GET handlers
+# - Allow explicit webhook/read-only/livemode exemptions
+# - Flag all other cases (POST/PUT/PATCH/DELETE/default context)
+CSRF_ISSUES=$(find ./apps/web/src/app/api -name "route.ts" -type f 2>/dev/null | \
+  while IFS= read -r file; do
+    awk '
+      /export const GET = createApiHandler\(/ { current_method = "GET" }
+      /export const POST = createApiHandler\(/ { current_method = "POST" }
+      /export const PUT = createApiHandler\(/ { current_method = "PUT" }
+      /export const PATCH = createApiHandler\(/ { current_method = "PATCH" }
+      /export const DELETE = createApiHandler\(/ { current_method = "DELETE" }
+      /csrfProtection:[[:space:]]*false/ {
+        line = tolower($0)
+        file = tolower(FILENAME)
+        if (file ~ /webhook/) next
+        if (line ~ /webhook|readonly|active-ledger-group|livemode/) next
+        if (current_method == "GET") next
+        printf "%s:%d:%s\n", FILENAME, FNR, $0
+      }
+    ' "$file"
+  done || true)
 
 if [ -n "$CSRF_ISSUES" ]; then
   echo "$CSRF_ISSUES" | sed 's/^/    /'

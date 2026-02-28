@@ -73,19 +73,7 @@ export default function TeamSettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadTeamData()
-  }, [])
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    if (!openMenuId) return
-    const handler = () => setOpenMenuId(null)
-    document.addEventListener('click', handler)
-    return () => document.removeEventListener('click', handler)
-  }, [openMenuId])
-
-  const loadTeamData = async () => {
+  async function loadTeamData() {
     try {
       const res = await fetch('/api/team')
       if (res.ok) {
@@ -97,6 +85,21 @@ export default function TeamSettingsPage() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadTeamData()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!openMenuId) return
+    const handler = () => setOpenMenuId(null)
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [openMenuId])
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()

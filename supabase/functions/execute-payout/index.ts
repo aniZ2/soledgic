@@ -9,8 +9,8 @@ import {
   jsonResponse, 
   errorResponse, 
   LedgerContext,
-  getClientIp,
-  isProduction
+  isProduction,
+  createAuditLogAsync
 } from '../_shared/utils.ts'
 import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
@@ -190,7 +190,11 @@ class CardProcessorRail implements PaymentRail {
 // ============================================================================
 
 class ManualBankFileRail implements PaymentRail {
-  name: PayoutRail = 'manual'
+  name: PayoutRail
+
+  constructor(name: PayoutRail = 'manual') {
+    this.name = name
+  }
 
   async execute(payout: CreatorPayoutDetails, config: RailConfig): Promise<PayoutResult> {
     return {
@@ -357,15 +361,57 @@ class ManualBankFileRail implements PaymentRail {
   }
 }
 
+class DisabledAliasRail implements PaymentRail {
+  name: PayoutRail
+  private readonly reason: string
+
+  constructor(name: PayoutRail, reason: string) {
+    this.name = name
+    this.reason = reason
+  }
+
+  async execute(payout: CreatorPayoutDetails, _config: RailConfig): Promise<PayoutResult> {
+    return {
+      success: false,
+      payout_id: payout.payout_id,
+      rail: this.name,
+      status: 'failed',
+      error: this.reason,
+    }
+  }
+
+  async getStatus(externalId: string, _config: RailConfig): Promise<PayoutResult> {
+    return {
+      success: false,
+      payout_id: '',
+      rail: this.name,
+      external_id: externalId,
+      status: 'failed',
+      error: this.reason,
+    }
+  }
+
+  validateConfig(_config: RailConfig): { valid: boolean; errors: string[] } {
+    return { valid: false, errors: [this.reason] }
+  }
+}
+
 // ============================================================================
 // RAIL REGISTRY
 // ============================================================================
 
+const ALLOW_LEGACY_MANUAL_RAIL_ALIASES =
+  (Deno.env.get('ALLOW_LEGACY_MANUAL_RAIL_ALIASES') || '').trim().toLowerCase() === 'true'
+
 const RAILS: Record<PayoutRail, PaymentRail> = {
   card: new CardProcessorRail(),
-  manual: new ManualBankFileRail(),
-  wise: new ManualBankFileRail(),
-  crypto: new ManualBankFileRail(),
+  manual: new ManualBankFileRail('manual'),
+  wise: ALLOW_LEGACY_MANUAL_RAIL_ALIASES
+    ? new ManualBankFileRail('wise')
+    : new DisabledAliasRail('wise', 'Rail "wise" is disabled. Use "card" or "manual".'),
+  crypto: ALLOW_LEGACY_MANUAL_RAIL_ALIASES
+    ? new ManualBankFileRail('crypto')
+    : new DisabledAliasRail('crypto', 'Rail "crypto" is disabled. Use "card" or "manual".'),
 }
 
 function normalizeRail(value?: string | null): PayoutRail | null {
@@ -427,8 +473,8 @@ async function executeSinglePayout(
   payoutRails: RailConfig[],
   payoutId: string,
   rail?: PayoutRail,
-  clientIp?: string | null,
-  userAgent?: string | null
+  req: Request,
+  requestId?: string
 ): Promise<PayoutResult> {
   // Get payout details
   const { data: payout, error: payoutError } = await supabase
@@ -517,21 +563,25 @@ async function executeSinglePayout(
     })
     .eq('id', payoutId)
 
-  // Audit log with all security fields
-  await supabase.from('audit_log').insert({
-    ledger_id: ledger.id,
-    action: 'payout_executed',
-    entity_type: 'transaction',
-    entity_id: payoutId,
-    actor_type: 'api',
-    ip_address: clientIp,
-    user_agent: userAgent?.substring(0, 500),
-    request_body: {
-      rail: selectedRail,
-      success: result.success,
-      external_id: result.external_id,
+  createAuditLogAsync(
+    supabase,
+    req,
+    {
+      ledger_id: ledger.id,
+      action: 'payout_executed',
+      entity_type: 'transaction',
+      entity_id: payoutId,
+      actor_type: 'api',
+      request_body: {
+        rail: selectedRail,
+        success: result.success,
+        external_id: result.external_id,
+      },
+      response_status: result.success ? 200 : 500,
+      risk_score: result.success ? 20 : 35,
     },
-  })
+    requestId,
+  )
 
   return result
 }
@@ -542,7 +592,7 @@ async function executeSinglePayout(
 
 const handler = createHandler(
   { endpoint: 'execute-payout', requireAuth: true, rateLimit: true },
-  async (req: Request, supabase, ledger: LedgerContext | null, body: PayoutRequest) => {
+  async (req: Request, supabase, ledger: LedgerContext | null, body: PayoutRequest, { requestId }) => {
     if (!ledger) {
       return errorResponse('Ledger not found', 401, req)
     }
@@ -556,8 +606,6 @@ const handler = createHandler(
 
     const rawPayoutRails = normalizeRailConfigs(ledgerFull?.payout_rails)
     const payoutRails = rawPayoutRails
-    const clientIp = getClientIp(req)
-    const userAgent = req.headers.get('user-agent')
 
     switch (body.action) {
       // ================================================================
@@ -574,8 +622,8 @@ const handler = createHandler(
           payoutRails,
           body.payout_id,
           body.rail,
-          clientIp,
-          userAgent
+          req,
+          requestId
         )
 
         return jsonResponse(result, result.success ? 200 : 500, req)
@@ -604,8 +652,8 @@ const handler = createHandler(
             payoutRails,
             payoutId,
             body.rail,
-            clientIp,
-            userAgent
+            req,
+            requestId
           )
           results.push(result)
         }
@@ -690,21 +738,25 @@ const handler = createHandler(
         }
 
         // Audit log for batch file generation (security-sensitive action)
-        await supabase.from('audit_log').insert({
-          ledger_id: ledger.id,
-          action: 'batch_file_generated',
-          entity_type: 'payout_batch',
-          actor_type: 'api',
-          ip_address: clientIp,
-          user_agent: userAgent?.substring(0, 500),
-          request_body: {
-            payout_count: payoutDetails.length,
-            total_amount: payoutDetails.reduce((sum, p) => sum + p.amount, 0),
-            file_path: filename,
-            payout_ids: body.payout_ids,
+        createAuditLogAsync(
+          supabase,
+          req,
+          {
+            ledger_id: ledger.id,
+            action: 'batch_file_generated',
+            entity_type: 'payout_batch',
+            actor_type: 'api',
+            request_body: {
+              payout_count: payoutDetails.length,
+              total_amount: payoutDetails.reduce((sum, p) => sum + p.amount, 0),
+              file_path: filename,
+              payout_ids: body.payout_ids,
+            },
+            response_status: 200,
+            risk_score: 40, // Elevated risk - contains bank account data
           },
-          risk_score: 40,  // Elevated risk - contains bank account data
-        })
+          requestId,
+        )
 
         return jsonResponse({
           success: true,

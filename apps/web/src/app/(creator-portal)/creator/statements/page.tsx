@@ -3,6 +3,26 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { FileText, Download, Calendar } from 'lucide-react'
 
+interface ConnectedAccountRow {
+  ledger_id: string
+  entity_id: string
+  ledger: {
+    business_name: string
+  } | null
+}
+
+interface StatementPeriod {
+  id: string
+  status: string
+  start_date: string
+  end_date: string
+}
+
+interface StatementView extends StatementPeriod {
+  ledger_name: string
+  entity_id: string
+}
+
 export default async function CreatorStatementsPage() {
   const supabase = await createClient()
 
@@ -25,10 +45,11 @@ export default async function CreatorStatementsPage() {
     .eq('is_active', true)
 
   // Get statements (frozen periods)
-  const statements: any[] = []
+  const statements: StatementView[] = []
 
-  if (connectedAccounts && connectedAccounts.length > 0) {
-    for (const account of connectedAccounts) {
+  const connectedAccountRows = (connectedAccounts as ConnectedAccountRow[] | null) ?? []
+  if (connectedAccountRows.length > 0) {
+    for (const account of connectedAccountRows) {
       // Get frozen statements for this ledger
       const { data: periods } = await supabase
         .from('periods')
@@ -38,29 +59,15 @@ export default async function CreatorStatementsPage() {
         .order('end_date', { ascending: false })
         .limit(12)
 
-      if (periods) {
-        for (const period of periods) {
-          statements.push({
-            ...period,
-            ledger_name: (account.ledger as any)?.business_name || 'Unknown',
-            entity_id: account.entity_id
-          })
-        }
+      const periodRows = (periods as StatementPeriod[] | null) ?? []
+      for (const period of periodRows) {
+        statements.push({
+          ...period,
+          ledger_name: account.ledger?.business_name || 'Unknown',
+          entity_id: account.entity_id
+        })
       }
     }
-  }
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'long',
-      year: 'numeric',
-    })
-  }
-
-  const formatDateRange = (start: string, end: string) => {
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
   }
 
   // Generate synthetic monthly statements if no periods exist

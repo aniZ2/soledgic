@@ -8,6 +8,7 @@ import {
   getSupabaseClient, 
   jsonResponse, 
   errorResponse,
+  timingSafeEqual,
   validateWebhookUrl,
   isPrivateIP,
   logSecurityEvent
@@ -15,6 +16,7 @@ import {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
+  if (req.method !== 'POST') return errorResponse('Method not allowed', 405, req)
 
   try {
     // Verify cron secret - constant time comparison
@@ -25,14 +27,9 @@ Deno.serve(async (req) => {
       return errorResponse('Unauthorized', 401, req)
     }
 
-    // Constant-time comparison
-    const encoder = new TextEncoder()
-    const a = encoder.encode(cronSecret)
-    const b = encoder.encode(expectedSecret)
-    if (a.length !== b.length) return errorResponse('Unauthorized', 401, req)
-    let mismatch = 0
-    for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i]
-    if (mismatch !== 0) return errorResponse('Unauthorized', 401, req)
+    if (!timingSafeEqual(cronSecret, expectedSecret)) {
+      return errorResponse('Unauthorized', 401, req)
+    }
 
     const supabase = getSupabaseClient()
 
@@ -73,10 +70,17 @@ Deno.serve(async (req) => {
 
         // DNS rebinding protection: resolve and validate
         const url = new URL(webhook.endpoint_url)
-        try {
-          const addresses = await Deno.resolveDns(url.hostname, 'A')
-          for (const addr of addresses) {
-            if (isPrivateIP(addr)) {
+        let blockedByDns = false
+        let dnsLookupSucceeded = false
+        for (const recordType of ['A', 'AAAA'] as const) {
+          try {
+            const addresses = await Deno.resolveDns(url.hostname, recordType)
+            if (!addresses || addresses.length === 0) {
+              continue
+            }
+            dnsLookupSucceeded = true
+            for (const addr of addresses) {
+              if (!isPrivateIP(addr)) continue
               console.warn(`SSRF DNS rebinding blocked: ${url.hostname} -> ${addr}`)
               await logSecurityEvent(supabase, webhook.ledger_id, 'ssrf_attempt', {
                 endpoint_url: webhook.endpoint_url,
@@ -90,12 +94,36 @@ Deno.serve(async (req) => {
                 p_response_time_ms: null
               })
               results.blocked++
-              continue
+              blockedByDns = true
+              break
             }
+            if (blockedByDns) break
+          } catch (dnsErr) {
+            // Some hosts may not publish both A and AAAA; continue with other record type.
+            console.warn(`DNS ${recordType} lookup failed for ${url.hostname}:`, dnsErr)
           }
-        } catch (dnsErr) {
-          // DNS resolution failed - allow but it will fail on fetch
-          console.warn(`DNS resolution failed for ${url.hostname}:`, dnsErr)
+        }
+
+        if (blockedByDns) {
+          continue
+        }
+
+        // Fail-closed if we could not validate any DNS answer.
+        if (!dnsLookupSucceeded) {
+          console.warn(`SSRF DNS validation blocked: could not resolve ${url.hostname}`)
+          await logSecurityEvent(supabase, webhook.ledger_id, 'ssrf_attempt', {
+            endpoint_url: webhook.endpoint_url,
+            delivery_id: webhook.delivery_id,
+            reason: 'DNS validation failed: no A/AAAA answer',
+          })
+          await supabase.rpc('mark_webhook_failed', {
+            p_delivery_id: webhook.delivery_id,
+            p_response_status: null,
+            p_response_body: 'Blocked: DNS validation failed',
+            p_response_time_ms: null,
+          })
+          results.blocked++
+          continue
         }
 
         const payloadStr = JSON.stringify(webhook.payload)
@@ -103,12 +131,12 @@ Deno.serve(async (req) => {
         // Generate HMAC signature
         const key = await crypto.subtle.importKey(
           'raw', 
-          encoder.encode(webhook.endpoint_secret), 
+          new TextEncoder().encode(webhook.endpoint_secret), 
           { name: 'HMAC', hash: 'SHA-256' }, 
           false, 
           ['sign']
         )
-        const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payloadStr))
+        const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadStr))
         const signature = Array.from(new Uint8Array(sig))
           .map(b => b.toString(16).padStart(2, '0'))
           .join('')

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
@@ -52,11 +52,7 @@ export default function OrganizationSettingsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
-    loadOrganization()
-  }, [])
-
-  const loadOrganization = async () => {
+  const loadOrganization = useCallback(async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -95,7 +91,14 @@ export default function OrganizationSettingsPage() {
     setName(orgData.name)
     setTimezone(orgData.settings?.timezone || 'America/New_York')
     setLoading(false)
-  }
+  }, [router])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadOrganization()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [loadOrganization])
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()

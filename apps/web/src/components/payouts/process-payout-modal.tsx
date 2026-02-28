@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, DollarSign } from 'lucide-react'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
@@ -22,6 +22,10 @@ interface ProcessPayoutModalProps {
   onSuccess?: () => void
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export function ProcessPayoutModal({
   isOpen,
   onClose,
@@ -40,17 +44,7 @@ export function ProcessPayoutModal({
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
 
-  useEffect(() => {
-    if (isOpen && !preselectedCreator) {
-      loadCreators()
-    }
-    if (preselectedCreator) {
-      setSelectedCreatorId(preselectedCreator.entity_id)
-      setCreators([preselectedCreator])
-    }
-  }, [isOpen, preselectedCreator])
-
-  const loadCreators = async () => {
+  const loadCreators = useCallback(async () => {
     setLoadingCreators(true)
     try {
       const response = await fetch(`/api/creators?ledger_id=${ledgerId}`)
@@ -63,7 +57,17 @@ export function ProcessPayoutModal({
     } finally {
       setLoadingCreators(false)
     }
-  }
+  }, [ledgerId])
+
+  useEffect(() => {
+    if (isOpen && !preselectedCreator) {
+      void loadCreators()
+    }
+    if (preselectedCreator) {
+      setSelectedCreatorId(preselectedCreator.entity_id)
+      setCreators([preselectedCreator])
+    }
+  }, [isOpen, preselectedCreator, loadCreators])
 
   const selectedCreator = creators.find(c => c.entity_id === selectedCreatorId)
   const maxAmount = selectedCreator?.balance || 0
@@ -116,8 +120,8 @@ export function ProcessPayoutModal({
         setAmount('')
         setDescription('')
       }, 1500)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to process payout'))
     } finally {
       setLoading(false)
     }

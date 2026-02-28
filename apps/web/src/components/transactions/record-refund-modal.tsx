@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, RotateCcw, Search } from 'lucide-react'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
@@ -10,6 +10,12 @@ interface RecordRefundModalProps {
   ledgerId: string
   preselectedSaleRef?: string
   onSuccess?: () => void
+}
+
+type RefundFrom = 'both' | 'platform_only' | 'creator_only'
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
 }
 
 export function RecordRefundModal({
@@ -29,16 +35,9 @@ export function RecordRefundModal({
   const [saleReference, setSaleReference] = useState(preselectedSaleRef || '')
   const [refundAmount, setRefundAmount] = useState('')
   const [reason, setReason] = useState('')
-  const [refundFrom, setRefundFrom] = useState<'both' | 'platform_only' | 'creator_only'>('both')
+  const [refundFrom, setRefundFrom] = useState<RefundFrom>('both')
 
-  useEffect(() => {
-    if (isOpen && preselectedSaleRef) {
-      setSaleReference(preselectedSaleRef)
-      lookupSale(preselectedSaleRef)
-    }
-  }, [isOpen, preselectedSaleRef])
-
-  const lookupSale = async (ref: string) => {
+  const lookupSale = useCallback(async (ref: string) => {
     if (!ref.trim()) return
 
     setSearching(true)
@@ -62,12 +61,19 @@ export function RecordRefundModal({
       } else {
         setSaleInfo(null)
       }
-    } catch (err) {
+    } catch {
       setSaleInfo(null)
     } finally {
       setSearching(false)
     }
-  }
+  }, [ledgerId])
+
+  useEffect(() => {
+    if (isOpen && preselectedSaleRef) {
+      setSaleReference(preselectedSaleRef)
+      void lookupSale(preselectedSaleRef)
+    }
+  }, [isOpen, preselectedSaleRef, lookupSale])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,8 +121,8 @@ export function RecordRefundModal({
         onClose()
         resetForm()
       }, 1500)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to process refund'))
     } finally {
       setLoading(false)
     }
@@ -241,7 +247,7 @@ export function RecordRefundModal({
                 </label>
                 <select
                   value={refundFrom}
-                  onChange={(e) => setRefundFrom(e.target.value as any)}
+                  onChange={(e) => setRefundFrom(e.target.value as RefundFrom)}
                   className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   <option value="both">Both Creator & Platform (Proportional)</option>

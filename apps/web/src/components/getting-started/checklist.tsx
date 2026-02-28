@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, Circle, ChevronRight } from 'lucide-react'
+import { Check, ChevronRight } from 'lucide-react'
 
 export interface ChecklistStep {
   id: string

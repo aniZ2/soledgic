@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Creator {
   id: string
@@ -27,10 +28,11 @@ interface Transaction {
 }
 
 interface HeldFund {
-  id: string
-  hold_reason: string
+  entry_id: string
+  hold_reason: string | null
   held_amount: number
   release_eligible_at: string | null
+  release_status: 'held' | 'pending_release'
 }
 
 interface CreatorDetailClientProps {
@@ -42,7 +44,7 @@ interface CreatorDetailClientProps {
     entity_id: string
     name: string
     created_at: string
-    metadata: Record<string, any> | null
+    metadata: Record<string, unknown> | null
   }
   stats: {
     totalEarnings: number
@@ -65,6 +67,8 @@ export function CreatorDetailClient({
   hasTaxInfo,
 }: CreatorDetailClientProps) {
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false)
+  const [releasingEntryId, setReleasingEntryId] = useState<string | null>(null)
+  const [releaseError, setReleaseError] = useState<string | null>(null)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -85,13 +89,45 @@ export function CreatorDetailClient({
     window.location.reload()
   }
 
+  const handleReleaseFunds = async (entryId: string) => {
+    setReleaseError(null)
+    setReleasingEntryId(entryId)
+
+    try {
+      const response = await callLedgerFunction('release-funds', {
+        ledgerId: ledger.id,
+        body: {
+          action: 'release',
+          entry_id: entryId,
+        },
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || 'Failed to release held funds')
+      }
+
+      window.location.reload()
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to release held funds'
+      setReleaseError(message)
+    } finally {
+      setReleasingEntryId(null)
+    }
+  }
+
   // Create creator object for the modal
+  const metadataEmail =
+    creatorAccount.metadata && typeof creatorAccount.metadata.email === 'string'
+      ? creatorAccount.metadata.email
+      : undefined
+
   const creatorForModal: Creator = {
     id: creatorAccount.id,
     entity_id: creatorAccount.entity_id,
     name: creatorAccount.name,
     balance: Math.round(stats.availableBalance * 100), // Convert to cents
-    metadata: creatorAccount.metadata as any,
+    metadata: metadataEmail ? { email: metadataEmail } : undefined,
   }
 
   return (
@@ -189,18 +225,46 @@ export function CreatorDetailClient({
             <Clock className="w-5 h-5 text-yellow-600" />
             Held Funds
           </h2>
+          {releaseError && (
+            <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
+              {releaseError}
+            </div>
+          )}
           <div className="space-y-3">
             {heldFunds.map((hold) => (
-              <div key={hold.id} className="flex justify-between items-center bg-background/50 rounded p-3">
+              <div key={hold.entry_id} className="flex justify-between items-center bg-background/50 rounded p-3 gap-3">
                 <div>
-                  <p className="font-medium text-foreground">{hold.hold_reason}</p>
+                  <p className="font-medium text-foreground">
+                    {hold.hold_reason || 'Escrow hold'}
+                    {hold.release_status === 'pending_release' && (
+                      <span className="ml-2 inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-blue-500/10 text-blue-600">
+                        Pending release
+                      </span>
+                    )}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {hold.release_eligible_at
                       ? `Eligible for release: ${formatDate(hold.release_eligible_at)}`
                       : 'Manual release required'}
                   </p>
                 </div>
-                <p className="font-mono font-semibold text-foreground">{formatCurrency(hold.held_amount)}</p>
+                <div className="flex items-center gap-3">
+                  <p className="font-mono font-semibold text-foreground">{formatCurrency(hold.held_amount)}</p>
+                  <button
+                    onClick={() => handleReleaseFunds(hold.entry_id)}
+                    disabled={
+                      hold.release_status === 'pending_release' ||
+                      releasingEntryId === hold.entry_id
+                    }
+                    className="px-3 py-1.5 rounded-md border border-border text-sm bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {hold.release_status === 'pending_release'
+                      ? 'Queued'
+                      : releasingEntryId === hold.entry_id
+                      ? 'Releasing...'
+                      : 'Release now'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

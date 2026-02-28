@@ -1,11 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, User, Mail, Percent, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 export default function NewCreatorPage() {
   const router = useRouter()
@@ -19,11 +23,7 @@ export default function NewCreatorPage() {
   const [email, setEmail] = useState('')
   const [splitPercent, setSplitPercent] = useState('80')
 
-  useEffect(() => {
-    loadLedger()
-  }, [])
-
-  const loadLedger = async () => {
+  const loadLedger = useCallback(async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -59,7 +59,11 @@ export default function NewCreatorPage() {
     if (ledgers && ledgers.length > 0) {
       setLedger(ledgers[0])
     }
-  }
+  }, [router])
+
+  useEffect(() => {
+    void loadLedger()
+  }, [loadLedger])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,8 +97,8 @@ export default function NewCreatorPage() {
       }
 
       router.push('/dashboard/creators')
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to create creator'))
     } finally {
       setLoading(false)
     }

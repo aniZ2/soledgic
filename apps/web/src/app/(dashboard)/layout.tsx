@@ -35,6 +35,61 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
+interface OrganizationSummary {
+  id: string
+  name: string
+  slug: string
+  plan: string
+  status: string
+  trial_ends_at: string | null
+  max_ledgers: number
+  current_ledger_count: number
+}
+
+function toStringValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null
+}
+
+function toNullableStringValue(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function toNumberValue(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function normalizeOrganization(value: unknown): OrganizationSummary | null {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? normalizeOrganization(value[0]) : null
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  const id = toStringValue(record.id)
+  const name = toStringValue(record.name)
+  const slug = toStringValue(record.slug)
+  const plan = toStringValue(record.plan)
+  const status = toStringValue(record.status)
+
+  if (!id || !name || !slug || !plan || !status) {
+    return null
+  }
+
+  return {
+    id,
+    name,
+    slug,
+    plan,
+    status,
+    trial_ends_at: toNullableStringValue(record.trial_ends_at),
+    max_ledgers: toNumberValue(record.max_ledgers, -1),
+    current_ledger_count: toNumberValue(record.current_ledger_count, 0),
+  }
+}
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -85,7 +140,10 @@ export default async function DashboardLayout({
     )
   }
 
-  const org = membership.organization as any
+  const org = normalizeOrganization(membership.organization)
+  if (!org) {
+    redirect('/onboarding')
+  }
   const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()

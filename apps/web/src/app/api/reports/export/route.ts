@@ -3,6 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { createApiHandler } from '@/lib/api-handler'
 import { callLedgerFunctionServer, jsonFromResponse, proxyResponse } from '@/lib/ledger-functions-server'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message
+  return fallback
+}
+
+function getPayloadError(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object') return fallback
+  const maybeError = (payload as Record<string, unknown>).error
+  return typeof maybeError === 'string' && maybeError.trim().length > 0 ? maybeError : fallback
+}
+
 export const GET = createApiHandler(
   async (request: Request, { user }) => {
     const { searchParams } = new URL(request.url)
@@ -34,6 +45,7 @@ export const GET = createApiHandler(
       .select('organization_id')
       .eq('user_id', user!.id)
       .eq('organization_id', ledger.organization_id)
+      .eq('status', 'active')
       .single()
 
     if (!membership) {
@@ -57,7 +69,10 @@ export const GET = createApiHandler(
 
       if (!response.ok) {
         const error = await jsonFromResponse(response)
-        return NextResponse.json({ error: (error as any).error || 'Export failed' }, { status: response.status })
+        return NextResponse.json(
+          { error: getPayloadError(error, 'Export failed') },
+          { status: response.status }
+        )
       }
 
       const filename = `${reportType}-${year}${month ? '-' + month : ''}.${format}`
@@ -70,10 +85,13 @@ export const GET = createApiHandler(
         proxied.headers.set('Content-Disposition', `attachment; filename="${filename}"`)
       }
       return proxied
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: getErrorMessage(error, 'Export failed') }, { status: 500 })
     }
   },
-  { csrfProtection: false } // GET requests don't need CSRF
+  {
+    csrfProtection: false, // GET requests don't need CSRF
+    routePath: '/api/reports/export',
+  }
 )

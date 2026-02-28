@@ -7,6 +7,10 @@ import { createOrganizationWithLedger } from './actions'
 
 type LedgerMode = 'standard' | 'marketplace'
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 const plans = [
   {
     id: 'pro',
@@ -62,8 +66,8 @@ export default function OnboardingForm() {
       // Avoid push+refresh race that can leave users on /onboarding.
       router.replace('/getting-started')
 
-    } catch (err: any) {
-      setError(err.message || 'Failed to create organization')
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to create organization'))
       setLoading(false)
     }
   }

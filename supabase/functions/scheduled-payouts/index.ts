@@ -3,11 +3,7 @@
 // based on organization payout settings
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { getCorsHeaders, timingSafeEqual } from '../_shared/utils.ts'
 
 interface PayoutSettings {
   schedule: 'manual' | 'weekly' | 'biweekly' | 'monthly'
@@ -16,16 +12,76 @@ interface PayoutSettings {
   minimum_amount: number // cents
 }
 
+function parseBearerToken(authHeader: string | null): string | null {
+  if (!authHeader) return null
+  const trimmed = authHeader.trim()
+  if (!trimmed.toLowerCase().startsWith('bearer ')) return null
+  const token = trimmed.slice('bearer '.length).trim()
+  return token.length > 0 ? token : null
+}
+
+function isAuthorizedCronRequest(req: Request, serviceRoleKey: string, cronSecret: string | null): boolean {
+  const bearer = parseBearerToken(req.headers.get('authorization'))
+  if (bearer && timingSafeEqual(bearer, serviceRoleKey)) {
+    return true
+  }
+
+  const providedCronSecret = (req.headers.get('x-cron-secret') || '').trim()
+  if (cronSecret && providedCronSecret && timingSafeEqual(providedCronSecret, cronSecret)) {
+    return true
+  }
+
+  return false
+}
+
+function normalizeCents(value: unknown): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0
+  return Math.floor(numeric)
+}
+
+function toCents(value: unknown): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.max(0, Math.round(numeric * 100))
+}
+
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req)
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
+  }
+
   try {
     // Initialize admin client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Supabase environment is not configured')
+    }
+
+    if (!isAuthorizedCronRequest(req, supabaseKey, Deno.env.get('CRON_SECRET'))) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
     const internalToken =
       Deno.env.get('SOLEDGIC_INTERNAL_FUNCTION_TOKEN') ||
       Deno.env.get('INTERNAL_FUNCTION_TOKEN')
@@ -64,6 +120,7 @@ Deno.serve(async (req: Request) => {
 
     for (const ledger of ledgers || []) {
       const settings: PayoutSettings = ledger.metadata?.payout_settings || { schedule: 'manual', minimum_amount: 0 }
+      const ledgerMinimumCents = normalizeCents(settings.minimum_amount)
 
       // Skip if manual
       if (settings.schedule === 'manual') continue
@@ -94,7 +151,7 @@ Deno.serve(async (req: Request) => {
         .eq('ledger_id', ledger.id)
         .eq('account_type', 'creator_balance')
         .eq('is_active', true)
-        .gte('balance', settings.minimum_amount || 0)
+        .gte('balance', ledgerMinimumCents / 100)
 
       if (accountsError) {
         console.error(`Error fetching accounts for ${ledger.id}:`, accountsError)
@@ -103,7 +160,8 @@ Deno.serve(async (req: Request) => {
       }
 
       for (const account of creatorAccounts || []) {
-        if (Number(account.balance) <= 0) continue
+        const balanceCents = toCents(account.balance)
+        if (balanceCents <= 0) continue
 
         // Check if creator has payout enabled
         const payoutPrefs = account.metadata?.payout_preferences || {}
@@ -118,8 +176,8 @@ Deno.serve(async (req: Request) => {
         }
 
         // Check minimum payout amount
-        const minAmount = payoutPrefs.minimum_amount || settings.minimum_amount || 0
-        if (Number(account.balance) < minAmount) continue
+        const minAmountCents = normalizeCents(payoutPrefs.minimum_amount ?? ledgerMinimumCents)
+        if (balanceCents < minAmountCents) continue
 
         // Record payout (atomic) then execute it.
         // NOTE: reference_id must be stable and restricted to [a-zA-Z0-9_-].
@@ -127,7 +185,7 @@ Deno.serve(async (req: Request) => {
         const referenceId = `sched_${dayStamp}_${ledger.id}_${account.entity_id}`
 
         try {
-          const amountCents = Math.floor(Number(account.balance))
+          const amountCents = balanceCents
 
           const recordResponse = await fetch(`${supabaseUrl}/functions/v1/process-payout`, {
             method: 'POST',

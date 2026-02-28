@@ -100,7 +100,7 @@ const handler = createHandler(
 
     const { data: org } = await supabase
       .from('organizations')
-      .select('id, name, plan, status, trial_ends_at, max_ledgers, max_team_members, overage_ledger_price, overage_team_member_price, settings')
+      .select('id, name, plan, status, trial_ends_at, max_ledgers, max_team_members, overage_ledger_price, overage_team_member_price, max_transactions_per_month, overage_transaction_price, settings')
       .eq('id', orgId)
       .single()
 
@@ -127,7 +127,35 @@ const handler = createHandler(
 
         const additionalLedgers = includedLedgers === -1 ? 0 : Math.max(0, ledgerCount - includedLedgers)
         const additionalMembers = includedMembers === -1 ? 0 : Math.max(0, memberCount - includedMembers)
-        const estimatedMonthlyOverageCents = additionalLedgers * overageLedgerPrice + additionalMembers * overageMemberPrice
+
+        // Transaction counting
+        const maxTransactions = typeof org.max_transactions_per_month === 'number' ? org.max_transactions_per_month : 1000
+        const overageTransactionPrice = typeof org.overage_transaction_price === 'number' ? org.overage_transaction_price : 2
+
+        // Count transactions in this billing period across all org ledgers
+        const { data: ledgerRows } = await supabase
+          .from('ledgers')
+          .select('id')
+          .eq('organization_id', orgId)
+          .eq('livemode', true)
+          .eq('status', 'active')
+        const ledgerIds = (ledgerRows || []).map((l: { id: string }) => l.id)
+
+        let transactionCount = 0
+        if (ledgerIds.length > 0) {
+          const { count: txCount } = await supabase
+            .from('transactions')
+            .select('id', { count: 'exact', head: true })
+            .in('ledger_id', ledgerIds)
+            .gte('created_at', start.toISOString())
+            .lt('created_at', end.toISOString())
+          transactionCount = txCount || 0
+        }
+
+        const additionalTransactions = maxTransactions === -1 ? 0 : Math.max(0, transactionCount - maxTransactions)
+        const transactionOverageCents = additionalTransactions * overageTransactionPrice
+
+        const estimatedMonthlyOverageCents = additionalLedgers * overageLedgerPrice + additionalMembers * overageMemberPrice + transactionOverageCents
 
         const settingsObj = org?.settings && typeof org.settings === 'object' ? org.settings : {}
         const billingSettings = (settingsObj.billing || {}) as Record<string, any>
@@ -195,7 +223,7 @@ const handler = createHandler(
               ledgers: ledgerCount,
               team_members: memberCount,
               creators: 0,
-              transactions: 0,
+              transactions: transactionCount,
               api_calls: 0,
               period_start: start.toISOString(),
               period_end: end.toISOString(),
@@ -203,8 +231,11 @@ const handler = createHandler(
             overage: {
               additional_ledgers: additionalLedgers,
               additional_team_members: additionalMembers,
+              additional_transactions: additionalTransactions,
               overage_ledger_price: overageLedgerPrice,
               overage_team_member_price: overageMemberPrice,
+              overage_transaction_price: overageTransactionPrice,
+              max_transactions_per_month: maxTransactions,
               estimated_monthly_cents: estimatedMonthlyOverageCents,
             },
             billing: {
@@ -230,13 +261,17 @@ const handler = createHandler(
               max_team_members: 1,
               overage_ledger_price_monthly: 2000,
               overage_team_member_price_monthly: 2000,
+              max_transactions_per_month: 1000,
+              overage_transaction_price: 2,
               features: [
                 'Payment processing',
                 'Core finance features',
                 '1 ledger included',
                 '1 team member included',
+                '1,000 transactions/month included',
                 '$20/month per additional ledger',
                 '$20/month per additional team member',
+                '$0.02 per additional transaction',
               ],
               price_id_monthly: null,
               contact_sales: false,

@@ -5,7 +5,7 @@ This directory contains test data and scripts for Soledgic development.
 
 ## Contents
 
-- `api-keys.env` - Test API keys (DO NOT commit to public repos)
+- `api-keys.env.example` - Template for local test API keys
 - `test-api.sh` - Bash script to test API endpoints
 
 ## Usage
@@ -13,6 +13,9 @@ This directory contains test data and scripts for Soledgic development.
 ```bash
 # Make the test script executable
 chmod +x test-api.sh
+
+# Create local key file (untracked)
+cp api-keys.env.example api-keys.env
 
 # Run all tests
 ./test-api.sh
@@ -40,9 +43,5 @@ curl -X GET "$SOLEDGIC_API_URL/get-balance" -H "x-api-key: $SOLEDGIC_API_KEY"
 ## Security Notes
 
 - API keys are hashed (SHA-256) before storage
-- The plaintext key in `api-keys.env` is the ONLY copy
-- Never commit this file to a public repository
-- Add to `.gitignore`:
-  ```
-  test-data/api-keys.env
-  ```
+- Keep plaintext keys only in your local `api-keys.env` (untracked)
+- Never commit `api-keys.env` to any repository

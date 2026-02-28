@@ -4,24 +4,28 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Building, Save, Loader2 } from 'lucide-react'
 
+interface OrganizationRecord {
+  id: string
+  name: string
+  slug: string
+  plan: string
+  billing_email: string | null
+}
+
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [organization, setOrganization] = useState<any>(null)
+  const [organization, setOrganization] = useState<OrganizationRecord | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
     billing_email: '',
   })
 
-  useEffect(() => {
-    loadOrganization()
-  }, [])
-
-	  const loadOrganization = async () => {
-	    const supabase = createClient()
-	    const { data: { user } } = await supabase.auth.getUser()
-	    if (!user) return
+  async function loadOrganization() {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
     const { data: membership } = await supabase
       .from('organization_members')
@@ -39,7 +43,7 @@ export default function SettingsPage() {
       .single()
 
     if (org) {
-      setOrganization(org)
+      setOrganization(org as OrganizationRecord)
       setFormData({
         name: org.name || '',
         slug: org.slug || '',
@@ -49,6 +53,13 @@ export default function SettingsPage() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      void loadOrganization()
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [])
 
   const handleSave = async () => {
     if (!organization) return

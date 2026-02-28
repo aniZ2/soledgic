@@ -15,6 +15,7 @@ export async function fetchWithCsrf(
   const headers = new Headers(options.headers)
   const token = getCsrfToken()
   if (token) headers.set('x-csrf-token', token)
+  if (!headers.has('x-requested-with')) headers.set('x-requested-with', 'fetch')
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   return fetch(url, { ...options, headers })
 }

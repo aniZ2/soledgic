@@ -15,7 +15,13 @@ interface OrganizationSettings {
     default_method?: string | null
     min_payout_amount?: number | null
   }
-  [key: string]: any
+  [key: string]: unknown
+}
+
+type JsonRecord = Record<string, unknown>
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function getPlatformProcessorSettings() {
@@ -40,17 +46,25 @@ async function getUserOrganization(userId: string) {
 
   if (!membership) return null
 
-  const orgRaw = membership?.organization as any
+  const orgRaw = (membership as { organization?: unknown }).organization
   const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
-  if (!organization) return null
+  if (!isJsonRecord(organization)) return null
+
+  const organizationId = typeof organization.id === 'string' ? organization.id : null
+  const organizationName = typeof organization.name === 'string' ? organization.name : null
+  if (!organizationId || !organizationName) return null
+
+  const settings = isJsonRecord(organization.settings)
+    ? (organization.settings as OrganizationSettings)
+    : null
 
   return {
     role: membership.role as string,
     isOwner: membership.role === 'owner',
-    organization: organization as {
-      id: string
-      name: string
-      settings?: OrganizationSettings | null
+    organization: {
+      id: organizationId,
+      name: organizationName,
+      settings,
     },
   }
 }

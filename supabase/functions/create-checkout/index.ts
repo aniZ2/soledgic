@@ -12,6 +12,7 @@ import {
   validateId,
   validateString,
   validateEmail,
+  validateUrl,
   LedgerContext,
   createAuditLogAsync,
   sanitizeForAudit
@@ -30,22 +31,27 @@ interface CreateCheckoutRequest {
   // Required
   amount: number              // In cents
   creator_id: string          // Creator receiving the revenue share
-  
+
   // Optional
   currency?: string           // Default: USD
   product_id?: string         // For tracking
   product_name?: string       // Human-readable descriptor
   customer_email?: string     // Customer email for provider receipt metadata
   customer_id?: string        // Your platform's customer ID
-  
+
   // Advanced
   capture_method?: 'automatic' | 'manual'  // Default: automatic
   setup_future_usage?: 'off_session' | 'on_session'  // For saving cards
   // Payment method (buyer instrument) for charge-side flows.
   // NOTE: `source_id` is accepted as a backwards-compatible alias.
+  // When omitted, a hosted checkout session is created instead.
   payment_method_id?: string
   source_id?: string
-  
+
+  // Session mode (when payment_method_id is omitted)
+  success_url?: string        // Where to redirect after successful payment
+  cancel_url?: string         // Where to redirect if buyer cancels
+
   // Pass-through
   metadata?: Record<string, string>  // Additional metadata
 }
@@ -206,8 +212,83 @@ const handler = createHandler(
     const customerId = body.customer_id ? validateId(body.customer_id, 100) : null
     const paymentMethodIdRaw = body.payment_method_id || body.source_id || null
     const paymentMethodId = paymentMethodIdRaw ? validateString(paymentMethodIdRaw, 200) : null
+
+    // ========================================================================
+    // SESSION MODE: When payment_method_id is omitted, create a hosted
+    // checkout session and return a URL for the buyer to complete payment.
+    // ========================================================================
     if (!paymentMethodId) {
-      return errorResponse('payment_method_id is required', 400, req, requestId)
+      const successUrl = body.success_url ? validateUrl(body.success_url) : null
+      if (!successUrl) {
+        return errorResponse('success_url is required and must be a valid URL when payment_method_id is omitted', 400, req, requestId)
+      }
+      const cancelUrl = body.cancel_url ? validateUrl(body.cancel_url) : null
+
+      const creatorPercent = await getCreatorSplit(supabase, ledger, creatorId, productId)
+      const creatorAmount = Math.floor(amount * (creatorPercent / 100))
+      const platformAmount = amount - creatorAmount
+
+      const sessionExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
+
+      const { data: session, error: sessionError } = await supabase
+        .from('checkout_sessions')
+        .insert({
+          ledger_id: ledger.id,
+          amount,
+          currency,
+          creator_id: creatorId,
+          product_id: productId,
+          product_name: productName,
+          customer_email: customerEmail,
+          customer_id: customerId,
+          metadata: body.metadata || {},
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          creator_percent: creatorPercent,
+          creator_amount: creatorAmount,
+          platform_amount: platformAmount,
+          expires_at: sessionExpiresAt,
+        })
+        .select('id, expires_at')
+        .single()
+
+      if (sessionError || !session) {
+        console.error(`[${requestId}] Failed to create checkout session:`, sessionError)
+        return errorResponse('Failed to create checkout session', 500, req, requestId)
+      }
+
+      const appUrl = (Deno.env.get('APP_URL') || Deno.env.get('NEXT_PUBLIC_APP_URL') || 'https://soledgic.com').replace(/\/+$/, '')
+
+      createAuditLogAsync(supabase, req, {
+        ledger_id: ledger.id,
+        action: 'checkout_session_created',
+        entity_type: 'checkout_session',
+        entity_id: session.id,
+        actor_type: 'api',
+        request_body: sanitizeForAudit({
+          amount,
+          currency,
+          creator_id: creatorId,
+          product_id: productId,
+          creator_percent: creatorPercent,
+        }),
+        response_status: 200,
+        risk_score: 10,
+      }, requestId)
+
+      return jsonResponse({
+        success: true,
+        mode: 'session',
+        session_id: session.id,
+        checkout_url: `${appUrl}/pay/${session.id}`,
+        expires_at: session.expires_at,
+        breakdown: {
+          gross_amount: amount / 100,
+          creator_amount: creatorAmount / 100,
+          platform_amount: platformAmount / 100,
+          creator_percent: creatorPercent,
+        },
+      }, 200, req, requestId)
     }
 
     // Merchant-of-record invariant: never allow per-request merchant overrides.
