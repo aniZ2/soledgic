@@ -120,16 +120,21 @@ async function findCreatorAccount(
     return { data: null, error: 'No email on authenticated user', creatorId: null }
   }
 
+  // Use .limit(1) + array access instead of .maybeSingle() because the same
+  // email may appear across multiple ledgers (unique on ledger_id+entity_type+entity_id,
+  // not on email). Pick the first active row; if the creator needs to target a
+  // specific ledger they can pass ledger_id in a future iteration.
   const { data, error } = await supabase
     .from('connected_accounts')
     .select('id, entity_id, processor_account_id, processor_identity_id, default_bank_last4, default_bank_name, payouts_enabled, setup_state, setup_state_expires_at')
     .eq('entity_type', 'creator')
     .eq('email', user.email)
     .eq('is_active', true)
+    .order('created_at', { ascending: true })
     .limit(1)
-    .maybeSingle()
 
-  return { data, error, creatorId: data?.entity_id || null }
+  const row = data?.[0] ?? null
+  return { data: row, error, creatorId: row?.entity_id || null }
 }
 
 export const POST = createApiHandler(

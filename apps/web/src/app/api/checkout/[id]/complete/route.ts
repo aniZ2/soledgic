@@ -157,20 +157,30 @@ export async function POST(
     return NextResponse.json({ error: 'Payment processing is not configured' }, { status: 503 })
   }
 
+  const transferTags: Record<string, string> = {
+    soledgic_checkout_session_id: session.id,
+    soledgic_ledger_id: session.ledger_id,
+    soledgic_creator_id: session.creator_id,
+  }
+  if (session.product_id) transferTags.product_id = session.product_id
+  if (session.product_name) transferTags.product_name = session.product_name
+  if (session.customer_id) transferTags.customer_id = session.customer_id
+  if (session.customer_email) transferTags.customer_email = session.customer_email
+  // Forward caller-provided metadata as tags (processor limits key count,
+  // so only pass first 10 entries to stay within safe bounds).
+  if (session.metadata && typeof session.metadata === 'object') {
+    const entries = Object.entries(session.metadata as Record<string, unknown>)
+    for (const [k, v] of entries.slice(0, 10)) {
+      if (typeof v === 'string') transferTags[`meta_${k}`] = v.substring(0, 500)
+    }
+  }
+
   const transferPayload: Record<string, unknown> = {
     amount: session.amount,
     currency: session.currency,
     source: chosen.id,
     merchant: merchantId,
-    tags: {
-      soledgic_checkout_session_id: session.id,
-      soledgic_ledger_id: session.ledger_id,
-      soledgic_creator_id: session.creator_id,
-    },
-  }
-
-  if (session.product_name) {
-    ;(transferPayload.tags as Record<string, string>).product_name = session.product_name
+    tags: transferTags,
   }
 
   let transfer: { id?: string; state?: string }
@@ -268,27 +278,38 @@ export async function POST(
       .catch((err) => {
         console.error('Failed to queue checkout webhook:', err)
       })
-  } else {
-    // Charge succeeded but ledger write failed.
-    // Mark as 'charged_pending_ledger' so reconciliation can pick it up.
-    // Do NOT queue webhook (no journal entry to back it up).
-    await supabase
-      .from('checkout_sessions')
-      .update({
-        status: 'charged_pending_ledger',
-        payment_id: transfer.id,
-        reference_id: referenceId,
-        processor_identity_id: identity.id || identityId,
-        setup_state: null,
-        setup_state_expires_at: null,
-        updated_at: completedAt.toISOString(),
-      })
-      .eq('id', sessionId)
+    return NextResponse.json({
+      success: true,
+      payment_id: transfer.id,
+      redirect_url: session.success_url,
+    })
   }
 
-  return NextResponse.json({
-    success: true,
-    payment_id: transfer.id,
-    redirect_url: session.success_url,
-  })
+  // Charge succeeded but ledger write failed.
+  // Mark as 'charged_pending_ledger' so reconciliation can pick it up.
+  // Do NOT queue webhook and do NOT tell the caller it succeeded.
+  await supabase
+    .from('checkout_sessions')
+    .update({
+      status: 'charged_pending_ledger',
+      payment_id: transfer.id,
+      reference_id: referenceId,
+      processor_identity_id: identity.id || identityId,
+      setup_state: null,
+      setup_state_expires_at: null,
+      updated_at: completedAt.toISOString(),
+    })
+    .eq('id', sessionId)
+
+  // Return 202 — payment was captured but not yet fully reconciled.
+  // The client page should show a "processing" state, not a success page.
+  return NextResponse.json(
+    {
+      success: false,
+      status: 'pending_reconciliation',
+      payment_id: transfer.id,
+      error: 'Your payment was received but is still being processed. You will receive confirmation shortly.',
+    },
+    { status: 202 }
+  )
 }

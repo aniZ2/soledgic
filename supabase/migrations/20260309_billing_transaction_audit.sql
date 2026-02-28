@@ -7,6 +7,14 @@ ALTER TABLE public.billing_overage_charges
   ADD COLUMN IF NOT EXISTS additional_transactions integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS overage_transaction_price integer NOT NULL DEFAULT 2;
 
+-- Drop the old 13-arg overload so callers can't accidentally use it
+-- and so the explicit GRANT below covers the only remaining version.
+DROP FUNCTION IF EXISTS public.claim_overage_billing_charge(
+  uuid, date, date, integer, text,
+  integer, integer, integer, integer,
+  integer, integer, integer, integer
+);
+
 -- Recreate claim function with transaction parameters
 CREATE OR REPLACE FUNCTION public.claim_overage_billing_charge(
   p_organization_id uuid,
@@ -112,3 +120,11 @@ BEGIN
   RETURN to_jsonb(v_row);
 END;
 $$;
+
+-- Explicit grant for the new 17-arg overload (matches the pattern from 20260288).
+GRANT EXECUTE ON FUNCTION public.claim_overage_billing_charge(
+  uuid, date, date, integer, text,
+  integer, integer, integer, integer,
+  integer, integer, integer, integer,
+  integer, integer, integer, integer
+) TO service_role;
