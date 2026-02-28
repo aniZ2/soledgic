@@ -106,35 +106,57 @@ interface PayoutSetupRequest {
   action: 'status' | 'create_setup_link' | 'save_payout_method'
   identity_id?: string
   state?: string
+  ledger_id?: string  // Required when creator email exists on multiple ledgers
 }
 
 async function findCreatorAccount(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  user: { id: string; email?: string }
+  user: { id: string; email?: string },
+  ledgerId?: string
 ) {
   // SECURITY: Look up the connected_accounts row by the authenticated user's email.
   // The `email` column on connected_accounts is set by platform admins when they
   // register creators; it is the trust anchor. We do NOT use user_metadata.creator_id
   // because user_metadata is user-writable in Supabase and is not a safe auth boundary.
   if (!user.email) {
-    return { data: null, error: 'No email on authenticated user', creatorId: null }
+    return { data: null, error: 'No email on authenticated user', creatorId: null, ambiguous: false }
   }
 
-  // Use .limit(1) + array access instead of .maybeSingle() because the same
-  // email may appear across multiple ledgers (unique on ledger_id+entity_type+entity_id,
-  // not on email). Pick the first active row; if the creator needs to target a
-  // specific ledger they can pass ledger_id in a future iteration.
-  const { data, error } = await supabase
+  let query = supabase
     .from('connected_accounts')
-    .select('id, entity_id, processor_account_id, processor_identity_id, default_bank_last4, default_bank_name, payouts_enabled, setup_state, setup_state_expires_at')
+    .select('id, entity_id, ledger_id, processor_account_id, processor_identity_id, default_bank_last4, default_bank_name, payouts_enabled, setup_state, setup_state_expires_at')
     .eq('entity_type', 'creator')
     .eq('email', user.email)
     .eq('is_active', true)
-    .order('created_at', { ascending: true })
-    .limit(1)
 
-  const row = data?.[0] ?? null
-  return { data: row, error, creatorId: row?.entity_id || null }
+  // If caller specified a ledger_id, scope to that ledger
+  if (ledgerId) {
+    query = query.eq('ledger_id', ledgerId)
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: true })
+
+  if (error) {
+    return { data: null, error: String(error.message || error), creatorId: null, ambiguous: false }
+  }
+
+  if (!data || data.length === 0) {
+    return { data: null, error: null, creatorId: null, ambiguous: false }
+  }
+
+  // If multiple rows and no ledger_id filter, require disambiguation
+  if (data.length > 1 && !ledgerId) {
+    return {
+      data: null,
+      error: null,
+      creatorId: null,
+      ambiguous: true,
+      ledger_ids: data.map(r => r.ledger_id),
+    }
+  }
+
+  const row = data[0]
+  return { data: row, error: null, creatorId: row.entity_id || null, ambiguous: false }
 }
 
 export const POST = createApiHandler(
@@ -147,7 +169,16 @@ export const POST = createApiHandler(
     const supabase = await createClient()
 
     // Look up the creator's connected account by their verified email
-    const { data: connectedAccount, error: caError } = await findCreatorAccount(supabase, user!)
+    const found = await findCreatorAccount(supabase, user!, body.ledger_id)
+
+    if (found.ambiguous) {
+      return NextResponse.json({
+        error: 'Multiple creator accounts found for this email. Please specify ledger_id.',
+        ledger_ids: (found as { ledger_ids?: string[] }).ledger_ids,
+      }, { status: 409 })
+    }
+
+    const { data: connectedAccount, error: caError } = found
 
     if (caError || !connectedAccount) {
       return NextResponse.json({ error: 'Creator account not found' }, { status: 404 })

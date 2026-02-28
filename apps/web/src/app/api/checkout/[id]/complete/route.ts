@@ -275,9 +275,6 @@ export async function POST(
       .then(({ error }) => {
         if (error) console.error('Failed to queue checkout webhook:', error)
       })
-      .catch((err) => {
-        console.error('Failed to queue checkout webhook:', err)
-      })
     return NextResponse.json({
       success: true,
       payment_id: transfer.id,
