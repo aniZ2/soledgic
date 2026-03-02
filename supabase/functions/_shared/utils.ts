@@ -225,16 +225,17 @@ export function maintenanceResponse(req?: Request, requestId?: string): Response
 // CORS CONFIGURATION
 // ============================================================================
 
-// Allowed origins - add your domains here
+// Client domains via env (e.g. "https://booklyverse.com,https://app.booklyverse.com")
+const EXTRA_ALLOWED_ORIGINS = (Deno.env.get('CORS_ALLOWED_ORIGINS') || '')
+  .split(',')
+  .map((o: string) => o.trim())
+  .filter(Boolean)
+
 const ALLOWED_ORIGINS = [
   'https://soledgic.com',
   'https://www.soledgic.com',
   'https://app.soledgic.com',
   'https://dashboard.soledgic.com',
-  // Booklyverse
-  'https://booklyverse.com',
-  'https://www.booklyverse.com',
-  'https://app.booklyverse.com',
   // Supabase Studio
   'https://ocjrcsmoeikxfooeglkt.supabase.co',
   // Local development - ONLY in non-production
@@ -243,6 +244,7 @@ const ALLOWED_ORIGINS = [
     'http://localhost:3001',
     'http://127.0.0.1:3000',
   ] : []),
+  ...EXTRA_ALLOWED_ORIGINS,
 ]
 
 // Check if origin is allowed

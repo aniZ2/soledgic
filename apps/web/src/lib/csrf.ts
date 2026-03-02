@@ -17,13 +17,11 @@ const ALLOWED_ORIGINS = [
   'https://soledgic.com',
   'https://www.soledgic.com',
   'https://app.soledgic.com',
-  'https://booklyverse.com',
-  'https://www.booklyverse.com',
-  'https://app.booklyverse.com',
   // Development
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
+  // Client domains via env (e.g. "https://booklyverse.com,https://app.booklyverse.com")
   ...EXTRA_ALLOWED_ORIGINS,
 ]
 
