@@ -1,5 +1,3 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
+#!/bin/sh
 echo "Running pre-push security gate..."
 ./scripts/security-gate.sh --pre-push
