@@ -525,6 +525,7 @@ Deno.serve(async (req: Request) => {
         soledgic_overage_transaction_price: String(transactionOveragePrice),
       },
       payment_method_id: billingSourceId,
+      idempotency_id: `billing_${chargeId}`,
     })
 
     if (!checkout.success || !checkout.id) {

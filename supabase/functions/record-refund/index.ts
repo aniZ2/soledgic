@@ -188,9 +188,16 @@ const handler = createHandler(
       const provider = getPaymentProvider('card')
       const paymentId = processorPaymentId || originalRef
 
+      // Build a stable idempotency key BEFORE the processor call so retries
+      // after a timeout cannot issue a second reversal at the processor.
+      const processorIdempotencyId = idempotencyKey
+        ? `refund_${idempotencyKey}`
+        : await buildDeterministicRefundReferenceId(originalSale.id, effectiveRefundCents, refundFrom, reason)
+
       const refundResult = await provider.refund({
         payment_intent_id: paymentId,
         amount: effectiveRefundCents,
+        idempotency_id: processorIdempotencyId,
         metadata: {
           soledgic_ledger_id: ledger.id,
           soledgic_original_sale_reference: originalRef,

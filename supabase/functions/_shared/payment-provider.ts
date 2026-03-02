@@ -133,8 +133,8 @@ class CardPaymentProvider implements PaymentProvider {
       }
     }
 
-    const versionHeader = (this.cfg.versionHeader || Deno.env.get('PROCESSOR_VERSION_HEADER') || 'Finix-Version').trim()
-    const apiVersion = (this.cfg.apiVersion || Deno.env.get('PROCESSOR_API_VERSION') || '2022-02-01').trim()
+    const versionHeader = (this.cfg.versionHeader || Deno.env.get('PROCESSOR_VERSION_HEADER') || '').trim() || 'Finix-Version'
+    const apiVersion = (this.cfg.apiVersion || Deno.env.get('PROCESSOR_API_VERSION') || '').trim() || '2022-02-01'
 
     return {
       merchantId: (this.cfg.merchantId || Deno.env.get('PROCESSOR_MERCHANT_ID') || '').trim() || null,

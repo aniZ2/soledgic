@@ -115,8 +115,8 @@ export async function processorRequest<T = unknown>(
     throw new Error('Payment processor misconfiguration: sandbox environment cannot use production base URL')
   }
 
-  const versionHeader = (process.env.PROCESSOR_VERSION_HEADER || 'Finix-Version').trim()
-  const apiVersion = (process.env.PROCESSOR_API_VERSION || '2022-02-01').trim()
+  const versionHeader = (process.env.PROCESSOR_VERSION_HEADER || '').trim() || 'Finix-Version'
+  const apiVersion = (process.env.PROCESSOR_API_VERSION || '').trim() || '2022-02-01'
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), getProcessorRequestTimeoutMs())

@@ -649,6 +649,7 @@ async function executeReleaseTransfer(
       soledgic_release_table: releaseRecord.table,
     },
     description: `Escrow release ${releaseRecord.release_id}`,
+    idempotency_id: `release_${releaseRecord.release_id}`,
   })
 
   if (!transfer.success || !transfer.id) {

@@ -362,6 +362,7 @@ const handler = createHandler(
       capture_method: body.capture_method,
       setup_future_usage: body.setup_future_usage,
       payment_method_id: paymentMethodId,
+      idempotency_id: `checkout_direct_${requestId}`,
     })
 
     if (!checkoutResult.success || !checkoutResult.id) {
