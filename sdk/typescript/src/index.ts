@@ -41,14 +41,14 @@ interface CreateCheckoutRequestBase {
   // is created. The buyer visits checkoutUrl to enter their card.
   successUrl?: string
   cancelUrl?: string
-  // Unique key to prevent duplicate charges on retries. Required for direct charges.
-  idempotencyKey?: string
 }
 
 export type CreateCheckoutRequest = CreateCheckoutRequestBase & (
-  { paymentMethodId: string; sourceId?: string } |
-  { paymentMethodId?: string; sourceId: string } |
-  { paymentMethodId?: undefined; sourceId?: undefined; successUrl: string }
+  // Direct charge: idempotencyKey is required to prevent duplicate transfers
+  { paymentMethodId: string; sourceId?: string; idempotencyKey: string } |
+  { paymentMethodId?: string; sourceId: string; idempotencyKey: string } |
+  // Session mode: idempotencyKey is not needed (session ID is the key)
+  { paymentMethodId?: undefined; sourceId?: undefined; successUrl: string; idempotencyKey?: string }
 )
 
 export interface CreateCheckoutSessionResponse {
