@@ -233,7 +233,9 @@ export async function fetchProcessorIdentity(identityId: string) {
 
   // Defense-in-depth: ensure a redirected identity belongs to our configured application.
   const expectedAppId = process.env.PROCESSOR_APPLICATION_ID
-  if (expectedAppId) {
+  if (!expectedAppId) {
+    console.warn('[processor] PROCESSOR_APPLICATION_ID not set — skipping identity application verification')
+  } else {
     const actualAppId = extractIdentityApplicationId(identity)
     if (!actualAppId) {
       throw new Error('Unable to verify identity application')
