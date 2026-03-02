@@ -43,16 +43,22 @@ export interface CreateCheckoutRequest {
 }
 
 export interface ProcessPayoutRequest {
+  /** Unique reference ID for this payout (required) */
+  referenceId: string
   /** Creator to pay */
   creatorId: string
-  /** Payment method */
-  paymentMethod: 'card' | 'manual'
-  /** Amount in cents (optional - defaults to full balance) */
-  amount?: number
-  /** External payment reference (payout ID, transfer ID, etc.) */
-  paymentReference?: string
+  /** Amount in cents (required) */
+  amount: number
+  /** Reference type (e.g., 'manual') */
+  referenceType?: string
   /** Payout description */
   description?: string
+  /** Payout method */
+  payoutMethod?: string
+  /** Fees in cents */
+  fees?: number
+  /** Who pays the fees */
+  feesPaidBy?: 'platform' | 'creator'
   /** Additional metadata */
   metadata?: Record<string, unknown>
 }
@@ -68,6 +74,12 @@ export interface RecordRefundRequest {
   refundFrom?: 'both' | 'platform_only' | 'creator_only'
   /** External refund ID (refund ID, transaction ID, etc.) */
   externalRefundId?: string
+  /** Idempotency key for processor refund */
+  idempotencyKey?: string
+  /** Whether to execute refund at the processor */
+  executeProcessorRefund?: boolean
+  /** Processor payment ID to refund */
+  processorPaymentId?: string
   /** Additional metadata */
   metadata?: Record<string, unknown>
 }

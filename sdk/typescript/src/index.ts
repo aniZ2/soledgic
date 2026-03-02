@@ -16,10 +16,14 @@ export interface RecordSaleRequest {
   creatorId: string
   amount: number
   processingFee?: number
+  processingFeePaidBy?: 'platform' | 'creator' | 'split'
+  creatorPercent?: number
   productId?: string
   productName?: string
   creatorName?: string
-  transactionDate?: string // For backdated entries
+  skipWithholding?: boolean
+  transactionDate?: string
+  metadata?: Record<string, unknown>
 }
 
 export type CheckoutProvider = 'card'
@@ -65,8 +69,12 @@ export interface RecordIncomeRequest {
   amount: number
   description?: string
   category?: string
+  customerId?: string
   customerName?: string
+  receivedTo?: string
+  invoiceId?: string
   transactionDate?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface RecordExpenseRequest {
@@ -74,11 +82,16 @@ export interface RecordExpenseRequest {
   amount: number
   description?: string
   category?: string
+  vendorId?: string
   vendorName?: string
-  paidFrom?: 'cash' | 'credit_card'
+  paidFrom?: 'cash' | 'credit_card' | string
+  receiptUrl?: string
+  taxDeductible?: boolean
   transactionDate?: string
-  authorizingInstrumentId?: string  // Optional: link to authorizing instrument for validation
-  authorizationDecisionId?: string  // Optional: preflight authorization decision ID
+  metadata?: Record<string, unknown>
+  authorizingInstrumentId?: string
+  riskEvaluationId?: string
+  authorizationDecisionId?: string
 }
 
 export interface RecordBillRequest {
@@ -90,8 +103,10 @@ export interface RecordBillRequest {
   dueDate?: string
   expenseCategory?: string
   paid?: boolean
-  authorizingInstrumentId?: string  // Optional: link to authorizing instrument for validation
-  authorizationDecisionId?: string  // Optional: preflight authorization decision ID
+  metadata?: Record<string, unknown>
+  authorizingInstrumentId?: string
+  riskEvaluationId?: string
+  authorizationDecisionId?: string
 }
 
 // === AUTHORIZING INSTRUMENTS ===
@@ -287,7 +302,35 @@ export interface ProcessPayoutRequest {
   referenceId: string
   creatorId: string
   amount: number
+  referenceType?: string
+  description?: string
   payoutMethod?: string
+  fees?: number
+  feesPaidBy?: 'platform' | 'creator'
+  metadata?: Record<string, unknown>
+}
+
+export interface RecordRefundRequest {
+  originalSaleReference: string
+  amount?: number
+  reason: string
+  refundFrom?: 'both' | 'platform_only' | 'creator_only'
+  externalRefundId?: string
+  idempotencyKey?: string
+  executeProcessorRefund?: boolean
+  processorPaymentId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RecordRefundResponse {
+  success: boolean
+  transactionId: string
+  refundedAmount: number
+  breakdown: {
+    fromCreator: number
+    fromPlatform: number
+  }
+  isFullRefund: boolean
 }
 
 export interface ReverseTransactionRequest {
@@ -333,8 +376,13 @@ export interface SaleResponse {
     netAmount: number
     creatorAmount: number
     platformAmount: number
+    creatorPercent: number
+    platformPercent: number
     withheldAmount: number
+    availableAmount: number
+    withholdings: unknown[]
   }
+  creatorBalance?: number
 }
 
 export interface CheckoutBreakdown {
@@ -520,10 +568,14 @@ export class Soledgic {
       creator_id: req.creatorId,
       amount: req.amount,
       processing_fee: req.processingFee,
+      processing_fee_paid_by: req.processingFeePaidBy,
+      creator_percent: req.creatorPercent,
       product_id: req.productId,
       product_name: req.productName,
       creator_name: req.creatorName,
+      skip_withholding: req.skipWithholding,
       transaction_date: req.transactionDate,
+      metadata: req.metadata,
     })
   }
 
@@ -532,8 +584,37 @@ export class Soledgic {
       reference_id: req.referenceId,
       creator_id: req.creatorId,
       amount: req.amount,
+      reference_type: req.referenceType,
+      description: req.description,
       payout_method: req.payoutMethod,
+      fees: req.fees,
+      fees_paid_by: req.feesPaidBy,
+      metadata: req.metadata,
     })
+  }
+
+  async recordRefund(req: RecordRefundRequest): Promise<RecordRefundResponse> {
+    const response = await this.request<any>('record-refund', {
+      original_sale_reference: req.originalSaleReference,
+      amount: req.amount,
+      reason: req.reason,
+      refund_from: req.refundFrom,
+      external_refund_id: req.externalRefundId,
+      idempotency_key: req.idempotencyKey,
+      execute_processor_refund: req.executeProcessorRefund,
+      processor_payment_id: req.processorPaymentId,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transactionId: response.transaction_id,
+      refundedAmount: response.refunded_amount,
+      breakdown: {
+        fromCreator: response.breakdown?.from_creator,
+        fromPlatform: response.breakdown?.from_platform,
+      },
+      isFullRefund: response.is_full_refund,
+    }
   }
 
   // === STANDARD MODE - INCOME & EXPENSES ===
@@ -544,8 +625,12 @@ export class Soledgic {
       amount: req.amount,
       description: req.description,
       category: req.category,
+      customer_id: req.customerId,
       customer_name: req.customerName,
+      received_to: req.receivedTo,
+      invoice_id: req.invoiceId,
       transaction_date: req.transactionDate,
+      metadata: req.metadata,
     })
   }
 
@@ -555,10 +640,15 @@ export class Soledgic {
       amount: req.amount,
       description: req.description,
       category: req.category,
+      vendor_id: req.vendorId,
       vendor_name: req.vendorName,
       paid_from: req.paidFrom,
+      receipt_url: req.receiptUrl,
+      tax_deductible: req.taxDeductible,
       transaction_date: req.transactionDate,
+      metadata: req.metadata,
       authorizing_instrument_id: req.authorizingInstrumentId,
+      risk_evaluation_id: req.riskEvaluationId,
       authorization_decision_id: req.authorizationDecisionId,
     })
   }
@@ -573,7 +663,9 @@ export class Soledgic {
       due_date: req.dueDate,
       expense_category: req.expenseCategory,
       paid: req.paid,
+      metadata: req.metadata,
       authorizing_instrument_id: req.authorizingInstrumentId,
+      risk_evaluation_id: req.riskEvaluationId,
       authorization_decision_id: req.authorizationDecisionId,
     })
   }
@@ -1193,6 +1285,52 @@ export class Soledgic {
       action: 'save_template',
       template,
     })
+  }
+
+  // === ESCROW / HELD FUNDS ===
+
+  async getEscrowSummary() {
+    return this.request('release-funds', { action: 'get_summary' })
+  }
+
+  async getHeldFunds(options?: { ventureId?: string; creatorId?: string; readyOnly?: boolean; limit?: number }) {
+    return this.request('release-funds', {
+      action: 'get_held',
+      venture_id: options?.ventureId,
+      creator_id: options?.creatorId,
+      ready_only: options?.readyOnly,
+      limit: options?.limit,
+    })
+  }
+
+  async releaseFunds(entryId: string, executeTransfer = true) {
+    return this.request('release-funds', {
+      action: 'release',
+      entry_id: entryId,
+      execute_transfer: executeTransfer,
+    })
+  }
+
+  async batchReleaseFunds(entryIds: string[], executeTransfer = true) {
+    return this.request('release-funds', {
+      action: 'batch_release',
+      entry_ids: entryIds,
+      execute_transfer: executeTransfer,
+    })
+  }
+
+  async autoReleaseFunds(options?: { executeTransfer?: boolean; limit?: number }) {
+    return this.request('release-funds', {
+      action: 'auto_release',
+      execute_transfer: options?.executeTransfer,
+      limit: options?.limit,
+    })
+  }
+
+  // === PAYOUT ELIGIBILITY ===
+
+  async checkPayoutEligibility(creatorId: string) {
+    return this.request('check-payout-eligibility', { creator_id: creatorId })
   }
 
   // === HEALTH CHECKS ===
