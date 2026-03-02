@@ -2,13 +2,14 @@
 // POST /upload-receipt - Upload and optionally link a receipt to a transaction
 // SECURITY HARDENED VERSION
 
-import { 
+import {
   createHandler,
-  jsonResponse, 
-  errorResponse, 
-  validateId, 
-  validateString, 
-  validateAmount, 
+  jsonResponse,
+  errorResponse,
+  validateId,
+  validateString,
+  validateAmount,
+  validateWebhookUrl,
   getClientIp,
   LedgerContext
 } from '../_shared/utils.ts'
@@ -36,9 +37,15 @@ const handler = createHandler(
 
     if (!body.file_url) return errorResponse('Missing file_url', 400, req)
 
-    // Validate file_url is from allowed domain (Supabase storage)
+    // Validate file_url is from allowed domain (Supabase storage only)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    if (!body.file_url.startsWith(supabaseUrl || '') && !body.file_url.startsWith('https://')) {
+    if (!supabaseUrl || !body.file_url.startsWith(supabaseUrl)) {
+      return errorResponse('file_url must be a Supabase storage URL', 400, req)
+    }
+
+    // SSRF protection: validate the URL is not pointing to internal/private addresses
+    const ssrfError = validateWebhookUrl(body.file_url)
+    if (ssrfError) {
       return errorResponse('Invalid file_url', 400, req)
     }
 

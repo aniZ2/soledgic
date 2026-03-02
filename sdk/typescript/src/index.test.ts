@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Soledgic } from './index'
+import { Soledgic, SoledgicError } from './index'
 
 const BASE_URL = 'https://test.supabase.co/functions/v1'
 const API_KEY = 'sk_test_key'
@@ -24,6 +24,27 @@ describe('Soledgic SDK', () => {
     vi.restoreAllMocks()
   })
 
+  // === CONSTRUCTOR VALIDATION ===
+
+  it('throws if apiKey is missing', () => {
+    expect(() => new Soledgic({ apiKey: '', baseUrl: BASE_URL })).toThrow('apiKey is required')
+  })
+
+  it('throws if baseUrl is missing', () => {
+    expect(() => new Soledgic({ apiKey: API_KEY, baseUrl: '' })).toThrow('baseUrl is required')
+    expect(() => new Soledgic({ apiKey: API_KEY } as any)).toThrow('baseUrl is required')
+  })
+
+  it('strips trailing slash from baseUrl', async () => {
+    const fn = mockFetch({ success: true, periods: [] })
+    vi.stubGlobal('fetch', fn)
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL + '/' })
+    await sdk.listPeriods()
+    const [url] = fn.mock.calls[0]
+    // Should not have double slash between baseUrl and endpoint
+    expect(url).toBe(`${BASE_URL}/close-period`)
+  })
+
   // === AUTH & REQUEST PLUMBING ===
 
   it('sends API key in x-api-key header', async () => {
@@ -37,10 +58,30 @@ describe('Soledgic SDK', () => {
     expect(opts.headers['Content-Type']).toBe('application/json')
   })
 
-  it('throws on non-OK response', async () => {
+  it('throws SoledgicError on non-OK response', async () => {
     const fn = mockFetch({ error: 'Unauthorized' }, 401)
     const sdk = createClient(fn)
-    await expect(sdk.listPeriods()).rejects.toThrow('Unauthorized')
+    try {
+      await sdk.listPeriods()
+      expect.unreachable('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect((err as SoledgicError).message).toBe('Unauthorized')
+      expect((err as SoledgicError).status).toBe(401)
+      expect((err as SoledgicError).details).toEqual({ error: 'Unauthorized' })
+    }
+  })
+
+  it('includes status and details on error', async () => {
+    const fn = mockFetch({ error: 'Not found', code: 'RESOURCE_NOT_FOUND' }, 404)
+    const sdk = createClient(fn)
+    try {
+      await sdk.getAPAging('2026-01-01')
+      expect.unreachable('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect((err as SoledgicError).status).toBe(404)
+    }
   })
 
   // === RECORD SALE ===
@@ -71,6 +112,57 @@ describe('Soledgic SDK', () => {
     expect(body.amount).toBe(10000)
     expect(body.processing_fee_paid_by).toBe('platform')
     expect(body.metadata).toEqual({ source: 'test' })
+  })
+
+  // === RECORD INCOME / EXPENSE / BILL ===
+
+  it('recordIncome maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_1' })
+    const sdk = createClient(fn)
+    await sdk.recordIncome({
+      referenceId: 'inv_1',
+      amount: 5000,
+      category: 'consulting',
+      customerName: 'Acme Corp',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.reference_id).toBe('inv_1')
+    expect(body.customer_name).toBe('Acme Corp')
+    expect(fn.mock.calls[0][0]).toContain('/record-income')
+  })
+
+  it('recordExpense maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_1' })
+    const sdk = createClient(fn)
+    await sdk.recordExpense({
+      referenceId: 'exp_1',
+      amount: 3000,
+      vendorName: 'AWS',
+      taxDeductible: true,
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.reference_id).toBe('exp_1')
+    expect(body.vendor_name).toBe('AWS')
+    expect(body.tax_deductible).toBe(true)
+    expect(fn.mock.calls[0][0]).toContain('/record-expense')
+  })
+
+  it('recordBill maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_1', bill_id: 'bill_1' })
+    const sdk = createClient(fn)
+    await sdk.recordBill({
+      amount: 10000,
+      description: 'Hosting',
+      vendorName: 'AWS',
+      dueDate: '2026-02-01',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.vendor_name).toBe('AWS')
+    expect(body.due_date).toBe('2026-02-01')
+    expect(fn.mock.calls[0][0]).toContain('/record-bill')
   })
 
   // === CHECKOUT ===
@@ -131,6 +223,86 @@ describe('Soledgic SDK', () => {
     expect(result.isFullRefund).toBe(true)
   })
 
+  // === PAYOUT ===
+
+  it('processPayout maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_p1', breakdown: {} })
+    const sdk = createClient(fn)
+    await sdk.processPayout({
+      creatorId: 'c_1',
+      referenceId: 'payout_1',
+      amount: 5000,
+      feesPaidBy: 'platform',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.creator_id).toBe('c_1')
+    expect(body.reference_id).toBe('payout_1')
+    expect(body.fees_paid_by).toBe('platform')
+    expect(fn.mock.calls[0][0]).toContain('/process-payout')
+  })
+
+  // === TRANSFER ===
+
+  it('recordTransfer maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_t1', transfer_id: 'xfr_1' })
+    const sdk = createClient(fn)
+    await sdk.recordTransfer({
+      fromAccountType: 'cash',
+      toAccountType: 'tax_reserve',
+      amount: 2000,
+      transferType: 'tax_reserve',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.from_account_type).toBe('cash')
+    expect(body.to_account_type).toBe('tax_reserve')
+    expect(body.transfer_type).toBe('tax_reserve')
+    expect(fn.mock.calls[0][0]).toContain('/record-transfer')
+  })
+
+  // === OPENING BALANCE ===
+
+  it('recordOpeningBalance maps balances to snake_case', async () => {
+    const fn = mockFetch({ success: true, opening_balance_id: 'ob_1', transaction_id: 'txn_ob1' })
+    const sdk = createClient(fn)
+    await sdk.recordOpeningBalance({
+      asOfDate: '2026-01-01',
+      source: 'manual',
+      balances: [
+        { accountType: 'cash', balance: 50000 },
+        { accountType: 'revenue', balance: 30000 },
+      ],
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.as_of_date).toBe('2026-01-01')
+    expect(body.balances[0].account_type).toBe('cash')
+    expect(fn.mock.calls[0][0]).toContain('/record-opening-balance')
+  })
+
+  // === PERIOD MANAGEMENT ===
+
+  it('closePeriod sends year and month', async () => {
+    const fn = mockFetch({ success: true })
+    const sdk = createClient(fn)
+    await sdk.closePeriod(2026, 1)
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.year).toBe(2026)
+    expect(body.month).toBe(1)
+    expect(fn.mock.calls[0][0]).toContain('/close-period')
+  })
+
+  it('listPeriods sends correct action', async () => {
+    const fn = mockFetch({ success: true, periods: [] })
+    const sdk = createClient(fn)
+    await sdk.listPeriods()
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.action).toBe('list')
+  })
+
   // === GET ENDPOINTS (requestGet) ===
 
   it('getAPAging uses GET with query params', async () => {
@@ -153,6 +325,17 @@ describe('Soledgic SDK', () => {
     const [url, opts] = fn.mock.calls[0]
     expect(opts.method).toBe('GET')
     expect(url).toContain('/get-runway')
+  })
+
+  it('getBalanceSheet uses GET', async () => {
+    const fn = mockFetch({ success: true, report: {} })
+    const sdk = createClient(fn)
+    await sdk.getBalanceSheet('2026-01-01')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(url).toContain('/balance-sheet')
+    expect(url).toContain('as_of_date=2026-01-01')
   })
 
   // === CREATE CREATOR ===
@@ -368,5 +551,38 @@ describe('Soledgic SDK', () => {
     expect(body.merchant_name).toBe('Office Depot')
     expect(body.total_amount).toBe(4599)
     expect(body.transaction_id).toBe('txn_1')
+  })
+
+  // === RECEIVE PAYMENT ===
+
+  it('receivePayment maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_rp1', amount: 5000 })
+    const sdk = createClient(fn)
+    await sdk.receivePayment({
+      amount: 5000,
+      customerName: 'John Doe',
+      paymentMethod: 'card',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.customer_name).toBe('John Doe')
+    expect(body.payment_method).toBe('card')
+    expect(fn.mock.calls[0][0]).toContain('/receive-payment')
+  })
+
+  // === REVERSE TRANSACTION ===
+
+  it('reverseTransaction maps to snake_case', async () => {
+    const fn = mockFetch({ success: true, reversal_id: 'rev_1' })
+    const sdk = createClient(fn)
+    await sdk.reverseTransaction({
+      transactionId: 'txn_1',
+      reason: 'Duplicate',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.transaction_id).toBe('txn_1')
+    expect(body.reason).toBe('Duplicate')
+    expect(fn.mock.calls[0][0]).toContain('/reverse-transaction')
   })
 })

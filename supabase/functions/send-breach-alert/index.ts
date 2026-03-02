@@ -8,7 +8,8 @@ import {
   createHandler,
   jsonResponse,
   errorResponse,
-  LedgerContext
+  LedgerContext,
+  escapeHtml,
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -196,7 +197,7 @@ function buildEmailHtml(
   const subject = `${severityEmoji} Cash Breach Risk Alert - ${ledgerName} [${severityText}]`
 
   const triggerContext = data.triggered_by === 'project_intent' && data.external_ref
-    ? `<p style="color: #666; font-size: 14px;">📋 Triggered by new projections from: <strong>${data.external_ref}</strong> (${data.projections_created || 0} new obligations)</p>`
+    ? `<p style="color: #666; font-size: 14px;">📋 Triggered by new projections from: <strong>${escapeHtml(data.external_ref)}</strong> (${data.projections_created || 0} new obligations)</p>`
     : ''
 
   const html = `
@@ -213,7 +214,7 @@ function buildEmailHtml(
       ${severityEmoji} Cash Breach Risk Detected
     </h1>
     <p style="margin: 0; color: #666;">
-      <strong>Ledger:</strong> ${ledgerName}<br>
+      <strong>Ledger:</strong> ${escapeHtml(ledgerName)}<br>
       <strong>Severity:</strong> ${severityText}
     </p>
   </div>

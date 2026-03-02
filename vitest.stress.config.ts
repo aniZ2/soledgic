@@ -17,10 +17,8 @@ export default defineConfig({
     },
     // Use single thread to ensure sequential execution
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
+    forks: {
+      singleFork: true,
     },
   },
 })

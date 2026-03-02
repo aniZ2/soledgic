@@ -19,7 +19,8 @@ import {
   validateDate,
   validateInteger,
   LedgerContext,
-  createAuditLog
+  createAuditLog,
+  escapeHtml,
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -245,7 +246,7 @@ async function sendBreachAlerts(
       ${severityEmoji} Cash Breach Risk Detected
     </h1>
     <p style="margin: 0; color: #666;">
-      <strong>Ledger:</strong> ${ledger.name || 'Ledger'}<br>
+      <strong>Ledger:</strong> ${escapeHtml(ledger.name) || 'Ledger'}<br>
       <strong>Severity:</strong> ${severityText}
     </p>
   </div>
@@ -271,7 +272,7 @@ async function sendBreachAlerts(
       </td>
     </tr>
   </table>
-  <p style="color: #666; font-size: 14px;">📋 Triggered by new projections from: <strong>${alertPayload.external_ref}</strong> (${alertPayload.projections_created} new obligations)</p>
+  <p style="color: #666; font-size: 14px;">📋 Triggered by new projections from: <strong>${escapeHtml(alertPayload.external_ref)}</strong> (${alertPayload.projections_created} new obligations)</p>
   <div style="margin-top: 30px;">
     <a href="https://app.soledgic.com/dashboard" style="display: inline-block; background: ${severityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
       View Dashboard
@@ -295,7 +296,7 @@ async function sendBreachAlerts(
           body: JSON.stringify({
             from: fromEmail,
             to: config.config.recipients,
-            subject: `${severityEmoji} Cash Breach Risk Alert - ${ledger.name || 'Ledger'} [${severityText}]`,
+            subject: `${severityEmoji} Cash Breach Risk Alert - ${escapeHtml(ledger.name) || 'Ledger'} [${severityText}]`,
             html: emailHtml
           })
         })

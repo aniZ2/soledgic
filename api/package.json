@@ -1,5 +1,5 @@
 {
-  "name": "@soledgic/sdk",
+  "name": "@soledgic/api",
   "version": "1.0.0",
   "description": "TypeScript SDK for Soledgic - Double-Entry Accounting for Creator Platforms",
   "main": "dist/index.js",

@@ -668,18 +668,30 @@ export interface SendBreachAlertResponse {
   }>
 }
 
+export class SoledgicError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public details?: unknown,
+  ) {
+    super(message)
+    this.name = 'SoledgicError'
+  }
+}
+
 export class Soledgic {
   private apiKey: string
   private baseUrl: string
 
-  constructor(config: SoledgicConfig | string) {
-    if (typeof config === 'string') {
-      this.apiKey = config
-      this.baseUrl = 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
-    } else {
-      this.apiKey = config.apiKey
-      this.baseUrl = config.baseUrl || 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
+  constructor(config: SoledgicConfig) {
+    if (!config.apiKey) {
+      throw new Error('apiKey is required')
     }
+    if (!config.baseUrl) {
+      throw new Error('baseUrl is required (e.g. https://your-project.supabase.co/functions/v1)')
+    }
+    this.apiKey = config.apiKey
+    this.baseUrl = config.baseUrl.replace(/\/$/, '')
   }
 
   private async request<T>(endpoint: string, body: any): Promise<T> {
@@ -694,11 +706,11 @@ export class Soledgic {
 
     const data = await response.json()
     if (!response.ok) {
-      const error = new Error(data.error || `Request failed: ${response.status}`) as any
-      error.status = response.status
-      error.period = data.period // For locked period errors
-      error.details = data
-      throw error
+      throw new SoledgicError(
+        data.error || `Request failed: ${response.status}`,
+        response.status,
+        data,
+      )
     }
     return data
   }
@@ -718,10 +730,11 @@ export class Soledgic {
     })
     const data = await response.json()
     if (!response.ok) {
-      const error = new Error(data.error || `Request failed: ${response.status}`) as any
-      error.status = response.status
-      error.details = data
-      throw error
+      throw new SoledgicError(
+        data.error || `Request failed: ${response.status}`,
+        response.status,
+        data,
+      )
     }
     return data
   }
@@ -739,10 +752,11 @@ export class Soledgic {
       const text = await response.text()
       let parsed: any
       try { parsed = JSON.parse(text) } catch { parsed = { error: text } }
-      const error = new Error(parsed.error || `Request failed: ${response.status}`) as any
-      error.status = response.status
-      error.details = parsed
-      throw error
+      throw new SoledgicError(
+        parsed.error || `Request failed: ${response.status}`,
+        response.status,
+        parsed,
+      )
     }
     return response
   }

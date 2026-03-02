@@ -1711,3 +1711,19 @@ export async function safeWebhookFetch(
     clearTimeout(timeoutId)
   }
 }
+
+/**
+ * Escape HTML entities to prevent XSS in email templates.
+ * Use this for ALL user-sourced values interpolated into HTML strings.
+ */
+export function escapeHtml(text: string | null | undefined): string {
+  if (!text) return ''
+  const htmlEntities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }
+  return String(text).replace(/[&<>"']/g, char => htmlEntities[char] || char)
+}

@@ -351,8 +351,12 @@ export class Soledgic {
    * ```
    */
   async getAllBalances(options?: { includePlatform?: boolean }): Promise<GetBalanceResponse> {
+    const params: Record<string, string | number | boolean | undefined> = {}
+    if (options?.includePlatform !== undefined) {
+      params.include_platform = options.includePlatform
+    }
     const response = await this.request<Record<string, unknown>>('get-balance', {
-      params: { include_platform: options?.includePlatform },
+      params,
     })
 
     return this.toCamelCase<GetBalanceResponse>(response)

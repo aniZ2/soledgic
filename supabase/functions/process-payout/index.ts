@@ -3,9 +3,9 @@
 // Records a payout to a creator/contractor
 // SECURITY HARDENED VERSION
 
-import { 
-  createHandler, 
-  jsonResponse, 
+import {
+  createHandler,
+  jsonResponse,
   errorResponse,
   validateId,
   validateAmount,
@@ -13,6 +13,7 @@ import {
   LedgerContext,
   createAuditLogAsync,
   sanitizeForAudit,
+  escapeHtml,
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -226,19 +227,22 @@ const handler = createHandler(
                 }).format(feesAmount / 100)
               : null
 
+            const safeDisplayName = escapeHtml(creator.display_name) || 'there'
+            const safePlatformName = escapeHtml(ledger.platform_name)
+
             const emailHtml = `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2 style="color: #10b981;">Payout Processed</h2>
-                <p>Hi ${creator.display_name || 'there'},</p>
+                <p>Hi ${safeDisplayName},</p>
                 <p>Great news! A payout has been processed for your account.</p>
                 <div style="background: #f9fafb; border-radius: 8px; padding: 20px; margin: 20px 0;">
                   <p style="margin: 0 0 10px 0;"><strong>Amount:</strong> ${formattedAmount}</p>
                   ${formattedFees ? `<p style="margin: 0 0 10px 0;"><strong>Fees:</strong> ${formattedFees}</p>` : ''}
-                  <p style="margin: 0;"><strong>Transaction ID:</strong> ${transactionId}</p>
+                  <p style="margin: 0;"><strong>Transaction ID:</strong> ${escapeHtml(transactionId)}</p>
                 </div>
                 <p>The funds should arrive in your account according to your payout method's processing time.</p>
                 <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-                  — The ${ledger.platform_name} Team via Soledgic
+                  — The ${safePlatformName} Team via Soledgic
                 </p>
               </div>
             `
@@ -255,10 +259,14 @@ const handler = createHandler(
                 subject: `Payout of ${formattedAmount} processed`,
                 html: emailHtml,
               }),
-            }).catch(console.error)
+            }).catch((emailErr) => {
+              console.error(`[${requestId}] Failed to send payout email to creator ${creatorId}:`, emailErr)
+            })
           }
         })
-        .catch(() => {})
+        .catch((err) => {
+          console.error(`[${requestId}] Failed to fetch creator for payout email:`, err)
+        })
     }
 
     return jsonResponse({
