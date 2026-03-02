@@ -372,7 +372,7 @@ export class Soledgic {
    */
   async processPayout(request: ProcessPayoutRequest): Promise<ProcessPayoutResponse> {
     if (!request.creatorId) throw new ValidationError('creatorId is required')
-    if (!request.paymentMethod) throw new ValidationError('paymentMethod is required')
+    if (!request.referenceId) throw new ValidationError('referenceId is required')
 
     const response = await this.request<Record<string, unknown>>('process-payout', {
       method: 'POST',

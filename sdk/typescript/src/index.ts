@@ -365,6 +365,137 @@ export interface BackdatePolicyRequest {
   blockPriorQuarter?: boolean
 }
 
+export interface CreateCreatorRequest {
+  creatorId: string
+  displayName?: string
+  email?: string
+  defaultSplitPercent?: number
+  taxInfo?: {
+    taxIdType?: 'ssn' | 'ein' | 'itin'
+    taxIdLast4?: string
+    legalName?: string
+    businessType?: 'individual' | 'sole_proprietor' | 'llc' | 'corporation' | 'partnership'
+    address?: {
+      line1?: string
+      line2?: string
+      city?: string
+      state?: string
+      postalCode?: string
+      country?: string
+    }
+  }
+  payoutPreferences?: {
+    schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
+    minimumAmount?: number
+    method?: 'card' | 'manual'
+  }
+  metadata?: Record<string, unknown>
+}
+
+export interface CreateLedgerRequest {
+  businessName: string
+  ownerEmail: string
+  ledgerMode?: 'standard' | 'platform'
+  settings?: {
+    defaultTaxRate?: number
+    defaultSplitPercent?: number
+    platformFeePercent?: number
+    minPayoutAmount?: number
+    payoutSchedule?: 'manual' | 'weekly' | 'monthly'
+    taxWithholdingPercent?: number
+    currency?: string
+    fiscalYearStart?: string
+    receiptThreshold?: number
+  }
+}
+
+export interface ExportReportRequest {
+  reportType: 'transaction_detail' | 'creator_earnings' | 'platform_revenue' | 'payout_summary' | 'reconciliation' | 'audit_log'
+  format: 'csv' | 'json'
+  startDate?: string
+  endDate?: string
+  creatorId?: string
+}
+
+export interface RecordAdjustmentRequest {
+  adjustmentType: 'correction' | 'reclassification' | 'accrual' | 'deferral' | 'depreciation' | 'write_off' | 'year_end' | 'opening_balance' | 'other'
+  entries: Array<{
+    accountType: string
+    entityId?: string
+    entryType: 'debit' | 'credit'
+    amount: number
+  }>
+  reason: string
+  adjustmentDate?: string
+  originalTransactionId?: string
+  supportingDocumentation?: string
+  preparedBy: string
+}
+
+export interface RecordOpeningBalanceRequest {
+  asOfDate: string
+  source: 'manual' | 'imported' | 'migrated' | 'year_start'
+  sourceDescription?: string
+  balances: Array<{
+    accountType: string
+    entityId?: string
+    balance: number
+  }>
+}
+
+export interface RecordTransferRequest {
+  fromAccountType: string
+  toAccountType: string
+  amount: number
+  transferType: 'tax_reserve' | 'payout_reserve' | 'owner_draw' | 'owner_contribution' | 'operating' | 'savings' | 'investment' | 'other'
+  description?: string
+  referenceId?: string
+}
+
+export interface RiskEvaluationRequest {
+  idempotencyKey: string
+  amount: number
+  currency?: string
+  counterpartyName?: string
+  authorizingInstrumentId?: string
+  expectedDate?: string
+  category?: string
+}
+
+export interface UploadReceiptRequest {
+  fileUrl: string
+  fileName?: string
+  fileSize?: number
+  mimeType?: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | 'application/pdf'
+  merchantName?: string
+  transactionDate?: string
+  totalAmount?: number
+  transactionId?: string
+}
+
+export interface ReceivePaymentRequest {
+  amount: number
+  invoiceTransactionId?: string
+  customerName?: string
+  customerId?: string
+  referenceId?: string
+  paymentMethod?: string
+  paymentDate?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface SendBreachAlertRequest {
+  cashBalance: number
+  pendingTotal: number
+  shortfall?: number
+  coverageRatio?: number
+  triggeredBy: 'project_intent' | 'get_runway' | 'manual'
+  instrumentId?: string
+  externalRef?: string
+  projectionsCreated?: number
+  channel?: 'slack' | 'email' | 'webhook'
+}
+
 // === RESPONSE TYPES ===
 
 export interface SaleResponse {
@@ -454,6 +585,83 @@ export interface FrozenStatement {
   data: any
 }
 
+export interface CreateCreatorResponse {
+  success: boolean
+  creator: {
+    id: string
+    accountId: string
+    displayName: string | null
+    email: string | null
+    defaultSplitPercent: number
+    payoutPreferences: Record<string, unknown>
+    createdAt: string
+  }
+}
+
+export interface CreateLedgerResponse {
+  success: boolean
+  ledger: {
+    id: string
+    businessName: string
+    ledgerMode: string
+    apiKey: string
+    status: string
+    createdAt: string
+  }
+  warning: string
+}
+
+export interface ExportReportResponse {
+  success: boolean
+  reportType: string
+  generatedAt: string
+  rowCount: number
+  data: any[]
+}
+
+export interface RiskEvaluationResponse {
+  success: boolean
+  cached: boolean
+  evaluation: {
+    id: string
+    signal: 'within_policy' | 'elevated_risk' | 'high_risk'
+    riskFactors: Array<{
+      policyId: string
+      policyType: string
+      severity: 'hard' | 'soft'
+      indicator: string
+    }>
+    validUntil: string
+    createdAt: string
+    acknowledgedAt: string | null
+  }
+}
+
+export interface UploadReceiptResponse {
+  success: boolean
+  receiptId: string
+  status: 'uploaded' | 'matched' | 'orphan'
+  linkedTransactionId: string | null
+}
+
+export interface ReceivePaymentResponse {
+  success: boolean
+  transactionId: string
+  amount: number
+}
+
+export interface SendBreachAlertResponse {
+  success: boolean
+  alertsSent: number
+  alertsFailed: number
+  alertsSkipped: number
+  results: Array<{
+    channel: string
+    success: boolean
+    error?: string
+  }>
+}
+
 export class Soledgic {
   private apiKey: string
   private baseUrl: string
@@ -483,6 +691,29 @@ export class Soledgic {
       const error = new Error(data.error || `Request failed: ${response.status}`) as any
       error.status = response.status
       error.period = data.period // For locked period errors
+      error.details = data
+      throw error
+    }
+    return data
+  }
+
+  private async requestGet<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    const url = new URL(`${this.baseUrl}/${endpoint}`)
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined) url.searchParams.set(key, String(value))
+      }
+    }
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'x-api-key': this.apiKey,
+      },
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      const error = new Error(data.error || `Request failed: ${response.status}`) as any
+      error.status = response.status
       error.details = data
       throw error
     }
@@ -1345,6 +1576,323 @@ export class Soledgic {
 
   async getHealthHistory() {
     return this.request('health-check', { action: 'history' })
+  }
+
+  // === FINANCIAL REPORTS (DETAILED) ===
+
+  async getAPAging(asOfDate?: string) {
+    return this.requestGet('ap-aging', { as_of_date: asOfDate })
+  }
+
+  async getARAging(asOfDate?: string) {
+    return this.requestGet('ar-aging', { as_of_date: asOfDate })
+  }
+
+  async getBalanceSheet(asOfDate?: string) {
+    return this.requestGet('balance-sheet', { as_of_date: asOfDate })
+  }
+
+  async getDetailedTrialBalance(options?: { asOf?: string; snapshot?: boolean }) {
+    return this.requestGet('trial-balance', {
+      as_of: options?.asOf,
+      snapshot: options?.snapshot ? 'true' : undefined,
+    })
+  }
+
+  async getDetailedProfitLoss(options?: {
+    year?: number
+    month?: number
+    quarter?: number
+    startDate?: string
+    endDate?: string
+    breakdown?: 'monthly'
+  }) {
+    return this.requestGet('profit-loss', {
+      year: options?.year,
+      month: options?.month,
+      quarter: options?.quarter,
+      start_date: options?.startDate,
+      end_date: options?.endDate,
+      breakdown: options?.breakdown,
+    })
+  }
+
+  async getRunway() {
+    return this.requestGet('get-runway')
+  }
+
+  // === CREATOR ONBOARDING ===
+
+  async createCreator(req: CreateCreatorRequest): Promise<CreateCreatorResponse> {
+    const response = await this.request<any>('create-creator', {
+      creator_id: req.creatorId,
+      display_name: req.displayName,
+      email: req.email,
+      default_split_percent: req.defaultSplitPercent,
+      tax_info: req.taxInfo ? {
+        tax_id_type: req.taxInfo.taxIdType,
+        tax_id_last4: req.taxInfo.taxIdLast4,
+        legal_name: req.taxInfo.legalName,
+        business_type: req.taxInfo.businessType,
+        address: req.taxInfo.address ? {
+          line1: req.taxInfo.address.line1,
+          line2: req.taxInfo.address.line2,
+          city: req.taxInfo.address.city,
+          state: req.taxInfo.address.state,
+          postal_code: req.taxInfo.address.postalCode,
+          country: req.taxInfo.address.country,
+        } : undefined,
+      } : undefined,
+      payout_preferences: req.payoutPreferences ? {
+        schedule: req.payoutPreferences.schedule,
+        minimum_amount: req.payoutPreferences.minimumAmount,
+        method: req.payoutPreferences.method,
+      } : undefined,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      creator: {
+        id: response.creator.id,
+        accountId: response.creator.account_id,
+        displayName: response.creator.display_name,
+        email: response.creator.email,
+        defaultSplitPercent: response.creator.default_split_percent,
+        payoutPreferences: response.creator.payout_preferences || {},
+        createdAt: response.creator.created_at,
+      },
+    }
+  }
+
+  // === LEDGER MANAGEMENT ===
+
+  async createLedger(req: CreateLedgerRequest): Promise<CreateLedgerResponse> {
+    const response = await this.request<any>('create-ledger', {
+      business_name: req.businessName,
+      owner_email: req.ownerEmail,
+      ledger_mode: req.ledgerMode,
+      settings: req.settings ? {
+        default_tax_rate: req.settings.defaultTaxRate,
+        default_split_percent: req.settings.defaultSplitPercent,
+        platform_fee_percent: req.settings.platformFeePercent,
+        min_payout_amount: req.settings.minPayoutAmount,
+        payout_schedule: req.settings.payoutSchedule,
+        tax_withholding_percent: req.settings.taxWithholdingPercent,
+        currency: req.settings.currency,
+        fiscal_year_start: req.settings.fiscalYearStart,
+        receipt_threshold: req.settings.receiptThreshold,
+      } : undefined,
+    })
+    return {
+      success: response.success,
+      ledger: {
+        id: response.ledger.id,
+        businessName: response.ledger.business_name,
+        ledgerMode: response.ledger.ledger_mode,
+        apiKey: response.ledger.api_key,
+        status: response.ledger.status,
+        createdAt: response.ledger.created_at,
+      },
+      warning: response.warning,
+    }
+  }
+
+  // === ACCOUNTING ADJUSTMENTS ===
+
+  async recordAdjustment(req: RecordAdjustmentRequest) {
+    return this.request('record-adjustment', {
+      adjustment_type: req.adjustmentType,
+      adjustment_date: req.adjustmentDate,
+      entries: req.entries.map(e => ({
+        account_type: e.accountType,
+        entity_id: e.entityId,
+        entry_type: e.entryType,
+        amount: e.amount,
+      })),
+      reason: req.reason,
+      original_transaction_id: req.originalTransactionId,
+      supporting_documentation: req.supportingDocumentation,
+      prepared_by: req.preparedBy,
+    })
+  }
+
+  async recordOpeningBalance(req: RecordOpeningBalanceRequest) {
+    return this.request('record-opening-balance', {
+      as_of_date: req.asOfDate,
+      source: req.source,
+      source_description: req.sourceDescription,
+      balances: req.balances.map(b => ({
+        account_type: b.accountType,
+        entity_id: b.entityId,
+        balance: b.balance,
+      })),
+    })
+  }
+
+  async recordTransfer(req: RecordTransferRequest) {
+    return this.request('record-transfer', {
+      from_account_type: req.fromAccountType,
+      to_account_type: req.toAccountType,
+      amount: req.amount,
+      transfer_type: req.transferType,
+      description: req.description,
+      reference_id: req.referenceId,
+    })
+  }
+
+  // === RISK & POLICY ===
+
+  async evaluateRisk(req: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
+    const response = await this.request<any>('risk-evaluation', {
+      idempotency_key: req.idempotencyKey,
+      amount: req.amount,
+      currency: req.currency,
+      counterparty_name: req.counterpartyName,
+      authorizing_instrument_id: req.authorizingInstrumentId,
+      expected_date: req.expectedDate,
+      category: req.category,
+    })
+    return {
+      success: response.success,
+      cached: response.cached,
+      evaluation: {
+        id: response.evaluation.id,
+        signal: response.evaluation.signal,
+        riskFactors: (response.evaluation.risk_factors || []).map((f: any) => ({
+          policyId: f.policy_id,
+          policyType: f.policy_type,
+          severity: f.severity,
+          indicator: f.indicator,
+        })),
+        validUntil: response.evaluation.valid_until,
+        createdAt: response.evaluation.created_at,
+        acknowledgedAt: response.evaluation.acknowledged_at,
+      },
+    }
+  }
+
+  async createRiskPolicy(req: CreatePolicyRequest) {
+    return this.request('configure-risk-policy', {
+      action: 'create',
+      policy_type: req.policyType,
+      config: req.config,
+      severity: req.severity,
+      priority: req.priority,
+    })
+  }
+
+  async listRiskPolicies() {
+    return this.request('configure-risk-policy', { action: 'list' })
+  }
+
+  async deleteRiskPolicy(policyId: string) {
+    return this.request('configure-risk-policy', { action: 'delete', policy_id: policyId })
+  }
+
+  // === TAX DOCUMENTS ===
+
+  async calculateTaxForCreator(creatorId: string, taxYear?: number) {
+    return this.request('tax-documents', {
+      action: 'calculate',
+      creator_id: creatorId,
+      tax_year: taxYear,
+    })
+  }
+
+  async generateAllTaxDocuments(taxYear?: number) {
+    return this.request('tax-documents', { action: 'generate_all', tax_year: taxYear })
+  }
+
+  async listTaxDocuments(taxYear?: number) {
+    return this.request('tax-documents', { action: 'list', tax_year: taxYear })
+  }
+
+  async getTaxDocument(documentId: string) {
+    return this.request('tax-documents', { action: 'get', document_id: documentId })
+  }
+
+  async exportTaxDocuments(taxYear?: number, format?: 'csv' | 'json') {
+    return this.request('tax-documents', { action: 'export', tax_year: taxYear, format })
+  }
+
+  async markTaxDocumentFiled(documentId: string) {
+    return this.request('tax-documents', { action: 'mark_filed', document_id: documentId })
+  }
+
+  async generateTaxSummary(taxYear: number, creatorId?: string) {
+    return this.request('generate-tax-summary', {
+      tax_year: taxYear,
+      creator_id: creatorId,
+    })
+  }
+
+  // === DATA EXPORT ===
+
+  async exportReport(req: ExportReportRequest): Promise<ExportReportResponse> {
+    return this.request('export-report', {
+      report_type: req.reportType,
+      format: req.format,
+      start_date: req.startDate,
+      end_date: req.endDate,
+      creator_id: req.creatorId,
+    })
+  }
+
+  // === RECEIPTS ===
+
+  async uploadReceipt(req: UploadReceiptRequest): Promise<UploadReceiptResponse> {
+    return this.request('upload-receipt', {
+      file_url: req.fileUrl,
+      file_name: req.fileName,
+      file_size: req.fileSize,
+      mime_type: req.mimeType,
+      merchant_name: req.merchantName,
+      transaction_date: req.transactionDate,
+      total_amount: req.totalAmount,
+      transaction_id: req.transactionId,
+    })
+  }
+
+  // === PAYMENTS ===
+
+  async receivePayment(req: ReceivePaymentRequest): Promise<ReceivePaymentResponse> {
+    return this.request('receive-payment', {
+      amount: req.amount,
+      invoice_transaction_id: req.invoiceTransactionId,
+      customer_name: req.customerName,
+      customer_id: req.customerId,
+      reference_id: req.referenceId,
+      payment_method: req.paymentMethod,
+      payment_date: req.paymentDate,
+      metadata: req.metadata,
+    })
+  }
+
+  // === BREACH ALERTS ===
+
+  async sendBreachAlert(req: SendBreachAlertRequest): Promise<SendBreachAlertResponse> {
+    const response = await this.request<any>('send-breach-alert', {
+      cash_balance: req.cashBalance,
+      pending_total: req.pendingTotal,
+      shortfall: req.shortfall,
+      coverage_ratio: req.coverageRatio,
+      triggered_by: req.triggeredBy,
+      instrument_id: req.instrumentId,
+      external_ref: req.externalRef,
+      projections_created: req.projectionsCreated,
+      channel: req.channel,
+    })
+    return {
+      success: response.success,
+      alertsSent: response.alerts_sent,
+      alertsFailed: response.alerts_failed,
+      alertsSkipped: response.alerts_skipped,
+      results: (response.results || []).map((r: any) => ({
+        channel: r.channel,
+        success: r.success,
+        error: r.error,
+      })),
+    }
   }
 }
 

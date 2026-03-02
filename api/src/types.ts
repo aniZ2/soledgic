@@ -257,6 +257,231 @@ export interface GetTransactionsResponse {
   error?: string
 }
 
+// ---- Creator & Ledger Types ----
+
+export interface CreateCreatorRequest {
+  /** Unique creator identifier */
+  creatorId: string
+  /** Display name */
+  displayName?: string
+  /** Email address */
+  email?: string
+  /** Default revenue split percentage (0-100) */
+  defaultSplitPercent?: number
+  /** Tax information */
+  taxInfo?: {
+    taxIdType?: 'ssn' | 'ein' | 'itin'
+    taxIdLast4?: string
+    legalName?: string
+    businessType?: 'individual' | 'sole_proprietor' | 'llc' | 'corporation' | 'partnership'
+    address?: {
+      line1?: string
+      line2?: string
+      city?: string
+      state?: string
+      postalCode?: string
+      country?: string
+    }
+  }
+  /** Payout preferences */
+  payoutPreferences?: {
+    schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
+    minimumAmount?: number
+    method?: 'card' | 'manual'
+  }
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+export interface CreateCreatorResponse {
+  success: boolean
+  creator: {
+    id: string
+    accountId: string
+    displayName: string | null
+    email: string | null
+    defaultSplitPercent: number
+    payoutPreferences: Record<string, unknown>
+    createdAt: string
+  }
+}
+
+export interface CreateLedgerRequest {
+  /** Business name */
+  businessName: string
+  /** Owner email */
+  ownerEmail: string
+  /** Ledger mode */
+  ledgerMode?: 'standard' | 'platform'
+  /** Ledger settings */
+  settings?: {
+    defaultTaxRate?: number
+    defaultSplitPercent?: number
+    platformFeePercent?: number
+    minPayoutAmount?: number
+    payoutSchedule?: 'manual' | 'weekly' | 'monthly'
+    taxWithholdingPercent?: number
+    currency?: string
+    fiscalYearStart?: string
+    receiptThreshold?: number
+  }
+}
+
+export interface CreateLedgerResponse {
+  success: boolean
+  ledger: {
+    id: string
+    businessName: string
+    ledgerMode: string
+    apiKey: string
+    status: string
+    createdAt: string
+  }
+  warning: string
+}
+
+// ---- Accounting Types ----
+
+export interface RecordAdjustmentRequest {
+  /** Type of adjustment */
+  adjustmentType: 'correction' | 'reclassification' | 'accrual' | 'deferral' | 'depreciation' | 'write_off' | 'year_end' | 'opening_balance' | 'other'
+  /** Journal entries (min 2, must balance) */
+  entries: Array<{
+    accountType: string
+    entityId?: string
+    entryType: 'debit' | 'credit'
+    amount: number
+  }>
+  /** Reason for adjustment (required for audit) */
+  reason: string
+  /** Adjustment date (YYYY-MM-DD) */
+  adjustmentDate?: string
+  /** Original transaction being corrected */
+  originalTransactionId?: string
+  /** Supporting documentation */
+  supportingDocumentation?: string
+  /** Person who prepared the adjustment */
+  preparedBy: string
+}
+
+export interface RecordOpeningBalanceRequest {
+  /** As-of date (YYYY-MM-DD) */
+  asOfDate: string
+  /** Source of the opening balance */
+  source: 'manual' | 'imported' | 'migrated' | 'year_start'
+  /** Description of source */
+  sourceDescription?: string
+  /** Account balances to set */
+  balances: Array<{
+    accountType: string
+    entityId?: string
+    balance: number
+  }>
+}
+
+export interface RecordTransferRequest {
+  /** Source account type */
+  fromAccountType: string
+  /** Destination account type */
+  toAccountType: string
+  /** Amount in cents */
+  amount: number
+  /** Transfer type */
+  transferType: 'tax_reserve' | 'payout_reserve' | 'owner_draw' | 'owner_contribution' | 'operating' | 'savings' | 'investment' | 'other'
+  /** Transfer description */
+  description?: string
+  /** External reference ID */
+  referenceId?: string
+}
+
+// ---- Risk & Tax Types ----
+
+export interface RiskEvaluationRequest {
+  /** Idempotency key for caching */
+  idempotencyKey: string
+  /** Amount in cents */
+  amount: number
+  /** Currency code */
+  currency?: string
+  /** Counterparty name */
+  counterpartyName?: string
+  /** Authorizing instrument UUID */
+  authorizingInstrumentId?: string
+  /** Expected date (YYYY-MM-DD) */
+  expectedDate?: string
+  /** Expense category */
+  category?: string
+}
+
+export interface RiskEvaluationResponse {
+  success: boolean
+  cached: boolean
+  evaluation: {
+    id: string
+    signal: 'within_policy' | 'elevated_risk' | 'high_risk'
+    riskFactors: Array<{
+      policyId: string
+      policyType: string
+      severity: 'hard' | 'soft'
+      indicator: string
+    }>
+    validUntil: string
+    createdAt: string
+    acknowledgedAt: string | null
+  }
+}
+
+export interface ExportReportRequest {
+  /** Report type */
+  reportType: 'transaction_detail' | 'creator_earnings' | 'platform_revenue' | 'payout_summary' | 'reconciliation' | 'audit_log'
+  /** Export format */
+  format: 'csv' | 'json'
+  /** Start date (YYYY-MM-DD) */
+  startDate?: string
+  /** End date (YYYY-MM-DD) */
+  endDate?: string
+  /** Filter by creator */
+  creatorId?: string
+}
+
+export interface UploadReceiptRequest {
+  /** File URL (must be Supabase storage) */
+  fileUrl: string
+  /** File name */
+  fileName?: string
+  /** File size in bytes (max 50MB) */
+  fileSize?: number
+  /** MIME type */
+  mimeType?: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | 'application/pdf'
+  /** Merchant name */
+  merchantName?: string
+  /** Transaction date (YYYY-MM-DD) */
+  transactionDate?: string
+  /** Total amount in cents */
+  totalAmount?: number
+  /** Link to existing transaction */
+  transactionId?: string
+}
+
+export interface ReceivePaymentRequest {
+  /** Amount in cents */
+  amount: number
+  /** Invoice transaction to apply payment to */
+  invoiceTransactionId?: string
+  /** Customer name */
+  customerName?: string
+  /** Customer ID */
+  customerId?: string
+  /** External reference ID */
+  referenceId?: string
+  /** Payment method used */
+  paymentMethod?: string
+  /** Payment date (YYYY-MM-DD) */
+  paymentDate?: string
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
 // ---- Config Types ----
 
 export interface SoledgicConfig {
