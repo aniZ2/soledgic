@@ -365,8 +365,9 @@ export class Soledgic {
    * ```typescript
    * const payout = await soledgic.processPayout({
    *   creatorId: 'author_123',
-   *   paymentMethod: 'card',
-   *   paymentReference: 'payout_123'
+   *   referenceId: 'payout_123',
+   *   amount: 5000,
+   *   payoutMethod: 'card',
    * })
    * ```
    */

@@ -155,8 +155,6 @@ export async function processorRequest<T = unknown>(
 export interface CreateOnboardingLinkParams {
   onboardingFormId: string
   appUrl: string
-  identityId?: string | null
-  applicationId?: string | null
   expirationInMinutes?: number
   state?: string | null
   returnUrl?: string | null
@@ -167,8 +165,6 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
   const {
     onboardingFormId,
     appUrl,
-    identityId,
-    applicationId,
     expirationInMinutes = 60,
     state,
     returnUrl,
@@ -208,14 +204,6 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     // Always send merchants to the public pricing page.
     fee_details_url: PUBLIC_PRICING_URL,
     terms_of_service_url: `${appUrl}/terms`,
-  }
-
-  if (identityId) {
-    payload.resource_type = 'IDENTITY'
-    payload.entity = identityId
-  } else if (applicationId) {
-    payload.resource_type = 'APPLICATION'
-    payload.entity = applicationId
   }
 
   return processorRequest<ProcessorOnboardingLinkResponse>(`/onboarding_forms/${onboardingFormId}/links`, {

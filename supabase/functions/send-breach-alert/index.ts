@@ -466,7 +466,61 @@ const handler = createHandler(
         }
       }
 
-      // TODO: Add generic webhook channel support (use existing webhook system)
+      // Generic webhook channel: POST breach data to configured URL
+      if (config.channel === 'webhook' && config.config.webhook_url) {
+        const webhookPayload = {
+          event: 'breach_risk',
+          ledger: ledger.name || 'Ledger',
+          ledger_id: ledger.id,
+          cash_balance: body.cash_balance,
+          pending_total: body.pending_total,
+          shortfall,
+          coverage_ratio: coverageRatio,
+          triggered_by: body.triggered_by,
+          instrument_id: body.instrument_id,
+          external_ref: body.external_ref,
+          projections_created: body.projections_created,
+          timestamp: new Date().toISOString(),
+        }
+
+        let webhookResult: { success: boolean; status?: number; error?: string }
+        try {
+          const resp = await fetch(config.config.webhook_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          })
+          webhookResult = resp.ok
+            ? { success: true, status: resp.status }
+            : { success: false, status: resp.status, error: await resp.text() }
+        } catch (err: any) {
+          webhookResult = { success: false, error: err.message }
+        }
+
+        results.push({ channel: 'webhook', ...webhookResult })
+
+        await supabase.from('alert_history').insert({
+          ledger_id: ledger.id,
+          alert_config_id: config.id,
+          alert_type: 'breach_risk',
+          channel: 'webhook',
+          payload: webhookPayload,
+          status: webhookResult.success ? 'sent' : 'failed',
+          error_message: webhookResult.error,
+          response_status: webhookResult.status,
+          sent_at: webhookResult.success ? new Date().toISOString() : null,
+        })
+
+        if (webhookResult.success) {
+          await supabase
+            .from('alert_configurations')
+            .update({
+              last_triggered_at: new Date().toISOString(),
+              trigger_count: (config as any).trigger_count + 1,
+            })
+            .eq('id', config.id)
+        }
+      }
     }
 
     const successCount = results.filter(r => r.success && !r.error?.includes('Thresholds')).length

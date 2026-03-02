@@ -611,12 +611,17 @@ export interface CreateLedgerResponse {
   warning: string
 }
 
-export interface ExportReportResponse {
+export interface ExportReportJsonResponse {
   success: boolean
   reportType: string
   generatedAt: string
   rowCount: number
   data: any[]
+}
+
+export interface ExportReportCsvResponse {
+  csv: string
+  filename: string
 }
 
 export interface RiskEvaluationResponse {
@@ -652,10 +657,11 @@ export interface ReceivePaymentResponse {
 
 export interface SendBreachAlertResponse {
   success: boolean
+  message?: string
   alertsSent: number
-  alertsFailed: number
-  alertsSkipped: number
-  results: Array<{
+  alertsFailed?: number
+  alertsSkipped?: number
+  results?: Array<{
     channel: string
     success: boolean
     error?: string
@@ -718,6 +724,27 @@ export class Soledgic {
       throw error
     }
     return data
+  }
+
+  private async requestRaw(endpoint: string, body: any): Promise<Response> {
+    const response = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      const text = await response.text()
+      let parsed: any
+      try { parsed = JSON.parse(text) } catch { parsed = { error: text } }
+      const error = new Error(parsed.error || `Request failed: ${response.status}`) as any
+      error.status = response.status
+      error.details = parsed
+      throw error
+    }
+    return response
   }
 
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
@@ -1811,8 +1838,16 @@ export class Soledgic {
     return this.request('tax-documents', { action: 'get', document_id: documentId })
   }
 
-  async exportTaxDocuments(taxYear?: number, format?: 'csv' | 'json') {
-    return this.request('tax-documents', { action: 'export', tax_year: taxYear, format })
+  async exportTaxDocuments(taxYear?: number, format: 'csv' | 'json' = 'json') {
+    const body = { action: 'export', tax_year: taxYear, format }
+    if (format === 'csv') {
+      const response = await this.requestRaw('tax-documents', body)
+      const csv = await response.text()
+      const disposition = response.headers.get('Content-Disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
+      return { csv, filename: filenameMatch?.[1] || `1099_export_${taxYear}.csv` }
+    }
+    return this.request('tax-documents', body)
   }
 
   async markTaxDocumentFiled(documentId: string) {
@@ -1828,14 +1863,25 @@ export class Soledgic {
 
   // === DATA EXPORT ===
 
-  async exportReport(req: ExportReportRequest): Promise<ExportReportResponse> {
-    return this.request('export-report', {
+  async exportReport(req: ExportReportRequest & { format: 'json' }): Promise<ExportReportJsonResponse>
+  async exportReport(req: ExportReportRequest & { format: 'csv' }): Promise<ExportReportCsvResponse>
+  async exportReport(req: ExportReportRequest): Promise<ExportReportJsonResponse | ExportReportCsvResponse>
+  async exportReport(req: ExportReportRequest): Promise<ExportReportJsonResponse | ExportReportCsvResponse> {
+    const body = {
       report_type: req.reportType,
       format: req.format,
       start_date: req.startDate,
       end_date: req.endDate,
       creator_id: req.creatorId,
-    })
+    }
+    if (req.format === 'csv') {
+      const response = await this.requestRaw('export-report', body)
+      const csv = await response.text()
+      const disposition = response.headers.get('Content-Disposition') || ''
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
+      return { csv, filename: filenameMatch?.[1] || `${req.reportType}.csv` }
+    }
+    return this.request('export-report', body)
   }
 
   // === RECEIPTS ===
@@ -1884,14 +1930,17 @@ export class Soledgic {
     })
     return {
       success: response.success,
-      alertsSent: response.alerts_sent,
+      message: response.message,
+      alertsSent: response.alerts_sent ?? 0,
       alertsFailed: response.alerts_failed,
       alertsSkipped: response.alerts_skipped,
-      results: (response.results || []).map((r: any) => ({
-        channel: r.channel,
-        success: r.success,
-        error: r.error,
-      })),
+      results: response.results
+        ? response.results.map((r: any) => ({
+            channel: r.channel,
+            success: r.success,
+            error: r.error,
+          }))
+        : undefined,
     }
   }
 }

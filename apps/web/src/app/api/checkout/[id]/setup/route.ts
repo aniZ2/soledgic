@@ -67,8 +67,6 @@ export async function POST(
   const link = await createOnboardingLink({
     onboardingFormId,
     appUrl,
-    identityId: null,
-    applicationId: process.env.PROCESSOR_APPLICATION_ID || null,
     expirationInMinutes,
     state: setupState,
     returnUrl: returnUrl.toString(),

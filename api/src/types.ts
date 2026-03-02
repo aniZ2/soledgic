@@ -482,6 +482,76 @@ export interface ReceivePaymentRequest {
   metadata?: Record<string, unknown>
 }
 
+// ---- Additional Response Types ----
+
+export interface RecordAdjustmentResponse {
+  success: boolean
+  transactionId: string
+  adjustmentId: string
+  entriesCreated: number
+}
+
+export interface RecordOpeningBalanceResponse {
+  success: boolean
+  openingBalanceId: string
+  transactionId: string
+  summary: {
+    asOfDate: string
+    totalAssets: number
+    totalLiabilities: number
+    totalEquity: number
+    accountsSet: number
+  }
+}
+
+export interface RecordTransferResponse {
+  success: boolean
+  transferId: string
+  transactionId: string
+  amount: number
+  fromAccount: string
+  toAccount: string
+}
+
+export interface ExportReportJsonResponse {
+  success: boolean
+  reportType: string
+  generatedAt: string
+  rowCount: number
+  data: any[]
+}
+
+export interface ExportReportCsvResponse {
+  csv: string
+  filename: string
+}
+
+export interface UploadReceiptResponse {
+  success: boolean
+  receiptId: string
+  status: 'uploaded' | 'matched' | 'orphan'
+  linkedTransactionId: string | null
+}
+
+export interface ReceivePaymentResponse {
+  success: boolean
+  transactionId: string
+  amount: number
+}
+
+export interface SendBreachAlertResponse {
+  success: boolean
+  message?: string
+  alertsSent: number
+  alertsFailed?: number
+  alertsSkipped?: number
+  results?: Array<{
+    channel: string
+    success: boolean
+    error?: string
+  }>
+}
+
 // ---- Config Types ----
 
 export interface SoledgicConfig {

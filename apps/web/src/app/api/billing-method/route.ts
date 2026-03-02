@@ -315,8 +315,6 @@ export const POST = createApiHandler(
       const link = await createOnboardingLink({
         onboardingFormId,
         appUrl,
-        identityId: billingSettings.identity_id || null,
-        applicationId: process.env.PROCESSOR_APPLICATION_ID || null,
         expirationInMinutes,
         state: setupState,
         returnUrl: returnUrl.toString(),
