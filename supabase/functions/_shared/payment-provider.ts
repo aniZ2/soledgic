@@ -115,6 +115,12 @@ class CardPaymentProvider implements PaymentProvider {
     this.cfg = cfg
   }
 
+  private getTimeoutMs(): number {
+    const raw = Number(Deno.env.get('PROCESSOR_REQUEST_TIMEOUT_MS') || 30000)
+    if (!Number.isFinite(raw) || raw < 1000) return 30000
+    return Math.floor(raw)
+  }
+
   private resolveConfig() {
     const envRaw = (this.cfg.environment || Deno.env.get('PROCESSOR_ENV') || 'sandbox').toLowerCase().trim()
     const env: ProcessorEnv =
@@ -179,7 +185,7 @@ class CardPaymentProvider implements PaymentProvider {
       return { success: false, provider: 'card', error: 'Merchant override is not allowed' }
     }
 
-    // Processor transfer rules:
+    // Processor transfer rules (mutually exclusive per Finix spec):
     // - DEBIT transfers use `source` (payment_method_id)
     // - CREDIT transfers use `destination` (destination_id)
     const source = params.payment_method_id || null
@@ -200,8 +206,12 @@ class CardPaymentProvider implements PaymentProvider {
       },
     }
 
-    if (source) payload.source = source
-    if (destination) payload.destination = destination
+    // source and destination are mutually exclusive: DEBIT uses source, CREDIT uses destination.
+    if (destination) {
+      payload.destination = destination
+    } else {
+      payload.source = source
+    }
     if (params.idempotency_id) payload.idempotency_id = params.idempotency_id
 
     try {
@@ -214,6 +224,7 @@ class CardPaymentProvider implements PaymentProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(this.getTimeoutMs()),
       })
 
       const data = await response.json().catch(() => ({}))
@@ -235,6 +246,9 @@ class CardPaymentProvider implements PaymentProvider {
         raw: data,
       }
     } catch (err: any) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+        return { success: false, provider: 'card', error: 'Processor request timed out' }
+      }
       return { success: false, provider: 'card', error: err?.message || 'Processor request failed' }
     }
   }
@@ -293,6 +307,7 @@ class CardPaymentProvider implements PaymentProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(this.getTimeoutMs()),
       })
 
       const data = await response.json().catch(() => ({}))
@@ -313,6 +328,9 @@ class CardPaymentProvider implements PaymentProvider {
         status: this.mapStatus(data?.state || data?.status),
       }
     } catch (err: any) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+        return { success: false, provider: 'card', error: 'Processor refund request timed out' }
+      }
       return { success: false, provider: 'card', error: err?.message || 'Processor refund failed' }
     }
   }
@@ -334,6 +352,7 @@ class CardPaymentProvider implements PaymentProvider {
           Authorization: `Basic ${btoa(`${username}:${password}`)}`,
           ...versioning,
         },
+        signal: AbortSignal.timeout(this.getTimeoutMs()),
       })
 
       const data = await response.json().catch(() => ({}))
@@ -354,6 +373,9 @@ class CardPaymentProvider implements PaymentProvider {
         currency: data?.currency,
       }
     } catch (err: any) {
+      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+        return { success: false, provider: 'card', error: 'Processor status request timed out' }
+      }
       return { success: false, provider: 'card', error: err?.message || 'Processor status lookup failed' }
     }
   }

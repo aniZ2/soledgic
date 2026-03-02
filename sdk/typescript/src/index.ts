@@ -41,6 +41,8 @@ interface CreateCheckoutRequestBase {
   // is created. The buyer visits checkoutUrl to enter their card.
   successUrl?: string
   cancelUrl?: string
+  // Unique key to prevent duplicate charges on retries. Required for direct charges.
+  idempotencyKey?: string
 }
 
 export type CreateCheckoutRequest = CreateCheckoutRequestBase & (
@@ -462,6 +464,7 @@ export class Soledgic {
       source_id: req.sourceId,
       success_url: req.successUrl,
       cancel_url: req.cancelUrl,
+      idempotency_key: req.idempotencyKey,
       metadata: req.metadata,
     })
 

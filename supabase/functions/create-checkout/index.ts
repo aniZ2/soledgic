@@ -87,25 +87,6 @@ interface OrganizationSettings {
 }
 
 // ============================================================================
-// IDEMPOTENCY
-// ============================================================================
-
-async function buildDeterministicCheckoutKey(
-  ledgerId: string,
-  amount: number,
-  currency: string,
-  creatorId: string,
-  paymentMethodId: string,
-): Promise<string> {
-  const source = `${ledgerId}|${amount}|${currency}|${creatorId}|${paymentMethodId}`
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source))
-  const hash = Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-  return `checkout_direct_${hash.slice(0, 48)}`
-}
-
-// ============================================================================
 // SPLIT CALCULATION
 // ============================================================================
 
@@ -235,7 +216,7 @@ const handler = createHandler(
     const paymentMethodIdRaw = body.payment_method_id || body.source_id || null
     const paymentMethodId = paymentMethodIdRaw ? validateString(paymentMethodIdRaw, 200) : null
 
-    // Idempotency key (optional, caller-provided for retry safety)
+    // Idempotency key (required for direct charge to prevent duplicate transfers)
     const idempotencyKey = body.idempotency_key ? validateId(body.idempotency_key, 120) : null
     if (body.idempotency_key && !idempotencyKey) {
       return errorResponse('Invalid idempotency_key', 400, req, requestId)
@@ -381,12 +362,13 @@ const handler = createHandler(
       }
     }
     
-    // Compute a stable idempotency key BEFORE the processor call so retries
-    // cannot issue a second charge. Prefer caller-provided key; fall back to
-    // a deterministic hash of the charge parameters.
-    const checkoutIdempotencyId = idempotencyKey
-      ? `checkout_direct_${idempotencyKey}`
-      : await buildDeterministicCheckoutKey(ledger.id, amount, currency, creatorId, paymentMethodId)
+    // Require a caller-provided idempotency key for direct charges.
+    // A deterministic fallback would be too coarse (same card + amount + creator
+    // would collide on legitimate repeat purchases within the processor's
+    // idempotency window).
+    if (!idempotencyKey) {
+      return errorResponse('idempotency_key is required for direct charges', 400, req, requestId)
+    }
 
     const checkoutResult = await provider.createPaymentIntent({
       amount,
@@ -397,7 +379,7 @@ const handler = createHandler(
       capture_method: body.capture_method,
       setup_future_usage: body.setup_future_usage,
       payment_method_id: paymentMethodId,
-      idempotency_id: checkoutIdempotencyId,
+      idempotency_id: `checkout_direct_${idempotencyKey}`,
     })
 
     if (!checkoutResult.success || !checkoutResult.id) {

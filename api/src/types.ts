@@ -37,6 +37,8 @@ export interface CreateCheckoutRequest {
   paymentMethodId?: string
   /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
   sourceId?: string
+  /** Unique key to prevent duplicate charges on retries. Required for direct charges. */
+  idempotencyKey: string
   metadata?: Record<string, string>
 }
 
