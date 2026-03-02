@@ -123,6 +123,7 @@ class CardProcessorRail implements PaymentRail {
       },
       payment_method_id: platformSource || undefined,
       destination_id: destination,
+      idempotency_id: `payout_${payout.payout_id}`,
     })
 
     if (!result.success || !result.id) {

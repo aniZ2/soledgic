@@ -181,6 +181,7 @@ export async function POST(
     source: chosen.id,
     merchant: merchantId,
     tags: transferTags,
+    idempotency_id: `checkout_${session.id}`,
   }
 
   let transfer: { id?: string; state?: string }

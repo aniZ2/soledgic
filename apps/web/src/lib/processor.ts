@@ -115,11 +115,8 @@ export async function processorRequest<T = unknown>(
     throw new Error('Payment processor misconfiguration: sandbox environment cannot use production base URL')
   }
 
-  const versionHeader = (process.env.PROCESSOR_VERSION_HEADER || '').trim()
-  const apiVersion = (process.env.PROCESSOR_API_VERSION || '').trim()
-  if ((versionHeader && !apiVersion) || (!versionHeader && apiVersion)) {
-    throw new Error('Payment processor versioning is misconfigured (set both PROCESSOR_VERSION_HEADER and PROCESSOR_API_VERSION)')
-  }
+  const versionHeader = (process.env.PROCESSOR_VERSION_HEADER || 'Finix-Version').trim()
+  const apiVersion = (process.env.PROCESSOR_API_VERSION || '2022-02-01').trim()
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), getProcessorRequestTimeoutMs())
@@ -129,7 +126,7 @@ export async function processorRequest<T = unknown>(
       method,
       headers: {
         Authorization: getProcessorAuthHeader(),
-        ...(versionHeader ? { [versionHeader]: apiVersion } : {}),
+        [versionHeader]: apiVersion,
         'Content-Type': 'application/json',
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -211,7 +208,6 @@ export async function createOnboardingLink(params: CreateOnboardingLinkParams) {
     // Always send merchants to the public pricing page.
     fee_details_url: PUBLIC_PRICING_URL,
     terms_of_service_url: `${appUrl}/terms`,
-    privacy_policy_url: `${appUrl}/privacy`,
   }
 
   if (identityId) {
@@ -269,7 +265,9 @@ export async function fetchProcessorMerchantForIdentity(identityId: string) {
 }
 
 export async function fetchProcessorPaymentInstrumentsForIdentity(identityId: string) {
-  const response = await processorRequest<ProcessorPaymentInstrumentsResponse>(`/identities/${identityId}/payment_instruments?limit=20`)
+  const response = await processorRequest<ProcessorPaymentInstrumentsResponse>(
+    `/payment_instruments?owner_identity_id=${encodeURIComponent(identityId)}&limit=20`
+  )
   return Array.isArray(response?._embedded?.payment_instruments)
     ? response._embedded!.payment_instruments
     : []

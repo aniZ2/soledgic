@@ -24,6 +24,8 @@ export interface PaymentIntentParams {
   payment_method_id?: string
   // Reserved for CREDIT flows (not used by Soledgic charge-side today).
   destination_id?: string
+  // Prevents duplicate transfers at the processor level.
+  idempotency_id?: string
 }
 
 export interface PaymentIntentResult {
@@ -51,6 +53,7 @@ export interface RefundParams {
   amount?: number
   reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer'
   metadata?: Record<string, string>
+  idempotency_id?: string
 }
 
 export interface RefundResult {
@@ -130,11 +133,8 @@ class CardPaymentProvider implements PaymentProvider {
       }
     }
 
-    const versionHeader = (this.cfg.versionHeader || Deno.env.get('PROCESSOR_VERSION_HEADER') || '').trim()
-    const apiVersion = (this.cfg.apiVersion || Deno.env.get('PROCESSOR_API_VERSION') || '').trim()
-    if ((versionHeader && !apiVersion) || (!versionHeader && apiVersion)) {
-      configError = 'Payment processor versioning is misconfigured (set both PROCESSOR_VERSION_HEADER and PROCESSOR_API_VERSION)'
-    }
+    const versionHeader = (this.cfg.versionHeader || Deno.env.get('PROCESSOR_VERSION_HEADER') || 'Finix-Version').trim()
+    const apiVersion = (this.cfg.apiVersion || Deno.env.get('PROCESSOR_API_VERSION') || '2022-02-01').trim()
 
     return {
       merchantId: (this.cfg.merchantId || Deno.env.get('PROCESSOR_MERCHANT_ID') || '').trim() || null,
@@ -202,9 +202,10 @@ class CardPaymentProvider implements PaymentProvider {
 
     if (source) payload.source = source
     if (destination) payload.destination = destination
+    if (params.idempotency_id) payload.idempotency_id = params.idempotency_id
 
     try {
-      const versioning = versionHeader && apiVersion ? { [versionHeader]: apiVersion } : {}
+      const versioning = { [versionHeader]: apiVersion }
       const response = await fetch(`${baseUrl}${transfersPath}`, {
         method: 'POST',
         headers: {
@@ -280,9 +281,10 @@ class CardPaymentProvider implements PaymentProvider {
     }
     if (_params.reason) tags.refund_reason = _params.reason
     if (Object.keys(tags).length > 0) payload.tags = tags
+    if (_params.idempotency_id) payload.idempotency_id = _params.idempotency_id
 
     try {
-      const versioning = versionHeader && apiVersion ? { [versionHeader]: apiVersion } : {}
+      const versioning = { [versionHeader]: apiVersion }
       const response = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
         headers: {
@@ -325,7 +327,7 @@ class CardPaymentProvider implements PaymentProvider {
     }
 
     try {
-      const versioning = versionHeader && apiVersion ? { [versionHeader]: apiVersion } : {}
+      const versioning = { [versionHeader]: apiVersion }
       const response = await fetch(`${baseUrl}${transfersPath}/${paymentIntentId}`, {
         method: 'GET',
         headers: {
