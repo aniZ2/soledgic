@@ -166,12 +166,14 @@ export async function POST(
   if (session.product_name) transferTags.product_name = session.product_name
   if (session.customer_id) transferTags.customer_id = session.customer_id
   if (session.customer_email) transferTags.customer_email = session.customer_email
-  // Forward caller-provided metadata as tags (processor limits key count,
-  // so only pass first 10 entries to stay within safe bounds).
+  // Forward caller-provided metadata as tags. Processor constraints:
+  // keys ≤40 chars (alphanumeric + underscores), values ≤500 chars, ≤50 pairs total.
   if (session.metadata && typeof session.metadata === 'object') {
     const entries = Object.entries(session.metadata as Record<string, unknown>)
     for (const [k, v] of entries.slice(0, 10)) {
-      if (typeof v === 'string') transferTags[`meta_${k}`] = v.substring(0, 500)
+      if (typeof v !== 'string') continue
+      const safeKey = `meta_${k.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')}`.slice(0, 40).toLowerCase()
+      if (safeKey.length > 5) transferTags[safeKey] = v.substring(0, 500)
     }
   }
 

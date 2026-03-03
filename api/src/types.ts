@@ -31,8 +31,6 @@ export interface CreateCheckoutRequest {
   productName?: string
   customerEmail?: string
   customerId?: string
-  captureMethod?: 'automatic' | 'manual'
-  setupFutureUsage?: 'off_session' | 'on_session'
   /** Buyer payment method / payment instrument id (required). */
   paymentMethodId?: string
   /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
@@ -76,7 +74,10 @@ export interface RecordRefundRequest {
   externalRefundId?: string
   /** Idempotency key for processor refund */
   idempotencyKey?: string
-  /** Whether to execute refund at the processor */
+  /** Refund mode: 'ledger_only' records without processor settlement,
+   *  'processor_refund' records and instructs processor to return funds. Default: 'ledger_only'. */
+  mode?: 'ledger_only' | 'processor_refund'
+  /** @deprecated Use mode: 'processor_refund' instead */
   executeProcessorRefund?: boolean
   /** Processor payment ID to refund */
   processorPaymentId?: string

@@ -18,8 +18,6 @@ export interface PaymentIntentParams {
   metadata: Record<string, string>
   description?: string
   receipt_email?: string
-  capture_method?: 'automatic' | 'manual'
-  setup_future_usage?: 'off_session' | 'on_session'
   // For charge-side DEBIT flows.
   payment_method_id?: string
   // Reserved for CREDIT flows (not used by Soledgic charge-side today).
@@ -100,6 +98,36 @@ export interface PaymentProvider {
   capturePayment(paymentIntentId: string): Promise<CaptureResult>
   refund(params: RefundParams): Promise<RefundResult>
   getPaymentStatus(paymentIntentId: string): Promise<PaymentStatus>
+}
+
+// ============================================================================
+// TAG SANITIZATION (Finix constraints: keys ≤40 chars, values ≤500 chars, ≤50 pairs)
+// ============================================================================
+
+/** Normalize a tag key to Finix constraints: lowercase alphanumeric + underscores, max 40 chars. */
+function sanitizeTagKey(key: string): string {
+  const cleaned = key
+    .replace(/[^a-zA-Z0-9_]/g, '_') // replace invalid chars with underscore
+    .replace(/_+/g, '_')            // collapse consecutive underscores
+    .replace(/^_|_$/g, '')          // trim leading/trailing underscores
+    .toLowerCase()
+    .slice(0, 40)
+  return cleaned
+}
+
+/** Sanitize a tags object for Finix: normalize keys, truncate values, cap at 50 entries. */
+function sanitizeTags(raw: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {}
+  let count = 0
+  for (const [k, v] of Object.entries(raw)) {
+    if (count >= 50) break
+    const safeKey = sanitizeTagKey(k)
+    if (!safeKey) continue
+    const safeValue = typeof v === 'string' ? v.slice(0, 500) : String(v ?? '').slice(0, 500)
+    result[safeKey] = safeValue
+    count++
+  }
+  return result
 }
 
 // ============================================================================
@@ -195,15 +223,16 @@ class CardPaymentProvider implements PaymentProvider {
       return { success: false, provider: 'card', error: 'payment_method_id or destination_id is required' }
     }
 
+    const rawTags: Record<string, unknown> = {
+      ...params.metadata,
+      checkout_description: params.description || '',
+      checkout_receipt_email: params.receipt_email || '',
+    }
     const payload: Record<string, unknown> = {
       amount: params.amount,
       currency: params.currency.toUpperCase(),
       merchant: merchantId,
-      tags: {
-        ...params.metadata,
-        checkout_description: params.description || '',
-        checkout_receipt_email: params.receipt_email || '',
-      },
+      tags: sanitizeTags(rawTags),
     }
 
     // source and destination are mutually exclusive: DEBIT uses source, CREDIT uses destination.
@@ -282,19 +311,16 @@ class CardPaymentProvider implements PaymentProvider {
 
     const payload: Record<string, unknown> = {}
     if (typeof _params.amount === 'number' && Number.isFinite(_params.amount) && _params.amount > 0) {
-      payload.amount = Math.round(_params.amount)
+      payload.refund_amount = Math.round(_params.amount)
     }
 
-    const tags: Record<string, string> = {}
+    const rawRefundTags: Record<string, unknown> = {}
     if (_params.metadata && typeof _params.metadata === 'object') {
-      for (const [k, v] of Object.entries(_params.metadata)) {
-        if (typeof k === 'string' && typeof v === 'string') {
-          tags[k] = v.slice(0, 500)
-        }
-      }
+      Object.assign(rawRefundTags, _params.metadata)
     }
-    if (_params.reason) tags.refund_reason = _params.reason
-    if (Object.keys(tags).length > 0) payload.tags = tags
+    if (_params.reason) rawRefundTags.refund_reason = _params.reason
+    const refundTags = sanitizeTags(rawRefundTags)
+    if (Object.keys(refundTags).length > 0) payload.tags = refundTags
     if (_params.idempotency_id) payload.idempotency_id = _params.idempotency_id
 
     try {

@@ -23,6 +23,10 @@ interface RefundRequest {
   refund_from?: 'both' | 'platform_only' | 'creator_only'
   external_refund_id?: string
   idempotency_key?: string
+  /** Explicit refund mode: 'ledger_only' records in ledger without processor settlement,
+   *  'processor_refund' records in ledger AND instructs the processor to return funds. */
+  mode?: 'ledger_only' | 'processor_refund'
+  /** @deprecated Use mode: 'processor_refund' instead. Kept for backwards compatibility. */
   execute_processor_refund?: boolean
   processor_payment_id?: string
   metadata?: Record<string, any>
@@ -104,7 +108,10 @@ const handler = createHandler(
       return errorResponse('Invalid idempotency_key', 400, req, requestId)
     }
 
-    const executeProcessorRefund = body.execute_processor_refund === true
+    // Support both new mode enum and legacy boolean for backwards compat
+    const executeProcessorRefund = body.mode
+      ? body.mode === 'processor_refund'
+      : body.execute_processor_refund === true
     const processorPaymentId = body.processor_payment_id ? validateId(body.processor_payment_id, 255) : null
     if (body.processor_payment_id && !processorPaymentId) {
       return errorResponse('Invalid processor_payment_id', 400, req, requestId)

@@ -39,9 +39,6 @@ interface CreateCheckoutRequest {
   customer_email?: string     // Customer email for provider receipt metadata
   customer_id?: string        // Your platform's customer ID
 
-  // Advanced
-  capture_method?: 'automatic' | 'manual'  // Default: automatic
-  setup_future_usage?: 'off_session' | 'on_session'  // For saving cards
   // Payment method (buyer instrument) for charge-side flows.
   // NOTE: `source_id` is accepted as a backwards-compatible alias.
   // When omitted, a hosted checkout session is created instead.
@@ -306,16 +303,6 @@ const handler = createHandler(
       return errorResponse('merchant_id is not allowed', 400, req, requestId)
     }
 
-    // Validate capture_method if provided
-    if (body.capture_method && !['automatic', 'manual'].includes(body.capture_method)) {
-      return errorResponse('Invalid capture_method: must be automatic or manual', 400, req, requestId)
-    }
-    
-    // Validate setup_future_usage if provided
-    if (body.setup_future_usage && !['off_session', 'on_session'].includes(body.setup_future_usage)) {
-      return errorResponse('Invalid setup_future_usage', 400, req, requestId)
-    }
-    
     // ========================================================================
     // RESOLVE PROVIDER (processor-first)
     // ========================================================================
@@ -376,8 +363,6 @@ const handler = createHandler(
       metadata: checkoutMetadata,
       description,
       receipt_email: customerEmail || undefined,
-      capture_method: body.capture_method,
-      setup_future_usage: body.setup_future_usage,
       payment_method_id: paymentMethodId,
       idempotency_id: `checkout_direct_${idempotencyKey}`,
     })

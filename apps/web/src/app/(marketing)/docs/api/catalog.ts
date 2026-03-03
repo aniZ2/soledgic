@@ -458,18 +458,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       },
       {
         "in": "body",
-        "name": "capture_method",
-        "type": "'automatic' | 'manual'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "setup_future_usage",
-        "type": "'off_session' | 'on_session'",
-        "required": false
-      },
-      {
-        "in": "body",
         "name": "payment_method_id",
         "type": "string",
         "required": true
@@ -2448,6 +2436,24 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "external_refund_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "mode",
+        "type": "'ledger_only' | 'processor_refund'",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "idempotency_key",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "processor_payment_id",
         "type": "string",
         "required": false
       },

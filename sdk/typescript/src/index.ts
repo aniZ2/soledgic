@@ -36,8 +36,6 @@ interface CreateCheckoutRequestBase {
   productName?: string
   customerEmail?: string
   customerId?: string
-  captureMethod?: 'automatic' | 'manual'
-  setupFutureUsage?: 'off_session' | 'on_session'
   // The active checkout provider is the whitelabeled card processor.
   paymentProvider?: CheckoutProvider
   metadata?: Record<string, string>
@@ -317,6 +315,10 @@ export interface RecordRefundRequest {
   refundFrom?: 'both' | 'platform_only' | 'creator_only'
   externalRefundId?: string
   idempotencyKey?: string
+  /** Refund mode: 'ledger_only' records without processor settlement,
+   *  'processor_refund' records and instructs processor to return funds. Default: 'ledger_only'. */
+  mode?: 'ledger_only' | 'processor_refund'
+  /** @deprecated Use mode: 'processor_refund' instead */
   executeProcessorRefund?: boolean
   processorPaymentId?: string
   metadata?: Record<string, unknown>
@@ -778,8 +780,6 @@ export class Soledgic {
       product_name: req.productName,
       customer_email: req.customerEmail,
       customer_id: req.customerId,
-      capture_method: req.captureMethod,
-      setup_future_usage: req.setupFutureUsage,
       payment_method_id: req.paymentMethodId,
       source_id: req.sourceId,
       success_url: req.successUrl,
@@ -873,6 +873,7 @@ export class Soledgic {
       refund_from: req.refundFrom,
       external_refund_id: req.externalRefundId,
       idempotency_key: req.idempotencyKey,
+      mode: req.mode,
       execute_processor_refund: req.executeProcessorRefund,
       processor_payment_id: req.processorPaymentId,
       metadata: req.metadata,
