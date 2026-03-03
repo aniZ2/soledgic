@@ -182,7 +182,7 @@ Deno.serve(async (req: Request) => {
     const { count, error } = await supabase
       .from('audit_log')
       .select('*', { count: 'exact', head: true })
-      .in('action', ['webhook_invalid_signature', 'webhook_replay_attempt'])
+      .eq('action', 'webhook_invalid_signature')
       .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
 
     if (error) {

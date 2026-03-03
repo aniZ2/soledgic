@@ -45,7 +45,11 @@ if (NEXT_APP_URL.length > 0) {
       body: '{}',
       signal: AbortSignal.timeout(5000),
     })
-    hasNextApp = true
+    // 401/400 = correct endpoint responding; 404 = wrong URL or different service
+    hasNextApp = probe.status !== 404
+    if (!hasNextApp) {
+      console.log(`Processor webhook tests skipped: ${NEXT_APP_URL} returned 404 (wrong endpoint)`)
+    }
   } catch {
     console.log(`Processor webhook tests skipped: ${NEXT_APP_URL} is not reachable`)
   }

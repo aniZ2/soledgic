@@ -76,5 +76,7 @@ describe('Webhook Replay & Idempotency E2E', () => {
 
     const deliveries = await ledger.listWebhookDeliveries()
     expect(deliveries.success).toBe(true)
+    expect(Array.isArray(deliveries.data)).toBe(true)
+    expect(deliveries.data.length).toBeGreaterThan(0)
   })
 })

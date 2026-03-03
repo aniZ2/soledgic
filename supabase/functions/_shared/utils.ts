@@ -512,9 +512,9 @@ let redisHealthy = true  // Track Redis health for circuit breaker
 let lastRedisCheck = 0
 const REDIS_HEALTH_CHECK_INTERVAL = 30000 // 30 seconds
 
-// Database fallback throttle: 10% of Redis limits
-// This protects Postgres from being hammered during Redis outages
-const DB_FALLBACK_THROTTLE = 0.1
+// Database fallback throttle: 50% of Redis limits
+// Keeps service usable during Redis outages without overwhelming Postgres
+const DB_FALLBACK_THROTTLE = 0.5
 
 function getRedis(): Redis | null {
   if (redis) return redis
@@ -623,8 +623,8 @@ async function checkRateLimitDatabase(
 ): Promise<{ allowed: boolean; error?: string }> {
   const config = RATE_LIMITS[endpoint] || RATE_LIMITS['default']
   
-  // NARROW GATE: Throttle to 10% of Redis limits
-  // This protects Postgres from being overwhelmed during Redis outages
+  // Throttle to 50% of Redis limits during Redis outages
+  // Keeps service usable while protecting Postgres from full throughput
   const throttledRequests = Math.max(1, Math.floor(config.requests * DB_FALLBACK_THROTTLE))
   
   try {
