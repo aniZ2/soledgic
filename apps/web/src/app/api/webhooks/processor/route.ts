@@ -62,7 +62,7 @@ function verifyFinixSignature(
   }
 
   const expected = createHmac('sha256', signingKey)
-    .update(`${timestamp}.${rawBody}`)
+    .update(`${timestamp}:${rawBody}`)
     .digest('hex')
 
   const sigBuf = Buffer.from(sig, 'hex')
@@ -267,7 +267,12 @@ function extractWebhookFields(payload: unknown) {
     pickString(root ? root.eventId : null) ||
     null
 
+  // Finix sends separate `entity` and `type` fields (e.g., entity="transfer", type="created").
+  // Combine them into "transfer.created" so downstream classification can match on entity name.
+  const entityField = pickString(root ? root.entity : null)
+  const typeField = pickString(root ? root.type : null)
   const eventType =
+    (entityField && typeField ? `${entityField}.${typeField}` : null) ||
     pickString(root ? root.type : null) ||
     pickString(root ? root.event_type : null) ||
     pickString(root ? root.eventType : null) ||

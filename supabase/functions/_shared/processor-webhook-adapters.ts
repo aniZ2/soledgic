@@ -195,10 +195,25 @@ function classifyKind(row: ProcessorWebhookInboxRow, tags: Record<string, string
   if (t.includes('dispute')) return 'dispute'
   if (t.includes('refund') || t.includes('reversal')) return 'refund'
 
+  // Finix refunds are entity="transfer" with embedded transfer type="REVERSAL".
+  // The event_type is "transfer.created" (not "refund"), so check the embedded resource.
+  const ef = extractEmbeddedFirst(row.payload)
+  const embeddedType = pickString(ef?.type)
+  if (embeddedType && embeddedType.toUpperCase() === 'REVERSAL') return 'refund'
+
   // Heuristics based on tag intent.
   if (pickString(tags.soledgic_original_sale_reference, 255)) return 'refund'
 
   return 'charge'
+}
+
+/** Extract linked transfer ID from embedded dispute/reversal resources for downstream correlation. */
+function extractLinkedTransferId(payload: unknown): string | null {
+  const ef = extractEmbeddedFirst(payload)
+  if (!ef) return null
+  // Finix disputes embed `transfer: "TRxxxxxxxx"` directly on the dispute object.
+  // Reversals are themselves transfers with a parent_transfer_id or trace reference.
+  return pickString(ef.transfer, 64) || pickString(ef.parent_transfer_id, 64) || null
 }
 
 class GenericJsonAdapter implements ProcessorWebhookAdapter {
@@ -210,6 +225,11 @@ class GenericJsonAdapter implements ProcessorWebhookAdapter {
 
     const tagsRaw = findKvObject(payload)
     const tags = normalizeTags(tagsRaw)
+
+    // For disputes and reversals, extract the linked transfer ID so downstream
+    // can correlate back to the original charge even without our internal tags.
+    const linkedTransferId = extractLinkedTransferId(payloadObj)
+    if (linkedTransferId) tags['_linked_transfer_id'] = linkedTransferId
 
     const ledgerId = extractLedgerId(row, tags)
     const sourceEventId = pickString(row.event_id, 255) || `inbox:${row.id}`

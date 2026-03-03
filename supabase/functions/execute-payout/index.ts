@@ -113,7 +113,7 @@ class CardProcessorRail implements PaymentRail {
     const operationKey =
       (Deno.env.get('PROCESSOR_PAYOUT_OPERATION_KEY') || '').trim() || 'PUSH_TO_ACH'
     const processorName =
-      (Deno.env.get('PROCESSOR_NAME') || '').trim() || 'FINIX_V1'
+      (Deno.env.get('PROCESSOR_NAME') || '').trim() || 'DUMMY_V1'
 
     const provider = getPaymentProvider('card')
     const result = await provider.createPaymentIntent({
