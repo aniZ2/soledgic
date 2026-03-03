@@ -1,6 +1,6 @@
 {
   "name": "@soledgic/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Double-entry accounting API for any business",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

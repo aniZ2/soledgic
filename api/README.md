@@ -264,7 +264,7 @@ try {
   } else if (error instanceof NotFoundError) {
     console.log('Not found:', error.message)
   } else if (error instanceof SoledgicError) {
-    console.log(`Error ${error.statusCode}:`, error.message)
+    console.log(`Error ${error.status}:`, error.message)
   }
 }
 ```

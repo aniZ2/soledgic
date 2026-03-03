@@ -677,9 +677,38 @@ export class SoledgicError extends Error {
     message: string,
     public status: number,
     public details?: unknown,
+    public code?: string,
   ) {
     super(message)
     this.name = 'SoledgicError'
+  }
+}
+
+export class ValidationError extends SoledgicError {
+  constructor(message: string, details?: unknown) {
+    super(message, 400, details, 'VALIDATION_ERROR')
+    this.name = 'ValidationError'
+  }
+}
+
+export class AuthenticationError extends SoledgicError {
+  constructor(message: string = 'Invalid API key', details?: unknown) {
+    super(message, 401, details, 'AUTHENTICATION_ERROR')
+    this.name = 'AuthenticationError'
+  }
+}
+
+export class NotFoundError extends SoledgicError {
+  constructor(message: string, details?: unknown) {
+    super(message, 404, details, 'NOT_FOUND')
+    this.name = 'NotFoundError'
+  }
+}
+
+export class ConflictError extends SoledgicError {
+  constructor(message: string, details?: unknown) {
+    super(message, 409, details, 'CONFLICT')
+    this.name = 'ConflictError'
   }
 }
 
@@ -711,6 +740,16 @@ export class Soledgic {
     (this as any)._destroyKey?.()
   }
 
+  private throwTypedError(message: string, status: number, data: unknown): never {
+    switch (status) {
+      case 400: throw new ValidationError(message, data)
+      case 401: throw new AuthenticationError(message, data)
+      case 404: throw new NotFoundError(message, data)
+      case 409: throw new ConflictError(message, data)
+      default:  throw new SoledgicError(message, status, data)
+    }
+  }
+
   private async request<T>(endpoint: string, body: any): Promise<T> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
@@ -727,7 +766,7 @@ export class Soledgic {
 
       const data = await response.json()
       if (!response.ok) {
-        throw new SoledgicError(
+        this.throwTypedError(
           data.error || `Request failed: ${response.status}`,
           response.status,
           data,
@@ -758,7 +797,7 @@ export class Soledgic {
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new SoledgicError(
+        this.throwTypedError(
           data.error || `Request failed: ${response.status}`,
           response.status,
           data,
@@ -787,7 +826,7 @@ export class Soledgic {
         const text = await response.text()
         let parsed: any
         try { parsed = JSON.parse(text) } catch { parsed = { error: text } }
-        throw new SoledgicError(
+        this.throwTypedError(
           parsed.error || `Request failed: ${response.status}`,
           response.status,
           parsed,

@@ -1,18 +1,17 @@
 // Soledgic Edge Function: Receive Payment
 // POST /receive-payment
 // Records receipt of payment on an invoice (reduces A/R, increases Cash)
-// SECURITY HARDENED VERSION
+// MIGRATED TO createHandler
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
   validateId,
   validateString,
   validateAmount,
-  getClientIp
+  createAuditLogAsync,
+  LedgerContext
 } from '../_shared/utils.ts'
 
 interface ReceivePaymentRequest {
@@ -26,33 +25,20 @@ interface ReceivePaymentRequest {
   metadata?: Record<string, any>
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'receive-payment', requireAuth: true, rateLimit: true },
+  async (req, supabase, ledger: LedgerContext | null, body: ReceivePaymentRequest, { requestId }) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger is not active', 403, req, requestId)
     }
-
-    const body: ReceivePaymentRequest = await req.json()
 
     const amount = validateAmount(body.amount)
     if (amount === null || amount <= 0) {
-      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req)
+      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req, requestId)
     }
 
     const amountInDollars = amount / 100
@@ -68,7 +54,7 @@ Deno.serve(async (req) => {
     let arAccount = accounts?.find(a => a.account_type === 'accounts_receivable')
 
     if (!cashAccount) {
-      return errorResponse('Cash account not found', 500, req)
+      return errorResponse('Cash account not found', 500, req, requestId)
     }
 
     if (!arAccount) {
@@ -86,7 +72,7 @@ Deno.serve(async (req) => {
     }
 
     if (!arAccount) {
-      return errorResponse('Could not create Accounts Receivable account', 500, req)
+      return errorResponse('Could not create Accounts Receivable account', 500, req, requestId)
     }
 
     // Description
@@ -101,7 +87,7 @@ Deno.serve(async (req) => {
         .eq('id', invoiceTxId)
         .eq('ledger_id', ledger.id)
         .single()
-      
+
       if (originalInvoice) {
         description = `Payment received: ${originalInvoice.description}`
       }
@@ -134,7 +120,7 @@ Deno.serve(async (req) => {
 
     if (txError) {
       console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create payment', 500, req)
+      return errorResponse('Failed to create payment', 500, req, requestId)
     }
 
     // Create entries
@@ -146,25 +132,21 @@ Deno.serve(async (req) => {
     await supabase.from('entries').insert(entries)
 
     // Audit log
-    supabase.from('audit_log').insert({
+    createAuditLogAsync(supabase, req, {
       ledger_id: ledger.id,
       action: 'receive_payment',
       entity_type: 'transaction',
       entity_id: transaction.id,
       actor_type: 'api',
-      ip_address: getClientIp(req),
-      user_agent: req.headers.get('user-agent'),
       request_body: { amount: amountInDollars, customer: customerName }
-    }).then(() => {}).catch(() => {})
+    }, requestId)
 
     return jsonResponse({
       success: true,
       transaction_id: transaction.id,
       amount: amountInDollars
-    }, 200, req)
-
-  } catch (error: any) {
-    console.error('Error receiving payment:', error)
-    return errorResponse('Internal server error', 500, req)
+    }, 200, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

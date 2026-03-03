@@ -128,28 +128,34 @@ const handler = createHandler(
       }
 
       case 'payout_summary': {
+        // Query payout transactions (not the empty payouts table)
         let query = supabase
-          .from('payouts')
-          .select(`id, amount, currency, payment_method, payment_reference, status, initiated_at, completed_at, accounts(entity_id)`)
+          .from('transactions')
+          .select(`id, amount, currency, reference_id, status, metadata, created_at, entries!inner(entry_type, accounts!inner(entity_id))`)
           .eq('ledger_id', ledger.id)
-          .order('initiated_at', { ascending: false })
+          .eq('transaction_type', 'payout')
+          .order('created_at', { ascending: false })
 
-        if (startDate) query = query.gte('initiated_at', startDate)
-        if (endDate) query = query.lte('initiated_at', endDate)
+        if (startDate) query = query.gte('created_at', startDate)
+        if (endDate) query = query.lte('created_at', endDate)
 
         const { data: payouts } = await query
 
-        data = payouts?.map((p: any) => ({
-          payout_id: p.id,
-          creator_id: p.accounts?.entity_id,
-          amount: p.amount,
-          currency: p.currency,
-          payment_method: p.payment_method,
-          payment_reference: p.payment_reference,
-          status: p.status,
-          initiated_at: p.initiated_at,
-          completed_at: p.completed_at
-        })) || []
+        data = payouts?.map((p: any) => {
+          // Find the debit entry (creator side) to get entity_id
+          const creatorEntry = p.entries?.find((e: any) => e.entry_type === 'debit')
+          return {
+            payout_id: p.id,
+            creator_id: creatorEntry?.accounts?.entity_id ?? null,
+            amount: p.amount,
+            currency: p.currency,
+            payment_method: (p.metadata as any)?.payout_method ?? null,
+            payment_reference: p.reference_id,
+            status: p.status,
+            initiated_at: p.created_at,
+            completed_at: p.status === 'completed' || p.status === 'reconciled' ? p.created_at : null
+          }
+        }) || []
 
         columns = ['payout_id', 'creator_id', 'amount', 'currency', 'payment_method', 'payment_reference', 'status', 'initiated_at', 'completed_at']
         break

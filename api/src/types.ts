@@ -565,8 +565,8 @@ export interface SendBreachAlertResponse {
 export interface SoledgicConfig {
   /** Your Soledgic API key */
   apiKey: string
-  /** Base URL for Supabase functions (optional) */
-  baseUrl?: string
+  /** Base URL for Supabase functions */
+  baseUrl: string
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
   /** Custom fetch implementation (for testing) */
@@ -578,8 +578,9 @@ export interface SoledgicConfig {
 export class SoledgicError extends Error {
   constructor(
     message: string,
-    public statusCode: number,
-    public code?: string
+    public status: number,
+    public code?: string,
+    public details?: unknown
   ) {
     super(message)
     this.name = 'SoledgicError'

@@ -105,12 +105,14 @@ const handler = createHandler(
       issues.push(`Balance ($${availableBalance.toFixed(2)}) below minimum payout amount ($${minPayoutAmount.toFixed(2)})`)
     }
 
-    // Check 4: Pending payouts
+    // Check 4: Pending payouts (from transactions table, not the empty payouts table)
     const { data: pendingPayouts } = await supabase
-      .from('payouts')
-      .select('amount')
-      .eq('account_id', account.id)
+      .from('transactions')
+      .select('amount, entries!inner(account_id)')
+      .eq('ledger_id', ledger.id)
+      .eq('transaction_type', 'payout')
       .in('status', ['pending', 'processing'])
+      .eq('entries.account_id', account.id)
 
     const pendingAmount = pendingPayouts?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
     if (pendingAmount > 0) {

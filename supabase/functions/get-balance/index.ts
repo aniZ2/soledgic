@@ -97,13 +97,14 @@ const handler = createHandler(
         }
       })
 
-      // Get pending payouts
+      // Get pending payouts (from transactions table, not the empty payouts table)
       const { data: pendingPayouts } = await supabase
-        .from('payouts')
-        .select('amount')
+        .from('transactions')
+        .select('amount, entries!inner(account_id)')
         .eq('ledger_id', ledger.id)
-        .eq('account_id', account.id)
+        .eq('transaction_type', 'payout')
         .in('status', ['pending', 'processing'])
+        .eq('entries.account_id', account.id)
 
       const pendingAmount = pendingPayouts?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
 
@@ -180,12 +181,13 @@ const handler = createHandler(
           return map
         }, {} as Record<string, number>) || {}
 
-        // Calculate total paid out
+        // Calculate total paid out (from transactions table, not the empty payouts table)
         const { data: completedPayouts } = await supabase
-          .from('payouts')
+          .from('transactions')
           .select('amount')
           .eq('ledger_id', ledger.id)
-          .eq('status', 'completed')
+          .eq('transaction_type', 'payout')
+          .in('status', ['completed', 'reconciled'])
 
         const totalPaidOut = completedPayouts?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
 
