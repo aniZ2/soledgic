@@ -10,7 +10,7 @@ export function getResend(): Resend {
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (process.env.NODE_ENV === 'production' ? 'https://soledgic.com' : 'http://localhost:3000')
-const FROM_EMAIL = 'Soledgic <team@soledgic.com>'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'Soledgic <team@soledgic.com>'
 
 function escapeHtml(text: string | null | undefined): string {
   if (!text) return ''
@@ -106,7 +106,7 @@ export async function sendTeamInviteEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `${escapeHtml(inviterName)} invited you to join ${escapeHtml(orgName)} on Soledgic`,
+      subject: `${inviterName} invited you to join ${orgName} on Soledgic`,
       html: emailTemplate(content),
     })
     return { success: true }
@@ -257,7 +257,7 @@ export async function sendPaymentFailedEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `Action required: Payment failed for ${escapeHtml(orgName)}`,
+      subject: `Action required: Payment failed for ${orgName}`,
       html: emailTemplate(content),
     })
     return { success: true }
@@ -308,7 +308,7 @@ export async function sendPayoutProcessedEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `Your payout of ${escapeHtml(amount)} is on the way`,
+      subject: `Your payout of ${amount} is on the way`,
       html: emailTemplate(content),
     })
     return { success: true }
