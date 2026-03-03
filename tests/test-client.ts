@@ -15,7 +15,9 @@ export class SoledgicTestClient {
     this.baseUrl = baseUrl || SOLEDGIC_URL
   }
 
-  async request(endpoint: string, body: any, retries = 3): Promise<any> {
+  async request(endpoint: string, body: any, _deadline?: number): Promise<any> {
+    // Retry budget: total retry time capped at 60s so it never outruns test timeouts
+    const deadline = _deadline ?? Date.now() + 60_000
     const url = `${this.baseUrl}/${endpoint}`
     const bodyStr = JSON.stringify(body)
 
@@ -31,12 +33,21 @@ export class SoledgicTestClient {
 
     const data = await res.json()
 
-    // Retry on rate limit (429)
-    if (res.status === 429 && retries > 0) {
-      const retryAfter = Number(data.retry_after || 10)
-      const waitMs = Math.min(retryAfter, 65) * 1000
-      await new Promise(resolve => setTimeout(resolve, waitMs))
-      return this.request(endpoint, body, retries - 1)
+    // Retry on rate limit (429) only if we have budget remaining
+    if (res.status === 429) {
+      const remaining = deadline - Date.now()
+      if (remaining > 2000) {
+        const retryAfter = Number(data.retry_after || 10)
+        const waitMs = Math.min(retryAfter * 1000, remaining - 1000)
+        await new Promise(resolve => setTimeout(resolve, waitMs))
+        return this.request(endpoint, body, deadline)
+      }
+      // No budget left — throw instead of hanging
+      const error: any = new Error(`Rate limited on ${endpoint} and retry budget exhausted`)
+      error.status = 429
+      error.code = 'RATE_LIMITED'
+      error.details = data
+      throw error
     }
 
     if (!res.ok && !data.success) {

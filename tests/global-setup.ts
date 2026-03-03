@@ -25,12 +25,24 @@ export default async function globalSetup() {
     return
   }
 
+  const client = new SoledgicTestClient(apiKey, anonKey, baseUrl)
+
+  // Verify the API is reachable before running tests
   try {
-    const client = new SoledgicTestClient(apiKey, anonKey, baseUrl)
+    await client.getBalances()
+    console.log('✅ API is reachable\n')
+  } catch (error: any) {
+    if (error.status === 429) {
+      throw new Error(`API is rate-limited (429). Wait 60s for the window to reset before running E2E.`)
+    }
+    throw new Error(`API is not reachable: ${error.message}. Cannot run E2E tests.`)
+  }
+
+  // Cleanup is best-effort — each test run uses unique timestamped IDs
+  try {
     await client.cleanupTestData()
     console.log('✅ Test data cleanup complete\n')
-  } catch (error: any) {
-    console.error('⚠️ Test data cleanup failed:', error.message)
-    console.log('Continuing with tests anyway...\n')
+  } catch {
+    console.log('⚠️ Cleanup endpoint not available (expected on shared envs). Tests use unique IDs.\n')
   }
 }
