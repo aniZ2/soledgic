@@ -13,8 +13,10 @@
     "functions:deploy": "supabase functions deploy",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:stress": "vitest run --config vitest.stress.config.ts",
     "test:coverage": "vitest run --coverage",
+    "validate:env": "bash scripts/validate-env.sh",
     "security-gate": "bash scripts/security-gate.sh",
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",
     "deploy:migrations": "npm run security-gate && npx supabase db push"

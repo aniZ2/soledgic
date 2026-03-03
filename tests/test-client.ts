@@ -15,10 +15,10 @@ export class SoledgicTestClient {
     this.baseUrl = baseUrl || SOLEDGIC_URL
   }
 
-  async request(endpoint: string, body: any): Promise<any> {
+  async request(endpoint: string, body: any, retries = 3): Promise<any> {
     const url = `${this.baseUrl}/${endpoint}`
     const bodyStr = JSON.stringify(body)
-    
+
     const res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -30,7 +30,15 @@ export class SoledgicTestClient {
     })
 
     const data = await res.json()
-    
+
+    // Retry on rate limit (429)
+    if (res.status === 429 && retries > 0) {
+      const retryAfter = Number(data.retry_after || 10)
+      const waitMs = Math.min(retryAfter, 65) * 1000
+      await new Promise(resolve => setTimeout(resolve, waitMs))
+      return this.request(endpoint, body, retries - 1)
+    }
+
     if (!res.ok && !data.success) {
       const error: any = new Error(data.error || `HTTP ${res.status}`)
       error.status = res.status
@@ -309,12 +317,160 @@ export class SoledgicTestClient {
   }
 
   // ============================================================================
+  // REFUNDS
+  // ============================================================================
+
+  async recordRefund(params: {
+    originalSaleReference: string
+    amount?: number
+    reason: string
+    refundFrom?: 'both' | 'platform_only' | 'creator_only'
+    mode?: 'ledger_only' | 'processor_refund'
+    processorPaymentId?: string
+    externalRefundId?: string
+    idempotencyKey?: string
+    metadata?: Record<string, any>
+  }) {
+    return this.request('record-refund', {
+      original_sale_reference: params.originalSaleReference,
+      amount: params.amount,
+      reason: params.reason,
+      refund_from: params.refundFrom,
+      mode: params.mode,
+      processor_payment_id: params.processorPaymentId,
+      external_refund_id: params.externalRefundId,
+      idempotency_key: params.idempotencyKey,
+      metadata: params.metadata,
+    })
+  }
+
+  // ============================================================================
+  // PAYOUT EXECUTION
+  // ============================================================================
+
+  async executePayout(params: {
+    action: 'execute' | 'batch_execute' | 'list_rails' | 'configure_rail'
+    payoutId?: string
+    payoutIds?: string[]
+    rail?: string
+  }) {
+    return this.request('execute-payout', {
+      action: params.action,
+      payout_id: params.payoutId,
+      payout_ids: params.payoutIds,
+      rail: params.rail,
+    })
+  }
+
+  // ============================================================================
+  // WEBHOOKS
+  // ============================================================================
+
+  async createWebhookEndpoint(params: {
+    url: string
+    events: string[]
+    description?: string
+  }) {
+    return this.request('webhooks', {
+      action: 'create',
+      url: params.url,
+      events: params.events,
+      description: params.description,
+    })
+  }
+
+  async listWebhookEndpoints() {
+    return this.request('webhooks', { action: 'list' })
+  }
+
+  async listWebhookDeliveries(endpointId?: string) {
+    return this.request('webhooks', {
+      action: 'deliveries',
+      endpoint_id: endpointId,
+    })
+  }
+
+  // ============================================================================
+  // CREATORS
+  // ============================================================================
+
+  async createCreator(params: {
+    creatorId: string
+    displayName: string
+    email?: string
+    defaultSplitPercent?: number
+  }) {
+    return this.request('create-creator', {
+      creator_id: params.creatorId,
+      display_name: params.displayName,
+      email: params.email,
+      default_split_percent: params.defaultSplitPercent,
+    })
+  }
+
+  // ============================================================================
   // TEST UTILITIES
   // ============================================================================
 
   async cleanupTestData() {
     return this.request('test-cleanup', {})
   }
+}
+
+// ============================================================================
+// SERVICE ROLE CLIENT — for internal functions (reconcile, inbox processing)
+// ============================================================================
+
+export class SoledgicServiceClient {
+  private serviceRoleKey: string
+  private baseUrl: string
+
+  constructor(serviceRoleKey: string, baseUrl?: string) {
+    this.serviceRoleKey = serviceRoleKey
+    this.baseUrl = baseUrl || SOLEDGIC_URL
+  }
+
+  async request(endpoint: string, body: any): Promise<any> {
+    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.serviceRoleKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok && !data.success) {
+      const error: any = new Error(data.error || `HTTP ${res.status}`)
+      error.status = res.status
+      error.details = data
+      throw error
+    }
+
+    return data
+  }
+
+  async reconcileCheckouts(params?: { limit?: number; dryRun?: boolean }) {
+    return this.request('reconcile-checkout-ledger', {
+      limit: params?.limit ?? 20,
+      dry_run: params?.dryRun ?? false,
+    })
+  }
+
+  async processProcessorInbox(params?: { limit?: number; dryRun?: boolean }) {
+    return this.request('process-processor-inbox', {
+      limit: params?.limit ?? 25,
+      dry_run: params?.dryRun ?? false,
+    })
+  }
+}
+
+export function createServiceClient(): SoledgicServiceClient | null {
+  const serviceKey = cleanSecret(process.env.SUPABASE_SERVICE_ROLE_KEY)
+  if (!serviceKey) return null
+  return new SoledgicServiceClient(serviceKey)
 }
 
 // ============================================================================

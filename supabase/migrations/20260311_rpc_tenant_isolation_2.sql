@@ -60,8 +60,10 @@ BEGIN
   -- Get ledger mode
   SELECT ledger_mode INTO v_mode FROM ledgers WHERE id = p_ledger_id;
 
+  -- Idempotent: partial unique index unique_ledger_account_type_no_entity
+  -- covers (ledger_id, account_type) WHERE entity_id IS NULL, so repeated
+  -- calls safely skip already-existing platform accounts.
   IF v_mode = 'marketplace' THEN
-    -- Create marketplace accounts
     INSERT INTO accounts (ledger_id, account_type, entity_type, name, entity_id)
     VALUES
       (p_ledger_id, 'platform_revenue', 'platform', 'Platform Revenue', NULL),
@@ -70,9 +72,8 @@ BEGIN
       (p_ledger_id, 'tax_reserve', 'reserve', 'Tax Reserve', NULL),
       (p_ledger_id, 'refund_reserve', 'reserve', 'Refund Reserve', NULL),
       (p_ledger_id, 'cash', 'business', 'Operating Cash', NULL)
-    ON CONFLICT DO NOTHING;
+    ON CONFLICT (ledger_id, account_type) WHERE entity_id IS NULL DO NOTHING;
   ELSE
-    -- Create standard mode accounts
     INSERT INTO accounts (ledger_id, account_type, entity_type, name, entity_id)
     VALUES
       (p_ledger_id, 'revenue', 'business', 'Revenue', NULL),
@@ -82,7 +83,7 @@ BEGIN
       (p_ledger_id, 'accounts_payable', 'business', 'Accounts Payable', NULL),
       (p_ledger_id, 'owner_equity', 'business', 'Owner Equity', NULL),
       (p_ledger_id, 'tax_reserve', 'reserve', 'Tax Reserve', NULL)
-    ON CONFLICT DO NOTHING;
+    ON CONFLICT (ledger_id, account_type) WHERE entity_id IS NULL DO NOTHING;
   END IF;
 
 EXCEPTION WHEN OTHERS THEN
