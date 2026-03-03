@@ -6,13 +6,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     test: {
-      include: ['tests/**/*.test.ts'],
+      // Unit tests only — stress tests use vitest.stress.config.ts (npm run test:stress)
+      include: ['sdk/typescript/src/**/*.test.ts', 'api/src/**/*.test.ts'],
       testTimeout: 30000,
       hookTimeout: 10000,
-      env: env,
-      globalSetup: ['./tests/global-setup.ts'],
-      // Run test files sequentially to prevent cleanup race conditions
-      fileParallelism: false,
     },
   }
 })

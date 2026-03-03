@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Soledgic, SoledgicError } from './index'
 
 const BASE_URL = 'https://test.supabase.co/functions/v1'
-const API_KEY = 'sk_test_key'
+const API_KEY = 'test_api_key_for_unit_tests'
 
 function mockFetch(body: any, status = 200, contentType = 'application/json') {
   return vi.fn().mockResolvedValue({
@@ -378,7 +378,7 @@ describe('Soledgic SDK', () => {
         id: 'led_1',
         business_name: 'Acme',
         ledger_mode: 'standard',
-        api_key: 'sk_live_abc',
+        api_key: 'slk_example_key_for_tests',
         status: 'active',
         created_at: '2026-01-01T00:00:00Z',
       },
@@ -390,7 +390,7 @@ describe('Soledgic SDK', () => {
       ownerEmail: 'admin@acme.com',
     })
 
-    expect(result.ledger.apiKey).toBe('sk_live_abc')
+    expect(result.ledger.apiKey).toBe('slk_example_key_for_tests')
     expect(result.warning).toContain('cannot be retrieved')
   })
 
