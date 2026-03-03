@@ -112,8 +112,17 @@ class CardProcessorRail implements PaymentRail {
 
     const operationKey =
       (Deno.env.get('PROCESSOR_PAYOUT_OPERATION_KEY') || '').trim() || 'PUSH_TO_ACH'
-    const processorName =
-      (Deno.env.get('PROCESSOR_NAME') || '').trim() || 'DUMMY_V1'
+    const processorNameRaw = (Deno.env.get('PROCESSOR_NAME') || '').trim()
+    if (!processorNameRaw && isProduction()) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: 'PROCESSOR_NAME must be configured in production',
+      }
+    }
+    const processorName = processorNameRaw || 'DUMMY_V1'
 
     const provider = getPaymentProvider('card')
     const result = await provider.createPaymentIntent({

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, Loader2, User, Mail, Percent, AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import { LIVEMODE_COOKIE } from '@/lib/livemode'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -45,7 +46,7 @@ export default function NewCreatorPage() {
     // Get livemode from cookie
     const livemodeCookie = document.cookie
       .split('; ')
-      .find(row => row.startsWith('livemode='))
+      .find(row => row.startsWith(`${LIVEMODE_COOKIE}=`))
     const livemode = livemodeCookie?.split('=')[1] === 'true'
 
     const { data: ledgers } = await supabase

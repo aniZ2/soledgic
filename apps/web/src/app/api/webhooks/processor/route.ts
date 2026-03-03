@@ -128,18 +128,25 @@ function authorizeWebhook(
   request: Request,
   rawBody?: string,
 ): { ok: boolean; mode: 'signature' | 'token' | 'disabled'; error?: string } {
-  // Signature verification takes priority when signing key is configured
+  // Signature verification takes priority when signing key is configured.
+  // Fail closed: if a signing key is set, a valid signature is mandatory.
   const signingKey = getConfiguredSigningKey()
-  const signatureHeader = (request.headers.get('finix-signature') || '').trim()
 
-  if (signingKey && signatureHeader && rawBody !== undefined) {
+  if (signingKey) {
+    const signatureHeader = (request.headers.get('finix-signature') || '').trim()
+    if (!signatureHeader) {
+      return { ok: false, mode: 'signature', error: 'Signature header required when signing key is configured' }
+    }
+    if (rawBody === undefined) {
+      return { ok: false, mode: 'signature', error: 'Request body required for signature verification' }
+    }
     const result = verifyFinixSignature(rawBody, signatureHeader, signingKey)
     return result.valid
       ? { ok: true, mode: 'signature' }
       : { ok: false, mode: 'signature', error: result.error }
   }
 
-  // Fall back to token auth
+  // Fall back to token auth (only when no signing key is configured)
   const token = getConfiguredWebhookToken()
   const allowInsecureAuth =
     process.env.NODE_ENV !== 'production' &&

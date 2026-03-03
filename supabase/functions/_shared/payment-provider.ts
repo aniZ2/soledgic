@@ -207,23 +207,24 @@ class CardPaymentProvider implements PaymentProvider {
     if (!username || !password) {
       return { success: false, provider: 'card', error: 'Payment processor credentials are not configured' }
     }
-    if (!merchantId) {
-      return { success: false, provider: 'card', error: 'Payment processor merchant is not configured' }
-    }
-
     // Merchant-of-record invariant: do not allow any merchant overrides.
     if (typeof (params as any)?.merchant_id === 'string' && (params as any).merchant_id.trim().length > 0) {
       return { success: false, provider: 'card', error: 'Merchant override is not allowed' }
     }
 
     // Processor transfer rules (mutually exclusive per Finix spec):
-    // - DEBIT transfers use `source` (payment_method_id)
-    // - CREDIT transfers use `destination` (destination_id)
+    // - DEBIT transfers use `source` (payment_method_id) + merchant
+    // - CREDIT transfers use `destination` (destination_id), no merchant needed
     const source = params.payment_method_id || null
     const destination = params.destination_id || null
 
     if (!source && !destination) {
       return { success: false, provider: 'card', error: 'payment_method_id or destination_id is required' }
+    }
+
+    // merchantId is only required for DEBIT (charge) flows, not CREDIT (payout) flows
+    if (!destination && !merchantId) {
+      return { success: false, provider: 'card', error: 'Payment processor merchant is not configured' }
     }
 
     const rawTags: Record<string, unknown> = {

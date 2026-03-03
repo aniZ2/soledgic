@@ -56,7 +56,7 @@ const COMMANDS = {
     body: {
       action: 'create',
       url: 'https://example.com/webhook',
-      events: ['payout.created', 'sale.created'],
+      events: ['payout.created', 'checkout.completed'],
     },
   },
 }

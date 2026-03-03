@@ -31,13 +31,12 @@ interface WebhookDelivery {
 
 const EVENT_TYPES = [
   { value: '*', label: 'All Events' },
-  { value: 'sale.created', label: 'Sale Created' },
+  { value: 'checkout.completed', label: 'Checkout Completed' },
+  { value: 'refund.created', label: 'Refund Created' },
   { value: 'sale.refunded', label: 'Sale Refunded' },
-  { value: 'payout.processed', label: 'Payout Processed' },
+  { value: 'payout.created', label: 'Payout Created' },
   { value: 'payout.executed', label: 'Payout Executed' },
-  { value: 'creator.created', label: 'Creator Created' },
-  { value: 'period.closed', label: 'Period Closed' },
-  { value: 'statement.generated', label: 'Statement Generated' },
+  { value: 'payout.failed', label: 'Payout Failed' },
 ]
 
 export default function WebhooksPage() {

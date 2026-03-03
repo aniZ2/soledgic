@@ -61,16 +61,12 @@ COMMENT ON TABLE webhook_endpoints IS 'Customer-configured webhook endpoints';
 COMMENT ON TABLE webhook_deliveries IS 'Webhook delivery attempts and status';
 
 -- Event types:
--- sale.created
+-- checkout.completed
+-- refund.created
 -- sale.refunded
--- payout.processed
+-- payout.created
 -- payout.executed
 -- payout.failed
--- creator.created
--- creator.updated
--- period.closed
--- statement.generated
--- reconciliation.completed
 
 -- ============================================================================
 -- FUNCTION: Queue webhook for delivery

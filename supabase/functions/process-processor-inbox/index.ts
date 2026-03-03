@@ -63,6 +63,31 @@ function domainEventType(ev: NormalizedProcessorEvent): string {
 
 type TransactionRow = { id: string; metadata: any }
 
+/**
+ * Resolve ledger_id and creator_id from a linked transfer ID.
+ * Used when disputes/reversals from the processor lack Soledgic tags
+ * but reference the original charge via _linked_transfer_id.
+ */
+async function resolveFromLinkedTransfer(
+  supabase: any,
+  linkedTransferId: string
+): Promise<{ ledger_id: string | null; creator_id: string | null }> {
+  const { data } = await supabase
+    .from('processor_transactions')
+    .select('ledger_id, raw_data')
+    .eq('processor_id', linkedTransferId)
+    .limit(1)
+    .maybeSingle()
+
+  if (!data) return { ledger_id: null, creator_id: null }
+
+  const tags = (data.raw_data?.tags || {}) as Record<string, string>
+  return {
+    ledger_id: data.ledger_id || null,
+    creator_id: tags.creator_id || tags.soledgic_creator_id || null,
+  }
+}
+
 async function queueWebhook(
   supabase: any,
   ledgerId: string,
@@ -193,8 +218,15 @@ async function handleDisputeUpdate(
   if (!enabled) return { heldFundId: null }
 
   const ledgerId = ev.ledger_id
-  const creatorId = (ev.tags.creator_id || '').trim()
+  let creatorId = (ev.tags.creator_id || '').trim()
   const disputeId = (ev.resource_id || '').trim() || (ev.tags.dispute_id || '').trim()
+
+  // Resolve creator_id from linked transfer if missing
+  if (!creatorId && ev.tags._linked_transfer_id) {
+    const resolved = await resolveFromLinkedTransfer(supabase, ev.tags._linked_transfer_id)
+    creatorId = (resolved.creator_id || '').trim()
+  }
+
   if (!ledgerId || !creatorId || !disputeId) return { heldFundId: null }
 
   const action = disputeActionFromEventType(ev)
@@ -389,6 +421,19 @@ Deno.serve(async (req: Request) => {
 
       // Current implementation expects one normalized event per inbox row.
       const ev = normalized[0] as NormalizedProcessorEvent
+
+      // Resolve ledger_id (and creator_id) from linked transfer if missing.
+      // This handles Finix disputes/reversals that reference the original charge
+      // but don't carry Soledgic tags themselves.
+      if (!ev.ledger_id && ev.tags._linked_transfer_id) {
+        const resolved = await resolveFromLinkedTransfer(supabase, ev.tags._linked_transfer_id)
+        if (resolved.ledger_id) {
+          (ev as { ledger_id: string | null }).ledger_id = resolved.ledger_id
+        }
+        if (resolved.creator_id && !ev.tags.creator_id) {
+          ev.tags.creator_id = resolved.creator_id
+        }
+      }
 
       if (!ev.ledger_id) {
         results.skipped++

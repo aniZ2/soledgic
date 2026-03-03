@@ -86,36 +86,41 @@ export const PATCH = createApiHandler(
       updates.name = body.name.trim()
     }
     if (body.settings) {
-      // Merge settings instead of replacing
-      const { data: currentOrg } = await supabase
-        .from('organizations')
-        .select('settings')
-        .eq('id', membership.organization_id)
-        .single()
-
-      updates.settings = {
-        ...(currentOrg?.settings || {}),
-        ...body.settings,
+      // Use atomic RPC to prevent read-merge-write races.
+      // The RPC handles both object patches (deep-merge) and scalar values (replace).
+      for (const [key, value] of Object.entries(body.settings)) {
+        const { error: rpcError } = await supabase.rpc('merge_organization_settings_key', {
+          p_organization_id: membership.organization_id,
+          p_settings_key: key,
+          p_patch: value,
+        })
+        if (rpcError) {
+          console.error('Organization settings merge error:', rpcError.code)
+          return NextResponse.json(
+            { error: 'Failed to update organization settings' },
+            { status: 500 }
+          )
+        }
       }
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length > 0) {
+      const { error: updateError } = await supabase
+        .from('organizations')
+        .update(updates)
+        .eq('id', membership.organization_id)
+
+      if (updateError) {
+        console.error('Organization update error:', updateError.code)
+        return NextResponse.json(
+          { error: 'Failed to update organization' },
+          { status: 500 }
+        )
+      }
+    } else if (!body.settings) {
       return NextResponse.json(
         { error: 'No valid fields to update' },
         { status: 400 }
-      )
-    }
-
-    const { error: updateError } = await supabase
-      .from('organizations')
-      .update(updates)
-      .eq('id', membership.organization_id)
-
-    if (updateError) {
-      console.error('Organization update error:', updateError.code)
-      return NextResponse.json(
-        { error: 'Failed to update organization' },
-        { status: 500 }
       )
     }
 

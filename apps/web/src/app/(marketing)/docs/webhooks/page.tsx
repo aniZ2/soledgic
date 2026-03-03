@@ -44,36 +44,28 @@ export default function WebhooksPage() {
             </thead>
             <tbody>
               <tr className="border-b border-border">
-                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">sale.created</code></td>
-                <td className="py-2 px-3 text-muted-foreground">A new sale was recorded</td>
+                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">checkout.completed</code></td>
+                <td className="py-2 px-3 text-muted-foreground">A checkout was completed and reconciled</td>
+              </tr>
+              <tr className="border-b border-border">
+                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">refund.created</code></td>
+                <td className="py-2 px-3 text-muted-foreground">A refund was initiated</td>
               </tr>
               <tr className="border-b border-border">
                 <td className="py-2 px-3"><code className="bg-muted px-1 rounded">sale.refunded</code></td>
-                <td className="py-2 px-3 text-muted-foreground">A sale was refunded</td>
+                <td className="py-2 px-3 text-muted-foreground">A refund was confirmed by the processor</td>
               </tr>
               <tr className="border-b border-border">
-                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">payout.processed</code></td>
+                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">payout.created</code></td>
                 <td className="py-2 px-3 text-muted-foreground">A payout was initiated</td>
               </tr>
               <tr className="border-b border-border">
                 <td className="py-2 px-3"><code className="bg-muted px-1 rounded">payout.executed</code></td>
                 <td className="py-2 px-3 text-muted-foreground">A payout was completed</td>
               </tr>
-              <tr className="border-b border-border">
+              <tr>
                 <td className="py-2 px-3"><code className="bg-muted px-1 rounded">payout.failed</code></td>
                 <td className="py-2 px-3 text-muted-foreground">A payout failed</td>
-              </tr>
-              <tr className="border-b border-border">
-                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">creator.created</code></td>
-                <td className="py-2 px-3 text-muted-foreground">A new creator was added</td>
-              </tr>
-              <tr className="border-b border-border">
-                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">period.closed</code></td>
-                <td className="py-2 px-3 text-muted-foreground">An accounting period was closed</td>
-              </tr>
-              <tr>
-                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">statement.generated</code></td>
-                <td className="py-2 px-3 text-muted-foreground">A creator statement was generated</td>
               </tr>
             </tbody>
           </table>
@@ -107,7 +99,7 @@ export default function WebhooksPage() {
               </tr>
               <tr>
                 <td className="py-2 px-3"><code className="bg-muted px-1 rounded">X-Soledgic-Event</code></td>
-                <td className="py-2 px-3 text-muted-foreground">Event type (e.g., sale.created)</td>
+                <td className="py-2 px-3 text-muted-foreground">Event type (e.g., checkout.completed)</td>
               </tr>
             </tbody>
           </table>
@@ -118,7 +110,7 @@ export default function WebhooksPage() {
           <pre className="text-sm text-slate-300">
 {`{
   "id": "evt_abc123",
-  "type": "sale.created",
+  "type": "checkout.completed",
   "created_at": "2025-12-18T10:30:00Z",
   "livemode": true,
   "data": {

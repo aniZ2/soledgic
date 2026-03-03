@@ -243,8 +243,8 @@ const isValid = soledgic.webhooks.verifySignature(
 // Parse webhook event
 const event = soledgic.webhooks.parseEvent(payload);
 
-if (event.type === 'sale.created') {
-  console.log('New sale:', event.data.transaction_id);
+if (event.type === 'checkout.completed') {
+  console.log('Checkout completed:', event.data.transaction_id);
 }`}
           </pre>
         </div>
@@ -266,8 +266,8 @@ is_valid = client.webhooks.verify_signature(
 # Parse webhook event
 event = client.webhooks.parse_event(payload)
 
-if event.type == 'sale.created':
-    print(f"New sale: {event.data['transaction_id']}")`}
+if event.type == 'checkout.completed':
+    print(f"Checkout completed: {event.data['transaction_id']}")`}
           </pre>
         </div>
       </section>
