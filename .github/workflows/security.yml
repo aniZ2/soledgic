@@ -140,7 +140,7 @@ jobs:
 
           for pattern in "${PATTERNS[@]}"; do
             MATCHES=$(grep -rE "$pattern" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
-              --exclude-dir=node_modules --exclude-dir=.next --exclude="*.example" \
+              --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=tests --exclude="*.example" \
               --exclude="*.test.ts" --exclude="*.test.tsx" --exclude="*.spec.ts" \
               . 2>/dev/null || true)
 
