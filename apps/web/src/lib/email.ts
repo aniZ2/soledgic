@@ -9,8 +9,14 @@ export function getResend(): Resend {
   return _resend
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (process.env.NODE_ENV === 'production' ? 'https://soledgic.com' : 'http://localhost:3000')
 const FROM_EMAIL = 'Soledgic <team@soledgic.com>'
+
+function escapeHtml(text: string | null | undefined): string {
+  if (!text) return ''
+  const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+  return String(text).replace(/[&<>"']/g, c => entities[c] || c)
+}
 
 // Email wrapper for consistent styling
 function emailTemplate(content: string, footer = 'Soledgic — Creator economy infrastructure') {
@@ -83,10 +89,10 @@ export async function sendTeamInviteEmail({
 
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
-      You've been invited to join ${orgName}
+      You've been invited to join ${escapeHtml(orgName)}
     </h1>
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
-      ${inviterName} has invited you to join <strong>${orgName}</strong> on Soledgic as a <strong>${role}</strong>.
+      ${escapeHtml(inviterName)} has invited you to join <strong>${escapeHtml(orgName)}</strong> on Soledgic as a <strong>${escapeHtml(role)}</strong>.
     </p>
     <a href="${acceptUrl}" style="${buttonStyle}">
       Accept Invitation
@@ -100,7 +106,7 @@ export async function sendTeamInviteEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `${inviterName} invited you to join ${orgName} on Soledgic`,
+      subject: `${escapeHtml(inviterName)} invited you to join ${escapeHtml(orgName)} on Soledgic`,
       html: emailTemplate(content),
     })
     return { success: true }
@@ -126,7 +132,7 @@ export async function sendWelcomeEmail({
 }: SendWelcomeEmailParams): Promise<EmailResult> {
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
-      Welcome to Soledgic, ${name}!
+      Welcome to Soledgic, ${escapeHtml(name)}!
     </h1>
     <p style="margin:0 0 16px;font-size:14px;color:#6b7280;line-height:1.5;">
       Thanks for signing up. Soledgic helps you track creator earnings, process payouts, and maintain an audit-ready ledger.
@@ -179,7 +185,7 @@ export async function sendBillingReminderEmail({
 }: SendBillingReminderEmailParams): Promise<EmailResult> {
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
-      Billing reminder for ${orgName}
+      Billing reminder for ${escapeHtml(orgName)}
     </h1>
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
       Soledgic starts free with one included ledger and one included team member. Additional ledgers and additional team members are billed at $20/month each, and payment processing fees apply.
@@ -229,14 +235,14 @@ export async function sendPaymentFailedEmail({
 }: SendPaymentFailedEmailParams): Promise<EmailResult> {
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
-      Payment failed for ${orgName}
+      Payment failed for ${escapeHtml(orgName)}
     </h1>
     <p style="margin:0 0 16px;font-size:14px;color:#6b7280;line-height:1.5;">
-      We couldn't process your payment of <strong>${amount}</strong>. Please update your payment method to avoid service interruption.
+      We couldn't process your payment of <strong>${escapeHtml(amount)}</strong>. Please update your payment method to avoid service interruption.
     </p>
     ${nextRetry ? `
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
-      We'll automatically retry on ${nextRetry}.
+      We'll automatically retry on ${escapeHtml(nextRetry)}.
     </p>
     ` : ''}
     <a href="${APP_URL}/billing" style="${buttonStyle}">
@@ -251,7 +257,7 @@ export async function sendPaymentFailedEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `Action required: Payment failed for ${orgName}`,
+      subject: `Action required: Payment failed for ${escapeHtml(orgName)}`,
       html: emailTemplate(content),
     })
     return { success: true }
@@ -286,11 +292,11 @@ export async function sendPayoutProcessedEmail({
       Payout sent!
     </h1>
     <p style="margin:0 0 16px;font-size:14px;color:#6b7280;line-height:1.5;">
-      Hi ${creatorName}, we've sent your payout of <strong>${amount}</strong> via ${payoutMethod}.
+      Hi ${escapeHtml(creatorName)}, we've sent your payout of <strong>${escapeHtml(amount)}</strong> via ${escapeHtml(payoutMethod)}.
     </p>
     ${arrivalDate ? `
     <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.5;">
-      Expected arrival: <strong>${arrivalDate}</strong>
+      Expected arrival: <strong>${escapeHtml(arrivalDate)}</strong>
     </p>
     ` : ''}
     <p style="margin:0 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">
@@ -302,7 +308,7 @@ export async function sendPayoutProcessedEmail({
     await getResend().emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `Your payout of ${amount} is on the way`,
+      subject: `Your payout of ${escapeHtml(amount)} is on the way`,
       html: emailTemplate(content),
     })
     return { success: true }
@@ -340,14 +346,14 @@ export async function sendSecurityAlertEmail({
 
   const content = `
     <h1 style="margin:0 0 8px;font-size:20px;font-weight:600;color:#111827;">
-      ${titles[alertType]}
+      ${escapeHtml(titles[alertType])}
     </h1>
     <p style="margin:0 0 16px;font-size:14px;color:#6b7280;line-height:1.5;">
-      ${details}
+      ${escapeHtml(details)}
     </p>
     <div style="margin:0 0 24px;padding:16px;background-color:#f9fafb;border-radius:6px;font-size:13px;color:#6b7280;">
-      <p style="margin:0 0 4px;">Time: ${timestamp}</p>
-      ${ipAddress ? `<p style="margin:0;">IP Address: ${ipAddress}</p>` : ''}
+      <p style="margin:0 0 4px;">Time: ${escapeHtml(timestamp)}</p>
+      ${ipAddress ? `<p style="margin:0;">IP Address: ${escapeHtml(ipAddress)}</p>` : ''}
     </div>
     <p style="margin:0 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">
       If this wasn't you, please <a href="${APP_URL}/settings/security" style="color:#dc2626;">secure your account</a> immediately.

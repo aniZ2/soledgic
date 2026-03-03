@@ -274,7 +274,7 @@ async function sendBreachAlerts(
   </table>
   <p style="color: #666; font-size: 14px;">📋 Triggered by new projections from: <strong>${escapeHtml(alertPayload.external_ref)}</strong> (${alertPayload.projections_created} new obligations)</p>
   <div style="margin-top: 30px;">
-    <a href="https://app.soledgic.com/dashboard" style="display: inline-block; background: ${severityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+    <a href="${Deno.env.get('APP_URL') || 'https://app.soledgic.com'}/dashboard" style="display: inline-block; background: ${severityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
       View Dashboard
     </a>
   </div>

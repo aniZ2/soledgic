@@ -9,7 +9,7 @@ echo "Deploying Security-Hardened Edge Functions"
 echo "=========================================="
 echo ""
 
-cd /Users/osifo/Desktop/soledgic
+cd "$(dirname "$0")/.."
 
 # Core transaction functions
 echo "[1/6] Deploying core transaction functions..."

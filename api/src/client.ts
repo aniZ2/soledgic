@@ -268,18 +268,20 @@ export class Soledgic {
   // ============================================================================
 
   /**
-   * Create a hosted checkout payment
+   * Create a checkout payment (direct charge or hosted session).
+   * Omit paymentMethodId to create a hosted checkout session.
    *
    * @example
    * ```typescript
-   * const checkout = await soledgic.createCheckout({
+   * // Hosted session (buyer enters card on hosted page)
+   * const session = await soledgic.createCheckout({
    *   amount: 1999,
    *   creatorId: 'author_123',
    *   productName: 'Book purchase',
-   *   customerEmail: 'reader@example.com'
+   *   successUrl: 'https://example.com/success',
+   *   cancelUrl: 'https://example.com/cancel',
    * })
-   *
-   * console.log(checkout.checkoutUrl)
+   * // Redirect buyer to session.checkoutUrl
    * ```
    */
   async createCheckout(request: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {

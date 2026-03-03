@@ -13,19 +13,31 @@ npm install @soledgic/sdk
 ```typescript
 import Soledgic from '@soledgic/sdk'
 
-const ledger = new Soledgic('sk_live_your_api_key')
+const ledger = new Soledgic({
+  apiKey: 'sk_live_your_api_key',
+  baseUrl: 'https://your-project.supabase.co/functions/v1',
+})
 
 // === MARKETPLACE MODE ===
 
-// Create a hosted checkout session
-const checkout = await ledger.createCheckout({
+// Hosted checkout session (buyer enters card on hosted page)
+const session = await ledger.createCheckout({
   amount: 2999, // $29.99 in cents
   creatorId: 'author_123',
-  paymentMethodId: 'src_abc123', // Required: buyer payment instrument/source
   productName: 'Book purchase',
-  customerEmail: 'reader@example.com',
+  successUrl: 'https://example.com/success',
+  cancelUrl: 'https://example.com/cancel',
 })
-// → { checkoutUrl, paymentId, provider, ... }
+// → { checkoutUrl, sessionId, mode: 'session', ... }
+
+// Direct charge (when you already have the buyer's payment instrument)
+const checkout = await ledger.createCheckout({
+  amount: 2999,
+  creatorId: 'author_123',
+  paymentMethodId: 'PIxxxxxxx',
+  idempotencyKey: 'order_123',
+})
+// → { paymentId, provider, status, ... }
 
 // Record a sale with automatic split
 const sale = await ledger.recordSale({
@@ -85,7 +97,7 @@ const summary = await ledger.get1099Summary(2024)
 | `clearCreatorSplit(creatorId)` | Remove custom split |
 | `autoPromoteCreators()` | Promote based on earnings |
 
-`createCheckout` requires `paymentMethodId` (or legacy alias `sourceId`).
+`createCheckout` supports two modes: **session** (omit `paymentMethodId`, provide `successUrl`) or **direct** (provide `paymentMethodId` + `idempotencyKey`).
 
 ### Standard Functions
 

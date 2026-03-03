@@ -104,7 +104,9 @@ Deno.serve(async (req) => {
           name: `${accountName} (${bankName})`,
           balance: 0,
           currency: 'USD'
-        }).then(() => {}).catch(() => {})
+        }).then(() => {}).catch((err) => {
+          console.error('Failed to create credit_card ledger account for bank account:', bankAccount.id, err)
+        })
       }
 
       // Audit log

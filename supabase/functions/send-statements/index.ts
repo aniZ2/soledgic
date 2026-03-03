@@ -144,8 +144,12 @@ const handler = createHandler(
 
       case 'send_monthly_statements': {
         const now = new Date()
-        const year = body.year || (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear())
-        const month = body.month || (now.getMonth() === 0 ? 12 : now.getMonth())
+        const rawYear = Number(body.year) || (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear())
+        const rawMonth = Number(body.month) || (now.getMonth() === 0 ? 12 : now.getMonth())
+        if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2100) return errorResponse('Invalid year', 400, req)
+        if (!Number.isInteger(rawMonth) || rawMonth < 1 || rawMonth > 12) return errorResponse('Invalid month', 400, req)
+        const year = rawYear
+        const month = rawMonth
 
         let query = supabase.from('ledgers').select('id, business_name, email_config')
         if (ledgerId) query = query.eq('id', ledgerId)
@@ -249,8 +253,10 @@ const handler = createHandler(
         if (!creatorId) return errorResponse('Invalid creator_id', 400, req)
 
         const now = new Date()
-        const year = body.year || now.getFullYear()
-        const month = body.month || now.getMonth() + 1
+        const year = Number(body.year) || now.getFullYear()
+        const month = Number(body.month) || now.getMonth() + 1
+        if (!Number.isInteger(year) || year < 2000 || year > 2100) return errorResponse('Invalid year', 400, req)
+        if (!Number.isInteger(month) || month < 1 || month > 12) return errorResponse('Invalid month', 400, req)
 
         const { data: ledgerData } = await supabase
           .from('ledgers')
@@ -326,8 +332,10 @@ const handler = createHandler(
         if (!creatorId) return errorResponse('Invalid creator_id', 400, req)
 
         const now = new Date()
-        const year = body.year || now.getFullYear()
-        const month = body.month || now.getMonth() + 1
+        const year = Number(body.year) || now.getFullYear()
+        const month = Number(body.month) || now.getMonth() + 1
+        if (!Number.isInteger(year) || year < 2000 || year > 2100) return errorResponse('Invalid year', 400, req)
+        if (!Number.isInteger(month) || month < 1 || month > 12) return errorResponse('Invalid month', 400, req)
 
         const { data: ledgerData } = await supabase
           .from('ledgers')

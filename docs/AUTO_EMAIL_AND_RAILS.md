@@ -136,5 +136,6 @@ supabase db push
 # Set secrets
 supabase secrets set EMAIL_PROVIDER=sendgrid
 supabase secrets set SENDGRID_API_KEY=SG.xxx
-supabase secrets set PROCESSOR_SECRET_KEY=sk_live_xxx
+supabase secrets set PROCESSOR_USERNAME=USxxx
+supabase secrets set PROCESSOR_PASSWORD=xxx
 ```

@@ -254,7 +254,7 @@ const handler = createHandler(
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                from: 'Soledgic <noreply@soledgic.com>',
+                from: Deno.env.get('FROM_EMAIL') || 'Soledgic <noreply@soledgic.com>',
                 to: [creator.email],
                 subject: `Payout of ${formattedAmount} processed`,
                 html: emailHtml,

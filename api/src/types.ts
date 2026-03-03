@@ -13,8 +13,6 @@ export interface RecordSaleRequest {
   amount: number
   /** Currency code (default: USD) */
   currency?: string
-  /** Override default platform fee percentage */
-  platformFeePercent?: number
   /** Sale description */
   description?: string
   /** Reference type (e.g., 'processor_payment', 'manual') */
@@ -31,12 +29,17 @@ export interface CreateCheckoutRequest {
   productName?: string
   customerEmail?: string
   customerId?: string
-  /** Buyer payment method / payment instrument id (required). */
+  /** Buyer payment method / payment instrument id. When provided, performs a direct charge.
+   *  When omitted, creates a hosted checkout session (requires successUrl). */
   paymentMethodId?: string
   /** Backward-compat alias for paymentMethodId. Prefer paymentMethodId. */
   sourceId?: string
   /** Unique key to prevent duplicate charges on retries. Required for direct charges, optional for session mode. */
   idempotencyKey?: string
+  /** Where to redirect after successful payment (required for session mode). */
+  successUrl?: string
+  /** Where to redirect if buyer cancels (session mode). */
+  cancelUrl?: string
   metadata?: Record<string, string>
 }
 
@@ -154,6 +157,10 @@ export interface CreateCheckoutResponse {
   amount?: number
   currency?: string
   breakdown?: CheckoutBreakdown
+  /** Session mode fields — present when paymentMethodId was omitted */
+  mode?: 'direct' | 'session'
+  sessionId?: string
+  expiresAt?: string
   error?: string
 }
 

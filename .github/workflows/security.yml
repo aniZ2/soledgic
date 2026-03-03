@@ -2,7 +2,7 @@ name: Security Scanning
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
   schedule:
@@ -33,14 +33,12 @@ jobs:
         run: |
           npm ci
           npm audit --audit-level=high || true
-        continue-on-error: true
 
       - name: Audit web dependencies
         run: |
           cd apps/web
           npm ci
           npm audit --audit-level=high || true
-        continue-on-error: true
 
   # ============================================================================
   # Secret Scanning
@@ -55,7 +53,7 @@ jobs:
           fetch-depth: 0
 
       - name: TruffleHog Secret Scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.88.0
         with:
           path: ./
           base: ${{ github.event.before || github.event.pull_request.base.sha }}
@@ -202,6 +200,7 @@ jobs:
             echo ""
             echo "Please review the above patterns for SQL injection vulnerabilities."
             echo "Use parameterized queries with Supabase client instead of string concatenation."
+            exit 1
           else
             echo "✅ No obvious SQL injection patterns found!"
           fi

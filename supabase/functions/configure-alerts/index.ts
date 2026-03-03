@@ -10,6 +10,7 @@ import {
   errorResponse,
   validateUrl,
   validateString,
+  escapeHtml,
   LedgerContext,
   getClientIp
 } from '../_shared/utils.ts'
@@ -362,7 +363,7 @@ const handler = createHandler(
       ✅ Soledgic Alert Test
     </h1>
     <p style="margin: 0; color: #666;">
-      This is a test alert from <strong>${ledger.name || 'your ledger'}</strong>.
+      This is a test alert from <strong>${escapeHtml(ledger.name) || 'your ledger'}</strong>.
     </p>
   </div>
   <p>Your email alert integration is working correctly!</p>
@@ -383,9 +384,9 @@ const handler = createHandler(
               body: JSON.stringify({
                 from: fromEmail,
                 to: config.config.recipients,
-                subject: `✅ Soledgic Alert Test - ${ledger.name || 'Your Ledger'}`,
+                subject: `Soledgic Alert Test - ${escapeHtml(ledger.name) || 'Your Ledger'}`,
                 html: testHtml,
-                text: `Soledgic Alert Test\n\nThis is a test alert from ${ledger.name || 'your ledger'}.\n\nYour email alert integration is working correctly!\n\nSent at ${new Date().toISOString()}`
+                text: `Soledgic Alert Test\n\nThis is a test alert from ${(ledger.name || 'your ledger').replace(/[<>]/g, '')}.\n\nYour email alert integration is working correctly!\n\nSent at ${new Date().toISOString()}`
               })
             })
 

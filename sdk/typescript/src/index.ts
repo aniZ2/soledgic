@@ -6,7 +6,9 @@
 
 export interface SoledgicConfig {
   apiKey: string
-  baseUrl?: string
+  baseUrl: string
+  /** Request timeout in milliseconds. Default: 30000 (30s). */
+  timeout?: number
 }
 
 // === REQUEST TYPES ===
@@ -682,8 +684,9 @@ export class SoledgicError extends Error {
 }
 
 export class Soledgic {
-  private apiKey: string
+  private _getKey: () => string
   private baseUrl: string
+  private timeoutMs: number
 
   constructor(config: SoledgicConfig) {
     if (!config.apiKey) {
@@ -692,29 +695,48 @@ export class Soledgic {
     if (!config.baseUrl) {
       throw new Error('baseUrl is required (e.g. https://your-project.supabase.co/functions/v1)')
     }
-    this.apiKey = config.apiKey
+    // Store key in closure for protection against casual reflection
+    let key: string | null = config.apiKey
+    this._getKey = () => {
+      if (!key) throw new Error('Client has been destroyed')
+      return key
+    }
+    ;(this as any)._destroyKey = () => { key = null }
     this.baseUrl = config.baseUrl.replace(/\/$/, '')
+    this.timeoutMs = config.timeout ?? 30_000
+  }
+
+  /** Clear the API key from memory. After calling destroy(), all requests will throw. */
+  destroy(): void {
+    (this as any)._destroyKey?.()
   }
 
   private async request<T>(endpoint: string, body: any): Promise<T> {
-    const response = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'x-api-key': this.apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': this._getKey(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
 
-    const data = await response.json()
-    if (!response.ok) {
-      throw new SoledgicError(
-        data.error || `Request failed: ${response.status}`,
-        response.status,
-        data,
-      )
+      const data = await response.json()
+      if (!response.ok) {
+        throw new SoledgicError(
+          data.error || `Request failed: ${response.status}`,
+          response.status,
+          data,
+        )
+      }
+      return data
+    } finally {
+      clearTimeout(timer)
     }
-    return data
   }
 
   private async requestGet<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
@@ -724,43 +746,57 @@ export class Soledgic {
         if (value !== undefined) url.searchParams.set(key, String(value))
       }
     }
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'x-api-key': this.apiKey,
-      },
-    })
-    const data = await response.json()
-    if (!response.ok) {
-      throw new SoledgicError(
-        data.error || `Request failed: ${response.status}`,
-        response.status,
-        data,
-      )
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'x-api-key': this._getKey(),
+        },
+        signal: controller.signal,
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new SoledgicError(
+          data.error || `Request failed: ${response.status}`,
+          response.status,
+          data,
+        )
+      }
+      return data
+    } finally {
+      clearTimeout(timer)
     }
-    return data
   }
 
   private async requestRaw(endpoint: string, body: any): Promise<Response> {
-    const response = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'x-api-key': this.apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
-    if (!response.ok) {
-      const text = await response.text()
-      let parsed: any
-      try { parsed = JSON.parse(text) } catch { parsed = { error: text } }
-      throw new SoledgicError(
-        parsed.error || `Request failed: ${response.status}`,
-        response.status,
-        parsed,
-      )
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': this._getKey(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        let parsed: any
+        try { parsed = JSON.parse(text) } catch { parsed = { error: text } }
+        throw new SoledgicError(
+          parsed.error || `Request failed: ${response.status}`,
+          response.status,
+          parsed,
+        )
+      }
+      return response
+    } finally {
+      clearTimeout(timer)
     }
-    return response
   }
 
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
@@ -1429,8 +1465,8 @@ export class Soledgic {
           shortfallAbove: response.data.thresholds?.shortfall_above,
         },
         isActive: response.data.is_active,
-        triggerCount: 0,
-        createdAt: '',
+        triggerCount: response.data.trigger_count ?? 0,
+        createdAt: response.data.created_at ?? '',
       },
     }
   }

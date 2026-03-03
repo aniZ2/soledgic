@@ -3,10 +3,16 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { sendWelcomeEmail } from '@/lib/email'
 
+function sanitizeRedirect(raw: string | null): string {
+  const path = (raw || '/dashboard').trim()
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) return '/dashboard'
+  return path
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
-  const redirect = searchParams.get('redirect') || '/dashboard'
+  const redirect = sanitizeRedirect(searchParams.get('redirect'))
 
   // Detect if we're on HTTPS (Vercel/proxies use x-forwarded-proto)
   const forwardedProto = request.headers.get('x-forwarded-proto')

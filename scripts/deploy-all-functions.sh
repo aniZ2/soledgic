@@ -9,7 +9,7 @@ echo "Deploying ALL Security-Hardened Edge Functions"
 echo "=========================================="
 echo ""
 
-cd /Users/osifo/Desktop/soledgic
+cd "$(dirname "$0")/.."
 
 deploy() {
   echo "  ✓ $1"

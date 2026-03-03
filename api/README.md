@@ -22,16 +22,17 @@ const soledgic = new Soledgic({
   baseUrl: 'https://your-project.supabase.co/functions/v1'
 })
 
-// Create a hosted checkout payment
-const checkout = await soledgic.createCheckout({
+// Create a hosted checkout session
+const session = await soledgic.createCheckout({
   amount: 1999,
   creatorId: 'author_123',
   productName: 'Book purchase',
-  customerEmail: 'reader@example.com',
+  successUrl: 'https://example.com/success',
+  cancelUrl: 'https://example.com/cancel',
 })
 
-console.log(checkout.checkoutUrl)
-// https://...
+// Redirect buyer to the hosted checkout page
+console.log(session.checkoutUrl)
 
 // Record a sale with automatic 80/20 split
 const sale = await soledgic.recordSale({
@@ -61,26 +62,24 @@ const soledgic = new Soledgic({
 ### Create Checkout
 
 ```typescript
-const checkout = await soledgic.createCheckout({
+// Hosted session mode (buyer enters card on hosted page)
+const session = await soledgic.createCheckout({
   amount: 1999,                       // Amount in cents
   creatorId: 'author_123',            // Creator receiving the split
-  productId: 'book_abc',              // Optional
   productName: 'Book purchase',       // Optional
-  customerEmail: 'reader@example.com',// Optional
-  paymentProvider: 'card',            // Optional: 'card' | 'processor'
-  metadata: { orderId: 'order_123' }, // Optional
+  successUrl: 'https://example.com/success', // Required for session mode
+  cancelUrl: 'https://example.com/cancel',   // Optional
 })
+// → { success, checkoutUrl, sessionId, mode: 'session', expiresAt }
 
-// Response
-{
-  success: true,
-  provider: 'card',
-  paymentId: 'TR123...',
-  paymentIntentId: 'TR123...',
-  checkoutUrl: 'https://...',
-  clientSecret: null,
-  requiresAction: false
-}
+// Direct charge mode (you already have the buyer's payment instrument)
+const charge = await soledgic.createCheckout({
+  amount: 1999,
+  creatorId: 'author_123',
+  paymentMethodId: 'PIxxxxxxx',       // Buyer payment instrument
+  idempotencyKey: 'order_123',        // Required for direct charges
+})
+// → { success, paymentId, provider: 'card', status }
 ```
 
 ### Record a Sale

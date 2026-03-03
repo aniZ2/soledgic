@@ -108,6 +108,10 @@ const handler = createHandler(
       return errorResponse('Invalid idempotency_key', 400, req, requestId)
     }
 
+    if (body.mode !== undefined && body.mode !== 'ledger_only' && body.mode !== 'processor_refund') {
+      return errorResponse('Invalid mode: must be ledger_only or processor_refund', 400, req, requestId)
+    }
+
     // Support both new mode enum and legacy boolean for backwards compat
     const executeProcessorRefund = body.mode
       ? body.mode === 'processor_refund'

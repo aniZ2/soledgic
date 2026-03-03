@@ -67,6 +67,7 @@ function buildSlackMessage(
   const severityEmoji = data.coverage_ratio < 0.25 ? '🚨' : data.coverage_ratio < 0.5 ? '⚠️' : '📊'
   const severityText = data.coverage_ratio < 0.25 ? 'CRITICAL' : data.coverage_ratio < 0.5 ? 'WARNING' : 'NOTICE'
   const severityColor = data.coverage_ratio < 0.25 ? '#dc2626' : data.coverage_ratio < 0.5 ? '#f59e0b' : '#3b82f6'
+  const dashboardUrl = `${Deno.env.get('APP_URL') || 'https://app.soledgic.com'}/dashboard`
 
   const blocks: any[] = [
     {
@@ -134,7 +135,7 @@ function buildSlackMessage(
           text: 'View Dashboard',
           emoji: true
         },
-        url: 'https://app.soledgic.com/dashboard',
+        url: dashboardUrl,
         style: 'primary'
       }
     ]
@@ -245,7 +246,7 @@ function buildEmailHtml(
   ${triggerContext}
 
   <div style="margin-top: 30px;">
-    <a href="https://app.soledgic.com/dashboard" style="display: inline-block; background: ${severityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+    <a href="${Deno.env.get('APP_URL') || 'https://app.soledgic.com'}/dashboard" style="display: inline-block; background: ${severityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
       View Dashboard
     </a>
   </div>
@@ -270,7 +271,7 @@ Coverage Ratio: ${formatPercent(data.coverage_ratio)}
 
 ${data.triggered_by === 'project_intent' && data.external_ref ? `Triggered by: ${data.external_ref} (${data.projections_created || 0} new obligations)` : ''}
 
-View Dashboard: https://app.soledgic.com/dashboard
+View Dashboard: ${Deno.env.get('APP_URL') || 'https://app.soledgic.com'}/dashboard
 
 Generated at ${new Date().toISOString()}
 `

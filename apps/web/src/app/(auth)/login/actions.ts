@@ -4,10 +4,16 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { toAppUrl } from '@/lib/public-url'
 
+function sanitizeRedirect(raw: string | null): string {
+  const path = (raw || '/dashboard').trim()
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) return '/dashboard'
+  return path
+}
+
 export async function login(formData: FormData) {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
-  const redirectTo = formData.get('redirect') as string || '/dashboard'
+  const redirectTo = sanitizeRedirect(formData.get('redirect') as string)
 
   const cookieStore = await cookies()
 
