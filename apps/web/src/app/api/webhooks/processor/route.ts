@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
-import { createHash } from 'crypto'
+import { createHash, createHmac, timingSafeEqual } from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 export const runtime = 'nodejs'
@@ -24,6 +24,55 @@ function createServiceClient() {
 function getConfiguredWebhookToken(): string | null {
   const token = (process.env.PROCESSOR_WEBHOOK_TOKEN || '').trim()
   return token.length > 0 ? token : null
+}
+
+function getConfiguredSigningKey(): string | null {
+  const key = (process.env.PROCESSOR_WEBHOOK_SIGNING_KEY || '').trim()
+  return key.length > 0 ? key : null
+}
+
+const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000 // 5 minutes
+
+function verifyFinixSignature(
+  rawBody: string,
+  signatureHeader: string,
+  signingKey: string,
+): { valid: boolean; error?: string } {
+  // Finix-Signature format: "timestamp=<ts>, sig=<hex>"
+  const parts: Record<string, string> = {}
+  for (const segment of signatureHeader.split(',')) {
+    const idx = segment.indexOf('=')
+    if (idx < 0) continue
+    const k = segment.slice(0, idx).trim()
+    const v = segment.slice(idx + 1).trim()
+    if (k && v) parts[k] = v
+  }
+
+  const timestamp = parts['timestamp']
+  const sig = parts['sig']
+
+  if (!timestamp || !sig) {
+    return { valid: false, error: 'Malformed Finix-Signature header' }
+  }
+
+  // Replay protection: reject if timestamp is older than 5 minutes
+  const tsMs = Number(timestamp) * 1000
+  if (!Number.isFinite(tsMs) || Math.abs(Date.now() - tsMs) > SIGNATURE_MAX_AGE_MS) {
+    return { valid: false, error: 'Webhook timestamp outside tolerance window' }
+  }
+
+  const expected = createHmac('sha256', signingKey)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex')
+
+  const sigBuf = Buffer.from(sig, 'hex')
+  const expectedBuf = Buffer.from(expected, 'hex')
+
+  if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
+    return { valid: false, error: 'Signature mismatch' }
+  }
+
+  return { valid: true }
 }
 
 function isFlagEnabled(value: string | undefined): boolean {
@@ -75,7 +124,22 @@ function extractWebhookAuthCandidate(request: Request, allowQueryToken: boolean)
   return bearer || basicPassword || headerToken || urlToken
 }
 
-function authorizeWebhook(request: Request): { ok: boolean; mode: 'token' | 'disabled'; error?: string } {
+function authorizeWebhook(
+  request: Request,
+  rawBody?: string,
+): { ok: boolean; mode: 'signature' | 'token' | 'disabled'; error?: string } {
+  // Signature verification takes priority when signing key is configured
+  const signingKey = getConfiguredSigningKey()
+  const signatureHeader = (request.headers.get('finix-signature') || '').trim()
+
+  if (signingKey && signatureHeader && rawBody !== undefined) {
+    const result = verifyFinixSignature(rawBody, signatureHeader, signingKey)
+    return result.valid
+      ? { ok: true, mode: 'signature' }
+      : { ok: false, mode: 'signature', error: result.error }
+  }
+
+  // Fall back to token auth
   const token = getConfiguredWebhookToken()
   const allowInsecureAuth =
     process.env.NODE_ENV !== 'production' &&
@@ -179,12 +243,23 @@ function extractLedgerId(payload: unknown): string | null {
   return ledgerId
 }
 
+function extractEmbeddedFirst(payload: unknown): JsonRecord | null {
+  const root = isJsonRecord(payload) ? payload : null
+  const embedded = root && isJsonRecord(root._embedded) ? root._embedded : null
+  if (!embedded) return null
+  for (const v of Object.values(embedded)) {
+    if (Array.isArray(v) && v.length > 0 && isJsonRecord(v[0])) return v[0]
+  }
+  return null
+}
+
 function extractWebhookFields(payload: unknown) {
   const root = isJsonRecord(payload) ? payload : null
   const resource = root && isJsonRecord(root.resource) ? root.resource : null
   const data = root && isJsonRecord(root.data) ? root.data : null
   const dataObject = data && isJsonRecord(data.object) ? data.object : null
   const entity = root && isJsonRecord(root.entity) ? root.entity : null
+  const embeddedFirst = extractEmbeddedFirst(payload)
 
   const eventId =
     pickString(root ? root.id : null) ||
@@ -201,11 +276,13 @@ function extractWebhookFields(payload: unknown) {
   const livemode = pickBool(root ? root.livemode : null) ?? pickBool(root ? root.live_mode : null) ?? null
 
   // Best-effort resource id extraction. Different processors nest this differently.
+  // Finix nests resources in _embedded.transfers[0], _embedded.verifications[0], etc.
   const resourceId =
     pickString(resource ? resource.id : null) ||
     pickString(data ? data.id : null) ||
     pickString(dataObject ? dataObject.id : null) ||
     pickString(entity ? entity.id : null) ||
+    pickString(embeddedFirst ? embeddedFirst.id : null) ||
     null
 
   return { eventId, eventType, resourceId, livemode }
@@ -218,12 +295,14 @@ function fallbackEventId(rawBody: string): string {
 
 export const POST = createApiHandler(
   async (request, { requestId }) => {
-    const auth = authorizeWebhook(request)
+    // Read raw body first — signature verification needs the unmodified body.
+    const rawBody = await request.text()
+
+    const auth = authorizeWebhook(request, rawBody)
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error || 'Unauthorized', request_id: requestId }, { status: 401 })
     }
 
-    const rawBody = await request.text()
     let payload: unknown
     try {
       payload = rawBody ? JSON.parse(rawBody) : null
@@ -248,7 +327,7 @@ export const POST = createApiHandler(
       livemode,
       headers: safeHeaders(request.headers),
       payload,
-      signature_valid: auth.mode === 'token' ? true : null,
+      signature_valid: auth.mode === 'signature' ? true : null,
       signature_error: null,
       status: 'pending',
       attempts: 0,

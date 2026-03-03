@@ -110,6 +110,11 @@ class CardProcessorRail implements PaymentRail {
     const platformSource =
       (Deno.env.get('PROCESSOR_PAYOUT_SOURCE_ID') || '').trim() || null
 
+    const operationKey =
+      (Deno.env.get('PROCESSOR_PAYOUT_OPERATION_KEY') || '').trim() || 'PUSH_TO_ACH'
+    const processorName =
+      (Deno.env.get('PROCESSOR_NAME') || '').trim() || 'FINIX_V1'
+
     const provider = getPaymentProvider('card')
     const result = await provider.createPaymentIntent({
       amount: Math.round(payout.amount * 100),
@@ -124,6 +129,8 @@ class CardProcessorRail implements PaymentRail {
       payment_method_id: platformSource || undefined,
       destination_id: destination,
       idempotency_id: `payout_${payout.payout_id}`,
+      operation_key: operationKey,
+      processor: processorName,
     })
 
     if (!result.success || !result.id) {

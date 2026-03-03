@@ -24,6 +24,9 @@ export interface PaymentIntentParams {
   destination_id?: string
   // Prevents duplicate transfers at the processor level.
   idempotency_id?: string
+  // CREDIT/payout-specific fields required by Finix.
+  operation_key?: string
+  processor?: string
 }
 
 export interface PaymentIntentResult {
@@ -231,15 +234,18 @@ class CardPaymentProvider implements PaymentProvider {
     const payload: Record<string, unknown> = {
       amount: params.amount,
       currency: params.currency.toUpperCase(),
-      merchant: merchantId,
       tags: sanitizeTags(rawTags),
     }
 
     // source and destination are mutually exclusive: DEBIT uses source, CREDIT uses destination.
+    // Finix payout (CREDIT) transfers require operation_key + processor and omit merchant.
     if (destination) {
       payload.destination = destination
+      if (params.operation_key) payload.operation_key = params.operation_key
+      if (params.processor) payload.processor = params.processor
     } else {
       payload.source = source
+      payload.merchant = merchantId
     }
     if (params.idempotency_id) payload.idempotency_id = params.idempotency_id
 

@@ -97,6 +97,16 @@ function normalizeTags(obj: Record<string, unknown> | null): Record<string, stri
   return out
 }
 
+function extractEmbeddedFirst(payload: unknown): Record<string, any> | null {
+  if (!isObject(payload)) return null
+  const embedded = (payload as any)?._embedded
+  if (!isObject(embedded)) return null
+  for (const v of Object.values(embedded)) {
+    if (Array.isArray(v) && v.length > 0 && isObject(v[0])) return v[0] as Record<string, any>
+  }
+  return null
+}
+
 function extractLedgerId(row: ProcessorWebhookInboxRow, tags: Record<string, string>): string | null {
   return (
     row.ledger_id ||
@@ -107,7 +117,10 @@ function extractLedgerId(row: ProcessorWebhookInboxRow, tags: Record<string, str
 }
 
 function extractStatusCandidate(payload: any): string | null {
+  const ef = extractEmbeddedFirst(payload)
   return (
+    pickString(ef?.state) ||
+    pickString(ef?.status) ||
     pickString(payload?.data?.object?.state) ||
     pickString(payload?.data?.object?.status) ||
     pickString(payload?.resource?.state) ||
@@ -127,7 +140,9 @@ function mapStatus(value: string | null): NormalizedProcessorEventStatus {
 }
 
 function extractCurrency(payload: any): string | null {
+  const ef = extractEmbeddedFirst(payload)
   const c =
+    pickString(ef?.currency, 8) ||
     pickString(payload?.data?.object?.currency, 8) ||
     pickString(payload?.resource?.currency, 8) ||
     pickString(payload?.currency, 8) ||
@@ -137,7 +152,9 @@ function extractCurrency(payload: any): string | null {
 
 function extractAmountMinorUnits(payload: any): number | null {
   // Most provider APIs use minor units in event payloads.
+  const ef = extractEmbeddedFirst(payload)
   const candidates = [
+    pickNumber(ef?.amount),
     pickNumber(payload?.data?.object?.amount),
     pickNumber(payload?.resource?.amount),
     pickNumber(payload?.amount),
@@ -200,11 +217,13 @@ class GenericJsonAdapter implements ProcessorWebhookAdapter {
     const livemode = pickBool(row.livemode) ?? null
     const occurredAt = extractOccurredAtIso(payloadObj) || null
 
+    const ef = extractEmbeddedFirst(payloadObj)
     const resourceId =
       pickString(row.resource_id, 255) ||
       pickString((payloadObj as any)?.resource?.id, 255) ||
       pickString((payloadObj as any)?.data?.object?.id, 255) ||
       pickString((payloadObj as any)?.data?.id, 255) ||
+      pickString(ef?.id, 255) ||
       null
 
     const statusCandidate = extractStatusCandidate(payloadObj)
