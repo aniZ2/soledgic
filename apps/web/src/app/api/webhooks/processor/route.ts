@@ -312,6 +312,27 @@ export const POST = createApiHandler(
 
     const auth = authorizeWebhook(request, rawBody)
     if (!auth.ok) {
+      // Emit audit event so ops-monitor can track webhook auth failures
+      // Emit audit event so ops-monitor can track webhook auth failures
+      try {
+        const auditClient = createServiceClient()
+        const ip = (request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '').split(',')[0].trim() || null
+        await auditClient.from('audit_log').insert({
+          action: 'webhook_invalid_signature',
+          actor_type: 'system',
+          ip_address: ip,
+          request_id: requestId,
+          request_body: {
+            mode: auth.mode,
+            error: auth.error,
+            has_signature_header: !!request.headers.get('finix-signature'),
+            has_auth_header: !!request.headers.get('authorization'),
+          },
+          risk_score: 80,
+        })
+      } catch {
+        // Don't block the 401 response if audit logging fails
+      }
       return NextResponse.json({ error: auth.error || 'Unauthorized', request_id: requestId }, { status: 401 })
     }
 

@@ -15,7 +15,6 @@ import { createServiceClient, SoledgicServiceClient } from '../test-client'
  */
 
 const NEXT_APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
-const hasNextApp = NEXT_APP_URL.length > 0
 const webhookToken = (process.env.PROCESSOR_WEBHOOK_TOKEN || '').trim()
 const hasWebhookAuth = webhookToken.length > 0
 const webhookSigningKey = (process.env.PROCESSOR_WEBHOOK_SIGNING_KEY || '').trim()
@@ -33,6 +32,23 @@ function buildFinixSignature(rawBody: string, signingKey: string): string {
     .update(`${timestamp}:${rawBody}`)
     .digest('hex')
   return `timestamp=${timestamp}, sig=${sig}`
+}
+
+// Probe the Next.js app before test registration.
+// Resolved once at import time so it.skipIf can read it synchronously.
+let hasNextApp = false
+if (NEXT_APP_URL.length > 0) {
+  try {
+    const probe = await fetch(`${NEXT_APP_URL}/api/webhooks/processor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(5000),
+    })
+    hasNextApp = true
+  } catch {
+    console.log(`Processor webhook tests skipped: ${NEXT_APP_URL} is not reachable`)
+  }
 }
 
 describe('Processor Webhook Ingestion E2E', () => {
@@ -56,7 +72,7 @@ describe('Processor Webhook Ingestion E2E', () => {
     expect(res.status).toBeGreaterThanOrEqual(400)
   })
 
-  it.skipIf(!hasNextApp || !hasWebhookAuth)('should accept authenticated processor webhook', async () => {
+  it.skipIf(!hasNextApp || !hasWebhookAuth || hasSigningKey)('should accept authenticated processor webhook (bearer token)', async () => {
     const transferId = `TRtest_e2e_${Date.now()}`
 
     const res = await fetch(`${NEXT_APP_URL}/api/webhooks/processor`, {
@@ -89,7 +105,7 @@ describe('Processor Webhook Ingestion E2E', () => {
     expect(data.success).toBe(true)
   })
 
-  it.skipIf(!hasNextApp || !hasWebhookAuth)('should handle duplicate webhook delivery idempotently', async () => {
+  it.skipIf(!hasNextApp || !hasWebhookAuth || hasSigningKey)('should handle duplicate webhook delivery idempotently (bearer token)', async () => {
     const transferId = `TRtest_idempotent_${Date.now()}`
     const payload = {
       entity: 'transfer',
@@ -220,16 +236,20 @@ describe('Processor Webhook Ingestion E2E', () => {
     expect(res.status).toBe(401)
   })
 
-  it.skipIf(!hasNextApp || !hasWebhookAuth)('should reject oversized webhook payload', async () => {
-    const largeData = 'x'.repeat(2 * 1024 * 1024 + 1)
+  it.skipIf(!hasNextApp || (!hasWebhookAuth && !hasSigningKey))('should reject oversized webhook payload', async () => {
+    const largeBody = JSON.stringify({ data: 'x'.repeat(2 * 1024 * 1024 + 1) })
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+
+    if (hasSigningKey) {
+      headers['Finix-Signature'] = buildFinixSignature(largeBody, webhookSigningKey)
+    } else {
+      headers['Authorization'] = `Bearer ${webhookToken}`
+    }
 
     const res = await fetch(`${NEXT_APP_URL}/api/webhooks/processor`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${webhookToken}`,
-      },
-      body: JSON.stringify({ data: largeData }),
+      headers,
+      body: largeBody,
     })
 
     expect(res.status).toBeGreaterThanOrEqual(400)
