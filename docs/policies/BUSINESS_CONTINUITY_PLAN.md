@@ -126,7 +126,7 @@ This plan covers:
    ORDER BY created_at DESC LIMIT 10;
    
    -- Run health check
-   SELECT * FROM run_all_health_checks();
+   SELECT * FROM run_all_health_checks('manual');
    ```
 
 5. **Disable Maintenance Mode** (2 minutes)
