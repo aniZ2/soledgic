@@ -86,7 +86,7 @@ These are the exact alert type strings emitted by the `security-alerts` Edge Fun
 | `PROCESSOR_PASSWORD` | Finix API password |
 | `PROCESSOR_BASE_URL` | Finix API base URL |
 | `PROCESSOR_MERCHANT_ID` | Finix merchant ID |
-| `PROCESSOR_WEBHOOK_SECRET` | Finix webhook signing key |
+| `PROCESSOR_WEBHOOK_SIGNING_KEY` | Finix HMAC webhook signing key |
 | `PROCESSOR_REQUEST_TIMEOUT_MS` | API timeout (default: 30000) |
 | `CRON_SECRET` | Cron job authentication secret |
 

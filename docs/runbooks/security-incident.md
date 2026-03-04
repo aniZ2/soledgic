@@ -226,7 +226,7 @@ ORDER BY failures DESC;
 
 Check that the webhook signing key in Soledgic matches the one configured in Finix:
 
-- Soledgic: `PROCESSOR_WEBHOOK_SECRET` environment variable
+- Soledgic: `PROCESSOR_WEBHOOK_SIGNING_KEY` environment variable
 - Finix: Webhook configuration in the Finix dashboard
 
 If keys are mismatched, update the environment variable and redeploy.

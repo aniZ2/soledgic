@@ -25,14 +25,23 @@ ORDER BY updated_at ASC;
 
 ### 2. Check Auto-Recovery Status
 
-Sessions under 24 hours old are retried by the `reconcile-checkout-ledger` cron. Verify it ran recently:
+Sessions under 24 hours old are retried by the `reconcile-checkout-ledger` cron. Verify it has been processing recently by checking for sessions that moved out of `charged_pending_ledger`:
 
 ```sql
-SELECT id, event_type, status, processed_at
-FROM processor_webhook_inbox
-WHERE event_type LIKE '%checkout%'
-ORDER BY created_at DESC
+-- Recently reconciled sessions (completed by the cron)
+SELECT id, ledger_id, amount, status, completed_at
+FROM checkout_sessions
+WHERE status = 'completed'
+  AND completed_at > NOW() - INTERVAL '1 hour'
+ORDER BY completed_at DESC
 LIMIT 10;
+
+-- Or check cron execution via audit log
+SELECT id, action, created_at, request_body
+FROM audit_log
+WHERE action = 'reconcile_checkout'
+ORDER BY created_at DESC
+LIMIT 5;
 ```
 
 ### 3. Manual Recovery (Dry Run First)
