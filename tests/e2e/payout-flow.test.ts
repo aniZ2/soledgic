@@ -100,7 +100,13 @@ describe('Payout Flow E2E', () => {
     expect(result.success).toBe(true)
     expect(result.rails).toBeDefined()
     expect(Array.isArray(result.rails)).toBe(true)
-    console.log('Available rails:', result.rails?.map((r: any) => r.name))
+    expect(result.rails.length).toBeGreaterThan(0)
+    // Each rail object has { rail: string, configured: boolean }
+    for (const r of result.rails) {
+      expect(typeof r.rail).toBe('string')
+      expect(typeof r.configured).toBe('boolean')
+    }
+    console.log('Available rails:', result.rails.map((r: any) => r.rail))
   })
 
   it('should reflect payout in updated balance', async () => {
