@@ -434,7 +434,7 @@ SELECT cron.schedule(
 1. Add CSP headers to Edge Functions
 2. Implement request ID tracing
 3. Set up audit log retention policy
-4. Create runbook for security incidents
+4. ~~Create runbook for security incidents~~ Done — see `docs/runbooks/security-incident.md`
 
 ### Medium Term (First Quarter)
 

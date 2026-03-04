@@ -889,6 +889,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 | `docs/SECURITY_AUDIT_REPORT.md` | Audit findings |
 | `docs/SECURITY_HARDENING.md` | Hardening guide |
 | `docs/SECURITY_RUNBOOK.md` | Operational runbook |
+| `docs/runbooks/README.md` | Alert-to-runbook index (on-call entry point) |
 | `docs/SOC2_READINESS_MEMO.md` | SOC 2 preparation |
 | `docs/DDOS_RESPONSE_PLAYBOOK.md` | Incident response |
 

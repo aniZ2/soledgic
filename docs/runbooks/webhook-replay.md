@@ -34,8 +34,8 @@ WHERE id IN ('delivery-uuid-1', 'delivery-uuid-2')
 ### 3. Trigger Webhook Delivery Worker
 
 ```bash
-curl -X POST "$SUPABASE_URL/functions/v1/deliver-webhooks" \
-  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+curl -X POST "$SUPABASE_URL/functions/v1/process-webhooks" \
+  -H "x-cron-secret: $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"limit": 50}'
 ```
