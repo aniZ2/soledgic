@@ -48,7 +48,7 @@ describe('Refund Flow E2E', () => {
     expect(result.success).toBe(true)
     expect(result.transaction_id).toBeDefined()
     expect(result.is_full_refund).toBe(true)
-    expect(result.refunded_amount).toBe(10000)
+    expect(result.refunded_amount).toBe(100) // API returns dollars (10000 cents / 100)
     expect(result.breakdown).toBeDefined()
     expect(result.breakdown.from_creator).toBeGreaterThan(0)
     expect(result.breakdown.from_platform).toBeGreaterThan(0)
@@ -65,7 +65,7 @@ describe('Refund Flow E2E', () => {
     expect(result.success).toBe(true)
     expect(result.transaction_id).toBeDefined()
     expect(result.is_full_refund).toBe(false)
-    expect(result.refunded_amount).toBe(3000)
+    expect(result.refunded_amount).toBe(30) // API returns dollars (3000 cents / 100)
   })
 
   it('should reject refund on already-fully-refunded sale', async () => {

@@ -39,21 +39,31 @@ describe('Checkout Flow E2E', () => {
     expect(result.success).toBe(true)
     expect(result.transaction_id).toBeDefined()
     expect(result.breakdown).toBeDefined()
-    expect(result.breakdown.total).toBe(50.00)
+    expect(result.breakdown.gross_amount).toBe(50.00)
     // 80% split
     expect(result.breakdown.creator_amount).toBeCloseTo(40.00, 2)
     expect(result.breakdown.platform_amount).toBeCloseTo(10.00, 2)
   })
 
-  it('should reject duplicate sale reference', async () => {
-    await expect(
-      ledger.recordSale({
-        referenceId: saleRef,
-        creatorId,
-        amount: 5000,
-        description: 'Duplicate sale attempt',
-      })
-    ).rejects.toThrow()
+  it('should return idempotent response for duplicate sale reference', async () => {
+    // record_sale_atomic handles unique_violation internally:
+    // returns the existing transaction without error (idempotent 200)
+    const first = await ledger.recordSale({
+      referenceId: saleRef,
+      creatorId,
+      amount: 5000,
+      description: 'E2E checkout test sale',
+    })
+
+    const duplicate = await ledger.recordSale({
+      referenceId: saleRef,
+      creatorId,
+      amount: 5000,
+      description: 'Duplicate sale attempt',
+    })
+
+    expect(duplicate.success).toBe(true)
+    expect(duplicate.transaction_id).toBe(first.transaction_id)
   })
 
   it('should reflect sale in creator balance', async () => {
