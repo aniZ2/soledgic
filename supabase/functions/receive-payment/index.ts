@@ -43,39 +43,7 @@ const handler = createHandler(
 
     const amountInDollars = amount / 100
 
-    // Get accounts
-    const { data: accounts } = await supabase
-      .from('accounts')
-      .select('id, account_type')
-      .eq('ledger_id', ledger.id)
-      .in('account_type', ['cash', 'accounts_receivable'])
-
-    const cashAccount = accounts?.find(a => a.account_type === 'cash')
-    let arAccount = accounts?.find(a => a.account_type === 'accounts_receivable')
-
-    if (!cashAccount) {
-      return errorResponse('Cash account not found', 500, req, requestId)
-    }
-
-    if (!arAccount) {
-      const { data: newAR } = await supabase
-        .from('accounts')
-        .insert({
-          ledger_id: ledger.id,
-          account_type: 'accounts_receivable',
-          entity_type: 'business',
-          name: 'Accounts Receivable'
-        })
-        .select('id, account_type')
-        .single()
-      arAccount = newAR
-    }
-
-    if (!arAccount) {
-      return errorResponse('Could not create Accounts Receivable account', 500, req, requestId)
-    }
-
-    // Description
+    // Build description
     let description = 'Payment received'
     const invoiceTxId = body.invoice_transaction_id ? validateId(body.invoice_transaction_id, 100) : null
     const customerName = body.customer_name ? validateString(body.customer_name, 200) : null
@@ -95,56 +63,55 @@ const handler = createHandler(
       description = `Payment from ${customerName}`
     }
 
-    // Create transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'invoice_payment',
-        reference_id: body.reference_id ? validateId(body.reference_id, 255) : null,
-        reference_type: body.payment_method ? validateString(body.payment_method, 50) : 'payment',
-        description,
-        amount: amountInDollars,
-        currency: (ledger.settings as any)?.currency || 'USD',
-        status: 'completed',
-        metadata: {
+    // Atomic RPC: transaction + entries in a single database transaction
+    const referenceId = body.reference_id ? validateId(body.reference_id, 255) : null
+    const paymentMethod = body.payment_method ? validateString(body.payment_method, 50) : null
+
+    const { data: rpcResult, error: rpcError } = await supabase
+      .rpc('receive_payment_atomic', {
+        p_ledger_id: ledger.id,
+        p_amount_cents: amount,
+        p_reference_id: referenceId,
+        p_payment_method: paymentMethod,
+        p_description: description,
+        p_currency: (ledger.settings as any)?.currency || 'USD',
+        p_metadata: {
           original_invoice_id: invoiceTxId,
           customer_id: body.customer_id ? validateId(body.customer_id, 100) : null,
           customer_name: customerName,
-          payment_method: body.payment_method ? validateString(body.payment_method, 50) : null,
+          payment_method: paymentMethod,
           payment_date: body.payment_date
         }
       })
-      .select('id')
-      .single()
 
-    if (txError) {
-      console.error('Failed to create transaction:', txError)
+    if (rpcError) {
+      console.error('receive_payment_atomic failed:', rpcError)
+      if (rpcError.message?.includes('amount must be')) {
+        return errorResponse(rpcError.message, 400, req, requestId)
+      }
       return errorResponse('Failed to create payment', 500, req, requestId)
     }
 
-    // Create entries
-    const entries = [
-      { transaction_id: transaction.id, account_id: cashAccount.id, entry_type: 'debit', amount: amountInDollars },
-      { transaction_id: transaction.id, account_id: arAccount.id, entry_type: 'credit', amount: amountInDollars }
-    ]
-
-    await supabase.from('entries').insert(entries)
+    const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult
+    if (!row?.transaction_id) {
+      return errorResponse('Failed to create payment', 500, req, requestId)
+    }
 
     // Audit log
     createAuditLogAsync(supabase, req, {
       ledger_id: ledger.id,
       action: 'receive_payment',
       entity_type: 'transaction',
-      entity_id: transaction.id,
+      entity_id: row.transaction_id,
       actor_type: 'api',
       request_body: { amount: amountInDollars, customer: customerName }
     }, requestId)
 
     return jsonResponse({
       success: true,
-      transaction_id: transaction.id,
-      amount: amountInDollars
+      transaction_id: row.transaction_id,
+      amount: row.amount_dollars,
+      ...(row.status === 'duplicate' ? { idempotent: true } : {})
     }, 200, req, requestId)
   }
 )

@@ -98,15 +98,20 @@ describe('Payout Flow E2E', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(result.rails).toBeDefined()
     expect(Array.isArray(result.rails)).toBe(true)
-    expect(result.rails.length).toBeGreaterThan(0)
-    // Each rail object has { rail: string, configured: boolean }
+
+    const KNOWN_RAILS = ['card', 'manual', 'wise', 'crypto']
+    const railNames = result.rails.map((r: any) => r.rail)
+
+    // Must contain exactly the known rails
+    expect(railNames.sort()).toEqual(KNOWN_RAILS.sort())
+
+    // Each entry has the correct shape
     for (const r of result.rails) {
       expect(typeof r.rail).toBe('string')
+      expect(KNOWN_RAILS).toContain(r.rail)
       expect(typeof r.configured).toBe('boolean')
     }
-    console.log('Available rails:', result.rails.map((r: any) => r.rail))
   })
 
   it('should reflect payout in updated balance', async () => {

@@ -399,7 +399,7 @@ Deno.serve(async (req: Request) => {
 
   const rows = (claimed || []) as ProcessorWebhookInboxRow[]
   if (!rows.length) {
-    return json(req, { success: true, processed: 0, message: 'No pending inbox rows' }, 200)
+    return json(req, { success: true, dry_run: dryRun, results: { claimed: 0, processed: 0, failed: 0, skipped: 0, webhooks_queued: 0 } }, 200)
   }
 
   const results = {
