@@ -6,6 +6,35 @@
 - Processor webhook events were stuck in `processor_webhook_inbox`
 - Events need reprocessing after a bug fix
 
+## First 5 Minutes
+
+1. Confirm alert in ops-monitor output (`failed_webhooks_24h` or `stuck_inbox_rows`)
+2. Determine which type of webhook failure — outbound (customer) or inbound (processor inbox):
+
+```sql
+-- Outbound failures
+SELECT COUNT(*) AS failed_outbound FROM webhook_deliveries
+WHERE status = 'failed' AND created_at > NOW() - INTERVAL '24 hours';
+
+-- Inbound stuck
+SELECT COUNT(*) AS stuck_inbox FROM processor_webhook_inbox
+WHERE status IN ('pending', 'failed') AND received_at < NOW() - INTERVAL '1 hour';
+```
+
+3. Identify affected ledger(s):
+
+```sql
+SELECT DISTINCT ledger_id, COUNT(*) AS stuck_count
+FROM processor_webhook_inbox
+WHERE status IN ('pending', 'failed')
+GROUP BY ledger_id
+ORDER BY stuck_count DESC;
+```
+
+4. If CRITICAL, engage [safe mode](safe-mode.md)
+
+---
+
 ## Outbound Webhook Replay (Customer Webhooks)
 
 ### 1. Identify Failed Deliveries

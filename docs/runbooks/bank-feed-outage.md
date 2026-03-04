@@ -9,6 +9,32 @@
 
 ---
 
+## First 5 Minutes
+
+1. Confirm alert — health-check #5 (`bank_reconciliation_backlog`) or connection status errors
+2. Identify affected ledger(s) and institutions:
+
+```sql
+SELECT ledger_id, institution_name, status, error_code, last_sync_at
+FROM bank_aggregator_connections
+WHERE status IN ('error', 'disconnected')
+ORDER BY updated_at DESC;
+```
+
+3. Assess blast radius — how many unmatched transactions and how old:
+
+```sql
+SELECT COUNT(*) AS unmatched_count,
+       MIN(created_at) AS oldest_unmatched
+FROM bank_aggregator_transactions
+WHERE match_status = 'unmatched'
+  AND created_at < NOW() - INTERVAL '7 days';
+```
+
+4. If multiple institutions are failing simultaneously, check the aggregator provider's status page
+
+---
+
 ## Diagnosis
 
 ### 1. Check Connection Status

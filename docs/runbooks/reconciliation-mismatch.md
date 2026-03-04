@@ -7,6 +7,30 @@
 - `drift_alerts` table has unacknowledged rows
 - Bank transactions remain `unmatched` for more than 7 days
 
+## First 5 Minutes
+
+1. Confirm alert source — ops-monitor (`unreconciled_checkouts`), health-check (#1/#3/#4/#7/#10), or `drift_alerts`
+2. Identify affected ledger(s):
+
+```sql
+SELECT DISTINCT ledger_id, COUNT(*) AS issue_count
+FROM checkout_sessions
+WHERE status = 'charged_pending_ledger'
+GROUP BY ledger_id
+ORDER BY issue_count DESC;
+```
+
+3. Assess blast radius — how many checkouts and total amount stuck:
+
+```sql
+SELECT COUNT(*) AS stuck_sessions, SUM(amount) AS total_stuck_amount
+FROM checkout_sessions
+WHERE status = 'charged_pending_ledger'
+  AND updated_at < NOW() - INTERVAL '4 hours';
+```
+
+4. If CRITICAL, engage [safe mode](safe-mode.md)
+
 ---
 
 ## A. Checkout Stuck in `charged_pending_ledger`
@@ -209,6 +233,15 @@ SELECT COUNT(*) FROM drift_alerts
 WHERE ledger_id = 'LEDGER_UUID'
   AND acknowledged_at IS NULL;
 ```
+
+---
+
+## Do NOT
+
+- **Do NOT manually UPDATE the `entries` table** — entries are created by atomic RPCs (`record_sale_atomic`, `record_payout_atomic`) and must maintain double-entry balance. Direct edits will break ledger integrity.
+- **Do NOT DELETE rows from `processor_webhook_inbox`** — they are the audit trail of received processor events. Mark as `processed` or `failed`, never delete.
+- **Do NOT replay processor inbox events without checking idempotency** — verify no duplicate transactions exist before resetting rows to `pending`. The `idempotency_id` on the original transfer protects against double-charges, but ledger entries may not have the same guard.
+- **Do NOT acknowledge drift alerts before confirming the drift is resolved** — acknowledging hides the alert from future health-check runs.
 
 ---
 

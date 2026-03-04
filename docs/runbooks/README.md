@@ -8,29 +8,29 @@ Single entry point for on-call engineers. Find the alert, follow the runbook.
 
 ### ops-monitor Checks
 
-| Check | Threshold | Runbook |
-|-------|-----------|---------|
-| `failed_payouts_24h` | 5+ in 24h | [payout-failure.md](payout-failure.md) |
-| `failed_webhooks_24h` | 10+ in 24h | [webhook-replay.md](webhook-replay.md) |
-| `stuck_inbox_rows` | 20+ pending >1h | [webhook-replay.md](webhook-replay.md) |
-| `unreconciled_checkouts` | 10+ >4h old | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| `failed_processor_transactions_24h` | 5+ in 24h | [processor-outage.md](processor-outage.md) |
-| `webhook_auth_failures_24h` | 10+ in 24h | [security-incident.md](security-incident.md) |
+| Check | Threshold | Severity | Auto-Mitigation | Runbook |
+|-------|-----------|----------|------------------|---------|
+| `failed_payouts_24h` | 5+ in 24h | CRITICAL | Pause scheduled-payouts cron | [payout-failure.md](payout-failure.md) |
+| `failed_webhooks_24h` | 10+ in 24h | CRITICAL | None — manual replay required | [webhook-replay.md](webhook-replay.md) |
+| `stuck_inbox_rows` | 20+ pending >1h | CRITICAL | None — cron retries every minute | [webhook-replay.md](webhook-replay.md), [webhook-backlog.md](webhook-backlog.md) |
+| `unreconciled_checkouts` | 10+ >4h old | CRITICAL | `reconcile-checkout-ledger` cron retries <24h sessions | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| `failed_processor_transactions_24h` | 5+ in 24h | CRITICAL | None — investigate processor status | [processor-outage.md](processor-outage.md) |
+| `webhook_auth_failures_24h` | 10+ in 24h | CRITICAL | None — may indicate signing key mismatch or forgery | [security-incident.md](security-incident.md) |
 
 ### health-check Results
 
-| # | Check | Runbook |
-|---|-------|---------|
-| 1 | `ledger_balance` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 2 | `orphaned_entries` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 3 | `transaction_balance` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 4 | `processor_balance_sync` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 5 | `bank_reconciliation_backlog` | [bank-feed-outage.md](bank-feed-outage.md) |
-| 6 | `processor_reconciliation_backlog` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 7 | `negative_balances` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 8 | `webhook_delivery_health` | [webhook-replay.md](webhook-replay.md) |
-| 9 | `pending_payouts` | [payout-failure.md](payout-failure.md) |
-| 10 | `creator_balance_integrity` | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| # | Check | Severity | Auto-Mitigation | Runbook |
+|---|-------|----------|------------------|---------|
+| 1 | `ledger_balance` | CRITICAL | None — manual investigation required | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| 2 | `orphaned_entries` | CRITICAL | None — manual investigation required | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| 3 | `transaction_balance` | CRITICAL | None — manual investigation required | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| 4 | `processor_balance_sync` | CRITICAL (>=$1000 drift) | None — replay stuck inbox events | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| 5 | `bank_reconciliation_backlog` | WARNING (1-9) / CRITICAL (10+) | Auto-match rules run on sync | [bank-feed-outage.md](bank-feed-outage.md) |
+| 6 | `processor_reconciliation_backlog` | WARNING (1-4) / CRITICAL (5+) | None — replay stuck inbox events | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| 7 | `negative_balances` | WARNING | None — review account entries | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| 8 | `webhook_delivery_health` | WARNING (1-4) / CRITICAL (5+) | Retry via `process-webhooks` cron | [webhook-replay.md](webhook-replay.md) |
+| 9 | `pending_payouts` | WARNING (1-2) / CRITICAL (3+) | None — investigate payout pipeline | [payout-failure.md](payout-failure.md) |
+| 10 | `creator_balance_integrity` | CRITICAL | None — manual investigation required | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
 
 ### security-alerts Types
 
@@ -66,7 +66,9 @@ These are the exact alert type strings emitted by the `security-alerts` Edge Fun
 | [reconciliation-mismatch.md](reconciliation-mismatch.md) | Stuck checkouts, processor drift, bank matching |
 | [processor-outage.md](processor-outage.md) | Finix outage, pause/resume, manual fallback |
 | [bank-feed-outage.md](bank-feed-outage.md) | Bank sync failures, manual import, reconnection |
-| [security-incident.md](security-incident.md) | DDoS, credential stuffing, SSRF, audit chain, webhook forgery |
+| [security-incident.md](security-incident.md) | DDoS, credential stuffing, SSRF, audit chain, webhook forgery, credential leak |
+| [webhook-backlog.md](webhook-backlog.md) | Processor inbox queue growth, stuck events, processing capacity |
+| [safe-mode.md](safe-mode.md) | Maintenance mode, allowlist mode, IP blocking, cron pause |
 | [env-validation.md](env-validation.md) | Environment variable checks |
 | [finix-setup.md](finix-setup.md) | Finix integration setup |
 | [secret-rotation.md](secret-rotation.md) | Secret rotation procedures |

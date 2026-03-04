@@ -6,6 +6,33 @@
 - `payout.failed` webhook was emitted
 - Creator reports missing payout
 
+## First 5 Minutes
+
+1. Confirm alert in ops-monitor output (`failed_payouts_24h`)
+2. Identify affected ledger(s):
+
+```sql
+SELECT DISTINCT ledger_id, COUNT(*) AS failed_count
+FROM transactions
+WHERE transaction_type = 'payout' AND status = 'failed'
+  AND created_at > NOW() - INTERVAL '24 hours'
+GROUP BY ledger_id
+ORDER BY failed_count DESC;
+```
+
+3. Assess blast radius — how many creators are affected:
+
+```sql
+SELECT COUNT(DISTINCT creator_id) AS affected_creators
+FROM transactions
+WHERE transaction_type = 'payout' AND status = 'failed'
+  AND created_at > NOW() - INTERVAL '24 hours';
+```
+
+4. If CRITICAL (5+ failures), consider pausing scheduled payouts and engaging [safe mode](safe-mode.md)
+
+---
+
 ## Diagnosis
 
 ### 1. Find the Failed Payout

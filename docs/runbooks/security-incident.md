@@ -9,6 +9,25 @@
 
 ---
 
+## First 5 Minutes
+
+1. Confirm alert source — security-alerts function, ops-monitor (`webhook_auth_failures`), or audit_log anomaly
+2. Identify the alert type and severity from security-alerts output
+3. Assess blast radius — which IPs, how many requests, which endpoints targeted:
+
+```sql
+SELECT action, COUNT(*) AS count, COUNT(DISTINCT ip_address) AS unique_ips
+FROM audit_log
+WHERE created_at > NOW() - INTERVAL '1 hour'
+  AND action IN ('rate_limit_hit', 'auth_failure', 'ssrf_attempt', 'webhook_invalid_signature', 'blocked_country')
+GROUP BY action
+ORDER BY count DESC;
+```
+
+4. If CRITICAL (SSRF, distributed attack, credential compromise), engage [safe mode](safe-mode.md) immediately
+
+---
+
 ## Severity and Escalation
 
 | Severity | Action |
@@ -259,6 +278,94 @@ GROUP BY status;
 ```
 
 All recent rows should show `signature_valid = true`.
+
+---
+
+## Do NOT
+
+- **Do NOT "fix" a broken audit chain** — the break itself is forensic evidence. Never modify `audit_log` rows to repair hashes or fill gaps. See section D.
+- **Do NOT DELETE `audit_log` rows** — even if they appear to be from an attacker. They are evidence and part of the integrity chain.
+- **Do NOT restore from a database backup without forensic review first** — a backup restore can destroy evidence of what happened during the incident window.
+- **Do NOT rotate secrets without documenting which secrets were exposed and when** — you need a clear timeline for the post-incident review.
+- **Do NOT assume blocking an IP resolves the incident** — the attacker may have multiple IPs or may have already exfiltrated data.
+
+---
+
+## F. Credential Leak Response
+
+If a secret is exposed (committed to git, logged, shared in chat, found in error output):
+
+### 1. Identify Which Secret(s) Leaked
+
+| Secret | Impact if Leaked | Rotation Priority |
+|--------|-----------------|-------------------|
+| `PROCESSOR_USERNAME` / `PROCESSOR_PASSWORD` | Full access to Finix API — can create transfers, read merchant data | IMMEDIATE — enable maintenance mode |
+| `PROCESSOR_WEBHOOK_SIGNING_KEY` | Attacker can forge processor webhook events | IMMEDIATE — pause inbox processing |
+| `SUPABASE_SERVICE_ROLE_KEY` | Full database access, bypasses RLS | IMMEDIATE — enable maintenance mode |
+| `CRON_SECRET` | Can trigger cron-authenticated functions | HIGH — rotate within 1 hour |
+| `SUPABASE_ANON_KEY` | Limited by RLS, lower risk | MEDIUM — rotate within 24 hours |
+
+### 2. Contain Based on Secret Type
+
+**Processor credentials leaked (`PROCESSOR_USERNAME`/`PROCESSOR_PASSWORD`):**
+
+1. Enable maintenance mode: `supabase secrets set MAINTENANCE_MODE=true`
+2. Rotate credentials in Finix dashboard
+3. Update env vars: `supabase secrets set PROCESSOR_USERNAME=... PROCESSOR_PASSWORD=...`
+4. Redeploy all Edge Functions
+5. Disable maintenance mode
+
+**Webhook signing key leaked (`PROCESSOR_WEBHOOK_SIGNING_KEY`):**
+
+1. Pause inbox processing (see [safe-mode.md](safe-mode.md))
+2. Rotate the signing key in Finix dashboard
+3. Update env var: `supabase secrets set PROCESSOR_WEBHOOK_SIGNING_KEY=...`
+4. Redeploy all Edge Functions
+5. Review `processor_webhook_inbox` for forged events during exposure window
+6. Re-enable inbox processing
+
+**Service role key leaked (`SUPABASE_SERVICE_ROLE_KEY`):**
+
+1. Enable maintenance mode: `supabase secrets set MAINTENANCE_MODE=true`
+2. Rotate in Supabase dashboard (Settings > API)
+3. Update env var: `supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...`
+4. Invalidate all active user sessions (Supabase Auth admin API)
+5. Redeploy all Edge Functions
+6. Review `audit_log` for unauthorized access during exposure window
+7. Disable maintenance mode
+
+**Cron secret leaked (`CRON_SECRET`):**
+
+1. Rotate: `supabase secrets set CRON_SECRET=<new-value>`
+2. Update pg_cron jobs that reference the cron secret (scheduled-payouts, process-webhooks, security-alerts)
+3. Redeploy all Edge Functions
+
+### 3. Post-Rotation Verification
+
+```bash
+# Verify Edge Functions are responding
+curl -X POST "$SUPABASE_URL/functions/v1/ops-monitor" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json"
+
+# Verify processor connectivity
+curl -u "$PROCESSOR_USERNAME:$PROCESSOR_PASSWORD" \
+  -H "Finix-Version: 2022-02-01" \
+  "$PROCESSOR_BASE_URL/merchants/$PROCESSOR_MERCHANT_ID"
+```
+
+### 4. Audit the Exposure Window
+
+```sql
+-- Check for suspicious activity during the exposure window
+SELECT action, ip_address, entity_type, created_at
+FROM audit_log
+WHERE created_at BETWEEN 'LEAK_START_TIME' AND 'LEAK_END_TIME'
+  AND action NOT IN ('rate_limit_hit', 'health_check')
+ORDER BY created_at DESC;
+```
+
+For detailed per-secret rotation steps, see [secret-rotation.md](secret-rotation.md).
 
 ---
 

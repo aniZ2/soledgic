@@ -9,6 +9,33 @@
 
 ---
 
+## First 5 Minutes
+
+1. Confirm alert in ops-monitor output (`failed_processor_transactions_24h` or `failed_payouts_24h`)
+2. Verify processor is actually down vs. credential/config issue:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" \
+  -u "$PROCESSOR_USERNAME:$PROCESSOR_PASSWORD" \
+  -H "Finix-Version: 2022-02-01" \
+  "$PROCESSOR_BASE_URL/merchants/$PROCESSOR_MERCHANT_ID"
+```
+
+3. Assess blast radius — which ledgers are affected:
+
+```sql
+SELECT DISTINCT ledger_id, COUNT(*) AS failed_count
+FROM processor_transactions
+WHERE status = 'failed'
+  AND created_at > NOW() - INTERVAL '1 hour'
+GROUP BY ledger_id
+ORDER BY failed_count DESC;
+```
+
+4. If CRITICAL (confirmed outage), immediately pause scheduled payouts and engage [safe mode](safe-mode.md)
+
+---
+
 ## Diagnosis
 
 ### 1. Check Recent Processor Failures
@@ -194,6 +221,15 @@ SELECT id, ledger_id, 'MANUAL_' || id, 'payout', amount, 'succeeded',
        '{"manual": true, "operator": "YOUR_NAME", "external_ref": "EXTERNAL_REF"}'::jsonb
 FROM transactions WHERE id = 'PAYOUT_TX_UUID';
 ```
+
+---
+
+## Do NOT
+
+- **Do NOT retry failed payouts before confirming the processor is back** — retrying against a down processor creates more failed transactions and may trigger duplicate charges when the processor recovers with stale idempotency keys.
+- **Do NOT bypass idempotency** — the `execute-payout` endpoint uses `idempotency_id` (format: `payout_<payout_id>`). Never create manual transfers without an idempotency key.
+- **Do NOT re-enable the scheduled-payouts cron until processor health is confirmed** — use the verification curl in Recovery step 1 first.
+- **Do NOT assume "timed out" means "did not execute"** — a timeout means you don't know. Always check the processor for the transfer status before retrying.
 
 ---
 
