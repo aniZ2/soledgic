@@ -362,7 +362,7 @@ curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
 
 | Field | Detail |
 |-------|--------|
-| **Expected** | The provider returns a failed result. **`execute-payout` still writes `rail_status` and `rail_error` into the transaction metadata** (`execute-payout/index.ts:568-579`) — the update always runs after `railImpl.execute()`, regardless of success or failure. The local payout status is marked `failed`. **The external outcome is ambiguous**: the processor may or may not have initiated the transfer before the timeout. An operator must verify processor-side status before retrying. |
+| **Expected** | The provider returns a failed result. **`execute-payout` still writes `rail_status` and `rail_error` into the transaction metadata** (`execute-payout/index.ts:568-579`) — the update always runs after `railImpl.execute()`, regardless of success or failure. The transaction metadata fields `rail_status` and `rail_error` are written with the failure details (the transaction row status itself remains `completed`). **The external outcome is ambiguous**: the processor may or may not have initiated the transfer before the timeout. An operator must verify processor-side status before retrying. |
 | **Verify** | |
 
 ```sql
@@ -662,7 +662,7 @@ INSERT INTO webhook_deliveries (
 -- Save as $DELIVERY_ID
 ```
 
-Then invoke `process-webhooks` via cron trigger.
+Then invoke `process-webhooks` manually (no pg_cron schedule exists — use the `x-cron-secret` header).
 
 | Field | Detail |
 |-------|--------|

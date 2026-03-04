@@ -31,7 +31,7 @@ Single entry point for on-call engineers. Find the alert, follow the runbook.
 | 5 | `bank_reconciliation_backlog` | WARNING (1-9) / CRITICAL (10+) | Auto-match rules run on sync | [bank-feed-outage.md](bank-feed-outage.md) |
 | 6 | `processor_reconciliation_backlog` | WARNING (1-4) / CRITICAL (5+) | None — replay stuck inbox events | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
 | 7 | `negative_balances` | WARNING | None — review account entries | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
-| 8 | `webhook_delivery_health` | WARNING (1-4) / CRITICAL (5+) | Retry via `process-webhooks` cron | [webhook-replay.md](webhook-replay.md) |
+| 8 | `webhook_delivery_health` | WARNING (1-4) / CRITICAL (5+) | Retry via `process-webhooks` (manual invoke with `x-cron-secret`) | [webhook-replay.md](webhook-replay.md) |
 | 9 | `pending_payouts` | WARNING (1-2) / CRITICAL (3+) | None — investigate payout pipeline | [payout-failure.md](payout-failure.md) |
 | 10 | `creator_balance_integrity` | CRITICAL | None — manual investigation required | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
 
