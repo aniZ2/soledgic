@@ -21,9 +21,9 @@ Controlled failure simulation drills for the Soledgic payment pipeline.
 
 | Mechanism | Trigger | Interval |
 |-----------|---------|----------|
-| `process-processor-inbox` | cron or manual POST | every 2 min |
+| `process-processor-inbox` | pg_cron (`process-processor-inbox-minute`) | every 1 min |
 | `reconcile-checkout-ledger` | **manual POST only** (no cron scheduled) | on demand |
-| `process-webhooks` | cron (`x-cron-secret`) | every 1 min |
+| `process-webhooks` | **manual POST** (`x-cron-secret` header, no pg_cron) | on demand |
 | `claim_processor_webhook_inbox` | called by process-processor-inbox | on demand |
 | `mark_webhook_failed` | called by process-webhooks | on demand |
 
@@ -347,15 +347,15 @@ SELECT status, processing_error FROM processor_webhook_inbox WHERE event_id = 'e
 | Field | Detail |
 |-------|--------|
 | **Severity** | S1 |
-| **Inject** | Create a payout ledger entry (debit cash, credit creator_balance). Call `execute-payout` with a processor API endpoint that returns a failure or times out (configure `PROCESSOR_API_URL` to a failing endpoint). |
+| **Inject** | Create a payout ledger entry (debit cash, credit creator_balance). Call `execute-payout` with a processor API endpoint that returns a failure or times out (configure `PROCESSOR_BASE_URL` to a failing endpoint). |
 
 ```bash
 # Point processor to a failing endpoint
 # In staging .env:
-# PROCESSOR_API_URL=https://httpstat.us/504?sleep=60000
+# PROCESSOR_BASE_URL=https://httpstat.us/504?sleep=60000
 
 curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "x-api-key: $TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"payout_id":"'"$TEST_PAYOUT_ID"'"}'
 ```
@@ -374,15 +374,17 @@ FROM transactions WHERE id = $TEST_PAYOUT_ID;
 -- Expected: rail_status = 'failed', rail_error IS NOT NULL
 
 -- Check audit log for the execution attempt
-SELECT action, details->>'status' as status
+SELECT action, entity_id, request_body->>'success' as success,
+       request_body->>'rail' as rail, request_body->>'external_id' as external_id
 FROM audit_log
-WHERE details->>'payout_id' = $TEST_PAYOUT_ID
+WHERE entity_id = $TEST_PAYOUT_ID
+  AND action = 'payout_executed'
 ORDER BY created_at DESC LIMIT 1;
 ```
 
 | Field | Detail |
 |-------|--------|
-| **Recovery** | 1. Restore `PROCESSOR_API_URL` to valid endpoint. 2. **Before retrying**: check processor dashboard for the `idempotency_id` (`payout_{id}`) to verify whether a transfer was created. 3. If no processor-side transfer exists, re-invoke `execute-payout` (idempotency protects against duplicate). If a transfer does exist, manually reconcile status. |
+| **Recovery** | 1. Restore `PROCESSOR_BASE_URL` to valid endpoint. 2. **Before retrying**: check processor dashboard for the `idempotency_id` (`payout_{id}`) to verify whether a transfer was created. 3. If no processor-side transfer exists, re-invoke `execute-payout` (idempotency protects against duplicate). If a transfer does exist, manually reconcile status. |
 | **Automatable?** | Partially — requires env var manipulation and a mock failing endpoint |
 
 ---
@@ -397,13 +399,13 @@ ORDER BY created_at DESC LIMIT 1;
 ```bash
 # First call
 curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "x-api-key: $TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"payout_id":"'"$TEST_PAYOUT_ID"'"}'
 
 # Retry (same payout_id)
 curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "x-api-key: $TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"payout_id":"'"$TEST_PAYOUT_ID"'"}'
 ```
@@ -440,11 +442,11 @@ SELECT status FROM payouts WHERE id = $TEST_PAYOUT_ID;
 
 ```bash
 curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "x-api-key: $TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"payout_id":"'"$TEST_PAYOUT_ID"'"}' &
 curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "x-api-key: $TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"payout_id":"'"$TEST_PAYOUT_ID"'"}' &
 wait
@@ -764,13 +766,13 @@ SELECT status, attempts, next_retry_at FROM webhook_deliveries WHERE id = $DELIV
 | Field | Detail |
 |-------|--------|
 | **Severity** | S2 |
-| **Inject** | Set `UPSTASH_REDIS_REST_URL` to an invalid endpoint (e.g., `https://invalid.upstash.io`). Call a non-fail-closed endpoint (e.g., `list-transactions`). |
+| **Inject** | Set `UPSTASH_REDIS_REST_URL` to an invalid endpoint (e.g., `https://invalid.upstash.io`). Call a non-fail-closed endpoint (e.g., `get-transactions`). |
 
 ```bash
 # In staging environment
 supabase secrets set UPSTASH_REDIS_REST_URL=https://invalid.upstash.io
 
-curl -X GET "$SUPABASE_URL/functions/v1/list-transactions" \
+curl -X GET "$SUPABASE_URL/functions/v1/get-transactions" \
   -H "x-api-key: $TEST_API_KEY"
 ```
 
@@ -782,7 +784,7 @@ curl -X GET "$SUPABASE_URL/functions/v1/list-transactions" \
 ```bash
 # Request should succeed (non-fail-closed endpoint)
 # Check function logs for:
-#   "DB Fallback Active: list-transactions throttled to N/Ns"
+#   "DB Fallback Active: get-transactions throttled to N/Ns"
 ```
 
 | Field | Detail |
@@ -801,7 +803,7 @@ curl -X GET "$SUPABASE_URL/functions/v1/list-transactions" \
 
 ```bash
 curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+  -H "x-api-key: $TEST_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"payout_id":"'"$TEST_PAYOUT_ID"'"}'
 ```
@@ -830,11 +832,11 @@ curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
 | Field | Detail |
 |-------|--------|
 | **Severity** | S3 |
-| **Inject** | With Redis invalid, make 5+ requests to different endpoints to trigger repeated DB fallback activations. Check `security-alerts` logs or the `security_alert_log` table. |
+| **Inject** | With Redis invalid, make 5+ requests to different endpoints to trigger repeated DB fallback activations. Check `security-alerts` logs or the `audit_log` table. |
 
 ```bash
 for i in {1..6}; do
-  curl -s -o /dev/null "$SUPABASE_URL/functions/v1/list-transactions" \
+  curl -s -o /dev/null "$SUPABASE_URL/functions/v1/get-transactions" \
     -H "x-api-key: $TEST_API_KEY"
 done
 ```
@@ -885,7 +887,7 @@ Execute drills in this order to minimize dependency conflicts:
 - [ ] PAYOUT-01 — Processor timeout during execute
 - [ ] PAYOUT-02 — Idempotent manual retry
 - [ ] PAYOUT-03 — Concurrent payout race
-- [ ] **Restore** `PROCESSOR_API_URL` if modified
+- [ ] **Restore** `PROCESSOR_BASE_URL` if modified
 
 ### Phase 4: Reconciliation drills (manual worker invocation, requires checkout session)
 - [ ] RECON-01 — Manual reconciler catches stuck session
@@ -914,6 +916,7 @@ Known failure paths **not covered** by this matrix (future work):
 |-----|--------|
 | `security-alerts` cron trigger | No cron job currently scheduled for `security-alerts`; RATE-03 depends on manual invocation |
 | `reconcile-checkout-ledger` cron | No cron schedule exists for the reconciler; RECON drills require manual invocation; stuck sessions go undetected until an operator runs the worker |
+| `process-webhooks` cron | No pg_cron schedule in repo; currently triggered by external scheduler or manual POST with `x-cron-secret` |
 | Bank aggregator feed staleness | No stale-detection mechanism exists; bank feed goes silent without alert |
 | Dispute hold RPC failure | Error currently swallowed in `process-processor-inbox` dispute handler; no retry or alert |
 | SSRF DNS rebinding timing window | Hard to simulate deterministically; `process-webhooks` validates DNS at delivery time but a fast rebind could theoretically slip through |
