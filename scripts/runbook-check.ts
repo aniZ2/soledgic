@@ -54,10 +54,10 @@ function checkOpsMonitorNames() {
   const readme = readFile(README_FILE);
   if (!src || !readme) return;
 
-  // Extract check names from ops-monitor: look for status/name patterns
+  // Extract check names from ops-monitor: look for check/name patterns
   // The check names appear as string keys like 'failed_payouts_24h'
   const checkNames = new Set<string>();
-  const nameRegex = /name:\s*['"`]([a-z_]+)['"`]/g;
+  const nameRegex = /(?:check|name):\s*['"`]([a-z_0-9]+)['"`]/g;
   let match: RegExpExecArray | null;
   while ((match = nameRegex.exec(src)) !== null) {
     checkNames.add(match[1]);
@@ -71,6 +71,9 @@ function checkOpsMonitorNames() {
     "unreconciled_checkouts",
     "failed_processor_transactions_24h",
     "webhook_auth_failures_24h",
+    "inbox_depth",
+    "inbox_oldest_pending_seconds",
+    "inbox_processing_rate_1h",
   ];
 
   for (const name of knownChecks) {

@@ -16,6 +16,9 @@ Single entry point for on-call engineers. Find the alert, follow the runbook.
 | `unreconciled_checkouts` | 10+ >4h old | CRITICAL | `reconcile-checkout-ledger` cron retries <24h sessions | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
 | `failed_processor_transactions_24h` | 5+ in 24h | CRITICAL | None — investigate processor status | [processor-outage.md](processor-outage.md) |
 | `webhook_auth_failures_24h` | 10+ in 24h | CRITICAL | None — may indicate signing key mismatch or forgery | [security-incident.md](security-incident.md) |
+| `inbox_depth` | 100+ pending (warn), 500+ (crit) | WARNING/CRITICAL | Cron retries every minute | [webhook-backlog.md](webhook-backlog.md) |
+| `inbox_oldest_pending_seconds` | 300s+ (warn), 3600s+ (crit) | WARNING/CRITICAL | None — investigate stuck processor | [webhook-backlog.md](webhook-backlog.md) |
+| `inbox_processing_rate_1h` | Informational | OK | N/A — trend metric only | [webhook-backlog.md](webhook-backlog.md) |
 
 ### health-check Results
 
