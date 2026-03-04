@@ -4,7 +4,6 @@ import s from './landing.module.css'
 export default function HomePage() {
   return (
     <div className={s.page}>
-      {/* ── Nav ──────────────────────────────────────────────── */}
       <nav className={s.nav}>
         <Link href="/" className={s.navLogo}>Soledgic</Link>
         <ul className={s.navLinks}>
@@ -17,36 +16,34 @@ export default function HomePage() {
         <Link href="/signup" className={s.navCta}>Start Free</Link>
       </nav>
 
-      {/* ── Hero ─────────────────────────────────────────────── */}
       <section className={s.hero}>
         <div className={s.heroLabel}>
           <span className={s.heroLabelDot} />
-          Now accepting early platforms
+          Financial infrastructure for digital platforms
         </div>
 
         <h1 className={s.heroTitle}>
-          Your creators make the content.{' '}
-          <span className={s.heroTitleAccent}>We handle the money.</span>
+          The financial backend for platforms that{' '}
+          <span className={s.heroTitleAccent}>move money.</span>
         </h1>
 
         <p className={s.heroSub}>
-          One platform to accept payments, split revenue, withhold taxes,
-          and pay creators on time — with a real ledger underneath, not a
-          spreadsheet.
+          Soledgic gives marketplaces, creator platforms, and embedded-payment
+          products one system for checkout, revenue splits, payouts, ledgers,
+          reconciliation, reporting, and webhooks.
         </p>
 
         <div className={s.heroCtas}>
           <Link href="/signup" className={s.btnPrimary}>Start Free</Link>
-          <a href="#how" className={s.btnGhost}>See How it Works</a>
+          <Link href="/docs" className={s.btnGhost}>Read the Docs</Link>
         </div>
 
-        {/* Visual: Animated money flow */}
         <div className={s.heroVisual}>
           <div className={s.flowDiagram}>
             <div className={s.flowNode}>
               <div className={s.flowNodeIcon}>🛒</div>
               <span className={s.flowNodeLabel}>Buyer</span>
-              <span className={s.flowNodeSub}>Pays $29.99</span>
+              <span className={s.flowNodeSub}>Checks out once</span>
             </div>
 
             <div className={s.flowArrow} />
@@ -55,115 +52,114 @@ export default function HomePage() {
               <div className={s.flowCenterPulse} />
               <div className={s.flowCenterIcon}>S</div>
               <span className={s.flowNodeLabel}>Soledgic</span>
-              <span className={s.flowNodeSub}>Splits, ledgers, taxes</span>
+              <span className={s.flowNodeSub}>Charges, splits, records</span>
             </div>
 
             <div className={s.flowArrow} />
 
             <div className={s.flowNode}>
-              <div className={s.flowNodeIcon}>✍️</div>
-              <span className={s.flowNodeLabel}>Creator</span>
-              <span className={s.flowNodeSub}>Gets $23.99</span>
+              <div className={s.flowNodeIcon}>💸</div>
+              <span className={s.flowNodeLabel}>Seller / Creator</span>
+              <span className={s.flowNodeSub}>Gets paid on schedule</span>
             </div>
 
             <div className={s.flowArrow} />
 
             <div className={s.flowNode}>
-              <div className={s.flowNodeIcon}>🏢</div>
-              <span className={s.flowNodeLabel}>Platform</span>
-              <span className={s.flowNodeSub}>Keeps $6.00</span>
+              <div className={s.flowNodeIcon}>📚</div>
+              <span className={s.flowNodeLabel}>Finance Team</span>
+              <span className={s.flowNodeSub}>Closes from the same ledger</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Metrics ──────────────────────────────────────────── */}
       <div className={s.metrics}>
         <div className={s.metric}>
-          <div className={s.metricValue}>5 min</div>
-          <div className={s.metricLabel}>To first payment</div>
+          <div className={s.metricValue}>65+</div>
+          <div className={s.metricLabel}>Edge functions</div>
         </div>
         <div className={s.metric}>
-          <div className={s.metricValue}>$0/mo</div>
-          <div className={s.metricLabel}>Platform fee</div>
+          <div className={s.metricValue}>2 modes</div>
+          <div className={s.metricLabel}>Marketplace or standard</div>
         </div>
         <div className={s.metric}>
-          <div className={s.metricValue}>80/20</div>
-          <div className={s.metricLabel}>Or any split you want</div>
+          <div className={s.metricValue}>1 ledger</div>
+          <div className={s.metricLabel}>System of record</div>
         </div>
         <div className={s.metric}>
-          <div className={s.metricValue}>1 API</div>
-          <div className={s.metricLabel}>Replaces 3 vendors</div>
+          <div className={s.metricValue}>140+</div>
+          <div className={s.metricLabel}>Database migrations</div>
         </div>
       </div>
 
-      {/* ── Problem / Solution ────────────────────────────────── */}
       <section className={s.problemSection} id="how">
         <div className={s.problemInner}>
           <div className={s.problemGrid}>
             <div className={s.problemSide}>
               <h2>
-                You&apos;re duct-taping together{' '}
-                <span>three tools</span> to pay one creator
+                Most platforms can charge a card. Few can explain{' '}
+                <span>where the money went.</span>
               </h2>
               <ul className={s.problemList}>
                 <li className={s.problemItem}>
                   <div className={s.problemIcon}>💳</div>
                   <div className={s.problemText}>
                     <h4>A payment processor</h4>
-                    <p>That charges cards but doesn&apos;t understand splits, withholding, or creator payouts.</p>
+                    <p>That moves money, but leaves you to calculate splits, holds, payout timing, refunds, and downstream state.</p>
                   </div>
                 </li>
                 <li className={s.problemItem}>
                   <div className={s.problemIcon}>📒</div>
                   <div className={s.problemText}>
                     <h4>Accounting software</h4>
-                    <p>That tracks your books but can&apos;t process a transaction or trigger a payout.</p>
+                    <p>That closes books after the fact, but does not run checkout, creator balances, settlement, or payout operations.</p>
                   </div>
                 </li>
                 <li className={s.problemItem}>
-                  <div className={s.problemIcon}>🧑‍💻</div>
+                    <div className={s.problemIcon}>🧑‍💻</div>
                   <div className={s.problemText}>
-                    <h4>Custom code &amp; spreadsheets</h4>
-                    <p>Glue that breaks every month-end. Reconciliation takes days. Tax season is a nightmare.</p>
+                    <h4>Internal glue and spreadsheets</h4>
+                    <p>Multiple sources of truth for product, finance, support, and ops. Month-end, reconciliation, and audit prep become manual work.</p>
                   </div>
                 </li>
               </ul>
             </div>
 
             <div className={s.solutionSide}>
-              <h3>With Soledgic, it&apos;s one thing.</h3>
+              <h3>Soledgic becomes the operating layer.</h3>
               <p>
-                Payments, splits, ledger, payouts, and tax reporting in a single system.
-                Here&apos;s how it works:
+                The same system that helps your platform accept money also
+                tracks balances, controls payouts, powers reporting, and exposes
+                the data back to your product and finance team.
               </p>
               <div className={s.solutionSteps}>
                 <div className={s.solutionStep}>
                   <div className={s.stepNumber}>1</div>
                   <div className={s.stepContent}>
-                    <h4>Connect your platform</h4>
-                    <p>Create a ledger, set your revenue split, get your keys. Five minutes.</p>
+                    <h4>Launch checkout and billing flows</h4>
+                    <p>Create ledgers, issue API keys, configure payment rails, and start collecting payments through one platform surface.</p>
                   </div>
                 </div>
                 <div className={s.solutionStep}>
                   <div className={s.stepNumber}>2</div>
                   <div className={s.stepContent}>
-                    <h4>Buyers pay, we handle the math</h4>
-                    <p>Card charged → split calculated → fees deducted → tax withheld → ledger balanced. One atomic step.</p>
+                    <h4>Split, hold, and record every movement</h4>
+                    <p>Sales, fees, reserves, refunds, and transfers are written into a double-entry ledger instead of scattered across tools.</p>
                   </div>
                 </div>
                 <div className={s.solutionStep}>
                   <div className={s.stepNumber}>3</div>
                   <div className={s.stepContent}>
-                    <h4>Creators get paid on time</h4>
-                    <p>Scheduled or on-demand payouts. Creators see their earnings. You see the full financial picture.</p>
+                    <h4>Run balances and payouts with confidence</h4>
+                    <p>Pay creators, sellers, contractors, or vendors on schedule, expose payout setup flows, and keep platform and recipient balances in sync.</p>
                   </div>
                 </div>
                 <div className={s.solutionStep}>
                   <div className={s.stepNumber}>4</div>
                   <div className={s.stepContent}>
-                    <h4>Close your books in minutes</h4>
-                    <p>Balance sheet, P&amp;L, 1099-K data — from the same ledger that processed every payment.</p>
+                    <h4>Close, report, and monitor from the same source</h4>
+                    <p>P&amp;L, balance sheet, tax summaries, reconciliation, webhooks, and operational monitoring all come from the same data model.</p>
                   </div>
                 </div>
               </div>
@@ -172,100 +168,89 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Capabilities ──────────────────────────────────────── */}
       <section className={s.section} id="capabilities">
         <p className={s.sectionEyebrow}>Capabilities</p>
-        <h2 className={s.sectionTitle}>Everything between the sale and the payout</h2>
+        <h2 className={s.sectionTitle}>Everything your platform finance stack needs</h2>
         <p className={s.sectionDesc}>
-          One platform replaces the payment processor, accounting tool, and
-          custom scripts you&apos;re maintaining today.
+          Soledgic is not just a payments integration. It is the product and
+          finance infrastructure that sits between checkout and month-end.
         </p>
 
         <div className={s.capGrid}>
           <div className={s.capCard}>
-            <span className={s.capEmoji}>📖</span>
-            <h3 className={s.capTitle}>Double-Entry Ledger</h3>
+            <span className={s.capEmoji}>🧾</span>
+            <h3 className={s.capTitle}>Checkout &amp; Payment Orchestration</h3>
             <p className={s.capDesc}>
-              Every cent tracked with debits and credits. Period locking,
-              frozen statements, and full audit trails. Your accountant
-              will actually enjoy month-end.
+              Create checkout sessions, support hosted payment flows, store
+              billing methods, and keep processor events flowing back into
+              platform state.
             </p>
           </div>
           <div className={s.capCard}>
             <span className={s.capEmoji}>⚖️</span>
-            <h3 className={s.capTitle}>Flexible Revenue Splits</h3>
+            <h3 className={s.capTitle}>Revenue Splits &amp; Funds Control</h3>
             <p className={s.capDesc}>
-              80/20, 70/30, or custom per creator. Choose who absorbs
-              processing fees. Tiered rates for top performers.
-              Change it anytime.
+              Configure split logic, withholding, held funds, settlement
+              timing, and fee treatment across creators, products, or
+              platform-specific rules.
             </p>
           </div>
           <div className={s.capCard}>
             <span className={s.capEmoji}>💸</span>
-            <h3 className={s.capTitle}>Multi-Rail Payouts</h3>
+            <h3 className={s.capTitle}>Payouts &amp; Recipient Operations</h3>
             <p className={s.capDesc}>
-              ACH, instant push-to-card, or international wire. Weekly,
-              biweekly, monthly, or on-demand. Minimum thresholds and
-              eligibility checks built in.
+              Onboard payout recipients, check eligibility, trigger scheduled
+              or on-demand payouts, and surface earnings and statements through
+              a creator-facing portal.
+            </p>
+          </div>
+          <div className={s.capCard}>
+            <span className={s.capEmoji}>📖</span>
+            <h3 className={s.capTitle}>Ledger, Balances &amp; Reconciliation</h3>
+            <p className={s.capDesc}>
+              Every transaction lands in a double-entry ledger with balances,
+              transaction history, period controls, imported bank lines, and
+              reconciliation tooling.
             </p>
           </div>
           <div className={s.capCard}>
             <span className={s.capEmoji}>🛡️</span>
-            <h3 className={s.capTitle}>Tax &amp; Compliance</h3>
+            <h3 className={s.capTitle}>Reports, Tax &amp; Period Close</h3>
             <p className={s.capDesc}>
-              Automatic withholding, 1099-K data exports, and secure
-              creator tax info collection. KYC/KYB handled through
-              integrated provider flows.
+              Generate P&amp;L, balance sheet, trial balance, AP/AR aging, tax
+              summaries, statements, runway projections, and frozen close-period
+              snapshots.
             </p>
           </div>
           <div className={s.capCard}>
-            <span className={s.capEmoji}>⏸️</span>
-            <h3 className={s.capTitle}>Settlement Control</h3>
+            <span className={s.capEmoji}>🧠</span>
+            <h3 className={s.capTitle}>Developer, Risk &amp; Ops Tooling</h3>
             <p className={s.capDesc}>
-              Hold funds until your logic says release — refund windows,
-              fraud review, dispute resolution. You decide when money
-              moves, not the processor.
-            </p>
-          </div>
-          <div className={s.capCard}>
-            <span className={s.capEmoji}>📊</span>
-            <h3 className={s.capTitle}>Financial Reporting</h3>
-            <p className={s.capDesc}>
-              Balance sheet, P&amp;L, trial balance, AP/AR aging,
-              runway projections. Generated from live ledger data.
-              Ops gets answers without pinging engineering.
+              API keys, outbound webhooks, docs, SDKs, alerting, preflight
+              authorization, shadow-ledger projections, and operational health
+              monitoring are built in.
             </p>
           </div>
         </div>
       </section>
 
-      {/* ── Built For ─────────────────────────────────────────── */}
       <section className={s.builtForSection} id="built-for">
         <div className={s.builtForInner}>
           <p className={s.sectionEyebrow}>Built For</p>
-          <h2 className={s.sectionTitle}>Platforms where creators earn money</h2>
+          <h2 className={s.sectionTitle}>Platforms with multi-party money flow</h2>
           <p className={s.sectionDesc}>
-            If your users make content and you share the revenue,
-            Soledgic is your financial backend.
+            If your product collects money from one party and owes it to
+            another, Soledgic is the infrastructure layer underneath.
           </p>
 
           <div className={s.builtForGrid}>
             <div className={s.builtForCard}>
               <span className={s.builtForEmoji}>📚</span>
-              <div className={s.builtForLabel}>Publishing</div>
-              <h3 className={s.builtForTitle}>Book &amp; Content Platforms</h3>
+              <div className={s.builtForLabel}>Creator Economy</div>
+              <h3 className={s.builtForTitle}>Creator &amp; Publishing Platforms</h3>
               <p className={s.builtForDesc}>
-                Ebook sales, author royalties, audiobook splits,
-                and subscription access — tracked and paid automatically.
-              </p>
-            </div>
-            <div className={s.builtForCard}>
-              <span className={s.builtForEmoji}>🎓</span>
-              <div className={s.builtForLabel}>Education</div>
-              <h3 className={s.builtForTitle}>Course &amp; Learning Platforms</h3>
-              <p className={s.builtForDesc}>
-                Course sales, instructor payouts, cohort billing,
-                and multi-tier revenue sharing for teaching marketplaces.
+                Royalties, subscriptions, digital sales, recurring payouts, and
+                creator statements without stitching together a back office.
               </p>
             </div>
             <div className={s.builtForCard}>
@@ -273,17 +258,26 @@ export default function HomePage() {
               <div className={s.builtForLabel}>Marketplaces</div>
               <h3 className={s.builtForTitle}>Digital &amp; Service Marketplaces</h3>
               <p className={s.builtForDesc}>
-                Seller payouts, platform commissions, escrow holds,
-                and multi-vendor splits for two-sided marketplaces.
+                Platform commissions, seller balances, held funds, refunds, and
+                payout schedules for two-sided transactions.
+              </p>
+            </div>
+            <div className={s.builtForCard}>
+              <span className={s.builtForEmoji}>🎓</span>
+              <div className={s.builtForLabel}>Education</div>
+              <h3 className={s.builtForTitle}>Course &amp; Learning Platforms</h3>
+              <p className={s.builtForDesc}>
+                Instructor splits, cohort billing, recurring subscriptions, and
+                financial reporting for education products.
               </p>
             </div>
             <div className={s.builtForCard}>
               <span className={s.builtForEmoji}>🎵</span>
               <div className={s.builtForLabel}>Music &amp; Audio</div>
-              <h3 className={s.builtForTitle}>Streaming &amp; Distribution</h3>
+              <h3 className={s.builtForTitle}>Streaming &amp; Distribution Platforms</h3>
               <p className={s.builtForDesc}>
-                Royalty tracking, per-play revenue splits, label payouts,
-                and licensing fee management at scale.
+                Revenue sharing, royalty logic, label payouts, and reporting for
+                platforms with ongoing earnings distribution.
               </p>
             </div>
             <div className={s.builtForCard}>
@@ -291,31 +285,30 @@ export default function HomePage() {
               <div className={s.builtForLabel}>Media</div>
               <h3 className={s.builtForTitle}>Newsletter &amp; Podcast Platforms</h3>
               <p className={s.builtForDesc}>
-                Subscription billing, ad revenue splits, sponsorship
-                payouts, and tip jar management for media creators.
+                Subscription billing, sponsorship revenue allocation, and
+                statement-ready payouts for media businesses.
               </p>
             </div>
             <div className={s.builtForCard}>
               <span className={s.builtForEmoji}>⚙️</span>
-              <div className={s.builtForLabel}>SaaS</div>
-              <h3 className={s.builtForTitle}>Platforms with Embedded Payments</h3>
+              <div className={s.builtForLabel}>Embedded Finance</div>
+              <h3 className={s.builtForTitle}>Software Products with Money Movement</h3>
               <p className={s.builtForDesc}>
-                Accept payments, collect fees, pay vendors, and maintain
-                a clean ledger — without building your own financial backend.
+                Accept payments, collect fees, pay counterparties, and maintain
+                clean books without building your own financial backend.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Pricing ───────────────────────────────────────────── */}
       <section className={s.pricingSection} id="pricing">
         <div className={s.pricingInner}>
           <p className={s.sectionEyebrow}>Pricing</p>
-          <h2 className={s.sectionTitle}>Start free. Scale when you earn.</h2>
+          <h2 className={s.sectionTitle}>Start with the infrastructure, not the overhead.</h2>
           <p className={s.sectionDesc} style={{ margin: '0 auto' }}>
-            No monthly platform fees to start. Pay processing costs on
-            transactions, scale up when you&apos;re ready.
+            Launch with Soledgic as your financial layer, then expand ledgers
+            and team access as the platform grows.
           </p>
 
           <div className={s.pricingRate}>
@@ -327,17 +320,16 @@ export default function HomePage() {
 
           <div className={s.pricingSingle}>
             <div className={`${s.pricingCard} ${s.pricingCardFeatured}`}>
-              <div className={s.pricingTier}>Everything Included</div>
+              <div className={s.pricingTier}>Core Platform Infrastructure</div>
               <div className={s.pricingPrice}>Free</div>
               <div className={s.pricingSubtext}>Pay only processing fees per transaction</div>
               <ul className={s.pricingFeatures}>
-                <li>Payment processing</li>
-                <li>Revenue splits &amp; payouts</li>
-                <li>Double-entry ledger</li>
-                <li>Creator portal</li>
-                <li>Tax withholding &amp; 1099-K</li>
-                <li>Financial reports</li>
-                <li>Scheduled &amp; on-demand payouts</li>
+                <li>Checkout and payment orchestration</li>
+                <li>Revenue splits, holds, and payouts</li>
+                <li>Double-entry ledger and audit trail</li>
+                <li>Reconciliation and financial reporting</li>
+                <li>Creator portal and operator dashboard</li>
+                <li>API keys, docs, and webhooks</li>
                 <li>1 ledger included</li>
                 <li>1 team member</li>
                 <li>$20/month per additional ledger</li>
@@ -357,21 +349,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── CTA ───────────────────────────────────────────────── */}
       <section className={s.ctaSection}>
         <h2 className={s.ctaTitle}>
-          Your creators deserve to get paid without the chaos.
+          If your product moves money between multiple parties, this is the layer that keeps it coherent.
         </h2>
         <p className={s.ctaDesc}>
-          One platform. Payments in, splits calculated, creators paid,
-          books balanced. Set it up in five minutes.
+          Payments in. Splits calculated. Payouts sent. Books balanced.
+          Product, finance, and operations all work from the same source of truth.
         </p>
         <Link href="/signup" className={s.ctaBtnWhite}>
           Start Your Free Account
         </Link>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────── */}
       <footer className={s.footer}>
         <div className={s.footerLinks}>
           <Link href="/docs">Documentation</Link>

@@ -19,10 +19,10 @@ export default function PricingPage() {
       <section className={s.pricingSection} id="pricing">
         <div className={s.pricingInner}>
           <p className={s.sectionEyebrow}>Pricing</p>
-          <h1 className={s.sectionTitle}>Start free. Scale when you earn.</h1>
+          <h1 className={s.sectionTitle}>Start with the infrastructure, not the overhead.</h1>
           <p className={s.sectionDesc} style={{ margin: '0 auto' }}>
-            No monthly platform fees to start. Pay processing costs on
-            transactions, scale up when you&apos;re ready.
+            Launch with Soledgic as your financial layer, then expand ledgers
+            and team access as the platform grows.
           </p>
 
           <div className={s.pricingRate}>
@@ -34,17 +34,16 @@ export default function PricingPage() {
 
           <div className={s.pricingSingle}>
             <div className={`${s.pricingCard} ${s.pricingCardFeatured}`}>
-              <div className={s.pricingTier}>Everything Included</div>
+              <div className={s.pricingTier}>Core Platform Infrastructure</div>
               <div className={s.pricingPrice}>Free</div>
               <div className={s.pricingSubtext}>Pay only processing fees per transaction</div>
               <ul className={s.pricingFeatures}>
-                <li>Payment processing</li>
-                <li>Revenue splits &amp; payouts</li>
-                <li>Double-entry ledger</li>
-                <li>Creator portal</li>
-                <li>Tax withholding &amp; 1099-K</li>
-                <li>Financial reports</li>
-                <li>Scheduled &amp; on-demand payouts</li>
+                <li>Checkout and payment orchestration</li>
+                <li>Revenue splits, holds, and payouts</li>
+                <li>Double-entry ledger and audit trail</li>
+                <li>Reconciliation and financial reporting</li>
+                <li>Creator portal and operator dashboard</li>
+                <li>API keys, docs, and webhooks</li>
                 <li>1 ledger included</li>
                 <li>1 team member</li>
                 <li>$20/month per additional ledger</li>
