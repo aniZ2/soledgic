@@ -22,8 +22,9 @@ Controlled failure simulation drills for the Soledgic payment pipeline.
 | Mechanism | Trigger | Interval |
 |-----------|---------|----------|
 | `process-processor-inbox` | pg_cron (`process-processor-inbox-minute`) | every 1 min |
-| `reconcile-checkout-ledger` | **manual POST only** (no cron scheduled) | on demand |
-| `process-webhooks` | **manual POST** (`x-cron-secret` header, no pg_cron) | on demand |
+| `reconcile-checkout-ledger` | pg_cron (`reconcile-checkout-ledger-5min`) | every 5 min |
+| `process-webhooks` | pg_cron (`process-webhooks-minute`) | every 1 min |
+| `security-alerts` | pg_cron (`security-alerts-15min`) | every 15 min |
 | `claim_processor_webhook_inbox` | called by process-processor-inbox | on demand |
 | `mark_webhook_failed` | called by process-webhooks | on demand |
 
@@ -481,9 +482,9 @@ WHERE t.reference_id = 'payout_' || $TEST_PAYOUT_ID;
 
 ### Category 4: Delayed `charged_pending_ledger` Reconciliation
 
-> **Note:** `reconcile-checkout-ledger` has no cron schedule in the repo. These drills
-> simulate manual operator invocations of the worker. If a cron is added later, these
-> drills also validate the automated path.
+> **Note:** `reconcile-checkout-ledger` runs on pg_cron every 5 minutes
+> (`reconcile-checkout-ledger-5min`). These drills validate both the automated
+> and manual invocation paths.
 
 #### RECON-01 — Manual reconciler catches stuck session
 
@@ -914,9 +915,6 @@ Known failure paths **not covered** by this matrix (future work):
 
 | Gap | Reason |
 |-----|--------|
-| `security-alerts` cron trigger | No cron job currently scheduled for `security-alerts`; RATE-03 depends on manual invocation |
-| `reconcile-checkout-ledger` cron | No cron schedule exists for the reconciler; RECON drills require manual invocation; stuck sessions go undetected until an operator runs the worker |
-| `process-webhooks` cron | No pg_cron schedule in repo; currently triggered by external scheduler or manual POST with `x-cron-secret` |
 | Bank aggregator feed staleness | No stale-detection mechanism exists; bank feed goes silent without alert |
 | Dispute hold RPC failure | Error currently swallowed in `process-processor-inbox` dispute handler; no retry or alert |
 | SSRF DNS rebinding timing window | Hard to simulate deterministically; `process-webhooks` validates DNS at delivery time but a fast rebind could theoretically slip through |
