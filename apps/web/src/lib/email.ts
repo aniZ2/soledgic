@@ -145,7 +145,7 @@ export async function sendWelcomeEmail({
       <li>Generate API keys for your integration</li>
       <li>Record your first transaction</li>
     </ul>
-    <a href="${APP_URL}/getting-started" style="${buttonStyle}">
+    <a href="${APP_URL}/connect" style="${buttonStyle}">
       Get Started
     </a>
     <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">

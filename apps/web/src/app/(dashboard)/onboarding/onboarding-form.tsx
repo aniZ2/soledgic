@@ -64,7 +64,7 @@ export default function OnboardingForm() {
       }
 
       // Avoid push+refresh race that can leave users on /onboarding.
-      router.replace('/getting-started')
+      router.replace('/connect')
 
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to create organization'))

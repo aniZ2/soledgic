@@ -305,7 +305,7 @@ export default async function DashboardPage() {
             </div>
             <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-sm">
               <Link
-                href="/getting-started"
+                href="/connect"
                 className="text-primary hover:underline"
               >
                 View setup guide

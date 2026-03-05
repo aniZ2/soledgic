@@ -13,7 +13,7 @@ import {
   Users,
   Wallet,
   Scale,
-  Rocket
+  Plug
 } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
 import { LiveModeToggle } from '@/components/livemode-toggle'
@@ -24,7 +24,7 @@ import { MobileNav } from '@/components/mobile-nav'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Getting Started', href: '/getting-started', icon: Rocket },
+  { name: 'Connect', href: '/connect', icon: Plug },
   { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
   { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
   { name: 'Creators', href: '/dashboard/creators', icon: Users },
