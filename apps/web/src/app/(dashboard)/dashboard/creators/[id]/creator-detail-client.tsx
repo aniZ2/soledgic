@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2 } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
@@ -56,6 +57,7 @@ interface CreatorDetailClientProps {
   transactions: Transaction[]
   heldFunds: HeldFund[]
   hasTaxInfo: boolean
+  hasTransactions: boolean
 }
 
 export function CreatorDetailClient({
@@ -65,8 +67,12 @@ export function CreatorDetailClient({
   transactions,
   heldFunds,
   hasTaxInfo,
+  hasTransactions,
 }: CreatorDetailClientProps) {
+  const router = useRouter()
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [releasingEntryId, setReleasingEntryId] = useState<string | null>(null)
   const [releaseError, setReleaseError] = useState<string | null>(null)
 
@@ -87,6 +93,34 @@ export function CreatorDetailClient({
 
   const handlePayoutSuccess = () => {
     window.location.reload()
+  }
+
+  const handleDeleteCreator = async () => {
+    if (!window.confirm(`Are you sure you want to delete "${creatorAccount.name}"? This action cannot be undone.`)) {
+      return
+    }
+
+    setDeleteError(null)
+    setIsDeleting(true)
+
+    try {
+      const response = await callLedgerFunction('delete-creator', {
+        ledgerId: ledger.id,
+        body: { creator_id: creatorAccount.entity_id },
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || 'Failed to delete creator')
+      }
+
+      router.push('/dashboard/creators')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to delete creator'
+      setDeleteError(message)
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const handleReleaseFunds = async (entryId: string) => {
@@ -167,9 +201,24 @@ export function CreatorDetailClient({
               <Wallet className="w-4 h-4" />
               Process Payout
             </button>
+            <button
+              onClick={handleDeleteCreator}
+              disabled={hasTransactions || isDeleting}
+              title={hasTransactions ? 'Cannot delete creator with transactions' : 'Delete creator'}
+              className="flex items-center gap-2 border border-red-300 text-red-600 px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-red-500/30 dark:hover:bg-red-500/10"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isDeleting ? 'Deleting...' : 'Delete Creator'}
+            </button>
           </div>
         </div>
       </div>
+
+      {deleteError && (
+        <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
+          {deleteError}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">

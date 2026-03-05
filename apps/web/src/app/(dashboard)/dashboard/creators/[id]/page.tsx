@@ -187,6 +187,7 @@ export default async function CreatorDetailPage({
       transactions={transactions}
       heldFunds={heldFunds}
       hasTaxInfo={!!taxInfo}
+      hasTransactions={transactions.length > 0}
     />
   )
 }

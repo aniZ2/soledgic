@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 const ALLOWED_ENDPOINTS = new Set([
   'health-check',
   'create-creator',
+  'delete-creator',
   'release-funds',
   'record-sale',
   'record-expense',
@@ -28,6 +29,7 @@ const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
   'release-funds',
   'import-transactions',
   'send-statements',
+  'delete-creator',
 ])
 
 function getEndpointFromRequest(request: Request): string | null {
