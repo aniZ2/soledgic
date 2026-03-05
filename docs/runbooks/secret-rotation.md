@@ -9,7 +9,7 @@
 | `PROCESSOR_WEBHOOK_SIGNING_KEY` | Supabase env + Vercel env + Finix dashboard | Inbound webhooks rejected until both sides match |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase (auto-managed) | Only rotate via Supabase dashboard |
 | `RESEND_API_KEY` | Supabase env + Vercel env | Emails stop until updated |
-| `CRON_SECRET` | Supabase env | Scheduled jobs fail until updated |
+| `CRON_SECRET` | Supabase env + pg_cron jobs (inlined) | `process-webhooks` and `security-alerts` cron jobs 401 until both sides updated |
 | API keys (`sk_test_*`, `sk_live_*`) | `ledgers.api_key_hash` in DB | Per-ledger, via `generate_api_key()` RPC |
 | Webhook endpoint secrets | `vault.secrets` | Per-endpoint, via `rotate_webhook_secret()` RPC |
 
@@ -110,6 +110,65 @@ Update the signing secret in Finix dashboard webhook configuration.
 ### 4. Verify with Test Event
 
 Check Vercel function logs to confirm signature verification passes.
+
+## Rotating CRON_SECRET
+
+The `CRON_SECRET` authenticates pg_cron → Edge Function calls for `process-webhooks` and `security-alerts`. It lives in **two places** that must stay in sync:
+
+1. **Edge Function secret** — read by the function via `Deno.env.get('CRON_SECRET')`
+2. **pg_cron job commands** — inlined in the SQL (not a DB-level GUC, because Supabase hosted postgres can't `ALTER DATABASE SET` for custom app.settings)
+
+### Rotation steps
+
+```bash
+# 1. Generate new secret
+NEW_SECRET=$(openssl rand -hex 32)
+
+# 2. Update Edge Function secret
+supabase secrets set CRON_SECRET="$NEW_SECRET"
+
+# 3. Patch pg_cron jobs with the new value
+export CRON_SECRET="$NEW_SECRET"
+export SERVICE_ROLE_KEY="<sb_secret_...>"  # unchanged, but required by script
+./scripts/patch-cron-secrets.sh
+```
+
+## Post-deploy: patching all cron jobs
+
+**All 7 HTTP-based pg_cron jobs** need patching after `supabase db push` or `db reset`. The migrations use `current_setting('app.settings.*')` which is unavailable in pg_cron's direct postgres session. The patch script inlines the actual values via `cron.alter_job()`.
+
+Two categories of secrets are inlined:
+
+| Auth type | Jobs | Secret source |
+|-----------|------|--------------|
+| Bearer `SERVICE_ROLE_KEY` | process-processor-inbox, reconcile-checkout-ledger, bill-overages, ops-monitor, scheduled-payouts | v2 secret key (`sb_secret_*`) from Supabase Dashboard > API |
+| `x-cron-secret` | process-webhooks, security-alerts | `CRON_SECRET` (custom, set via `supabase secrets set`) |
+
+**Important:** Supabase v2 projects inject the `sb_secret_*` key as `SUPABASE_SERVICE_ROLE_KEY` in Edge Functions, not the legacy JWT. The Management API's "service_role" key is the legacy JWT and will **not** work for Bearer auth against Edge Functions.
+
+```bash
+export CRON_SECRET="<your-cron-secret>"
+export SERVICE_ROLE_KEY="<sb_secret_...>"  # from Dashboard > API > secret key
+./scripts/patch-cron-secrets.sh
+```
+
+### Verify
+
+```sql
+-- Check recent cron runs (wait ~60s after patching)
+SELECT j.jobname, d.status, d.start_time
+FROM cron.job_run_details d JOIN cron.job j ON d.jobid = j.jobid
+WHERE d.start_time > now() - interval '3 minutes'
+ORDER BY d.start_time DESC LIMIT 15;
+
+-- Check HTTP response codes
+SELECT id, status_code, left(content, 100), created
+FROM net._http_response
+WHERE created > now() - interval '3 minutes'
+ORDER BY created DESC LIMIT 10;
+```
+
+All jobs should show `succeeded` and HTTP `200`. A `401` means a secret mismatch.
 
 ## Rotating Per-Ledger API Keys
 
