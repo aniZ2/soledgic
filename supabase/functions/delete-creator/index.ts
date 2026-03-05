@@ -30,44 +30,22 @@ const handler = createHandler(
       return errorResponse('Invalid creator_id: must be 1-100 alphanumeric characters', 400, req, requestId)
     }
 
-    // Find the creator account
-    const { data: account, error: findError } = await supabase
-      .from('accounts')
-      .select('id, name, entity_id')
-      .eq('ledger_id', ledger.id)
-      .eq('account_type', 'creator_balance')
-      .eq('entity_id', creatorId)
-      .eq('is_active', true)
-      .single()
+    // Atomic delete: check entries + soft-delete in a single transaction
+    const { data: result, error: rpcError } = await supabase.rpc('delete_creator_atomic', {
+      p_ledger_id: ledger.id,
+      p_creator_id: creatorId,
+    })
 
-    if (findError || !account) {
-      return errorResponse('Creator not found', 404, req, requestId)
-    }
-
-    // Guard: check for existing entries
-    const { count, error: countError } = await supabase
-      .from('entries')
-      .select('id', { count: 'exact', head: true })
-      .eq('account_id', account.id)
-
-    if (countError) {
-      console.error('Failed to check entries:', countError)
-      return errorResponse('Failed to verify creator transactions', 500, req, requestId)
-    }
-
-    if (count && count > 0) {
-      return errorResponse('Cannot delete creator with existing transactions', 409, req, requestId)
-    }
-
-    // Soft delete: set is_active = false
-    const { error: updateError } = await supabase
-      .from('accounts')
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('id', account.id)
-
-    if (updateError) {
-      console.error('Failed to delete creator:', updateError)
+    if (rpcError) {
+      console.error('Failed to delete creator:', rpcError)
       return errorResponse('Failed to delete creator', 500, req, requestId)
+    }
+
+    const row = result?.[0] || result
+    if (!row?.out_deleted) {
+      const errMsg = row?.out_error || 'Creator not found'
+      const status = errMsg.includes('existing transactions') ? 409 : 404
+      return errorResponse(errMsg, status, req, requestId)
     }
 
     // Audit log
@@ -75,10 +53,9 @@ const handler = createHandler(
       ledger_id: ledger.id,
       action: 'creator.deleted',
       resource_type: 'account',
-      resource_id: account.id,
+      resource_id: row.out_account_id,
       details: sanitizeForAudit({
         creator_id: creatorId,
-        display_name: account.name,
       }),
       request_id: requestId
     })

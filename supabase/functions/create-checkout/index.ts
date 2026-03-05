@@ -114,6 +114,7 @@ async function getCreatorSplit(
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
     .eq('entity_id', creatorId)
+    .eq('is_active', true)
     .single()
   
   if (creatorAccount?.metadata?.custom_split_percent !== undefined) {
@@ -197,7 +198,20 @@ const handler = createHandler(
     if (!creatorId) {
       return errorResponse('Invalid creator_id: must be 1-100 alphanumeric characters', 400, req, requestId)
     }
-    
+
+    // Verify creator is active (prevents checkouts for deleted creators)
+    const { data: creatorCheck } = await supabase
+      .from('accounts')
+      .select('id, is_active')
+      .eq('ledger_id', ledger.id)
+      .eq('account_type', 'creator_balance')
+      .eq('entity_id', creatorId)
+      .maybeSingle()
+
+    if (creatorCheck && creatorCheck.is_active === false) {
+      return errorResponse('Creator has been deleted', 410, req, requestId)
+    }
+
     // Currency (optional, default USD)
     const currency = body.currency?.toUpperCase() || 'USD'
     const validCurrencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'NGN']

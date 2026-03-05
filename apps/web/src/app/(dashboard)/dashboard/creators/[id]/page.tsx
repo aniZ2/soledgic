@@ -76,6 +76,7 @@ export default async function CreatorDetailPage({
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
     .eq('entity_id', creatorId)
+    .eq('is_active', true)
     .single()
 
   const creatorAccount = creatorAccountRaw as CreatorAccountRow | null

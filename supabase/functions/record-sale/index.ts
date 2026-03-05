@@ -207,6 +207,7 @@ async function getCreatorPercent(
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
     .eq('entity_id', creatorId)
+    .eq('is_active', true)
     .single()
 
   const customSplit = creatorAccount?.metadata?.custom_split_percent
@@ -251,6 +252,7 @@ async function getCreatorLiveBalance(
     .eq('ledger_id', ledgerId)
     .eq('account_type', 'creator_balance')
     .eq('entity_id', creatorId)
+    .eq('is_active', true)
     .maybeSingle()
 
   if (!account?.id) return 0

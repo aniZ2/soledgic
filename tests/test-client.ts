@@ -419,6 +419,12 @@ export class SoledgicTestClient {
     })
   }
 
+  async deleteCreator(creatorId: string) {
+    return this.request('delete-creator', {
+      creator_id: creatorId,
+    })
+  }
+
   // ============================================================================
   // TEST UTILITIES
   // ============================================================================

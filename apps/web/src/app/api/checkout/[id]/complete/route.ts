@@ -147,6 +147,23 @@ export async function POST(
     )
   }
 
+  // Verify creator is still active before charging
+  const { data: creatorAccount } = await supabase
+    .from('accounts')
+    .select('is_active')
+    .eq('ledger_id', session.ledger_id)
+    .eq('account_type', 'creator_balance')
+    .eq('entity_id', session.creator_id)
+    .maybeSingle()
+
+  if (creatorAccount && creatorAccount.is_active === false) {
+    await supabase
+      .from('checkout_sessions')
+      .update({ status: 'failed', updated_at: new Date().toISOString() })
+      .eq('id', sessionId)
+    return NextResponse.json({ error: 'Creator is no longer available' }, { status: 410 })
+  }
+
   // Execute charge via processor
   const merchantId = (process.env.PROCESSOR_MERCHANT_ID || '').trim()
   if (!merchantId) {
