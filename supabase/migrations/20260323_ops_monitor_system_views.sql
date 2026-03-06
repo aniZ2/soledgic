@@ -1,5 +1,5 @@
 -- Migration: ops-monitor system views
--- Adds two SECURITY DEFINER functions for ops-monitor checks:
+-- Adds two secure (definer-context) functions for ops-monitor checks:
 --   1. get_lock_wait_count() — active queries waiting on locks
 --   2. get_deadlock_count() — cumulative deadlock counter from pg_stat_database
 
