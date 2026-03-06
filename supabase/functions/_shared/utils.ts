@@ -45,6 +45,11 @@ export function isStaging(): boolean {
 // CONSTANTS
 // ============================================================================
 
+// API Versioning
+const CURRENT_API_VERSION = '2026-03-01'
+const SUPPORTED_API_VERSIONS = new Set(['2026-03-01'])
+export const API_VERSION = CURRENT_API_VERSION
+
 const MAX_BODY_SIZE = 512 * 1024 // 512KB max request body (default)
 
 // SECURITY FIX L2: Endpoint-specific body size limits
@@ -276,11 +281,11 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   
   return {
     'Access-Control-Allow-Origin': origin!,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key, x-request-id',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key, x-request-id, soledgic-version',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Max-Age': '86400', // 24 hours
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Expose-Headers': 'X-Request-Id, X-RateLimit-Remaining, Retry-After',
+    'Access-Control-Expose-Headers': 'X-Request-Id, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After, Soledgic-Version',
   }
 }
 
@@ -346,11 +351,13 @@ export function rateLimitedResponse(resetIn?: number, req?: Request, requestId?:
     }),
     { 
       status: 429, 
-      headers: { 
-        ...corsHeaders, 
+      headers: {
+        ...corsHeaders,
         ...SECURITY_HEADERS,
         'Content-Type': 'application/json',
         'Retry-After': String(resetIn || 60),
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(resetIn || 60),
         ...(requestId ? { 'X-Request-Id': requestId } : {}),
       } 
     }
@@ -875,7 +882,7 @@ type RequestHandler = (
   supabase: SupabaseClient,
   ledger: LedgerContext | null,
   body: any,
-  context: { requestId: string; startTime: number }
+  context: { requestId: string; startTime: number; apiVersion: string }
 ) => Promise<Response>
 
 export function createHandler(options: HandlerOptions, handler: RequestHandler) {
@@ -940,7 +947,14 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       console.warn(`[${requestId}] Blocked unauthorized origin: ${origin}`)
       return forbiddenResponse(req, requestId)
     }
-    
+
+    // API Versioning: parse and validate requested version
+    const requestedVersion = req.headers.get('Soledgic-Version')?.trim() || CURRENT_API_VERSION
+    const apiVersion = SUPPORTED_API_VERSIONS.has(requestedVersion) ? requestedVersion : CURRENT_API_VERSION
+    if (requestedVersion && !SUPPORTED_API_VERSIONS.has(requestedVersion)) {
+      console.warn(`[${requestId}] Unknown API version: ${requestedVersion}, using ${CURRENT_API_VERSION}`)
+    }
+
     const supabase = getSupabaseClient()
     
     try {
@@ -1023,9 +1037,11 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       // SECURITY FIX: Rate limit ALL requests, not just authenticated ones
       // - Authenticated: Rate limit by LEDGER ID (prevents bypass via key rotation)
       // - Unauthenticated: Rate limit by IP (prevents resource exhaustion)
+      let rlRemaining: number | undefined
+      let rlResetIn: number | undefined
       if (options.rateLimit !== false) {
         let rateLimitKey: string
-        
+
         if (ledger) {
           // Authenticated: use ledger ID
           rateLimitKey = ledger.id
@@ -1033,7 +1049,7 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
           // Unauthenticated: use IP address with prefix
           rateLimitKey = `ip:${clientIp || 'unknown'}`
         }
-        
+
         const { allowed, resetIn, remaining, error, source } = await checkRateLimit(
           rateLimitKey, options.endpoint, supabase, requestId
         )
@@ -1047,6 +1063,8 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
           })
           return rateLimitedResponse(resetIn, req, requestId)
         }
+        rlRemaining = remaining
+        rlResetIn = resetIn
       }
       
       // Parse body (if POST/PUT/PATCH) with size check
@@ -1090,7 +1108,7 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       }
       
       // Call handler with context
-      const response = await handler(req, supabase, ledger, body, { requestId, startTime })
+      const response = await handler(req, supabase, ledger, body, { requestId, startTime, apiVersion })
       
       // Log request duration for monitoring
       const duration = Date.now() - startTime
@@ -1098,27 +1116,35 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         console.warn(`[${requestId}] Slow request: ${options.endpoint} took ${duration}ms`)
       }
       
-      // Add request ID to response if not already present
-      const existingHeaders = Object.fromEntries(response.headers.entries())
-      if (!existingHeaders['x-request-id']) {
-        const newHeaders = new Headers(response.headers)
+      // Inject standard headers into response
+      const newHeaders = new Headers(response.headers)
+      if (!newHeaders.has('X-Request-Id')) {
         newHeaders.set('X-Request-Id', requestId)
-        
-        // Add security headers if not present
-        for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
-          if (!newHeaders.has(key)) {
-            newHeaders.set(key, value)
-          }
-        }
-        
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: newHeaders,
-        })
       }
-      
-      return response
+
+      // Rate limit headers
+      if (rlRemaining !== undefined) {
+        newHeaders.set('X-RateLimit-Remaining', String(rlRemaining))
+      }
+      if (rlResetIn !== undefined) {
+        newHeaders.set('X-RateLimit-Reset', String(rlResetIn))
+      }
+
+      // API version header
+      newHeaders.set('Soledgic-Version', apiVersion)
+
+      // Add security headers if not present
+      for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+        if (!newHeaders.has(key)) {
+          newHeaders.set(key, value)
+        }
+      }
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders,
+      })
       
     } catch (error: any) {
       console.error(`[${requestId}] Error in ${options.endpoint}:`, error.message)

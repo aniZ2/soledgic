@@ -148,6 +148,7 @@ async function proxyLedgerFunction(
   const headers = new Headers()
   headers.set('x-soledgic-internal-token', internalToken)
   headers.set('x-ledger-id', ledgerId)
+  headers.set('Soledgic-Version', '2026-03-01')
 
   let body: string | undefined
   if (method !== 'GET' && method !== 'DELETE') {

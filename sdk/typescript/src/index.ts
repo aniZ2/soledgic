@@ -836,6 +836,7 @@ export class Soledgic {
         headers: {
           'x-api-key': this._getKey(),
           'Content-Type': 'application/json',
+          'Soledgic-Version': '2026-03-01',
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -869,6 +870,7 @@ export class Soledgic {
         method: 'GET',
         headers: {
           'x-api-key': this._getKey(),
+          'Soledgic-Version': '2026-03-01',
         },
         signal: controller.signal,
       })
@@ -895,6 +897,7 @@ export class Soledgic {
         headers: {
           'x-api-key': this._getKey(),
           'Content-Type': 'application/json',
+          'Soledgic-Version': '2026-03-01',
         },
         body: JSON.stringify(body),
         signal: controller.signal,
