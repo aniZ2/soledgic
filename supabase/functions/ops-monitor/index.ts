@@ -278,6 +278,86 @@ Deno.serve(async (req: Request) => {
     results.push({ check: 'inbox_processing_rate_1h', status: 'ok', count: -1, details: 'Check failed' })
   }
 
+  // 10. Lock waits — active queries blocked on a lock
+  try {
+    const { data, error } = await supabase.rpc('get_lock_wait_count')
+
+    if (error) {
+      console.error(`[${requestId}] Lock waits check error:`, error.message)
+      results.push({ check: 'lock_waits', status: 'warning', count: -1, details: `RPC error: ${error.message}` })
+    } else {
+      const lockWaits = Number(data) || 0
+      results.push({
+        check: 'lock_waits',
+        status: lockWaits >= 10 ? 'critical' : lockWaits >= 3 ? 'warning' : 'ok',
+        count: lockWaits,
+        details: lockWaits > 0 ? `${lockWaits} active query(ies) waiting on locks` : undefined,
+      })
+    }
+  } catch (err) {
+    results.push({ check: 'lock_waits', status: 'warning', count: -1, details: 'Check failed' })
+  }
+
+  // 11. Deadlocks — cumulative counter since last stats reset (informational)
+  try {
+    const { data, error } = await supabase.rpc('get_deadlock_count')
+
+    if (error) {
+      console.error(`[${requestId}] Deadlocks check error:`, error.message)
+      results.push({ check: 'deadlocks_cumulative', status: 'warning', count: -1, details: `RPC error: ${error.message}` })
+    } else {
+      const deadlocks = Number(data) || 0
+      results.push({
+        check: 'deadlocks_cumulative',
+        status: 'ok', // Informational — cumulative since stats reset, trend via ops_monitor_runs
+        count: deadlocks,
+        details: `${deadlocks} cumulative deadlock(s) since last stats reset`,
+      })
+    }
+  } catch (err) {
+    results.push({ check: 'deadlocks_cumulative', status: 'ok', count: -1, details: 'Check failed' })
+  }
+
+  // 12. Payout failure rate in last 24h
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    const { count: failedCount, error: failedError } = await supabase
+      .from('transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('transaction_type', 'payout')
+      .eq('status', 'failed')
+      .gte('created_at', twentyFourHoursAgo)
+
+    const { count: completedCount, error: completedError } = await supabase
+      .from('transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('transaction_type', 'payout')
+      .eq('status', 'completed')
+      .gte('created_at', twentyFourHoursAgo)
+
+    if (failedError || completedError) {
+      const errMsg = (failedError || completedError)!.message
+      console.error(`[${requestId}] Payout failure rate check error:`, errMsg)
+      results.push({ check: 'payout_failure_rate_24h', status: 'warning', count: -1, details: `Query error: ${errMsg}` })
+    } else {
+      const failed = failedCount ?? 0
+      const completed = completedCount ?? 0
+      const total = failed + completed
+      const rate = total > 0 ? Math.round((failed / total) * 100) : 0
+      results.push({
+        check: 'payout_failure_rate_24h',
+        status: rate >= 25 ? 'critical' : rate >= 5 ? 'warning' : 'ok',
+        count: rate,
+        details: total > 0
+          ? `${rate}% failure rate (${failed} failed / ${total} total payouts in 24h)`
+          : 'No payouts in the last 24 hours',
+      })
+    }
+  } catch (err) {
+    results.push({ check: 'payout_failure_rate_24h', status: 'warning', count: -1, details: 'Check failed' })
+  }
+
   // Aggregate status
   const overallStatus = results.some(r => r.status === 'critical')
     ? 'critical'

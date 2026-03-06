@@ -19,6 +19,9 @@ Single entry point for on-call engineers. Find the alert, follow the runbook.
 | `inbox_depth` | 100+ pending (warn), 500+ (crit) | WARNING/CRITICAL | Cron retries every minute | [webhook-backlog.md](webhook-backlog.md) |
 | `inbox_oldest_pending_seconds` | 300s+ (warn), 3600s+ (crit) | WARNING/CRITICAL | None — investigate stuck processor | [webhook-backlog.md](webhook-backlog.md) |
 | `inbox_processing_rate_1h` | Informational | OK | N/A — trend metric only | [webhook-backlog.md](webhook-backlog.md) |
+| `lock_waits` | 3+ (warn), 10+ (crit) | WARNING/CRITICAL | None — investigate long-running queries | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| `deadlocks_cumulative` | Informational | OK | N/A — cumulative counter, trend via ops_monitor_runs | [reconciliation-mismatch.md](reconciliation-mismatch.md) |
+| `payout_failure_rate_24h` | 5%+ (warn), 25%+ (crit) | WARNING/CRITICAL | None — investigate processor status and payout pipeline | [payout-failure.md](payout-failure.md) |
 
 ### health-check Results
 

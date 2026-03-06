@@ -235,7 +235,7 @@ export async function POST(
   const referenceId = `checkout_${session.id}`
   let saleRecorded = false
   try {
-    await supabase.rpc('record_sale_atomic', {
+    const { error: rpcError } = await supabase.rpc('record_sale_atomic', {
       p_ledger_id: session.ledger_id,
       p_reference_id: referenceId,
       p_creator_id: session.creator_id,
@@ -247,7 +247,11 @@ export async function POST(
       p_product_name: session.product_name || null,
       p_metadata: session.metadata || {},
     })
-    saleRecorded = true
+    if (rpcError) {
+      console.error('record_sale_atomic RPC error after successful charge:', rpcError.message)
+    } else {
+      saleRecorded = true
+    }
   } catch (err: unknown) {
     console.error('Failed to record sale after successful charge:', err)
   }

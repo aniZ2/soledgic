@@ -73,6 +73,19 @@ export default function DocsPage() {
         </pre>
       </div>
 
+      {/* How It Works */}
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-6 mb-12">
+        <h2 className="text-lg font-semibold text-foreground mb-2">How It Works</h2>
+        <p className="text-sm text-muted-foreground">
+          Every financial write runs inside a PostgreSQL RPC with row locks and atomic transactions—your
+          ledger either records the full double-entry set or nothing. Stateless Edge Workers handle auth,
+          validation, and orchestration, then delegate to these database RPCs.{' '}
+          <Link href="/docs/concepts#architecture" className="text-primary hover:underline">
+            Learn more about the architecture →
+          </Link>
+        </p>
+      </div>
+
       {/* Section cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
         {sections.map((section) => {

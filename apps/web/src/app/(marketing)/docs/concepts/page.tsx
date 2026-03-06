@@ -232,6 +232,45 @@ export default function ConceptsPage() {
         </p>
       </section>
 
+      {/* Architecture */}
+      <section id="architecture" className="mb-12 scroll-mt-20">
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Architecture</h2>
+        <p className="text-muted-foreground mb-6">
+          Soledgic separates financial correctness from API orchestration. Here&apos;s how the layers work together.
+        </p>
+
+        <div className="space-y-4 mb-6">
+          <div className="p-4 bg-card border border-border rounded-lg">
+            <h3 className="font-semibold text-foreground mb-1">Database RPCs</h3>
+            <p className="text-sm text-muted-foreground">
+              Financial writes execute inside PostgreSQL functions with row locks and atomic transactions.
+              The double-entry set either commits in full or rolls back entirely.
+            </p>
+          </div>
+          <div className="p-4 bg-card border border-border rounded-lg">
+            <h3 className="font-semibold text-foreground mb-1">Edge Workers</h3>
+            <p className="text-sm text-muted-foreground">
+              Stateless API endpoints handle authentication, input validation, and orchestration.
+              They delegate all ledger writes to database RPCs.
+            </p>
+          </div>
+          <div className="p-4 bg-card border border-border rounded-lg">
+            <h3 className="font-semibold text-foreground mb-1">Idempotency</h3>
+            <p className="text-sm text-muted-foreground">
+              Payment and payout endpoints carry an idempotency key so that retries after network failures
+              return the original result instead of creating duplicates.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+          <p className="text-sm text-blue-600">
+            Even if an API worker crashes mid-request, the ledger either committed the full double-entry set
+            or nothing. Charged-but-unrecorded payments are automatically retried by a reconciliation worker.
+          </p>
+        </div>
+      </section>
+
       {/* Next steps */}
       <section className="border-t border-border pt-8">
         <h2 className="text-xl font-semibold text-foreground mb-4">Next Steps</h2>

@@ -9,13 +9,20 @@ const navigation = [
   { name: 'Overview', href: '/docs', icon: Home },
   { name: 'Quickstart', href: '/docs/quickstart', icon: BookOpen },
   { name: 'Authentication', href: '/docs/authentication', icon: Key },
-  { name: 'Core Concepts', href: '/docs/concepts', icon: Lightbulb },
+  {
+    name: 'Core Concepts',
+    href: '/docs/concepts',
+    icon: Lightbulb,
+    children: [
+      { name: 'Architecture', href: '/docs/concepts#architecture' },
+    ],
+  },
   {
     name: 'API Reference',
     href: '/docs/api',
     icon: Code,
     children: [
-      { name: 'Complete Index', href: '/docs/api#complete-index' },
+      { name: 'Quick Reference', href: '/docs/api#quick-reference' },
       { name: 'Endpoint Details', href: '/docs/api#endpoint-details' },
       { name: 'Error Responses', href: '/docs/api#error-responses' },
     ],

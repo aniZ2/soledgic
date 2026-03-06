@@ -309,99 +309,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "connected-accounts",
-    "title": "Connected Accounts",
-    "path": "/v1/connected-accounts",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Connected Accounts",
-    "source": "supabase/functions/connected-accounts/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "'create' | 'get' | 'list' | 'update_status' | 'create_onboarding_link' | 'cre...",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "entity_type",
-        "type": "'creator' | 'venture' | 'merchant'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "entity_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "email",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "display_name",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "country",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "connected_account_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "entity_type_filter",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "status_filter",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "limit",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "offset",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "return_url",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "refresh_url",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
     "endpoint": "create-checkout",
     "title": "Create Checkout",
     "path": "/v1/create-checkout",
@@ -711,37 +618,23 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "debug-expense",
-    "title": "Debug Expense",
-    "path": "/v1/debug-expense",
+    "endpoint": "delete-creator",
+    "title": "Delete Creator",
+    "path": "/v1/delete-creator",
     "methods": [
       "POST"
     ],
     "auth": "API key",
-    "internal": true,
+    "internal": false,
     "deprecated": false,
-    "description": "Debug version of record-expense to capture actual errors",
-    "source": "supabase/functions/debug-expense/index.ts",
-    "parameters": []
-  },
-  {
-    "endpoint": "debug-handler",
-    "title": "Debug Handler",
-    "path": "/v1/debug-handler",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": true,
-    "deprecated": false,
-    "description": "Debug version using createHandler to isolate the issue",
-    "source": "supabase/functions/debug-handler/index.ts",
+    "description": "Soft-delete a creator (sets is_active = false with transaction guard)",
+    "source": "supabase/functions/delete-creator/index.ts",
     "parameters": [
       {
         "in": "body",
-        "name": "message",
+        "name": "creator_id",
         "type": "string",
-        "required": false
+        "required": true
       }
     ]
   },
@@ -3141,6 +3034,75 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "is_active",
+        "type": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "bill-overages",
+    "title": "Bill Overages",
+    "path": "/v1/bill-overages",
+    "methods": [
+      "POST"
+    ],
+    "auth": "Custom/internal",
+    "internal": true,
+    "deprecated": false,
+    "description": "Calculate and record usage-based billing overages",
+    "source": "supabase/functions/bill-overages/index.ts",
+    "parameters": []
+  },
+  {
+    "endpoint": "ops-monitor",
+    "title": "Ops Monitor",
+    "path": "/v1/ops-monitor",
+    "methods": [
+      "POST"
+    ],
+    "auth": "Custom/internal",
+    "internal": true,
+    "deprecated": false,
+    "description": "Production observability: monitors payment pipeline health",
+    "source": "supabase/functions/ops-monitor/index.ts",
+    "parameters": []
+  },
+  {
+    "endpoint": "process-processor-inbox",
+    "title": "Process Processor Inbox",
+    "path": "/v1/process-processor-inbox",
+    "methods": [
+      "POST"
+    ],
+    "auth": "Custom/internal",
+    "internal": true,
+    "deprecated": false,
+    "description": "Process pending processor webhook inbox events",
+    "source": "supabase/functions/process-processor-inbox/index.ts",
+    "parameters": []
+  },
+  {
+    "endpoint": "reconcile-checkout-ledger",
+    "title": "Reconcile Checkout Ledger",
+    "path": "/v1/reconcile-checkout-ledger",
+    "methods": [
+      "POST"
+    ],
+    "auth": "Custom/internal",
+    "internal": true,
+    "deprecated": false,
+    "description": "Retry charged-but-unrecorded checkout sessions (charged_pending_ledger → sale)",
+    "source": "supabase/functions/reconcile-checkout-ledger/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "limit",
+        "type": "number",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "dry_run",
         "type": "boolean",
         "required": false
       }
