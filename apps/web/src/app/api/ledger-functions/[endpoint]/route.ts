@@ -23,6 +23,7 @@ const ALLOWED_ENDPOINTS = new Set([
   'generate-pdf',
   'export-report',
   'manage-wallet',
+  'bank-aggregator',
 ])
 
 const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
@@ -32,6 +33,7 @@ const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
   'send-statements',
   'delete-creator',
   'manage-wallet',
+  'bank-aggregator',
 ])
 
 function getEndpointFromRequest(request: Request): string | null {

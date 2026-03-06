@@ -16,16 +16,22 @@ import {
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-type ReportType = 'creator_statement' | 'profit_loss' | 'balance_sheet' | 'trial_balance' | '1099' | 'reconciliation_summary'
+type ReportType = 'creator_statement' | 'profit_loss' | 'balance_sheet' | 'trial_balance' | '1099' | '1099_nec_form' | 'reconciliation_summary'
 
-interface PDFRequest { 
+interface PDFRequest {
   report_type: ReportType
   period_id?: string
   creator_id?: string
   start_date?: string
   end_date?: string
   tax_year?: number
-  ledger_id?: string 
+  ledger_id?: string
+  // 1099_nec_form specific
+  gross_amount?: number
+  federal_withholding?: number
+  state_withholding?: number
+  recipient_id?: string
+  copy_type?: 'a' | 'b' | '1' | '2'
 }
 
 interface PDFContent { 
@@ -87,7 +93,7 @@ function generatePDF(content: PDFContent): string {
   return btoa(pdf)
 }
 
-const VALID_REPORT_TYPES = ['creator_statement', 'profit_loss', 'balance_sheet', 'trial_balance', '1099', 'reconciliation_summary']
+const VALID_REPORT_TYPES = ['creator_statement', 'profit_loss', 'balance_sheet', 'trial_balance', '1099', '1099_nec_form', 'reconciliation_summary']
 
 // ============================================================================
 // SECURITY FIX: Validate internal service calls properly
@@ -308,6 +314,122 @@ Deno.serve(async (req) => {
         }
 
         return jsonResponse({ success: true, filename: `1099_summary_${year}.pdf`, content_type: 'application/pdf', data: generatePDF(pdfContent) }, 200, req)
+      }
+
+      case '1099_nec_form': {
+        const year = body.tax_year && body.tax_year >= 2020 && body.tax_year <= 2100 ? body.tax_year : new Date().getFullYear()
+        const grossAmount = body.gross_amount ?? 0
+        const federalWithholding = body.federal_withholding ?? 0
+        const stateWithholding = body.state_withholding ?? 0
+        const recipientId = body.recipient_id || 'N/A'
+        const copyType = body.copy_type || 'b'
+
+        const copyLabels: Record<string, string> = {
+          a: 'Copy A \u2014 For Internal Revenue Service',
+          b: 'Copy B \u2014 For Recipient',
+          '1': 'Copy 1 \u2014 For State Tax Department',
+          '2': 'Copy 2 \u2014 For Payer',
+        }
+        const copyLabel = copyLabels[copyType] || copyLabels.b
+
+        // Build 1099-NEC form layout (8.5" x 11" = 612 x 792 points)
+        const lm = 50, rm = 562, formTop = 720
+        let cs = 'BT\n'
+
+        // Title
+        cs += `/F1 14 Tf\n${lm} ${formTop} Td\n(${escapePDF(`${year}  Form 1099-NEC`)}) Tj\n`
+        cs += `/F1 9 Tf\n0 -16 Td\n(Nonemployee Compensation \u2014 Draft/Export Form) Tj\n`
+        cs += `/F1 8 Tf\n0 -14 Td\n(${escapePDF(copyLabel)}) Tj\n`
+
+        // Payer info block (left side)
+        const payerY = formTop - 70
+        cs += `/F1 8 Tf\n${lm} ${payerY} Td\n(PAYER'S name, street address, city or town, state, and ZIP code) Tj\n`
+        cs += `/F1 10 Tf\n0 -14 Td\n(${escapePDF(ledgerData.business_name || 'See attached payer information')}) Tj\n`
+
+        // Recipient info block (right side) — blank per amounts-only philosophy
+        const recipientX = 320
+        cs += `/F1 8 Tf\n${recipientX - lm} 14 Td\n(RECIPIENT'S name) Tj\n`
+        cs += `0 -14 Td\n(______________________________________) Tj\n`
+        cs += `0 -14 Td\n(Street address) Tj\n`
+        cs += `0 -14 Td\n(______________________________________) Tj\n`
+        cs += `0 -14 Td\n(City, state, and ZIP code) Tj\n`
+        cs += `0 -14 Td\n(______________________________________) Tj\n`
+        cs += `0 -14 Td\n(RECIPIENT'S TIN) Tj\n`
+        cs += `0 -14 Td\n(___-__-____) Tj\n`
+
+        cs += 'ET\n'
+
+        // Draw box borders for form fields
+        cs += 'q\n0.5 w\n'
+
+        // Box grid starting position
+        const boxTop = payerY - 130
+        const boxW = 240, boxH = 40, col2X = lm + boxW + 20
+
+        // Box 1: Nonemployee compensation
+        cs += `${lm} ${boxTop} ${boxW} ${boxH} re S\n`
+        // Box 4: Federal income tax withheld
+        cs += `${col2X} ${boxTop} ${boxW} ${boxH} re S\n`
+        // Box 5: State tax withheld
+        const box5Y = boxTop - boxH - 15
+        cs += `${lm} ${box5Y} ${boxW} ${boxH} re S\n`
+        // Box 7: State/Payer's state no.
+        cs += `${col2X} ${box5Y} ${boxW} ${boxH} re S\n`
+
+        cs += 'Q\n'
+
+        // Box labels and values
+        cs += 'BT\n'
+
+        // Box 1
+        cs += `/F1 8 Tf\n${lm + 4} ${boxTop + boxH - 10} Td\n(1  Nonemployee compensation) Tj\n`
+        cs += `/F1 12 Tf\n0 -18 Td\n($ ${escapePDF(formatCurrency(grossAmount))}) Tj\n`
+
+        // Box 4
+        cs += `/F1 8 Tf\n${col2X - lm - 4 + 4} 18 Td\n(4  Federal income tax withheld) Tj\n`
+        cs += `/F1 12 Tf\n0 -18 Td\n($ ${escapePDF(formatCurrency(federalWithholding))}) Tj\n`
+
+        // Box 5
+        const box5LabelY = box5Y + boxH - 10
+        cs += `/F1 8 Tf\n${lm - col2X + 4} ${box5LabelY - (boxTop + boxH - 10) + 18} Td\n(5  State tax withheld) Tj\n`
+        cs += `/F1 12 Tf\n0 -18 Td\n($ ${escapePDF(formatCurrency(stateWithholding))}) Tj\n`
+
+        // Box 7
+        cs += `/F1 8 Tf\n${col2X - lm - 4 + 4} 18 Td\n(7  State/Payer's state no.) Tj\n`
+        cs += `/F1 10 Tf\n0 -18 Td\n(________________) Tj\n`
+
+        // Reference ID
+        cs += `/F1 8 Tf\n${lm - col2X + 4} -40 Td\n(Recipient Reference: ${escapePDF(recipientId)}) Tj\n`
+
+        // Footer
+        cs += `/F1 7 Tf\n0 -30 Td\n(Generated by Soledgic \\267 1099-NEC Draft Form \\267 For official filing, merge with recipient W-9 data) Tj\n`
+        cs += `0 -12 Td\n(This is NOT an IRS-filed form. Verify all amounts before filing.) Tj\n`
+
+        cs += 'ET'
+
+        // Build PDF manually (same pattern as generatePDF)
+        const objects = [
+          `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj`,
+          `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj`,
+          `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj`,
+          `4 0 obj\n<< /Length ${cs.length} >>\nstream\n${cs}\nendstream\nendobj`,
+          `5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`
+        ]
+
+        let pdf = '%PDF-1.4\n'; const xrefOffsets: number[] = []
+        for (const obj of objects) { xrefOffsets.push(pdf.length); pdf += obj + '\n' }
+        const xrefStart = pdf.length
+        pdf += 'xref\n'; pdf += `0 ${objects.length + 1}\n`; pdf += '0000000000 65535 f \n'
+        for (const offset of xrefOffsets) pdf += offset.toString().padStart(10, '0') + ' 00000 n \n'
+        pdf += 'trailer\n'; pdf += `<< /Size ${objects.length + 1} /Root 1 0 R >>\n`
+        pdf += 'startxref\n'; pdf += xrefStart + '\n'; pdf += '%%EOF'
+
+        return jsonResponse({
+          success: true,
+          filename: `1099_nec_${recipientId}_${year}_copy_${copyType}.pdf`,
+          content_type: 'application/pdf',
+          data: btoa(pdf),
+        }, 200, req)
       }
 
       default:

@@ -74,11 +74,16 @@ deploy tax-documents
 deploy submit-tax-info
 deploy billing
 
-echo "[10/10] Imports & Utilities (6)..."
+echo "[10/11] Imports & Utilities (6)..."
 deploy import-transactions
 deploy import-bank-statement
 deploy upload-receipt
 deploy process-webhooks
+
+echo "[11/11] Bank Aggregator (3)..."
+deploy bank-aggregator
+deploy sync-bank-feeds
+deploy bank-aggregator-webhooks
 
 echo ""
 echo "=========================================="

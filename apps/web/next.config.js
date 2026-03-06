@@ -1,3 +1,5 @@
+const { withSentryConfig } = require('@sentry/nextjs')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -56,12 +58,12 @@ const nextConfig = {
 	            key: 'Content-Security-Policy',
 	            value: [
 	              "default-src 'self'",
-	              "script-src 'self' 'unsafe-inline'",
+	              "script-src 'self' 'unsafe-inline' https://cdn.teller.io",
 	              "style-src 'self' 'unsafe-inline'",
 	              "img-src 'self' data: blob: https:",
 	              "font-src 'self' data:",
-	              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-	              "frame-src 'self'",
+	              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.teller.io",
+	              "frame-src 'self' https://cdn.teller.io",
 	              "frame-ancestors 'none'",
 	              "base-uri 'self'",
 	              "form-action 'self'",
@@ -88,4 +90,21 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+module.exports = withSentryConfig(nextConfig, {
+  // Suppress noisy build logs unless in CI
+  silent: !process.env.CI,
+
+  // Upload larger set of source maps for better stack traces
+  widenClientFileUpload: true,
+
+  // Hide source maps from browser devtools
+  hideSourceMaps: true,
+
+  // Route Sentry requests through /monitoring to avoid ad blockers
+  // Goes to 'self' origin so no CSP change needed
+  tunnelRoute: '/monitoring',
+
+  // Sentry org/project for source map uploads (CI only)
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+})

@@ -12,15 +12,16 @@ import {
   LedgerContext
 } from '../_shared/utils.ts'
 
-interface TaxRequest { 
-  action: 'calculate' | 'generate_all' | 'list' | 'get' | 'export' | 'mark_filed'
+interface TaxRequest {
+  action: 'calculate' | 'generate_all' | 'list' | 'get' | 'export' | 'mark_filed' | 'generate_pdf' | 'generate_pdf_batch'
   tax_year?: number
   creator_id?: string
   document_id?: string
   format?: 'csv' | 'json'
+  copy_type?: 'a' | 'b' | '1' | '2'
 }
 
-const VALID_ACTIONS = ['calculate', 'generate_all', 'list', 'get', 'export', 'mark_filed']
+const VALID_ACTIONS = ['calculate', 'generate_all', 'list', 'get', 'export', 'mark_filed', 'generate_pdf', 'generate_pdf_batch']
 
 const handler = createHandler(
   { endpoint: 'tax-documents', requireAuth: true, rateLimit: true },
@@ -175,6 +176,183 @@ const handler = createHandler(
           await supabase.from('tax_documents').update({ status: 'filed' }).eq('ledger_id', ledger.id).eq('tax_year', taxYear).eq('status', 'exported')
         }
         return jsonResponse({ success: true, message: 'Documents marked as filed' }, 200, req, requestId)
+      }
+
+      case 'generate_pdf': {
+        const documentId = body.document_id ? validateId(body.document_id, 100) : null
+        if (!documentId) return errorResponse('Invalid document_id', 400, req, requestId)
+
+        const { data: doc, error: docError } = await supabase
+          .from('tax_documents')
+          .select('*')
+          .eq('id', documentId)
+          .eq('ledger_id', ledger.id)
+          .single()
+
+        if (docError || !doc) return errorResponse('Document not found', 404, req, requestId)
+
+        const copyType = body.copy_type || doc.copy_type || 'b'
+
+        // Call generate-pdf internally
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        if (!supabaseUrl || !serviceKey) return errorResponse('Service configuration error', 500, req, requestId)
+
+        const pdfRes = await fetch(`${supabaseUrl}/functions/v1/generate-pdf`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            report_type: '1099_nec_form',
+            ledger_id: ledger.id,
+            tax_year: doc.tax_year,
+            gross_amount: Number(doc.gross_amount),
+            federal_withholding: Number(doc.federal_withholding || 0),
+            state_withholding: Number(doc.state_withholding || 0),
+            recipient_id: doc.recipient_id,
+            copy_type: copyType,
+          }),
+        })
+
+        const pdfResult = await pdfRes.json()
+        if (!pdfResult.success || !pdfResult.data) {
+          return errorResponse('PDF generation failed', 500, req, requestId)
+        }
+
+        // Decode base64 and upload to Supabase Storage
+        const pdfBytes = Uint8Array.from(atob(pdfResult.data), c => c.charCodeAt(0))
+        const storagePath = `${ledger.id}/${doc.tax_year}/${doc.id}_copy_${copyType}.pdf`
+
+        const { error: uploadError } = await supabase.storage
+          .from('tax-documents')
+          .upload(storagePath, pdfBytes, {
+            contentType: 'application/pdf',
+            upsert: true,
+          })
+
+        if (uploadError) {
+          return errorResponse('Failed to store PDF', 500, req, requestId)
+        }
+
+        // Update tax_documents record
+        await supabase
+          .from('tax_documents')
+          .update({
+            pdf_path: storagePath,
+            pdf_generated_at: new Date().toISOString(),
+            copy_type: copyType,
+          })
+          .eq('id', documentId)
+
+        // Generate signed URL for download (1 hour expiry)
+        const { data: signedUrl } = await supabase.storage
+          .from('tax-documents')
+          .createSignedUrl(storagePath, 3600)
+
+        return jsonResponse({
+          success: true,
+          data: {
+            document_id: documentId,
+            pdf_path: storagePath,
+            pdf_generated_at: new Date().toISOString(),
+            copy_type: copyType,
+            download_url: signedUrl?.signedUrl || null,
+          },
+        }, 200, req, requestId)
+      }
+
+      case 'generate_pdf_batch': {
+        const copyType = body.copy_type || 'b'
+
+        const { data: docs, error: docsError } = await supabase
+          .from('tax_documents')
+          .select('*')
+          .eq('ledger_id', ledger.id)
+          .eq('tax_year', taxYear)
+
+        if (docsError) return errorResponse('Failed to fetch documents', 500, req, requestId)
+        if (!docs || docs.length === 0) {
+          return jsonResponse({ success: true, data: { generated: 0, failed: 0, tax_year: taxYear } }, 200, req, requestId)
+        }
+
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        if (!supabaseUrl || !serviceKey) return errorResponse('Service configuration error', 500, req, requestId)
+
+        let generated = 0, failed = 0
+
+        for (const doc of docs) {
+          try {
+            const pdfRes = await fetch(`${supabaseUrl}/functions/v1/generate-pdf`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${serviceKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                report_type: '1099_nec_form',
+                ledger_id: ledger.id,
+                tax_year: doc.tax_year,
+                gross_amount: Number(doc.gross_amount),
+                federal_withholding: Number(doc.federal_withholding || 0),
+                state_withholding: Number(doc.state_withholding || 0),
+                recipient_id: doc.recipient_id,
+                copy_type: copyType,
+              }),
+            })
+
+            const pdfResult = await pdfRes.json()
+            if (!pdfResult.success || !pdfResult.data) {
+              failed++
+              continue
+            }
+
+            const pdfBytes = Uint8Array.from(atob(pdfResult.data), c => c.charCodeAt(0))
+            const storagePath = `${ledger.id}/${doc.tax_year}/${doc.id}_copy_${copyType}.pdf`
+
+            const { error: uploadError } = await supabase.storage
+              .from('tax-documents')
+              .upload(storagePath, pdfBytes, {
+                contentType: 'application/pdf',
+                upsert: true,
+              })
+
+            if (uploadError) {
+              failed++
+              continue
+            }
+
+            await supabase
+              .from('tax_documents')
+              .update({
+                pdf_path: storagePath,
+                pdf_generated_at: new Date().toISOString(),
+                copy_type: copyType,
+              })
+              .eq('id', doc.id)
+
+            generated++
+          } catch {
+            failed++
+          }
+        }
+
+        await supabase.from('audit_log').insert({
+          ledger_id: ledger.id,
+          action: 'generate_1099_pdf_batch',
+          entity_type: 'tax_documents',
+          actor_type: 'api',
+          ip_address: getClientIp(req),
+          request_id: requestId,
+          request_body: { tax_year: taxYear, copy_type: copyType, generated, failed },
+        })
+
+        return jsonResponse({
+          success: true,
+          data: { tax_year: taxYear, copy_type: copyType, generated, failed },
+        }, 200, req, requestId)
       }
 
       default:

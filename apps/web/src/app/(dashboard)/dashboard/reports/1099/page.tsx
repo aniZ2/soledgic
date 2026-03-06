@@ -20,6 +20,9 @@ interface TaxDocument {
   status: string
   created_at: string
   exported_at: string | null
+  pdf_path: string | null
+  pdf_generated_at: string | null
+  copy_type: string | null
 }
 
 interface Stats {
@@ -38,6 +41,9 @@ export default function TaxDocumentsPage() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [generatingPdf, setGeneratingPdf] = useState<string | null>(null)
+  const [generatingAllPdfs, setGeneratingAllPdfs] = useState(false)
+  const [copyType, setCopyType] = useState<'a' | 'b' | '1' | '2'>('b')
   const [taxYear, setTaxYear] = useState(new Date().getFullYear() - 1)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
 
@@ -170,6 +176,57 @@ export default function TaxDocumentsPage() {
     }
   }
 
+  const downloadPdf = async (documentId: string) => {
+    if (!ledgerId) return
+    setGeneratingPdf(documentId)
+
+    try {
+      const res = await callLedgerFunction('tax-documents', {
+        ledgerId,
+        method: 'POST',
+        body: { action: 'generate_pdf', document_id: documentId, copy_type: copyType },
+      })
+
+      const result = await res.json()
+      if (result.success && result.data.download_url) {
+        window.open(result.data.download_url, '_blank')
+        loadData()
+      } else {
+        alert(`Error: ${result.error || 'PDF generation failed'}`)
+      }
+    } catch {
+      alert('Failed to generate PDF')
+    } finally {
+      setGeneratingPdf(null)
+    }
+  }
+
+  const generateAllPdfs = async () => {
+    if (!ledgerId) return
+    if (!confirm(`Generate 1099-NEC draft PDFs for all ${documents.length} documents?`)) return
+    setGeneratingAllPdfs(true)
+
+    try {
+      const res = await callLedgerFunction('tax-documents', {
+        ledgerId,
+        method: 'POST',
+        body: { action: 'generate_pdf_batch', tax_year: taxYear, copy_type: copyType },
+      })
+
+      const result = await res.json()
+      if (result.success) {
+        alert(`Generated ${result.data.generated} PDFs. ${result.data.failed} failed.`)
+        loadData()
+      } else {
+        alert(`Error: ${result.error}`)
+      }
+    } catch {
+      alert('Failed to generate PDFs')
+    } finally {
+      setGeneratingAllPdfs(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'calculated':
@@ -273,7 +330,7 @@ export default function TaxDocumentsPage() {
       )}
 
       {/* Actions */}
-      <div className="flex gap-3 mb-6">
+      <div className="flex gap-3 mb-6 flex-wrap">
         <button
           onClick={exportCSV}
           disabled={exporting || documents.length === 0}
@@ -282,6 +339,28 @@ export default function TaxDocumentsPage() {
           <Download className="w-4 h-4" />
           {exporting ? 'Exporting...' : 'Export CSV'}
         </button>
+
+        <div className="flex items-center gap-2">
+          <select
+            value={copyType}
+            onChange={(e) => setCopyType(e.target.value as 'a' | 'b' | '1' | '2')}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+          >
+            <option value="b">Copy B (Recipient)</option>
+            <option value="a">Copy A (IRS)</option>
+            <option value="1">Copy 1 (State)</option>
+            <option value="2">Copy 2 (Payer)</option>
+          </select>
+
+          <button
+            onClick={generateAllPdfs}
+            disabled={generatingAllPdfs || documents.length === 0}
+            className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            {generatingAllPdfs ? 'Generating...' : 'Generate All PDFs'}
+          </button>
+        </div>
 
         {stats && stats.exported > 0 && (
           <button
@@ -311,6 +390,7 @@ export default function TaxDocumentsPage() {
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gross Amount</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Transactions</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -330,6 +410,16 @@ export default function TaxDocumentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {getStatusBadge(doc.status)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => downloadPdf(doc.id)}
+                      disabled={generatingPdf === doc.id}
+                      className="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-400 flex items-center gap-1 ml-auto"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {generatingPdf === doc.id ? '...' : doc.pdf_path ? 'Re-download' : 'Download'}
+                    </button>
                   </td>
                 </tr>
               ))}

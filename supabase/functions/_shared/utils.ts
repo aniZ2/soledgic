@@ -5,6 +5,7 @@
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Ratelimit } from 'https://esm.sh/@upstash/ratelimit@2'
 import { Redis } from 'https://esm.sh/@upstash/redis@1'
+import { captureException } from './error-tracking.ts'
 
 // ============================================================================
 // ENVIRONMENT DETECTION (Fail-Closed)
@@ -1151,7 +1152,16 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       
     } catch (error: any) {
       console.error(`[${requestId}] Error in ${options.endpoint}:`, error.message)
-      
+
+      // Fire-and-forget: send to Sentry for real-time alerting
+      captureException(error instanceof Error ? error : new Error(String(error.message || error)), {
+        requestId,
+        endpoint: options.endpoint,
+        ledgerId: ledger?.id || null,
+        duration: Date.now() - startTime,
+        clientIp,
+      })
+
       // Log error for security monitoring - include request context
       await logSecurityEvent(supabase, null, 'handler_error', {
         endpoint: options.endpoint,
