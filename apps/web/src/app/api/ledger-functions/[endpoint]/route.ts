@@ -22,6 +22,7 @@ const ALLOWED_ENDPOINTS = new Set([
   'trial-balance',
   'generate-pdf',
   'export-report',
+  'manage-wallet',
 ])
 
 const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
@@ -30,6 +31,7 @@ const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
   'import-transactions',
   'send-statements',
   'delete-creator',
+  'manage-wallet',
 ])
 
 function getEndpointFromRequest(request: Request): string | null {

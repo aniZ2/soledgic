@@ -12,6 +12,7 @@ import {
   CreditCard,
   Users,
   Wallet,
+  WalletCards,
   Scale,
   Plug
 } from 'lucide-react'
@@ -31,6 +32,7 @@ const navigation = [
   { name: 'Reports', href: '/dashboard/reports', icon: FileText },
   { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },
   { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
+  { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
   { name: 'Billing', href: '/billing', icon: CreditCard },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

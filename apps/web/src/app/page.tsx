@@ -76,8 +76,8 @@ export default function HomePage() {
 
       <div className={s.metrics}>
         <div className={s.metric}>
-          <div className={s.metricValue}>65+</div>
-          <div className={s.metricLabel}>Edge functions</div>
+          <div className={s.metricValue}>&lt;100ms</div>
+          <div className={s.metricLabel}>Ledger writes</div>
         </div>
         <div className={s.metric}>
           <div className={s.metricValue}>2 modes</div>
@@ -88,8 +88,8 @@ export default function HomePage() {
           <div className={s.metricLabel}>System of record</div>
         </div>
         <div className={s.metric}>
-          <div className={s.metricValue}>140+</div>
-          <div className={s.metricLabel}>Database migrations</div>
+          <div className={s.metricValue}>Zero-drift</div>
+          <div className={s.metricLabel}>Balance reconciliation</div>
         </div>
       </div>
 

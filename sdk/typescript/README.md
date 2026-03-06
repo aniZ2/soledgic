@@ -1,6 +1,6 @@
 # Soledgic
 
-Double-entry accounting API for any business. Works for marketplaces (revenue splits) and standard businesses (income/expense tracking).
+Financial infrastructure for digital platforms. Treasury-grade ledger API with custodial wallets, automatic revenue splits, preflight authorization, and full accounting compliance.
 
 ## Installation
 
@@ -105,6 +105,16 @@ const summary = await ledger.get1099Summary(2024)
 |--------|-------------|
 | `recordIncome(req)` | Record business income |
 | `recordExpense(req)` | Record business expense |
+
+### Wallets
+
+| Method | Description |
+|--------|-------------|
+| `getWalletBalance(userId)` | Get wallet balance (0 if none) |
+| `walletDeposit(req)` | Deposit funds into user wallet |
+| `walletWithdraw(req)` | Withdraw funds from user wallet |
+| `walletTransfer(req)` | Transfer between user wallets |
+| `getWalletHistory(userId, opts?)` | Paginated transaction history |
 
 ### Balances
 

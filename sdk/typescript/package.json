@@ -1,7 +1,7 @@
 {
   "name": "@soledgic/sdk",
   "version": "0.2.0",
-  "description": "Double-entry accounting API for any business",
+  "description": "Financial infrastructure for digital platforms — ledger API with wallets, splits, and treasury controls",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -25,7 +25,8 @@
     "accounting",
     "ledger",
     "double-entry",
-    "creator",
+    "treasury",
+    "wallets",
     "marketplace",
     "fintech"
   ],

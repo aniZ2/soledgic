@@ -1,6 +1,6 @@
 /**
  * Soledgic TypeScript SDK
- * Double-entry accounting API for creator platforms
+ * Financial infrastructure for digital platforms
  * Full accounting compliance with period locking, reconciliation, and frozen statements
  */
 
@@ -670,6 +670,83 @@ export interface SendBreachAlertResponse {
     success: boolean
     error?: string
   }>
+}
+
+// === WALLET TYPES ===
+
+export interface WalletBalanceResponse {
+  success: boolean
+  balance: number
+  walletExists: boolean
+  account: {
+    id: string
+    entityId: string
+    name: string | null
+    isActive: boolean
+    createdAt: string
+  } | null
+}
+
+export interface WalletDepositRequest {
+  userId: string
+  /** Amount in cents */
+  amount: number
+  referenceId: string
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface WalletWithdrawRequest {
+  userId: string
+  /** Amount in cents */
+  amount: number
+  referenceId: string
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface WalletTransferRequest {
+  fromUserId: string
+  toUserId: string
+  /** Amount in cents */
+  amount: number
+  referenceId: string
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface WalletMutationResponse {
+  success: boolean
+  transactionId: string
+  balance: number
+}
+
+export interface WalletTransferResponse {
+  success: boolean
+  transactionId: string
+  fromBalance: number
+  toBalance: number
+}
+
+export interface WalletHistoryEntry {
+  entryId: string
+  entryType: 'debit' | 'credit'
+  amount: number
+  transactionId: string
+  referenceId: string
+  transactionType: string
+  description: string | null
+  status: string
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export interface WalletHistoryResponse {
+  success: boolean
+  transactions: WalletHistoryEntry[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export class SoledgicError extends Error {
@@ -2031,6 +2108,106 @@ export class Soledgic {
             error: r.error,
           }))
         : undefined,
+    }
+  }
+
+  // === WALLETS ===
+
+  async getWalletBalance(userId: string): Promise<WalletBalanceResponse> {
+    const response = await this.request<any>('manage-wallet', {
+      action: 'get_balance',
+      user_id: userId,
+    })
+    return {
+      success: response.success,
+      balance: response.balance,
+      walletExists: response.wallet_exists,
+      account: response.account
+        ? {
+            id: response.account.id,
+            entityId: response.account.entity_id,
+            name: response.account.name,
+            isActive: response.account.is_active,
+            createdAt: response.account.created_at,
+          }
+        : null,
+    }
+  }
+
+  async walletDeposit(req: WalletDepositRequest): Promise<WalletMutationResponse> {
+    const response = await this.request<any>('manage-wallet', {
+      action: 'deposit',
+      user_id: req.userId,
+      amount: req.amount,
+      reference_id: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transactionId: response.transaction_id,
+      balance: response.balance,
+    }
+  }
+
+  async walletWithdraw(req: WalletWithdrawRequest): Promise<WalletMutationResponse> {
+    const response = await this.request<any>('manage-wallet', {
+      action: 'withdraw',
+      user_id: req.userId,
+      amount: req.amount,
+      reference_id: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transactionId: response.transaction_id,
+      balance: response.balance,
+    }
+  }
+
+  async walletTransfer(req: WalletTransferRequest): Promise<WalletTransferResponse> {
+    const response = await this.request<any>('manage-wallet', {
+      action: 'transfer',
+      from_user_id: req.fromUserId,
+      to_user_id: req.toUserId,
+      amount: req.amount,
+      reference_id: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transactionId: response.transaction_id,
+      fromBalance: response.from_balance,
+      toBalance: response.to_balance,
+    }
+  }
+
+  async getWalletHistory(userId: string, options?: { limit?: number; offset?: number }): Promise<WalletHistoryResponse> {
+    const response = await this.request<any>('manage-wallet', {
+      action: 'history',
+      user_id: userId,
+      limit: options?.limit,
+      offset: options?.offset,
+    })
+    return {
+      success: response.success,
+      transactions: (response.transactions || []).map((t: any) => ({
+        entryId: t.entry_id,
+        entryType: t.entry_type,
+        amount: t.amount,
+        transactionId: t.transaction_id,
+        referenceId: t.reference_id,
+        transactionType: t.transaction_type,
+        description: t.description,
+        status: t.status,
+        metadata: t.metadata,
+        createdAt: t.created_at,
+      })),
+      total: response.total,
+      limit: response.limit,
+      offset: response.offset,
     }
   }
 }
