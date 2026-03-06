@@ -5,7 +5,7 @@
 // identifiers. Any vendor-specific mapping should live in configuration (env)
 // or in a dedicated adapter implementation.
 
-export type NormalizedProcessorEventKind = 'charge' | 'payout' | 'refund' | 'dispute' | 'unknown'
+export type NormalizedProcessorEventKind = 'charge' | 'payout' | 'refund' | 'dispute' | 'book_transfer' | 'unknown'
 export type NormalizedProcessorEventStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'unknown'
 
 export interface ProcessorWebhookInboxRow {
@@ -200,6 +200,13 @@ function classifyKind(row: ProcessorWebhookInboxRow, tags: Record<string, string
   const ef = extractEmbeddedFirst(row.payload)
   const embeddedType = pickString(ef?.type)
   if (embeddedType && embeddedType.toUpperCase() === 'REVERSAL') return 'refund'
+
+  // Book transfers: FEE, ADJUSTMENT, CUSTOM transfer types from Finix.
+  // These represent internal fund movements (splits, fee distributions, adjustments).
+  if (embeddedType) {
+    const upper = embeddedType.toUpperCase()
+    if (['FEE', 'ADJUSTMENT', 'CUSTOM'].includes(upper)) return 'book_transfer'
+  }
 
   // Heuristics based on tag intent.
   if (pickString(tags.soledgic_original_sale_reference, 255)) return 'refund'

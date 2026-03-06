@@ -181,7 +181,7 @@ const handler = createHandler(
 
           if (['cash', 'accounts_receivable', 'inventory', 'fixed_asset'].includes(account.account_type)) {
             totalAssets += Math.abs(balance)
-          } else if (['accounts_payable', 'creator_balance', 'creator_pool', 'credit_card', 'tax_reserve', 'refund_reserve', 'reserve'].includes(account.account_type)) {
+          } else if (['accounts_payable', 'creator_balance', 'creator_pool', 'credit_card', 'tax_reserve', 'refund_reserve', 'reserve', 'user_wallet'].includes(account.account_type)) {
             totalLiabilities += Math.abs(balance)
           } else if (['revenue', 'platform_revenue', 'other_income'].includes(account.account_type)) {
             totalRevenue += Math.abs(balance)

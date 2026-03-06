@@ -58,6 +58,7 @@ function domainEventType(ev: NormalizedProcessorEvent): string {
   if (ev.kind === 'refund') return 'refund.status_changed'
   if (ev.kind === 'dispute') return 'dispute.status_changed'
   if (ev.kind === 'charge') return 'payment.status_changed'
+  if (ev.kind === 'book_transfer') return 'book_transfer.status_changed'
   return 'event.unknown'
 }
 
@@ -265,6 +266,7 @@ async function upsertProcessorTransaction(
     ev.kind === 'refund' ? 'refund' :
     ev.kind === 'dispute' ? 'dispute' :
     ev.kind === 'charge' ? 'charge' :
+    ev.kind === 'book_transfer' ? 'book_transfer' :
     'transfer'
 
   const signedAmount = (type === 'payout' || type === 'refund' || type === 'dispute') ? -Math.abs(amountMajor) : Math.abs(amountMajor)
@@ -463,6 +465,12 @@ Deno.serve(async (req: Request) => {
       if (!dryRun && ev.kind === 'dispute') {
         await handleDisputeUpdate(supabase, ev)
       }
+
+      // Book transfers are recorded in processor_transactions for reconciliation
+      // visibility (via upsertProcessorTransaction above) but NOT auto-booked to
+      // the ledger. Auto-booking requires manual review to determine semantic
+      // intent and avoid double-counting. A future phase can add auto-booking
+      // rules once the mapping is established.
 
       if (!dryRun) {
         await markProcessorEvent(supabase, ev.ledger_id, ev.source_event_id, {
