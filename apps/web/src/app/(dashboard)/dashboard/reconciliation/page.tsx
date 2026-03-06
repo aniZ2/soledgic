@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Upload, ExternalLink, RefreshCw } from 'lucide-react'
+import { Upload, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
@@ -140,7 +140,7 @@ export default function ReconciliationPage() {
             <div className="mt-4">
               <ConnectionList
                 connections={connections}
-                ledgerId={ledgerId}
+                syncingConnectionId={syncing}
                 onSync={handleSync}
                 onDisconnect={handleDisconnect}
               />

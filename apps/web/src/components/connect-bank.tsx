@@ -116,12 +116,12 @@ export function ConnectBank({ ledgerId, onConnectionChange }: ConnectBankProps) 
 
 export function ConnectionList({
   connections,
-  ledgerId,
+  syncingConnectionId,
   onSync,
   onDisconnect,
 }: {
   connections: Connection[]
-  ledgerId: string
+  syncingConnectionId?: string | null
   onSync: (connectionId: string) => void
   onDisconnect: (connectionId: string) => void
 }) {
@@ -164,9 +164,10 @@ export function ConnectionList({
             {conn.status === 'active' && (
               <button
                 onClick={() => onSync(conn.id)}
-                className="text-xs px-3 py-1 bg-white border border-border rounded-md hover:bg-muted"
+                disabled={syncingConnectionId === conn.id}
+                className="text-xs px-3 py-1 bg-white border border-border rounded-md hover:bg-muted disabled:opacity-50"
               >
-                Sync Now
+                {syncingConnectionId === conn.id ? 'Syncing...' : 'Sync Now'}
               </button>
             )}
             <button

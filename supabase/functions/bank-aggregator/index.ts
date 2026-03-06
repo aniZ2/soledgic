@@ -74,31 +74,13 @@ const handler = createHandler(
           return errorResponse(enrollment.error || 'Invalid enrollment', 400, req, requestId)
         }
 
-        // Store access token in Vault (always encrypted, per security policy)
-        let vaultId: string | null = null
-        const { data: vaultResult } = await supabase.rpc(
-          'store_bank_aggregator_token_in_vault_new',
-          { p_token: enrollment.accessToken },
-        )
-        vaultId = vaultResult as string | null
-
-        if (!vaultId) {
-          // Fallback to generic vault function
-          const { data: vaultResult2 } = await supabase.rpc(
-            'store_token_in_vault',
-            { p_secret: enrollment.accessToken, p_name: `bank_aggregator_${enrollment.enrollmentId}` },
-          )
-          vaultId = vaultResult2 as string | null
-        }
-
-        // Create connection record (item_id = enrollment_id for Teller)
+        // Create connection record first (need ID for vault storage)
         const { data: connection, error: connError } = await supabase
           .from('bank_aggregator_connections')
           .upsert({
             ledger_id: ledger.id,
             item_id: enrollment.enrollmentId,
-            access_token: '[ENCRYPTED]', // Never store plaintext
-            access_token_vault_id: vaultId,
+            access_token: '[ENCRYPTED]',
             institution_name: body.institution_name || null,
             status: 'active',
           }, { onConflict: 'ledger_id,item_id' })
@@ -107,6 +89,16 @@ const handler = createHandler(
 
         if (connError) {
           return errorResponse('Failed to store connection', 500, req, requestId)
+        }
+
+        // Store access token in Vault (atomically sets access_token_vault_id on connection)
+        const { data: vaultId, error: vaultError } = await supabase.rpc(
+          'store_bank_aggregator_token_in_vault',
+          { p_connection_id: connection.id, p_access_token: body.access_token },
+        )
+
+        if (vaultError || !vaultId) {
+          console.error('Vault storage failed:', vaultError?.message || 'no vault ID returned')
         }
 
         // Fetch initial accounts
