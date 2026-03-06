@@ -20,7 +20,8 @@
     "security-gate": "bash scripts/security-gate.sh",
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",
     "deploy:migrations": "npm run security-gate && npx supabase db push",
-    "check:runbooks": "tsx scripts/runbook-check.ts"
+    "check:runbooks": "tsx scripts/runbook-check.ts",
+    "generate:openapi": "tsx scripts/generate-openapi.ts"
   },
   "keywords": [
     "accounting",
@@ -36,7 +37,8 @@
     "@vitest/coverage-v8": "^4.0.18",
     "dotenv": "^17.3.1",
     "tsx": "^4.21.0",
-    "vitest": "^4.0.16"
+    "vitest": "^4.0.16",
+    "yaml": "^2.8.2"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0"
