@@ -438,40 +438,42 @@ export default function ApiReferencePage() {
         </div>
       </section>
 
-      {orderedCategories.map((cat) => {
-        const entries = grouped.get(cat) ?? []
-        const slug = categorySlug(cat)
+      <section id="endpoint-details" className="scroll-mt-20">
+        {orderedCategories.map((cat) => {
+          const entries = grouped.get(cat) ?? []
+          const slug = categorySlug(cat)
 
-        return (
-          <section key={cat} id={`cat-${slug}`} className="mb-12 scroll-mt-20">
-            <h2 className="text-2xl font-semibold text-foreground mb-4">{cat}</h2>
-            <div className="overflow-x-auto mb-6">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 font-medium text-foreground">Endpoint</th>
-                    <th className="text-left py-2 px-3 font-medium text-foreground">Methods</th>
-                    <th className="text-left py-2 px-3 font-medium text-foreground">Auth</th>
-                    <th className="text-left py-2 px-3 font-medium text-foreground">Status</th>
-                    <th className="text-left py-2 px-3 font-medium text-foreground">Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <EndpointRow key={entry.endpoint} entry={entry} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          return (
+            <section key={cat} id={`cat-${slug}`} className="mb-12 scroll-mt-20">
+              <h2 className="text-2xl font-semibold text-foreground mb-4">{cat}</h2>
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 px-3 font-medium text-foreground">Endpoint</th>
+                      <th className="text-left py-2 px-3 font-medium text-foreground">Methods</th>
+                      <th className="text-left py-2 px-3 font-medium text-foreground">Auth</th>
+                      <th className="text-left py-2 px-3 font-medium text-foreground">Status</th>
+                      <th className="text-left py-2 px-3 font-medium text-foreground">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((entry) => (
+                      <EndpointRow key={entry.endpoint} entry={entry} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-            <div className="space-y-4">
-              {entries.map((entry) => (
-                <EndpointDetails key={entry.endpoint} entry={entry} />
-              ))}
-            </div>
-          </section>
-        )
-      })}
+              <div className="space-y-4">
+                {entries.map((entry) => (
+                  <EndpointDetails key={entry.endpoint} entry={entry} />
+                ))}
+              </div>
+            </section>
+          )
+        })}
+      </section>
 
       <section id="error-responses" className="mb-12 scroll-mt-20">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Error Responses</h2>

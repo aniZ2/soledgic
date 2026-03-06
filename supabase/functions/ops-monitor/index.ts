@@ -315,7 +315,7 @@ Deno.serve(async (req: Request) => {
       })
     }
   } catch (err) {
-    results.push({ check: 'deadlocks_cumulative', status: 'ok', count: -1, details: 'Check failed' })
+    results.push({ check: 'deadlocks_cumulative', status: 'warning', count: -1, details: 'Check failed' })
   }
 
   // 12. Payout failure rate in last 24h
