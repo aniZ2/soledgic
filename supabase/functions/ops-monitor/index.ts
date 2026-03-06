@@ -107,7 +107,7 @@ Deno.serve(async (req: Request) => {
       .from('processor_webhook_inbox')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending')
-      .lt('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
+      .lt('received_at', new Date(Date.now() - 60 * 60 * 1000).toISOString())
 
     if (error) {
       console.error(`[${requestId}] Stuck inbox check error:`, error.message)
@@ -230,9 +230,9 @@ Deno.serve(async (req: Request) => {
   try {
     const { data, error } = await supabase
       .from('processor_webhook_inbox')
-      .select('created_at')
+      .select('received_at')
       .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .order('received_at', { ascending: true })
       .limit(1)
       .maybeSingle()
 
@@ -241,7 +241,7 @@ Deno.serve(async (req: Request) => {
       results.push({ check: 'inbox_oldest_pending_seconds', status: 'warning', count: -1, details: `Query error: ${error.message}` })
     } else {
       const ageSeconds = data
-        ? Math.floor((Date.now() - new Date(data.created_at).getTime()) / 1000)
+        ? Math.floor((Date.now() - new Date(data.received_at).getTime()) / 1000)
         : 0
       results.push({
         check: 'inbox_oldest_pending_seconds',
