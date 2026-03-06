@@ -303,12 +303,13 @@ export function jsonResponse(data: any, status = 200, req?: Request, requestId?:
     JSON.stringify(responseData),
     { 
       status, 
-      headers: { 
-        ...corsHeaders, 
+      headers: {
+        ...corsHeaders,
         ...SECURITY_HEADERS,
         'Content-Type': 'application/json',
+        'Soledgic-Version': CURRENT_API_VERSION,
         ...(requestId ? { 'X-Request-Id': requestId } : {}),
-      } 
+      }
     }
   )
 }
@@ -358,6 +359,7 @@ export function rateLimitedResponse(resetIn?: number, req?: Request, requestId?:
         'Retry-After': String(resetIn || 60),
         'X-RateLimit-Remaining': '0',
         'X-RateLimit-Reset': String(resetIn || 60),
+        'Soledgic-Version': CURRENT_API_VERSION,
         ...(requestId ? { 'X-Request-Id': requestId } : {}),
       } 
     }
@@ -373,11 +375,12 @@ export function forbiddenResponse(req?: Request, requestId?: string) {
       request_id: requestId,
     }),
     { 
-      status: 403, 
-      headers: { 
-        ...corsHeaders, 
+      status: 403,
+      headers: {
+        ...corsHeaders,
         ...SECURITY_HEADERS,
         'Content-Type': 'application/json',
+        'Soledgic-Version': CURRENT_API_VERSION,
         ...(requestId ? { 'X-Request-Id': requestId } : {}),
       } 
     }
