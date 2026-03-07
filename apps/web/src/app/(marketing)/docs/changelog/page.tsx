@@ -18,14 +18,14 @@ export default function ChangelogPage() {
   return (
     <div className="max-w-3xl">
       <h1>API Changelog</h1>
-      <p className="lead">
+      <p className="text-xl text-muted-foreground mb-8">
         Track changes, additions, and deprecations across Soledgic API versions.
       </p>
 
       <div className="not-prose rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30 mb-8">
         <p className="text-sm text-blue-800 dark:text-blue-300">
           <strong>Version pinning:</strong> Include the{' '}
-          <code className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-mono dark:bg-blue-900/50">
+          <code className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-mono dark:bg-blue-900/50 dark:text-blue-200">
             Soledgic-Version
           </code>{' '}
           header in your requests to pin your integration to a specific API version.
@@ -59,14 +59,14 @@ export default function ChangelogPage() {
                 const { label, color } = typeLabels[section.type]
                 return (
                   <div key={section.type}>
-                    <span
+                    <h3
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium mb-3 ${color}`}
                     >
                       {label}
-                    </span>
+                    </h3>
                     <ul className="list-disc pl-5 space-y-1.5 text-sm text-foreground">
-                      {section.items.map((item) => (
-                        <li key={item}>{item}</li>
+                      {section.items.map((item, index) => (
+                        <li key={`${section.type}-${index}`}>{item}</li>
                       ))}
                     </ul>
                   </div>
