@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { BookOpen, Key, Code, Lightbulb, Bell, Package, ArrowRight } from 'lucide-react'
+import { API_BASE_URL } from './constants'
 
 const sections = [
   {
@@ -61,7 +62,7 @@ export default function DocsPage() {
           <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">POST</span>
         </div>
         <pre className="text-sm text-slate-300">
-{`curl -X POST https://api.soledgic.com/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
   -H "x-api-key: sk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{

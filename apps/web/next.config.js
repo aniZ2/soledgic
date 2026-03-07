@@ -9,6 +9,21 @@ const nextConfig = {
     },
   },
 
+  // Proxy api.soledgic.com/v1/* → Supabase Edge Functions
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: '/v1/:path*',
+          has: [{ type: 'host', value: 'api.soledgic.com' }],
+          destination: 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1/:path*',
+        },
+      ],
+      afterFiles: [],
+      fallback: [],
+    }
+  },
+
   // Redirect www to non-www to prevent cookie domain issues
   async redirects() {
     return [

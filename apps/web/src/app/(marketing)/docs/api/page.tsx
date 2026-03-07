@@ -1,4 +1,5 @@
 import { API_ENDPOINT_CATALOG, type ApiEndpointDoc } from './catalog'
+import { API_BASE_URL } from '../constants'
 
 type SampleValue = string | number | boolean | Record<string, never> | string[]
 
@@ -179,7 +180,7 @@ function formatCurl(parts: string[]): string {
 function buildCurlExample(entry: ApiEndpointDoc): string {
   const method = entry.methods[0] ?? 'POST'
   const query = buildQueryString(entry)
-  const url = `https://api.soledgic.com${entry.path}${query}`
+  const url = `${API_BASE_URL}${entry.path}${query}`
   const headers: string[] = []
 
   if (entry.auth === 'API key') {
@@ -296,7 +297,7 @@ function EndpointDetails({ entry }: { entry: ApiEndpointDoc }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="bg-slate-900 rounded-lg p-3">
             <div className="text-xs text-slate-400 mb-1">Gateway path</div>
-            <code className="text-sm text-slate-300">https://api.soledgic.com{entry.path}</code>
+            <code className="text-sm text-slate-300">{API_BASE_URL}{entry.path}</code>
           </div>
           <div className="bg-slate-900 rounded-lg p-3">
             <div className="text-xs text-slate-400 mb-1">Supabase function</div>
@@ -400,7 +401,7 @@ export default function ApiReferencePage() {
         <h2 className="text-2xl font-semibold text-foreground mb-4">Base URLs</h2>
         <div className="space-y-3">
           <div className="bg-slate-900 rounded-lg p-4">
-            <code className="text-sm text-slate-300">https://api.soledgic.com/v1</code>
+            <code className="text-sm text-slate-300">{API_BASE_URL}/v1</code>
           </div>
           <div className="bg-slate-900 rounded-lg p-4">
             <code className="text-sm text-slate-300">https://YOUR_PROJECT.supabase.co/functions/v1</code>

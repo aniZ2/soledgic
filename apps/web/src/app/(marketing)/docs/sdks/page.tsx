@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { API_BASE_URL } from '../constants'
 
 export default function SdksPage() {
   return (
@@ -147,7 +148,7 @@ payout = client.process_payout(
         <h3 className="text-lg font-semibold text-foreground mb-3">cURL Example</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X POST https://api.soledgic.com/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
   -H "x-api-key: sk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -165,7 +166,7 @@ payout = client.process_payout(
 {`require 'net/http'
 require 'json'
 
-uri = URI('https://api.soledgic.com/v1/record-sale')
+uri = URI('${API_BASE_URL}/v1/record-sale')
 http = Net::HTTP.new(uri.host, uri.port)
 http.use_ssl = true
 
@@ -205,7 +206,7 @@ func recordSale() {
     body, _ := json.Marshal(payload)
 
     req, _ := http.NewRequest("POST",
-        "https://api.soledgic.com/v1/record-sale",
+        "${API_BASE_URL}/v1/record-sale",
         bytes.NewBuffer(body))
 
     req.Header.Set("x-api-key", os.Getenv("SOLEDGIC_API_KEY"))

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { API_BASE_URL } from '../constants'
 
 export default function AuthenticationPage() {
   return (
@@ -16,7 +17,7 @@ export default function AuthenticationPage() {
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-6">
           <pre className="text-sm text-slate-300">
-{`curl -X POST https://api.soledgic.com/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
   -H "x-api-key: sk_test_abc123..." \\
   -H "Content-Type: application/json" \\
   -d '{"creator_id": "123", "amount": 1999}'`}
@@ -123,7 +124,7 @@ export default function AuthenticationPage() {
               <pre className="text-sm text-slate-300">
 {`const apiKey = process.env.SOLEDGIC_API_KEY;
 
-fetch('https://api.soledgic.com/v1/record-sale', {
+fetch('${API_BASE_URL}/v1/record-sale', {
   method: 'POST',
   headers: {
     'x-api-key': apiKey,
@@ -145,7 +146,7 @@ import requests
 api_key = os.environ.get('SOLEDGIC_API_KEY')
 
 response = requests.post(
-    'https://api.soledgic.com/v1/record-sale',
+    '${API_BASE_URL}/v1/record-sale',
     headers={'x-api-key': api_key},
     json={'creator_id': '123', 'amount': 1999}
 )`}

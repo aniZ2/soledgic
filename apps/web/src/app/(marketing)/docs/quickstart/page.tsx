@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { API_BASE_URL } from '../constants'
 
 export default function QuickstartPage() {
   return (
@@ -60,7 +61,7 @@ export default function QuickstartPage() {
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X POST https://api.soledgic.com/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
   -H "x-api-key: sk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -100,7 +101,7 @@ export default function QuickstartPage() {
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X GET "https://api.soledgic.com/v1/get-balance?creator_id=creator_456" \\
+{`curl -X GET "${API_BASE_URL}/v1/get-balance?creator_id=creator_456" \\
   -H "x-api-key: sk_test_YOUR_API_KEY"`}
           </pre>
         </div>
@@ -135,7 +136,7 @@ export default function QuickstartPage() {
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X POST https://api.soledgic.com/v1/process-payout \\
+{`curl -X POST ${API_BASE_URL}/v1/process-payout \\
   -H "x-api-key: sk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
