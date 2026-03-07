@@ -7,6 +7,8 @@ import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
 import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info } from 'lucide-react'
+import { useToast } from '@/components/notifications/toast-provider'
+import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 
 interface TaxDocument {
   id: string
@@ -46,6 +48,8 @@ export default function TaxDocumentsPage() {
   const [copyType, setCopyType] = useState<'a' | 'b' | '1' | '2'>('b')
   const [taxYear, setTaxYear] = useState(new Date().getFullYear() - 1)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'mark-filed' | 'generate-all-pdfs' | null>(null)
+  const toast = useToast()
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -114,13 +118,13 @@ export default function TaxDocumentsPage() {
 
       const result = await res.json()
       if (result.success) {
-        alert(`Generated ${result.data.created} documents. ${result.data.skipped} creators below $600 threshold.`)
+        toast.success('Documents generated', `${result.data.created} created. ${result.data.skipped} below $600 threshold.`)
         loadData()
       } else {
-        alert(`Error: ${result.error}`)
+        toast.error('Generation failed', result.error)
       }
     } catch {
-      alert('Failed to generate documents')
+      toast.error('Failed to generate documents')
     } finally {
       setGenerating(false)
     }
@@ -147,18 +151,21 @@ export default function TaxDocumentsPage() {
         loadData() // Refresh to show "exported" status
       } else {
         const result = await res.json()
-        alert(`Error: ${result.error}`)
+        toast.error('Export failed', result.error)
       }
     } catch {
-      alert('Failed to export')
+      toast.error('Failed to export')
     } finally {
       setExporting(false)
     }
   }
 
-  const markAllFiled = async () => {
+  const markAllFiled = () => {
+    setConfirmAction('mark-filed')
+  }
+
+  const confirmMarkAllFiled = async () => {
     if (!ledgerId) return
-    if (!confirm('Mark all exported documents as filed? This indicates you have submitted them to the IRS.')) return
 
     try {
       const res = await callLedgerFunction('tax-documents', {
@@ -169,11 +176,13 @@ export default function TaxDocumentsPage() {
 
       const result = await res.json()
       if (result.success) {
+        toast.success('All exported documents marked as filed')
         loadData()
       }
     } catch {
-      alert('Failed to update status')
+      toast.error('Failed to update status')
     }
+    setConfirmAction(null)
   }
 
   const downloadPdf = async (documentId: string) => {
@@ -192,18 +201,22 @@ export default function TaxDocumentsPage() {
         window.open(result.data.download_url, '_blank')
         loadData()
       } else {
-        alert(`Error: ${result.error || 'PDF generation failed'}`)
+        toast.error('PDF generation failed', result.error || 'Unknown error')
       }
     } catch {
-      alert('Failed to generate PDF')
+      toast.error('Failed to generate PDF')
     } finally {
       setGeneratingPdf(null)
     }
   }
 
-  const generateAllPdfs = async () => {
+  const generateAllPdfs = () => {
+    setConfirmAction('generate-all-pdfs')
+  }
+
+  const confirmGenerateAllPdfs = async () => {
     if (!ledgerId) return
-    if (!confirm(`Generate 1099-NEC draft PDFs for all ${documents.length} documents?`)) return
+    setConfirmAction(null)
     setGeneratingAllPdfs(true)
 
     try {
@@ -215,13 +228,13 @@ export default function TaxDocumentsPage() {
 
       const result = await res.json()
       if (result.success) {
-        alert(`Generated ${result.data.generated} PDFs. ${result.data.failed} failed.`)
+        toast.success('PDFs generated', `${result.data.generated} created. ${result.data.failed} failed.`)
         loadData()
       } else {
-        alert(`Error: ${result.error}`)
+        toast.error('PDF generation failed', result.error)
       }
     } catch {
-      alert('Failed to generate PDFs')
+      toast.error('Failed to generate PDFs')
     } finally {
       setGeneratingAllPdfs(false)
     }
@@ -458,6 +471,24 @@ export default function TaxDocumentsPage() {
           </label>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'mark-filed'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={confirmMarkAllFiled}
+        title="Mark All as Filed"
+        message="Mark all exported documents as filed? This indicates you have submitted them to the IRS."
+        confirmLabel="Mark as Filed"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'generate-all-pdfs'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={confirmGenerateAllPdfs}
+        title="Generate All PDFs"
+        message={`Generate 1099-NEC draft PDFs for all ${documents.length} documents?`}
+        confirmLabel="Generate PDFs"
+      />
     </div>
   )
 }

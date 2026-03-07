@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Upload, ExternalLink } from 'lucide-react'
+import { useToast } from '@/components/notifications/toast-provider'
+import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
@@ -24,6 +26,8 @@ export default function ReconciliationPage() {
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [connections, setConnections] = useState<Connection[]>([])
   const [syncing, setSyncing] = useState<string | null>(null)
+  const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null)
+  const toast = useToast()
 
   const loadConnections = useCallback(async (lid?: string) => {
     const id = lid || ledgerId
@@ -86,32 +90,37 @@ export default function ReconciliationPage() {
       })
       const result = await res.json()
       if (result.success) {
-        alert(`Synced: ${result.data.added} added, ${result.data.auto_matched} auto-matched`)
+        toast.success('Sync complete', `${result.data.added} added, ${result.data.auto_matched} auto-matched`)
       } else {
-        alert(`Sync error: ${result.error}`)
+        toast.error('Sync error', result.error)
       }
       loadConnections()
     } catch {
-      alert('Sync failed')
+      toast.error('Sync failed')
     } finally {
       setSyncing(null)
     }
   }
 
-  const handleDisconnect = async (connectionId: string) => {
-    if (!ledgerId) return
-    if (!confirm('Disconnect this bank account? Existing imported transactions will be preserved.')) return
+  const handleDisconnect = (connectionId: string) => {
+    setDisconnectTarget(connectionId)
+  }
+
+  const confirmDisconnect = async () => {
+    if (!ledgerId || !disconnectTarget) return
 
     try {
       await callLedgerFunction('bank-aggregator', {
         ledgerId,
         method: 'POST',
-        body: { action: 'disconnect', connection_id: connectionId },
+        body: { action: 'disconnect', connection_id: disconnectTarget },
       })
+      toast.success('Bank account disconnected')
       loadConnections()
     } catch {
-      alert('Failed to disconnect')
+      toast.error('Failed to disconnect')
     }
+    setDisconnectTarget(null)
   }
 
   return (
@@ -174,6 +183,16 @@ export default function ReconciliationPage() {
           </Link>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={disconnectTarget !== null}
+        onClose={() => setDisconnectTarget(null)}
+        onConfirm={confirmDisconnect}
+        title="Disconnect Bank Account"
+        message="Disconnect this bank account? Existing imported transactions will be preserved."
+        confirmLabel="Disconnect"
+        variant="danger"
+      />
     </div>
   )
 }

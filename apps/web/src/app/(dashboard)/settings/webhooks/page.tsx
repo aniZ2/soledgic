@@ -6,6 +6,8 @@ import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provi
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { Webhook, Plus, Trash2, Send, CheckCircle, XCircle, Clock, Eye, EyeOff, Copy } from 'lucide-react'
+import { useToast } from '@/components/notifications/toast-provider'
+import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 
 interface WebhookEndpoint {
   id: string
@@ -50,6 +52,8 @@ export default function WebhooksPage() {
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const toast = useToast()
 
   const loadData = useCallback(async () => {
     const supabase = createClient()
@@ -132,15 +136,25 @@ export default function WebhooksPage() {
     }
   }
 
-  const deleteEndpoint = async (id: string) => {
-    if (!ledgerId || !confirm('Delete this webhook endpoint?')) return
+  const deleteEndpoint = (id: string) => {
+    setDeleteTarget(id)
+  }
 
-    await callLedgerFunction('webhooks', {
-      ledgerId,
-      method: 'POST',
-      body: { action: 'delete', endpoint_id: id },
-    })
-    void loadData()
+  const confirmDeleteEndpoint = async () => {
+    if (!ledgerId || !deleteTarget) return
+
+    try {
+      await callLedgerFunction('webhooks', {
+        ledgerId,
+        method: 'POST',
+        body: { action: 'delete', endpoint_id: deleteTarget },
+      })
+      toast.success('Webhook endpoint deleted')
+      void loadData()
+    } catch {
+      toast.error('Failed to delete webhook endpoint')
+    }
+    setDeleteTarget(null)
   }
 
   const testEndpoint = async (id: string) => {
@@ -453,7 +467,7 @@ export default function WebhooksPage() {
       <div className="mt-8 bg-muted/50 border border-border rounded-lg p-6">
         <h3 className="font-semibold text-foreground mb-2">Verifying Webhooks</h3>
         <p className="text-sm text-muted-foreground mb-4">
-          Each webhook includes a signature header <code className="bg-muted px-1 rounded">X-Soledgic-Signature</code>. 
+          Each webhook includes a signature header <code className="bg-muted px-1 rounded">X-Soledgic-Signature</code>.
           Verify it using HMAC-SHA256:
         </p>
         <pre className="text-sm bg-background border border-border px-4 py-3 rounded overflow-x-auto">
@@ -468,6 +482,16 @@ function verifySignature(payload, signature, secret) {
 }`}
         </pre>
       </div>
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteEndpoint}
+        title="Delete Endpoint"
+        message="Delete this webhook endpoint? It will stop receiving events immediately."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   )
 }
