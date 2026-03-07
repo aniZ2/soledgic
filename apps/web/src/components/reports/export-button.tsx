@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Download, Loader2, FileText, Table } from 'lucide-react'
+import { useToast } from '@/components/notifications/toast-provider'
 
 interface ExportButtonProps {
   reportType: 'profit-loss' | 'trial-balance' | 'transactions' | 'creators' | 'creator-statements'
@@ -22,6 +23,7 @@ export function ExportButton({
   month,
   className = ''
 }: ExportButtonProps) {
+  const toast = useToast()
   const [loading, setLoading] = useState<'csv' | 'pdf' | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
 
@@ -60,7 +62,7 @@ export function ExportButton({
       document.body.removeChild(a)
     } catch (error: unknown) {
       console.error('Export error:', error)
-      alert(getErrorMessage(error, 'Failed to export report'))
+      toast.error('Export failed', getErrorMessage(error, 'Failed to export report'))
     } finally {
       setLoading(null)
     }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Building, Save, Loader2 } from 'lucide-react'
+import { useToast } from '@/components/notifications/toast-provider'
 
 interface OrganizationRecord {
   id: string
@@ -16,6 +17,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null)
+  const toast = useToast()
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -182,7 +184,7 @@ export default function SettingsPage() {
         </p>
         <button
           className="mt-4 px-4 py-2 border border-red-500 text-red-600 rounded-md hover:bg-red-50"
-          onClick={() => alert('Contact support to delete your organization')}
+          onClick={() => toast.info('Contact support', 'Email support@soledgic.com to delete your organization')}
         >
           Delete Organization
         </button>

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import { useToast } from '@/components/notifications/toast-provider'
 import Link from 'next/link'
 import { ArrowLeft, Download, Mail, User, Send } from 'lucide-react'
 
@@ -30,6 +31,7 @@ export default function CreatorStatementsPage() {
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
+  const toast = useToast()
   const [sendingAll, setSendingAll] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -124,7 +126,7 @@ export default function CreatorStatementsPage() {
     })
     const data = await res.json()
     if (!res.ok || !data.success || !data.data) {
-      alert(`Failed: ${data.error || 'Unable to generate statement'}`)
+      toast.error('Statement failed', data.error || 'Unable to generate statement')
       return
     }
 
@@ -156,9 +158,9 @@ export default function CreatorStatementsPage() {
     const data = await res.json()
     
     if (data.success) {
-      alert('Statement sent!')
+      toast.success('Statement sent')
     } else {
-      alert(`Failed: ${data.error}`)
+      toast.error('Send failed', data.error)
     }
   }
 
@@ -178,9 +180,9 @@ export default function CreatorStatementsPage() {
     const data = await res.json()
     
     if (data.success) {
-      alert(`Queued ${data.data?.queued || 0} statements for delivery!`)
+      toast.success('Statements queued', `${data.data?.queued || 0} statements queued for delivery`)
     } else {
-      alert(`Failed: ${data.error}`)
+      toast.error('Send failed', data.error)
     }
 
     setSendingAll(false)

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2 } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
+import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Creator {
@@ -71,6 +72,7 @@ export function CreatorDetailClient({
 }: CreatorDetailClientProps) {
   const router = useRouter()
   const [isPayoutModalOpen, setIsPayoutModalOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [releasingEntryId, setReleasingEntryId] = useState<string | null>(null)
@@ -96,10 +98,6 @@ export function CreatorDetailClient({
   }
 
   const handleDeleteCreator = async () => {
-    if (!window.confirm(`Are you sure you want to delete "${creatorAccount.name}"? This action cannot be undone.`)) {
-      return
-    }
-
     setDeleteError(null)
     setIsDeleting(true)
 
@@ -120,6 +118,7 @@ export function CreatorDetailClient({
       setDeleteError(message)
     } finally {
       setIsDeleting(false)
+      setIsDeleteDialogOpen(false)
     }
   }
 
@@ -202,7 +201,7 @@ export function CreatorDetailClient({
               Process Payout
             </button>
             <button
-              onClick={handleDeleteCreator}
+              onClick={() => setIsDeleteDialogOpen(true)}
               disabled={hasTransactions || isDeleting}
               title={hasTransactions ? 'Cannot delete creator with transactions' : 'Delete creator'}
               className="flex items-center gap-2 border border-red-300 text-red-600 px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-red-500/30 dark:hover:bg-red-500/10"
@@ -419,6 +418,17 @@ export function CreatorDetailClient({
         ledgerId={ledger.id}
         preselectedCreator={creatorForModal}
         onSuccess={handlePayoutSuccess}
+      />
+
+      {/* Delete Creator Confirmation */}
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleDeleteCreator}
+        title="Delete Creator"
+        message={`Are you sure you want to delete "${creatorAccount.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
       />
     </div>
   )

@@ -99,6 +99,12 @@ const handler = createHandler(
 
         if (vaultError || !vaultId) {
           console.error('Vault storage failed:', vaultError?.message || 'no vault ID returned')
+          // Clean up: mark connection as failed so it doesn't appear active with no token
+          await supabase
+            .from('bank_aggregator_connections')
+            .update({ status: 'error', error_message: 'Token storage failed', access_token_vault_id: null })
+            .eq('id', connection.id)
+          return errorResponse('Failed to securely store credentials', 500, req, requestId)
         }
 
         // Fetch initial accounts

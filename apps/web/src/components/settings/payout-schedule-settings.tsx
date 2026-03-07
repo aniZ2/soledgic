@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Loader2, Clock } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { useToast } from '@/components/notifications/toast-provider'
 
 interface PayoutScheduleSettingsProps {
   ledgerId: string
@@ -36,6 +37,7 @@ export function PayoutScheduleSettings({
   const [minimumAmount, setMinimumAmount] = useState(
     (initialSettings?.minimum_amount || 1000) / 100 // Convert cents to dollars
   )
+  const toast = useToast()
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -66,7 +68,7 @@ export function PayoutScheduleSettings({
         throw new Error(error.error || 'Failed to save')
       }
     } catch (error: unknown) {
-      alert(error instanceof Error && error.message ? error.message : 'Failed to save')
+      toast.error('Save failed', error instanceof Error && error.message ? error.message : 'Failed to save')
     } finally {
       setSaving(false)
     }

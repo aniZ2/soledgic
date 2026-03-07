@@ -137,6 +137,7 @@ export function MfaEnrollModal({
                 {/* QR Code */}
                 <div className="flex justify-center">
                   <div className="bg-white p-4 rounded-lg">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={qrCode.startsWith('data:') ? qrCode : `data:image/svg+xml;utf8,${qrCode}`}
                       alt="Scan this QR code with your authenticator app"

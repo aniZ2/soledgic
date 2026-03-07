@@ -86,6 +86,7 @@ Deno.serve(async (req) => {
         }
 
         let totalAdded = 0
+        let hasError = false
 
         // Sync each account
         for (const account of accounts) {
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
                 .update({ status: 'error', error_message: syncResult.error })
                 .eq('id', conn.id)
 
-              failed++
+              hasError = true
               hasMore = false
               continue
             }
@@ -159,19 +160,33 @@ Deno.serve(async (req) => {
         }
 
         // Update connection
-        await supabase
-          .from('bank_aggregator_connections')
-          .update({
-            cursor: JSON.stringify(cursors),
-            last_sync_at: new Date().toISOString(),
-            status: 'active',
-            error_code: null,
-            error_message: null,
-          })
-          .eq('id', conn.id)
+        if (!hasError) {
+          await supabase
+            .from('bank_aggregator_connections')
+            .update({
+              cursor: JSON.stringify(cursors),
+              last_sync_at: new Date().toISOString(),
+              status: 'active',
+              error_code: null,
+              error_message: null,
+            })
+            .eq('id', conn.id)
 
-        results.push({ connection_id: conn.id, status: 'synced', added: totalAdded })
-        synced++
+          results.push({ connection_id: conn.id, status: 'synced', added: totalAdded })
+          synced++
+        } else {
+          // Still save cursor progress for accounts that succeeded
+          await supabase
+            .from('bank_aggregator_connections')
+            .update({
+              cursor: JSON.stringify(cursors),
+              last_sync_at: new Date().toISOString(),
+            })
+            .eq('id', conn.id)
+
+          results.push({ connection_id: conn.id, status: 'partial_error', added: totalAdded })
+          failed++
+        }
       } catch (error: unknown) {
         captureException(error instanceof Error ? error : new Error(String(error)), {
           endpoint: 'sync-bank-feeds',

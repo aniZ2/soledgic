@@ -7,6 +7,7 @@ import {
   Mail, Clock, Trash2,
 } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 
 interface Member {
   id: string
@@ -72,6 +73,8 @@ export default function TeamSettingsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [removeMemberId, setRemoveMemberId] = useState<string | null>(null)
+  const [revokeInviteId, setRevokeInviteId] = useState<string | null>(null)
 
   async function loadTeamData() {
     try {
@@ -160,9 +163,6 @@ export default function TeamSettingsPage() {
   }
 
   const handleRemoveMember = async (memberId: string) => {
-    setOpenMenuId(null)
-    if (!confirm('Are you sure you want to remove this team member?')) return
-
     setActionLoading(memberId)
     setErrorMessage(null)
     setSuccessMessage(null)
@@ -184,11 +184,10 @@ export default function TeamSettingsPage() {
     }
 
     setActionLoading(null)
+    setRemoveMemberId(null)
   }
 
   const handleRevokeInvitation = async (inviteId: string) => {
-    if (!confirm('Are you sure you want to revoke this invitation?')) return
-
     setActionLoading(inviteId)
     setErrorMessage(null)
     setSuccessMessage(null)
@@ -210,6 +209,7 @@ export default function TeamSettingsPage() {
     }
 
     setActionLoading(null)
+    setRevokeInviteId(null)
   }
 
   const formatDate = (date: string) =>
@@ -410,7 +410,10 @@ export default function TeamSettingsPage() {
                         }
                         <div className="border-t border-border my-1" />
                         <button
-                          onClick={() => handleRemoveMember(member.id)}
+                          onClick={() => {
+                            setOpenMenuId(null)
+                            setRemoveMemberId(member.id)
+                          }}
                           className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-500/10"
                         >
                           Remove member
@@ -449,7 +452,7 @@ export default function TeamSettingsPage() {
                 <RoleBadge role={invite.role} />
                 {isOwnerOrAdmin && (
                   <button
-                    onClick={() => handleRevokeInvitation(invite.id)}
+                    onClick={() => setRevokeInviteId(invite.id)}
                     disabled={actionLoading === invite.id}
                     className="p-1.5 rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-600"
                     title="Revoke invitation"
@@ -473,6 +476,32 @@ export default function TeamSettingsPage() {
           Only organization owners and admins can manage team members.
         </p>
       )}
+
+      {/* Remove Member Confirmation */}
+      <ConfirmDialog
+        isOpen={removeMemberId !== null}
+        onClose={() => setRemoveMemberId(null)}
+        onConfirm={async () => {
+          if (removeMemberId) await handleRemoveMember(removeMemberId)
+        }}
+        title="Remove Team Member"
+        message="Are you sure you want to remove this team member? They will lose access to the organization immediately."
+        confirmLabel="Remove"
+        variant="danger"
+      />
+
+      {/* Revoke Invitation Confirmation */}
+      <ConfirmDialog
+        isOpen={revokeInviteId !== null}
+        onClose={() => setRevokeInviteId(null)}
+        onConfirm={async () => {
+          if (revokeInviteId) await handleRevokeInvitation(revokeInviteId)
+        }}
+        title="Revoke Invitation"
+        message="Are you sure you want to revoke this invitation? The invite link will no longer work."
+        confirmLabel="Revoke"
+        variant="danger"
+      />
     </div>
   )
 }
