@@ -8,6 +8,7 @@ import {
   errorResponse,
   timingSafeEqual,
   getSupabaseClient,
+  escapeHtml,
 } from '../_shared/utils.ts'
 
 interface MonitorResult {
@@ -15,6 +16,180 @@ interface MonitorResult {
   status: 'ok' | 'warning' | 'critical'
   count: number
   details?: string
+}
+
+const SEVERITY_RANK: Record<string, number> = { ok: 0, warning: 1, critical: 2 }
+
+function buildOpsSlackMessage(
+  status: string,
+  checks: MonitorResult[],
+  isRecovery: boolean,
+  requestId: string,
+  appUrl: string,
+): object {
+  if (isRecovery) {
+    return {
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: '\u2705 Ops Monitor \u2014 All Clear', emoji: true },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'All health checks are passing. Previously alerted status has resolved.',
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            { type: 'mrkdwn', text: `Request ID: \`${requestId}\` \u2022 ${new Date().toISOString()}` },
+          ],
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'View Dashboard', emoji: true },
+              url: `${appUrl}/dashboard`,
+              style: 'primary',
+            },
+          ],
+        },
+      ],
+      attachments: [{ color: '#22c55e', fallback: 'Ops Monitor: All Clear' }],
+    }
+  }
+
+  const emoji = status === 'critical' ? '\ud83d\udea8' : '\u26a0\ufe0f'
+  const label = status.toUpperCase()
+  const color = status === 'critical' ? '#dc2626' : '#f59e0b'
+  const nonOkChecks = checks.filter(r => r.status !== 'ok')
+
+  const fields = nonOkChecks.map(r => ({
+    type: 'mrkdwn' as const,
+    text: `${r.status === 'critical' ? '\ud83d\udd34' : '\ud83d\udfe1'} *${r.check}*\n${r.details || `count=${r.count}`}`,
+  }))
+
+  const blocks: any[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: `${emoji} Ops Monitor Alert`, emoji: true },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Overall Status:* ${label} \u2022 ${new Date().toISOString()}`,
+      },
+    },
+    { type: 'divider' },
+  ]
+
+  // Slack allows max 10 fields per section
+  for (let i = 0; i < fields.length; i += 10) {
+    blocks.push({ type: 'section', fields: fields.slice(i, i + 10) })
+  }
+
+  blocks.push({
+    type: 'context',
+    elements: [
+      { type: 'mrkdwn', text: `Request ID: \`${requestId}\` \u2022 <${appUrl}/dashboard|View Dashboard>` },
+    ],
+  })
+
+  return {
+    blocks,
+    attachments: [{ color, fallback: `Ops Monitor: ${label} \u2014 ${nonOkChecks.length} check(s) flagged` }],
+  }
+}
+
+function buildOpsEmailHtml(
+  status: string,
+  checks: MonitorResult[],
+  isRecovery: boolean,
+  requestId: string,
+  appUrl: string,
+): { subject: string; html: string; text: string } {
+  const dashboardUrl = `${appUrl}/dashboard`
+
+  if (isRecovery) {
+    return {
+      subject: '\u2705 Soledgic Ops Monitor \u2014 All Clear',
+      html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="border-left: 4px solid #22c55e; padding-left: 20px; margin-bottom: 20px;">
+    <h1 style="color: #22c55e; margin: 0 0 10px 0; font-size: 24px;">\u2705 All Clear</h1>
+    <p style="margin: 0; color: #666;">All health checks are passing. Previously alerted status has resolved.</p>
+  </div>
+  <div style="margin-top: 30px;">
+    <a href="${dashboardUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">View Dashboard</a>
+  </div>
+  <hr style="border: none; border-top: 1px solid #e9ecef; margin: 30px 0;">
+  <p style="color: #999; font-size: 12px;">Request ID: ${requestId}<br>Generated at ${new Date().toISOString()}<br>Soledgic Ops Monitor</p>
+</body>
+</html>`,
+      text: `\u2705 OPS MONITOR \u2014 ALL CLEAR\n\nAll health checks are passing. Previously alerted status has resolved.\n\nDashboard: ${dashboardUrl}\nRequest ID: ${requestId}\nTimestamp: ${new Date().toISOString()}`,
+    }
+  }
+
+  const emoji = status === 'critical' ? '\ud83d\udea8' : '\u26a0\ufe0f'
+  const label = status.toUpperCase()
+  const color = status === 'critical' ? '#dc2626' : '#f59e0b'
+  const nonOkChecks = checks.filter(r => r.status !== 'ok')
+
+  const tableRows = nonOkChecks.map(r => {
+    const statusColor = r.status === 'critical' ? '#dc2626' : '#f59e0b'
+    return `<tr>
+      <td style="padding: 10px 12px; border: 1px solid #e9ecef;">${escapeHtml(r.check)}</td>
+      <td style="padding: 10px 12px; border: 1px solid #e9ecef;"><span style="color: ${statusColor}; font-weight: bold;">${r.status.toUpperCase()}</span></td>
+      <td style="padding: 10px 12px; border: 1px solid #e9ecef; text-align: center;">${r.count}</td>
+      <td style="padding: 10px 12px; border: 1px solid #e9ecef;">${escapeHtml(r.details || '-')}</td>
+    </tr>`
+  }).join('\n')
+
+  const subject = `${emoji} [${label}] Soledgic Ops Monitor Alert`
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
+  <div style="border-left: 4px solid ${color}; padding-left: 20px; margin-bottom: 20px;">
+    <h1 style="color: ${color}; margin: 0 0 10px 0; font-size: 24px;">${emoji} Ops Monitor Alert</h1>
+    <p style="margin: 0; color: #666;"><strong>Overall Status:</strong> ${label}</p>
+  </div>
+  <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+    <thead>
+      <tr style="background: #f8f9fa;">
+        <th style="padding: 10px 12px; border: 1px solid #e9ecef; text-align: left;">Check</th>
+        <th style="padding: 10px 12px; border: 1px solid #e9ecef; text-align: left;">Status</th>
+        <th style="padding: 10px 12px; border: 1px solid #e9ecef; text-align: center;">Count</th>
+        <th style="padding: 10px 12px; border: 1px solid #e9ecef; text-align: left;">Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRows}
+    </tbody>
+  </table>
+  <div style="margin-top: 30px;">
+    <a href="${dashboardUrl}" style="display: inline-block; background: ${color}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">View Dashboard</a>
+  </div>
+  <hr style="border: none; border-top: 1px solid #e9ecef; margin: 30px 0;">
+  <p style="color: #999; font-size: 12px;">Request ID: ${requestId}<br>Generated at ${new Date().toISOString()}<br>Soledgic Ops Monitor</p>
+</body>
+</html>`
+
+  const textChecks = nonOkChecks
+    .map(r => `- [${r.status.toUpperCase()}] ${r.check}: ${r.details || `count=${r.count}`}`)
+    .join('\n')
+
+  const text = `${emoji} OPS MONITOR ALERT \u2014 ${label}\n\n${textChecks}\n\nDashboard: ${dashboardUrl}\nRequest ID: ${requestId}\nTimestamp: ${new Date().toISOString()}`
+
+  return { subject, html, text }
 }
 
 Deno.serve(async (req: Request) => {
@@ -365,7 +540,107 @@ Deno.serve(async (req: Request) => {
     ? 'warning'
     : 'ok'
 
-  // Persist to ops_monitor_runs (awaited — this is the durable observability record)
+  // --- Alerting: cooldown check, Slack, HTML email ---
+  const cooldownMinutes = Number(Deno.env.get('OPS_ALERT_COOLDOWN_MINUTES') || 120)
+  const appUrl = Deno.env.get('APP_URL') || 'https://app.soledgic.com'
+
+  let shouldAlert = false
+  let isRecovery = false
+
+  try {
+    const { data: lastAlertRun } = await supabase
+      .from('ops_monitor_runs')
+      .select('created_at, overall_status')
+      .eq('alert_sent', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (overallStatus !== 'ok') {
+      // Alert on warning or critical
+      if (!lastAlertRun) {
+        shouldAlert = true
+      } else {
+        const minutesSinceLastAlert =
+          (Date.now() - new Date(lastAlertRun.created_at).getTime()) / 60000
+        const escalated =
+          SEVERITY_RANK[overallStatus] > SEVERITY_RANK[lastAlertRun.overall_status || 'ok']
+
+        if (escalated || minutesSinceLastAlert >= cooldownMinutes) {
+          shouldAlert = true
+        }
+        // Within cooldown and not escalated — suppress
+      }
+    } else if (lastAlertRun) {
+      // Current status is ok but we previously alerted — send recovery
+      const prev = lastAlertRun.overall_status
+      if (prev === 'warning' || prev === 'critical') {
+        shouldAlert = true
+        isRecovery = true
+      }
+    }
+  } catch (err) {
+    // Cooldown check failed — err on the side of alerting
+    console.error(`[${requestId}] Cooldown check failed:`, err)
+    shouldAlert = overallStatus !== 'ok'
+  }
+
+  // Send alerts (Slack + email), track actual dispatch success
+  let alertDispatched = false
+
+  if (shouldAlert) {
+    // Slack
+    const slackWebhookUrl = Deno.env.get('OPS_SLACK_WEBHOOK_URL')
+    if (slackWebhookUrl) {
+      const slackMessage = buildOpsSlackMessage(overallStatus, results, isRecovery, requestId, appUrl)
+      try {
+        const slackResp = await fetch(slackWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(slackMessage),
+        })
+        if (slackResp.ok) {
+          alertDispatched = true
+        } else {
+          console.error(`[${requestId}] Slack alert failed (${slackResp.status}):`, await slackResp.text())
+        }
+      } catch (err) {
+        console.error(`[${requestId}] Slack alert error:`, err)
+      }
+    }
+
+    // Email (HTML)
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    const alertEmail = Deno.env.get('OPS_ALERT_EMAIL') || Deno.env.get('FROM_EMAIL')
+    if (resendKey && alertEmail) {
+      const emailContent = buildOpsEmailHtml(overallStatus, results, isRecovery, requestId, appUrl)
+      try {
+        const emailResp = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: Deno.env.get('FROM_EMAIL') || 'alerts@soledgic.com',
+            to: alertEmail,
+            subject: emailContent.subject,
+            html: emailContent.html,
+            text: emailContent.text,
+          }),
+        })
+        if (emailResp.ok) {
+          alertDispatched = true
+        } else {
+          console.error(`[${requestId}] Alert email failed (${emailResp.status}):`, await emailResp.text())
+        }
+      } catch (err) {
+        console.error(`[${requestId}] Alert email error:`, err)
+      }
+    }
+  }
+
+  // Persist to ops_monitor_runs (after dispatch so alert_sent reflects actual success)
   const okCount = results.filter(r => r.status === 'ok').length
   const warnCount = results.filter(r => r.status === 'warning').length
   const critCount = results.filter(r => r.status === 'critical').length
@@ -378,37 +653,10 @@ Deno.serve(async (req: Request) => {
     ok_checks: okCount,
     warning_checks: warnCount,
     critical_checks: critCount,
-    alert_sent: overallStatus === 'critical',
+    alert_sent: alertDispatched,
   })
   if (persistError) {
     console.error(`[${requestId}] ops_monitor_runs insert failed:`, persistError.message)
-  }
-
-  // Send alert email if critical
-  if (overallStatus === 'critical') {
-    const resendKey = Deno.env.get('RESEND_API_KEY')
-    const alertEmail = Deno.env.get('OPS_ALERT_EMAIL') || Deno.env.get('FROM_EMAIL')
-
-    if (resendKey && alertEmail) {
-      const criticalChecks = results
-        .filter(r => r.status === 'critical')
-        .map(r => `- ${r.check}: ${r.details || `count=${r.count}`}`)
-        .join('\n')
-
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${resendKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: Deno.env.get('FROM_EMAIL') || 'alerts@soledgic.com',
-          to: alertEmail,
-          subject: `[CRITICAL] Soledgic Ops Monitor Alert`,
-          text: `Soledgic ops monitor detected critical issues:\n\n${criticalChecks}\n\nTimestamp: ${new Date().toISOString()}\nRequest ID: ${requestId}`,
-        }),
-      }).catch(err => console.error(`[${requestId}] Alert email failed:`, err))
-    }
   }
 
   // Log to audit
