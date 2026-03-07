@@ -221,6 +221,7 @@ export function maintenanceResponse(req?: Request, requestId?: string): Response
         ...SECURITY_HEADERS,
         'Content-Type': 'application/json',
         'Retry-After': '300',
+        'Soledgic-Version': CURRENT_API_VERSION,
         ...(requestId ? { 'X-Request-Id': requestId } : {}),
       }
     }

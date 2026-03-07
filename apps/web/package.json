@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "cp ../../docs/openapi.yaml public/openapi.yaml && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0"
   },

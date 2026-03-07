@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, Key, Code, Lightbulb, Bell, Package, Home, ArrowLeft, Menu, X } from 'lucide-react'
+import { BookOpen, Key, Code, Lightbulb, Bell, Package, Home, ArrowLeft, Menu, X, Terminal, History } from 'lucide-react'
 import { useState } from 'react'
 
 const navigation = [
@@ -27,8 +27,10 @@ const navigation = [
       { name: 'Error Responses', href: '/docs/api#error-responses' },
     ],
   },
+  { name: 'API Explorer', href: '/docs/explorer', icon: Terminal },
   { name: 'Webhooks', href: '/docs/webhooks', icon: Bell },
   { name: 'SDKs & Libraries', href: '/docs/sdks', icon: Package },
+  { name: 'Changelog', href: '/docs/changelog', icon: History },
 ]
 
 export default function DocsLayout({
