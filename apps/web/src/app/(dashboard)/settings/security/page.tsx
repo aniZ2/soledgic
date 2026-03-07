@@ -6,6 +6,9 @@ import {
   Shield, Smartphone, Key, AlertTriangle,
   Check, X, Loader2, LogOut, Globe,
 } from 'lucide-react'
+import { useToast } from '@/components/notifications/toast-provider'
+import { MfaEnrollModal } from '@/components/settings/mfa-enroll-modal'
+import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 
 interface Session {
   id: string
@@ -31,6 +34,13 @@ export default function SecuritySettingsPage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false)
   const [userEmail, setUserEmail] = useState('')
   const [lastSignIn, setLastSignIn] = useState<string | null>(null)
+  const [enrollData, setEnrollData] = useState<{
+    qrCode: string
+    secret: string
+    factorId: string
+  } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'disable-mfa' | 'sign-out-all' | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     loadSecurityData()
@@ -76,31 +86,47 @@ export default function SecuritySettingsPage() {
 
       if (error) throw error
 
-      // Show QR code modal - for now just alert
       if (data?.totp?.qr_code) {
-        // In production, show a modal with the QR code
-        alert('MFA enrollment started. Scan the QR code in your authenticator app.')
-        // After user enters code, call verify
+        setEnrollData({
+          qrCode: data.totp.qr_code,
+          secret: data.totp.secret,
+          factorId: data.id,
+        })
       }
     } catch (err: unknown) {
-      alert(getErrorMessage(err, 'Failed to enroll MFA'))
+      toast.error('MFA enrollment failed', getErrorMessage(err, 'Failed to enroll MFA'))
     }
 
     setMfaEnrolling(false)
   }
 
   const handleDisableMFA = async () => {
-    if (!confirm('Are you sure you want to disable two-factor authentication? This will make your account less secure.')) {
-      return
-    }
+    setConfirmAction('disable-mfa')
+  }
 
+  const confirmDisableMFA = async () => {
     const supabase = createClient()
     const { data: factors } = await supabase.auth.mfa.listFactors()
 
     if (factors?.totp?.[0]) {
-      await supabase.auth.mfa.unenroll({ factorId: factors.totp[0].id })
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: factors.totp[0].id })
+      if (error) {
+        const needsReauth =
+          error.message?.toLowerCase().includes('aal') ||
+          error.status === 403
+        toast.error(
+          'Failed to disable 2FA',
+          needsReauth
+            ? 'Please sign out and sign back in with your 2FA code, then try again.'
+            : error.message
+        )
+        setConfirmAction(null)
+        return
+      }
       setMfaEnabled(false)
+      toast.success('Two-factor authentication disabled')
     }
+    setConfirmAction(null)
   }
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
@@ -137,13 +163,18 @@ export default function SecuritySettingsPage() {
   }
 
   const handleSignOutAll = async () => {
-    if (!confirm('Sign out of all other sessions? You will remain logged in on this device.')) {
-      return
-    }
+    setConfirmAction('sign-out-all')
+  }
 
+  const confirmSignOutAll = async () => {
     const supabase = createClient()
-    await supabase.auth.signOut({ scope: 'others' })
-    alert('Signed out of all other sessions')
+    const { error } = await supabase.auth.signOut({ scope: 'others' })
+    if (error) {
+      toast.error('Failed to sign out other sessions', error.message)
+    } else {
+      toast.success('Signed out of all other sessions')
+    }
+    setConfirmAction(null)
   }
 
   const formatDate = (date: string) =>
@@ -390,6 +421,42 @@ export default function SecuritySettingsPage() {
           Delete account in Organization Settings →
         </a>
       </div>
+
+      {/* MFA Enrollment Modal */}
+      {enrollData && (
+        <MfaEnrollModal
+          isOpen
+          onClose={() => setEnrollData(null)}
+          onSuccess={() => {
+            setMfaEnabled(true)
+            setEnrollData(null)
+          }}
+          qrCode={enrollData.qrCode}
+          secret={enrollData.secret}
+          factorId={enrollData.factorId}
+        />
+      )}
+
+      {/* Disable MFA Confirm */}
+      <ConfirmDialog
+        isOpen={confirmAction === 'disable-mfa'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={confirmDisableMFA}
+        title="Disable 2FA"
+        message="Are you sure you want to disable two-factor authentication? This will make your account less secure."
+        confirmLabel="Disable 2FA"
+        variant="danger"
+      />
+
+      {/* Sign Out All Confirm */}
+      <ConfirmDialog
+        isOpen={confirmAction === 'sign-out-all'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={confirmSignOutAll}
+        title="Sign Out All Sessions"
+        message="Sign out of all other sessions? You will remain logged in on this device."
+        confirmLabel="Sign Out Others"
+      />
     </div>
   )
 }

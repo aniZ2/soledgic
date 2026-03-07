@@ -19,6 +19,7 @@ import {
 import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
 import { LiveModeToggle } from '@/components/livemode-toggle'
 import { LivemodeProvider } from '@/components/livemode-provider'
+import { ToastProvider } from '@/components/notifications/toast-provider'
 import { isOverLedgerLimit } from '@/lib/entitlements'
 import { NotificationBell } from '@/components/notifications/notification-bell'
 import { MobileNav } from '@/components/mobile-nav'
@@ -275,7 +276,9 @@ export default async function DashboardLayout({
         )}
         <div className="p-4 lg:p-8">
           <LivemodeProvider livemode={livemode} activeLedgerGroupId={activeLedgerGroupId} readonly={readonly}>
-            {children}
+            <ToastProvider>
+              {children}
+            </ToastProvider>
           </LivemodeProvider>
         </div>
       </main>
