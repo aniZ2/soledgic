@@ -1,230 +1,324 @@
-# Booklyverse + Soledgic Integration
+# Soledgic ↔ Booklyverse Integration Guide
 
-## Installation
+## The "Banker Model" Architecture
 
-```bash
-cd /path/to/booklyverse
-npm install /Users/osifo/Desktop/soledgic/sdk/typescript
-# Or when published: npm install @soledgic/sdk
+Soledgic operates as an **Escrow Agent** with full control over cash flow:
+
+```
+Reader pays $10 for book
+         ↓
+Money lands in → Soledgic Platform Payment Processor Account (YOUR account)
+         ↓
+Ledger entry created: status = HELD
+         ↓
+[7 days pass - dispute window]
+         ↓
+Admin clicks "Release" OR auto-release triggers
+         ↓
+Payment Processor Transfer → Author's Connected Account (Custom)
+         ↓
+Ledger entry updated: status = RELEASED
+         ↓
+Author sees "Available" balance
+         ↓
+Author requests payout → You approve → Bank transfer
 ```
 
-## Setup
+**Key Principle:** Money never moves until YOU say so.
 
-Create `lib/soledgic.ts`:
+---
 
-```typescript
-import Soledgic from '@soledgic/sdk'
+## Why Custom Accounts?
 
-export const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY!)
+| Account Type | Who Controls | Your Control Level |
+|-------------|--------------|-------------------|
+| Standard | Creator | ❌ None - they control everything |
+| Express | Shared | ⚠️ Limited - they control payouts |
+| **Custom** | **YOU** | ✅ **Total** - you control everything |
+
+With Custom accounts:
+- You collect creator KYC info
+- You submit it to Payment Processor
+- You control when funds transfer to their account
+- You control when payouts go to their bank
+- Auto-payouts are **disabled**
+
+---
+
+## The Two-Step Release
+
+### Step 1: Release to Wallet (Internal Transfer)
+Moving money from YOUR Payment Processor balance → Creator's Connected Account
+
+```
+Soledgic Platform Balance: $1000
+                ↓
+        [Release $80 to Author_A]
+                ↓
+Author_A's Connected Account: $80
 ```
 
-Add to `.env`:
+### Step 2: Payout to Bank (External Transfer)
+Moving money from Creator's Connected Account → Their Bank
+
 ```
-SOLEDGIC_API_KEY=sk_live_booklyverse_xxx
+Author_A's Connected Account: $80
+                ↓
+        [Author requests payout]
+                ↓
+        [You approve]
+                ↓
+Author_A's Bank Account: $80
 ```
+
+**You control both steps.**
+
+---
 
 ## Integration Points
 
-### 1. Payment Processor Webhook (After Payment Success)
+### 1. Create Checkout (Payment Initiation)
 
-In your Payment Processor webhook handler:
+**Endpoint:** `POST https://api.soledgic.com/v1/create-checkout`
 
+**Request:**
 ```typescript
-// app/api/webhooks/processor/route.ts
-import { soledgic } from '@/lib/soledgic'
+{
+  amount: 999,              // In cents ($9.99)
+  creator_id: "author_123",
+  payment_method_id: "src_xxx", // Required buyer payment source/instrument
+  product_id: "book_456",
+  product_name: "The Great Novel",
+  customer_email: "reader@example.com"
+}
+```
 
-export async function POST(req: Request) {
-  const event = processor.webhooks.constructEvent(...)
-
-  if (event.type === 'payment_intent.succeeded') {
-    const pi = event.data.object
-
-    // Record the sale in Soledgic
-    const sale = await soledgic.recordSale({
-      referenceId: pi.id,                           // Payment Processor payment ID
-      creatorId: pi.metadata.author_id,             // Your author ID
-      amount: pi.amount_received,                   // Amount in cents
-      processingFee: Math.round(pi.amount * 0.029 + 30), // Payment Processor fee
-      productId: pi.metadata.book_id,
-      productName: pi.metadata.book_title,
-    })
-
-    console.log('Sale recorded:', sale.breakdown)
-    // { creatorAmount: 23.99, platformAmount: 5.99, withheldAmount: 2.40 }
+**Response:**
+```typescript
+{
+  success: true,
+  client_secret: "pi_xxx_secret_yyy",
+  payment_intent_id: "pi_xxx",
+  breakdown: {
+    gross_amount: 9.99,
+    creator_amount: 7.99,    // 80% - but HELD
+    platform_amount: 2.00
   }
-
-  return new Response('OK')
 }
 ```
 
-### 2. Author Payout (After Connected Accounts Transfer)
+### 2. Webhook Processing (Automatic + Escrow)
 
+When payment succeeds, Soledgic automatically:
+1. Creates transaction record
+2. Creates entries with `release_status = 'held'`
+3. Sets `hold_until = NOW() + 7 days` (configurable)
+
+**No funds move yet.** Money sits in YOUR Payment Processor account.
+
+### 3. View Held Funds (Admin Dashboard)
+
+**Endpoint:** `POST https://api.soledgic.com/v1/release-funds`
+
+**Request:**
 ```typescript
-// app/api/payouts/process/route.ts
-import { soledgic } from '@/lib/soledgic'
-import Payment Processor from 'processor'
+{
+  action: "get_summary"
+}
+```
 
-export async function POST(req: Request) {
-  const { authorId, amount } = await req.json()
-
-  // 1. Check available balance first
-  const balance = await soledgic.getCreatorBalance(authorId)
-  
-  if (balance.available_balance < amount / 100) {
-    return Response.json({ error: 'Insufficient balance' }, { status: 400 })
+**Response:**
+```typescript
+{
+  success: true,
+  summary: {
+    total_held: 5000.00,
+    total_ready: 3500.00,  // Past dispute window
+    ventures: [
+      {
+        venture_name: "Booklyverse",
+        total_held: 3000.00,
+        ready_for_release: 2500.00,
+        entry_count: 150
+      },
+      {
+        venture_name: "MTF Prop",
+        total_held: 2000.00,
+        ready_for_release: 1000.00,
+        entry_count: 45
+      }
+    ]
   }
-
-  // 2. Execute Connected Accounts transfer
-  const transfer = await processor.transfers.create({
-    amount,
-    currency: 'usd',
-    destination: author.processor_account_id,
-  })
-
-  // 3. Record in Soledgic
-  const payout = await soledgic.processPayout({
-    referenceId: transfer.id,
-    creatorId: authorId,
-    amount,
-    payoutMethod: 'processor_connect',
-  })
-
-  return Response.json({ 
-    success: true, 
-    newBalance: payout.newBalance 
-  })
 }
 ```
 
-### 3. Author Dashboard (Show Balance)
+### 4. Release Funds (Manual or Auto)
 
+**Single Release:**
 ```typescript
-// app/dashboard/earnings/page.tsx
-import { soledgic } from '@/lib/soledgic'
-
-export default async function EarningsPage({ params }) {
-  const authorId = params.authorId
-  
-  const balance = await soledgic.getCreatorBalance(authorId)
-  
-  return (
-    <div>
-      <h1>Your Earnings</h1>
-      <div className="stats">
-        <div>
-          <label>Available</label>
-          <span>${balance.available_balance.toFixed(2)}</span>
-        </div>
-        <div>
-          <label>Held (14-day buffer)</label>
-          <span>${balance.held_amount.toFixed(2)}</span>
-        </div>
-        <div>
-          <label>Total Earned</label>
-          <span>${balance.ledger_balance.toFixed(2)}</span>
-        </div>
-      </div>
-      
-      {balance.holds.map(hold => (
-        <div key={hold.reason}>
-          ${hold.amount} held until {hold.release_date}
-        </div>
-      ))}
-    </div>
-  )
+{
+  action: "release",
+  entry_id: "uuid-of-held-entry"
 }
 ```
 
-### 4. Admin Reports
-
+**Batch Release:**
 ```typescript
-// app/admin/reports/page.tsx
-import { soledgic } from '@/lib/soledgic'
-
-export default async function ReportsPage() {
-  const [pnl, creators, summary] = await Promise.all([
-    soledgic.getProfitLoss('2025-01-01', '2025-12-31'),
-    soledgic.getCreatorEarnings('2025-01-01', '2025-12-31'),
-    soledgic.getSummary(),
-  ])
-
-  return (
-    <div>
-      <h1>Financial Reports</h1>
-      
-      <section>
-        <h2>Profit & Loss</h2>
-        <p>Revenue: ${pnl.revenue.total}</p>
-        <p>Expenses: ${pnl.expenses.total}</p>
-        <p>Net Income: ${pnl.net_income}</p>
-      </section>
-
-      <section>
-        <h2>Creator Payouts</h2>
-        <table>
-          {creators.creators.map(c => (
-            <tr key={c.creator_id}>
-              <td>{c.name}</td>
-              <td>${c.total_earned}</td>
-              <td>${c.total_paid}</td>
-              <td>${c.balance}</td>
-            </tr>
-          ))}
-        </table>
-      </section>
-
-      <section>
-        <h2>Balance Sheet</h2>
-        <p>Assets: ${summary.totalAssets}</p>
-        <p>Liabilities: ${summary.totalLiabilities}</p>
-        <p>Net Worth: ${summary.netWorth}</p>
-      </section>
-    </div>
-  )
+{
+  action: "batch_release",
+  entry_ids: ["uuid-1", "uuid-2", "uuid-3"]
 }
 ```
 
-### 5. 1099 Tax Export
+**What happens:**
+1. Validates entry is `held` and past `hold_until`
+2. Creates Payment Processor Transfer to creator's Connected Account
+3. Updates entry to `released`
+4. Logs audit trail
 
+### 5. Check Creator Balance
+
+**Endpoint:** `POST https://api.soledgic.com/v1/get-balance`
+
+**Response:**
 ```typescript
-// app/admin/tax/page.tsx
-import { soledgic } from '@/lib/soledgic'
-
-export default async function TaxPage() {
-  const report = await soledgic.get1099Summary(2025)
-
-  return (
-    <div>
-      <h1>1099 Summary - {report.tax_year}</h1>
-      <p>{report.summary.requiring_1099} authors need 1099s</p>
-      
-      <table>
-        <thead>
-          <tr>
-            <th>Author</th>
-            <th>Total Paid</th>
-            <th>1099 Required</th>
-          </tr>
-        </thead>
-        <tbody>
-          {report.payees.map(p => (
-            <tr key={p.id}>
-              <td>{p.name}</td>
-              <td>${p.total_paid}</td>
-              <td>{p.requires_1099 ? 'Yes' : 'No'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+{
+  balance: {
+    held: 150.00,       // In escrow (not yet released)
+    available: 500.00,  // Released to their Connected Account
+    pending: 0.00,      // Processing
+    total_earned: 2000.00,
+    total_paid_out: 1350.00
+  }
 }
 ```
 
-## Key Points
+### 6. Creator Requests Payout
 
-1. **Every sale goes through Payment Processor first** - Soledgic records, not processes
-2. **Payouts happen in Connected Accounts** - Soledgic tracks the accounting
-3. **80/20 split is automatic** - Configure tiers in Soledgic dashboard
-4. **14-day refund buffer** - Already configured in Booklyverse ledger
-5. **Real-time balances** - Authors see accurate available amounts
+**Endpoint:** `POST https://api.soledgic.com/v1/process-payout`
+
+**Request:**
+```typescript
+{
+  creator_id: "author_123",
+  amount: 10000  // In cents
+}
+```
+
+**This requires:**
+1. Creator has Connected Account with `payouts_enabled = true`
+2. Sufficient `available` balance (not `held`)
+3. Your approval (if manual payout mode)
+
+---
+
+## Configuration
+
+### Ledger Settings
+
+```json
+{
+  "default_hold_days": 7,           // Dispute window
+  "require_manual_release": false,  // true = always manual, false = auto after hold_days
+  "default_split_percent": 80,      // Creator gets 80%
+  "min_payout_amount": 10.00
+}
+```
+
+### Creating a Venture
+
+```sql
+INSERT INTO ventures (
+  ledger_id,
+  venture_id,
+  name,
+  release_policy,
+  dispute_window_days,
+  default_creator_percent
+) VALUES (
+  'your-ledger-uuid',
+  'booklyverse',
+  'Booklyverse',
+  'auto_after_window',  -- or 'manual' for full control
+  7,
+  80.00
+);
+```
+
+### Creating a Creator's Connected Account
+
+```sql
+INSERT INTO connected_accounts (
+  ledger_id,
+  entity_type,
+  entity_id,
+  display_name,
+  processor_account_id,
+  processor_status,
+  payouts_enabled,
+  is_active
+) VALUES (
+  'your-ledger-uuid',
+  'creator',
+  'author_123',
+  'Jane Doe',
+  'acct_xxx',  -- Created via Payment Processor API
+  'enabled',
+  true,
+  true
+);
+```
+
+---
+
+## Why This Matters
+
+### 1. Fraud Protection
+If a reader uses a stolen card:
+- Money is still in YOUR account
+- You don't have to chase the author for a refund
+- Keep the entry held until your investigation is complete, then release or refund
+
+### 2. Dispute Window
+Payment Processor disputes can come up to 120 days later, but most come within 7-14 days:
+- Hold funds for the high-risk period
+- Auto-release after window passes
+- Or hold indefinitely and release manually
+
+### 3. Treasury Yield
+While funds sit in your Payment Processor account:
+- They contribute to your balance
+- You can earn interest on cash management products
+- Float is money
+
+### 4. Operational Control
+If you suspect fraud, a bad actor, or need to investigate:
+- Funds are frozen by default
+- You release only what you're confident about
+- Full audit trail of every release
+
+---
+
+## Files Created
+
+### New Files
+- `supabase/functions/create-checkout/index.ts` - Payment initiation
+- `supabase/functions/release-funds/index.ts` - Manual/batch release
+- `supabase/migrations/20260240_escrow_control_system.sql` - Escrow schema
+
+### Updated Files
+- `apps/web/src/app/api/webhooks/processor/route.ts` - Inbound processor events persisted
+- `supabase/functions/process-processor-inbox/index.ts` - Normalized processor events update escrow/refund/payout state
+- `supabase/functions/_shared/utils.ts` - Booklyverse CORS, rate limits
+
+---
+
+## Deployment Checklist
+
+- [ ] Run migration: `20260240_escrow_control_system.sql`
+- [ ] Deploy functions: `create-checkout`, `release-funds`
+- [ ] Create Booklyverse venture record
+- [ ] Configure Payment Processor Custom accounts (disable auto-payouts!)
+- [ ] Set up admin dashboard to view/release held funds
+- [ ] Configure cron job for auto-release (optional)
+- [ ] Update Booklyverse to call Soledgic instead of Payment Processor directly

@@ -27,7 +27,7 @@ Responsibilities:
 
 Migration:
 
-- `supabase/migrations/20260290_processor_webhook_inbox.sql`
+- `supabase/migrations/20260290_processor_webhook_inbox.sql` (version number, not a calendar date)
 
 Table:
 

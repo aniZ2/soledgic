@@ -14,78 +14,12 @@ This script walks an external auditor through Soledgic's accounting controls, de
 
 ### Create Demo Data
 
-```bash
-# Run this script to seed demo data
-cd /Users/osifo/Desktop/soledgic
-node scripts/seed-auditor-demo.js
-```
-
-```javascript
-// scripts/seed-auditor-demo.js
-const Soledgic = require('./sdk/typescript/dist').default
-
-async function seedDemoData() {
-  const ledger = new Soledgic('sk_test_auditor_demo_key')
-  
-  // Create test creators
-  const creators = [
-    { id: 'creator_jane_doe', name: 'Jane Doe', tier: 'premium' },
-    { id: 'creator_john_smith', name: 'John Smith', tier: 'standard' },
-    { id: 'creator_acme_corp', name: 'Acme Corporation', tier: 'enterprise' },
-  ]
-  
-  // Record sales across multiple months
-  const sales = [
-    // October 2024 (will be closed)
-    { date: '2024-10-05', creator: 'creator_jane_doe', amount: 4999, ref: 'sale_oct_001' },
-    { date: '2024-10-12', creator: 'creator_john_smith', amount: 2499, ref: 'sale_oct_002' },
-    { date: '2024-10-20', creator: 'creator_jane_doe', amount: 7999, ref: 'sale_oct_003' },
-    
-    // November 2024 (will be closed)
-    { date: '2024-11-03', creator: 'creator_acme_corp', amount: 15000, ref: 'sale_nov_001' },
-    { date: '2024-11-15', creator: 'creator_jane_doe', amount: 3499, ref: 'sale_nov_002' },
-    { date: '2024-11-22', creator: 'creator_john_smith', amount: 1999, ref: 'sale_nov_003' },
-    
-    // December 2024 (current, open)
-    { date: '2024-12-01', creator: 'creator_jane_doe', amount: 5999, ref: 'sale_dec_001' },
-    { date: '2024-12-10', creator: 'creator_acme_corp', amount: 8500, ref: 'sale_dec_002' },
-  ]
-  
-  for (const sale of sales) {
-    await ledger.recordSale({
-      referenceId: sale.ref,
-      creatorId: sale.creator,
-      amount: sale.amount,
-      description: `Book sale - ${sale.ref}`,
-      transactionDate: sale.date,
-    })
-  }
-  
-  // Record payouts
-  await ledger.processPayout({
-    creatorId: 'creator_jane_doe',
-    referenceId: 'payout_oct_001',
-  })
-  
-  // Close October and November
-  await ledger.closePeriod(2024, 10)
-  await ledger.closePeriod(2024, 11)
-  
-  // Create a transaction that will be voided (for demo)
-  const toVoid = await ledger.recordSale({
-    referenceId: 'sale_to_void',
-    creatorId: 'creator_john_smith',
-    amount: 999,
-    description: 'This will be voided',
-  })
-  
-  // Don't void it yet - demo will do this live
-  
-  console.log('Demo data seeded successfully!')
-}
-
-seedDemoData()
-```
+> **Note:** There is no automated seed script. Create demo data manually via the Soledgic API or dashboard before the demo. You'll need:
+> - 3 test creators (e.g., Jane Doe, John Smith, Acme Corporation)
+> - ~8 sales spread across 2-3 months
+> - At least 1 payout
+> - 2 closed periods (for locked-period demos)
+> - 1 draft transaction to void live during the demo
 
 ---
 
@@ -452,27 +386,4 @@ Provide the auditor with:
 
 ## Demo Environment Reset
 
-After demo, reset test data:
-
-```bash
-# Reset demo ledger
-node scripts/reset-auditor-demo.js
-```
-
-```javascript
-// scripts/reset-auditor-demo.js
-const { createClient } = require('@supabase/supabase-js')
-
-async function resetDemo() {
-  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
-  
-  // Delete demo ledger data
-  await supabase.from('transactions').delete().eq('ledger_id', 'demo_ledger_id')
-  await supabase.from('accounting_periods').delete().eq('ledger_id', 'demo_ledger_id')
-  await supabase.from('audit_log').delete().eq('ledger_id', 'demo_ledger_id')
-  
-  console.log('Demo environment reset!')
-}
-
-resetDemo()
-```
+After the demo, manually delete the demo ledger's data via the Supabase dashboard or a SQL query against the `transactions`, `accounting_periods`, and `audit_log` tables filtered by the demo `ledger_id`.

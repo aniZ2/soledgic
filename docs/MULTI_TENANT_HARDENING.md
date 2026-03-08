@@ -12,7 +12,7 @@ This document outlines the security hardening required to operate Soledgic as a 
 - ✅ Row-Level Security (RLS) on all tables
 - ✅ API key authentication per ledger
 - ⚠️ Single API key type (no scopes)
-- ⚠️ No rate limiting
+- ✅ Rate limiting (Redis + Postgres fallback)
 - ⚠️ No tenant-level resource quotas
 
 ### Target State

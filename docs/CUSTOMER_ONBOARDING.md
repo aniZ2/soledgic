@@ -133,67 +133,12 @@ Data Residency:
 
 ### Phase 1: Account Setup (Day 1)
 
-#### 1.1 Create Organization
+Customer signs up and completes the self-service onboarding wizard:
 
-```sql
--- Admin creates organization
-INSERT INTO organizations (name, slug, plan, max_ledgers, max_transactions_per_month, max_creators)
-VALUES (
-  'Customer Company Name',
-  'customer-slug',
-  'starter', -- or 'growth', 'enterprise'
-  3,          -- ledgers allowed
-  10000,      -- monthly transaction limit
-  100         -- creator limit
-);
-```
-
-#### 1.2 Create Admin User
-
-```javascript
-// Invite customer admin
-const { data, error } = await supabase.auth.admin.inviteUserByEmail(
-  'admin@customer.com',
-  { 
-    data: { 
-      organization_id: orgId,
-      role: 'owner'
-    }
-  }
-)
-```
-
-#### 1.3 Create Ledger
-
-```javascript
-const ledger = await adminClient.createLedger({
-  organizationId: orgId,
-  businessName: 'Customer Company',
-  mode: 'marketplace', // or 'standard'
-  defaultCurrency: 'USD',
-  fiscalYearStart: 1, // January
-})
-
-// Return API key to customer securely
-console.log('API Key:', ledger.apiKey)
-// sk_live_customer_xxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-#### 1.4 Configure Revenue Splits
-
-```javascript
-const soledgic = new Soledgic(ledger.apiKey)
-
-// Create split tiers based on customer requirements
-await soledgic.manageSplits({
-  action: 'set_tiers',
-  tiers: [
-    { name: 'standard', creatorPercentage: 70, minPayout: 2500 },
-    { name: 'premium', creatorPercentage: 80, minPayout: 1000 },
-    { name: 'enterprise', creatorPercentage: 85, minPayout: 0 },
-  ]
-})
-```
+1. **Create Organization** — company name, slug, industry
+2. **Create Ledger** — name, mode (marketplace/standard), currency
+3. **Select Plan** — free tier includes 1 live ledger + 1 team member; $20/mo per additional ledger or team member
+4. **Generate API Keys** — live + test keys issued; customer copies them from the dashboard
 
 ### Phase 2: Integration Support (Days 2-5)
 

@@ -42,7 +42,7 @@ Every transaction in Soledgic has up to three records:
 ┌─────────────────────────────────────────────────────────────┐
 │ ENTRY #3: Bank Statement (External)                         │
 │ Your bank's record of the same money.                       │
-│ Stored in: bank_feed_transactions                               │
+│ Stored in: bank_aggregator_transactions                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,21 +123,13 @@ No duplicate ledger entry created
 
 ### Matching Rules
 
+Auto-matching uses `auto_match_bank_aggregator_transaction(txn_id)`, a rule-based function driven by the `auto_match_rules` table:
+
 | Criteria | Rule |
 |----------|------|
 | Amount | Exact match (±$0.01) |
 | Date | Within 3 days of Payment Processor's `arrival_date` |
 | Description | Prefers processor keywords in description |
-
-### Manual Linking
-
-For edge cases:
-```typescript
-await soledgic.linkPayoutToBank(
-  'processor_txn_abc123',  // Payment Processor payout record
-  'bank_txn_xyz789'     // Bank deposit record
-)
-```
 
 ---
 
