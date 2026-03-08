@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function AuthLayout({
   children,
@@ -11,8 +12,15 @@ export default function AuthLayout({
       <header className="border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <Link href="/" className="text-2xl font-bold text-primary">
-              Soledgic
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/logo.png"
+                alt="Soledgic"
+                width={120}
+                height={40}
+                className="h-9 w-auto"
+                priority
+              />
             </Link>
           </div>
         </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check } from 'lucide-react'
+import { Check, Copy, CheckCircle, Eye, EyeOff } from 'lucide-react'
 import { createOrganizationWithLedger } from './actions'
 
 type LedgerMode = 'standard' | 'marketplace'
@@ -45,6 +45,22 @@ export default function OnboardingForm() {
   const [ledgerMode, setLedgerMode] = useState<LedgerMode>('marketplace')
   const [selectedPlan, setSelectedPlan] = useState('pro')
 
+  // API key state (shown after org creation)
+  const [testApiKey, setTestApiKey] = useState<string | null>(null)
+  const [liveApiKey, setLiveApiKey] = useState<string | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({})
+
+  const copyToClipboard = async (key: string, label: string) => {
+    await navigator.clipboard.writeText(key)
+    setCopiedKey(label)
+    setTimeout(() => setCopiedKey(null), 2000)
+  }
+
+  const toggleReveal = (label: string) => {
+    setRevealedKeys((prev) => ({ ...prev, [label]: !prev[label] }))
+  }
+
   const handleCreateOrganization = async () => {
     setError(null)
     setLoading(true)
@@ -63,7 +79,17 @@ export default function OnboardingForm() {
         return
       }
 
-      // Avoid push+refresh race that can leave users on /onboarding.
+      // Show API keys before redirecting
+      const data = result.data as any
+      if (data?.testApiKey || data?.liveApiKey) {
+        setTestApiKey(data.testApiKey || null)
+        setLiveApiKey(data.liveApiKey || null)
+        setLoading(false)
+        setStep(4)
+        return
+      }
+
+      // Fallback: if no keys returned, proceed directly
       router.replace('/connect')
 
     } catch (err: unknown) {
@@ -77,7 +103,7 @@ export default function OnboardingForm() {
       <div className="w-full max-w-2xl">
         {/* Progress */}
         <div className="flex items-center justify-center mb-8">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div key={s} className="flex items-center">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -88,7 +114,7 @@ export default function OnboardingForm() {
               >
                 {s}
               </div>
-              {s < 3 && (
+              {s < 4 && (
                 <div
                   className={`w-16 h-0.5 ${
                     step > s ? 'bg-primary' : 'bg-muted'
@@ -294,6 +320,104 @@ export default function OnboardingForm() {
                   {loading ? 'Creating...' : 'Start free'}
                 </button>
               </div>
+            </>
+          )}
+
+          {/* Step 4: API Keys */}
+          {step === 4 && (
+            <>
+              <div className="flex items-center gap-3 mb-2">
+                <CheckCircle className="w-6 h-6 text-green-500" />
+                <h1 className="text-2xl font-bold text-foreground">
+                  You&apos;re all set!
+                </h1>
+              </div>
+              <p className="text-muted-foreground mb-6">
+                Here are your API keys. Copy them now — they won&apos;t be shown again.
+              </p>
+
+              <div className="space-y-4 mb-6">
+                {testApiKey && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Test API Key
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-muted border border-border rounded-md py-2 px-3 text-sm font-mono text-foreground break-all">
+                        {revealedKeys['test'] ? testApiKey : testApiKey.slice(0, 12) + '••••••••••••••••'}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => toggleReveal('test')}
+                        className="p-2 border border-border rounded-md hover:bg-accent transition-colors"
+                        title={revealedKeys['test'] ? 'Hide' : 'Reveal'}
+                      >
+                        {revealedKeys['test'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(testApiKey, 'test')}
+                        className="p-2 border border-border rounded-md hover:bg-accent transition-colors"
+                        title="Copy"
+                      >
+                        {copiedKey === 'test' ? (
+                          <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Use this key for development and testing</p>
+                  </div>
+                )}
+
+                {liveApiKey && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Live API Key
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-muted border border-border rounded-md py-2 px-3 text-sm font-mono text-foreground break-all">
+                        {revealedKeys['live'] ? liveApiKey : liveApiKey.slice(0, 12) + '••••••••••••••••'}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => toggleReveal('live')}
+                        className="p-2 border border-border rounded-md hover:bg-accent transition-colors"
+                        title={revealedKeys['live'] ? 'Hide' : 'Reveal'}
+                      >
+                        {revealedKeys['live'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(liveApiKey, 'live')}
+                        className="p-2 border border-border rounded-md hover:bg-accent transition-colors"
+                        title="Copy"
+                      >
+                        {copiedKey === 'live' ? (
+                          <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Use this key for production traffic</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-md p-3 mb-6">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  These keys will not be displayed again. You can rotate them later in Settings &gt; API Keys.
+                </p>
+              </div>
+
+              <button
+                onClick={() => router.replace('/connect')}
+                className="w-full bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors"
+              >
+                Continue to setup
+              </button>
             </>
           )}
         </div>

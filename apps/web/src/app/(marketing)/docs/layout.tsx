@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { BookOpen, Key, Code, Lightbulb, Bell, Package, Home, ArrowLeft, Menu, X, Terminal, History } from 'lucide-react'
 import { useState } from 'react'
@@ -48,8 +49,15 @@ export default function DocsLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link href="/" className="text-2xl font-bold text-primary">
-                Soledgic
+              <Link href="/" className="flex items-center gap-2">
+                <Image
+                  src="/logo.png"
+                  alt="Soledgic"
+                  width={100}
+                  height={32}
+                  className="h-8 w-auto"
+                  priority
+                />
               </Link>
               <span className="text-muted-foreground">/</span>
               <span className="font-medium text-foreground">Docs</span>
@@ -63,7 +71,7 @@ export default function DocsLayout({
                 Dashboard
               </Link>
               <Link
-                href="/login"
+                href="/login?redirect=/docs"
                 className="text-sm font-medium text-primary hover:underline"
               >
                 Sign in
