@@ -167,10 +167,12 @@ export function createApiHandler(
         const { valid, error } = await validateCsrf(request)
         if (!valid) {
           console.warn(`[${requestId}] CSRF validation failed: ${error}`)
-          return NextResponse.json(
-            { error: 'Access denied', request_id: requestId },
+          const csrfResponse = NextResponse.json(
+            { error: 'Access denied', csrf_error: error, request_id: requestId },
             { status: 403 }
           )
+          csrfResponse.headers.set('X-Csrf-Debug', error || 'unknown')
+          return csrfResponse
         }
       }
 
@@ -206,17 +208,46 @@ export function createApiHandler(
         )
         const { data: { user: cookieAuthUser }, error: authError } = await supabase.auth.getUser()
         let authUser = cookieAuthUser
+
+        // 2b. Bearer token fallback (via Supabase client)
+        const authHeader = request.headers.get('authorization')
+        const bearerMatch = authHeader?.match(/^Bearer\s+(.+)$/i)
+        const bearerToken = bearerMatch?.[1]?.trim() ?? null
         let bearerAuthErrorMessage: string | null = null
 
-        if (!authUser) {
-          const authHeader = request.headers.get('authorization')
-          const bearerMatch = authHeader?.match(/^Bearer\s+(.+)$/i)
-          const bearerToken = bearerMatch?.[1]?.trim()
+        if (!authUser && bearerToken) {
+          const { data: bearerData, error: bearerError } = await supabase.auth.getUser(bearerToken)
+          authUser = bearerData.user
+          bearerAuthErrorMessage = bearerError?.message ?? null
+        }
 
-          if (bearerToken) {
-            const { data: bearerData, error: bearerError } = await supabase.auth.getUser(bearerToken)
-            authUser = bearerData.user
-            bearerAuthErrorMessage = bearerError?.message ?? null
+        // 2c. Direct HTTP fallback — bypasses @supabase/ssr entirely.
+        // If the library has a cookie-parsing or internal-state bug, this
+        // raw fetch to the Auth API should still succeed with a valid JWT.
+        let directFetchError: string | null = null
+        if (!authUser && bearerToken) {
+          try {
+            const directRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${bearerToken}`,
+                'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+              },
+            })
+            if (directRes.ok) {
+              const userData = await directRes.json()
+              if (userData?.id) {
+                // The userData is a full Supabase User object from the Auth API
+                authUser = userData
+              } else {
+                directFetchError = `ok but no id: ${JSON.stringify(userData).slice(0, 120)}`
+              }
+            } else {
+              const errBody = await directRes.text().catch(() => '')
+              directFetchError = `${directRes.status}: ${errBody.slice(0, 120)}`
+            }
+          } catch (e) {
+            directFetchError = e instanceof Error ? e.message : 'unknown fetch error'
           }
         }
 
@@ -229,14 +260,20 @@ export function createApiHandler(
           //
           // Successful refreshes are merged into *successful* responses below.
           const allCookieNames = cookieStore.getAll().map(c => c.name)
-          const hasBearer = !!request.headers.get('authorization')
+          const hasBearer = !!authHeader
+          // Check if browser sends cookies via raw header even though cookies() is empty
+          const rawCookieHeader = request.headers.get('cookie') ?? ''
           const debugInfo = {
             auth_error: authError?.message ?? null,
             bearer_error: bearerAuthErrorMessage,
+            direct_fetch_error: directFetchError,
             bearer_present: hasBearer,
             matched_cookies: matchedAuthCookies.length,
             all_cookie_names: allCookieNames,
             cookies_to_set: pendingAuthCookies.length,
+            supabase_url: supabaseUrl.replace(/\/\/(.{8}).*/, '//$1…'),
+            raw_cookie_len: rawCookieHeader.length,
+            raw_cookie_preview: rawCookieHeader.slice(0, 80),
           }
 
           const response = NextResponse.json(
@@ -248,6 +285,14 @@ export function createApiHandler(
             { status: 401 }
           )
 
+          // Compact debug in response header (user can read headers from DevTools)
+          response.headers.set('X-Auth-Debug', JSON.stringify({
+            ae: authError?.message ?? null,
+            be: bearerAuthErrorMessage,
+            df: directFetchError,
+            mc: matchedAuthCookies.length,
+            bp: hasBearer,
+          }))
           response.headers.set('X-Request-Id', requestId)
           response.headers.set('X-Content-Type-Options', 'nosniff')
           response.headers.set('X-Frame-Options', 'DENY')
@@ -258,9 +303,11 @@ export function createApiHandler(
             routePath,
             authError?.message ?? '(no auth error)',
             bearerAuthErrorMessage ? `bearer=${bearerAuthErrorMessage}` : 'bearer=(not attempted)',
+            directFetchError ? `directFetch=${directFetchError}` : 'directFetch=(not attempted)',
             `matchedAuthCookies=${matchedAuthCookies.length}`,
             `allCookies=${allCookieNames.join(',')}`,
-            `cookiesToSet=${pendingAuthCookies.length}`
+            `cookiesToSet=${pendingAuthCookies.length}`,
+            `supabaseUrl=${supabaseUrl}`
           )
 
           return response
