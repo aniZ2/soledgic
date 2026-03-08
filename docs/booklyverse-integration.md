@@ -107,9 +107,31 @@ Author_A's Bank Account: $80
 }
 ```
 
-### 2. Webhook Processing (Automatic + Escrow)
+### 2. Webhook Events
 
-When payment succeeds, Soledgic automatically:
+Soledgic sends outbound webhooks to Booklyverse's registered endpoint. Each request includes an `X-Soledgic-Signature: sha256=<hex>` header (HMAC-SHA256 of the raw body, keyed by the webhook secret).
+
+#### Events Soledgic emits
+
+| Event | When | Booklyverse action |
+|-------|------|--------------------|
+| `checkout.completed` | Payment succeeds and ledger entry is created | Fulfill purchase (add book to library, create gift, record preorder, deliver bundle) |
+| `refund.created` | Refund recorded in Soledgic ledger | Revoke purchase + update sales record |
+| `sale.refunded` | Processor confirms refund completed | Same refund handler as `refund.created` |
+| `payout.created` | Payout ledger entry created | Log only (Soledgic manages payout state) |
+| `payout.executed` | Processor confirms payout sent to bank | Log only |
+| `payout.failed` | Processor reports payout failure | Log only |
+| `test` | "Send test webhook" clicked in dashboard | Log only |
+
+#### Not emitted (stale references to remove if seen)
+
+- `sale.created` — was never emitted; legacy alias removed from Booklyverse handler
+- `checkout.session.completed` — not used
+- `account.updated`, `transfer.created`, `payout.paid` — not used
+
+#### Escrow behavior on checkout
+
+When `checkout.completed` fires, Soledgic automatically:
 1. Creates transaction record
 2. Creates entries with `release_status = 'held'`
 3. Sets `hold_until = NOW() + 7 days` (configurable)
