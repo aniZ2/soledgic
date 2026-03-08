@@ -396,14 +396,6 @@ Call agenda:
 
 ## 6. First Customer Specifics
 
-### Booklyverse (Internal)
-
-Already onboarded as test customer:
-- Ledger ID: `0a885204-e07a-48c1-97e9-495ac96a2581`
-- Mode: Marketplace
-- Tier: Premium (80/20 split)
-- Status: Active development
-
 ### Target First External Customer Profile
 
 Ideal first customer:

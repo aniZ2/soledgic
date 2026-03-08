@@ -324,8 +324,7 @@ For creators to request payout from their connected account to bank.
 
 ### Modified Files
 - `apps/web/src/app/api/webhooks/processor/route.ts` - Inbound processor events persisted
-- `_shared/utils.ts` - Added Booklyverse CORS, rate limits
+- `_shared/utils.ts` - Client CORS, rate limits
 
 ### Documentation
-- `docs/booklyverse-integration.md` - Integration guide
 - This file - Complete banker model documentation

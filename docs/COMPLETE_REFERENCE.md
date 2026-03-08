@@ -366,7 +366,7 @@ soledgic/
 │   │   ├── client.ts
 │   │   └── types.ts
 │   └── examples/
-│       └── booklyverse-integration.ts
+│       └── client-integration.ts
 ├── docs/
 │   ├── API.md                    # API reference
 │   └── ARCHITECTURE_PRINCIPLES.md  # ⚠️ The rules
@@ -428,12 +428,29 @@ curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/export-report" \
 
 ---
 
+## Outbound Webhook Events
+
+Soledgic sends webhook events to registered customer endpoints. Each request includes:
+- `X-Soledgic-Signature: sha256=<hex>` — HMAC-SHA256 of the raw body, keyed by the endpoint's webhook secret
+- `X-Soledgic-Event: <event_type>` — event type header
+
+| Event | When | Typical client action |
+|-------|------|-----------------------|
+| `checkout.completed` | Payment succeeds, ledger entry created | Fulfill purchase, grant access |
+| `refund.created` | Refund recorded in ledger | Revoke access, update records |
+| `sale.refunded` | Processor confirms refund completed | Same as `refund.created` |
+| `payout.created` | Payout ledger entry created | Update creator dashboard |
+| `payout.executed` | Processor confirms payout sent to bank | Notify creator |
+| `payout.failed` | Processor reports payout failure | Alert ops / notify creator |
+| `test` | "Send test webhook" clicked in dashboard | Verify endpoint connectivity |
+
+---
+
 ## Next Steps
 
-1. **Integrate with Booklyverse** - Call soledgic from Payment Processor webhooks
-2. **Build admin dashboard** - UI for viewing balances and exports
-3. **Add Payment Processor reconciliation** - Auto-match Payment Processor payouts to ledger
-4. **Production hardening** - Rate limiting, monitoring, backups
+1. **Build admin dashboard** - UI for viewing balances and exports
+2. **Add Payment Processor reconciliation** - Auto-match Payment Processor payouts to ledger
+3. **Production hardening** - Rate limiting, monitoring, backups
 
 ---
 
