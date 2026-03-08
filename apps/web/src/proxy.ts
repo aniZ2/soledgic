@@ -32,13 +32,11 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
+     * - api routes (route handlers authenticate independently via api-handler.ts;
+     *   running updateSession here would double-refresh, consuming the refresh
+     *   token before the route handler can use it)
      * - auth routes (sign-in, callback, etc. handle their own cookies)
-     *
-     * NOTE: /api routes are NOT excluded. The proxy must run for API routes
-     * so that Supabase auth tokens are refreshed and forwarded to route
-     * handlers via request cookie mutation. Without this, route handlers
-     * see stale/expired tokens and return 401.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|auth).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api|auth).*)',
   ],
 }

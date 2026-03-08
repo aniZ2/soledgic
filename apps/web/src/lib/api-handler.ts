@@ -204,7 +204,21 @@ export function createApiHandler(
             },
           }
         )
-        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+        const { data: { user: cookieAuthUser }, error: authError } = await supabase.auth.getUser()
+        let authUser = cookieAuthUser
+        let bearerAuthErrorMessage: string | null = null
+
+        if (!authUser) {
+          const authHeader = request.headers.get('authorization')
+          const bearerMatch = authHeader?.match(/^Bearer\s+(.+)$/i)
+          const bearerToken = bearerMatch?.[1]?.trim()
+
+          if (bearerToken) {
+            const { data: bearerData, error: bearerError } = await supabase.auth.getUser(bearerToken)
+            authUser = bearerData.user
+            bearerAuthErrorMessage = bearerError?.message ?? null
+          }
+        }
 
         if (!authUser) {
           // CRITICAL: Never set auth cookies on unauthorized responses.
@@ -214,9 +228,14 @@ export function createApiHandler(
           // 401 (e.g. /api/notifications polling) hard-logs the user out.
           //
           // Successful refreshes are merged into *successful* responses below.
+          const allCookieNames = cookieStore.getAll().map(c => c.name)
+          const hasBearer = !!request.headers.get('authorization')
           const debugInfo = {
             auth_error: authError?.message ?? null,
+            bearer_error: bearerAuthErrorMessage,
+            bearer_present: hasBearer,
             matched_cookies: matchedAuthCookies.length,
+            all_cookie_names: allCookieNames,
             cookies_to_set: pendingAuthCookies.length,
           }
 
@@ -224,7 +243,7 @@ export function createApiHandler(
             {
               error: 'Unauthorized',
               request_id: requestId,
-              ...(process.env.NODE_ENV !== 'production' ? { debug: debugInfo } : {}),
+              debug: debugInfo,
             },
             { status: 401 }
           )
@@ -232,14 +251,15 @@ export function createApiHandler(
           response.headers.set('X-Request-Id', requestId)
           response.headers.set('X-Content-Type-Options', 'nosniff')
           response.headers.set('X-Frame-Options', 'DENY')
-          response.headers.set('X-Auth-Debug', JSON.stringify(debugInfo))
 
           console.warn(
             `[${requestId}] Unauthorized:`,
             request.method,
             routePath,
             authError?.message ?? '(no auth error)',
+            bearerAuthErrorMessage ? `bearer=${bearerAuthErrorMessage}` : 'bearer=(not attempted)',
             `matchedAuthCookies=${matchedAuthCookies.length}`,
+            `allCookies=${allCookieNames.join(',')}`,
             `cookiesToSet=${pendingAuthCookies.length}`
           )
 

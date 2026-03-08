@@ -22,7 +22,7 @@ export async function callLedgerFunction(
   }
 
   if (method === 'GET') {
-    return fetch(url.toString(), { method, credentials: 'same-origin' })
+    return fetchWithCsrf(url.toString(), { method })
   }
 
   return fetchWithCsrf(url.toString(), {
