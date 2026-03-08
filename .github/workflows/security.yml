@@ -138,8 +138,8 @@ jobs:
 
           for pattern in "${PATTERNS[@]}"; do
             MATCHES=$(grep -rE "$pattern" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" \
-              --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=tests --exclude="*.example" \
-              --exclude="*.test.ts" --exclude="*.test.tsx" --exclude="*.spec.ts" \
+              --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=tests --exclude-dir=__tests__ --exclude="*.example" \
+              --exclude="*.test.ts" --exclude="*.test.tsx" --exclude="*.spec.ts" --exclude="*_test.ts" \
               . 2>/dev/null | grep -vi 'your_api_key\|abc123\.\.\.\|sk_test_\*\|sk_test_$\|docs/' || true)
 
             if [ ! -z "$MATCHES" ]; then

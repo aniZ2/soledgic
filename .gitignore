@@ -35,6 +35,8 @@ npm-debug.log*
 dist/
 build/
 .next/
+.deno/
+supabase/deno.lock
 
 # Supabase temp files
 supabase/.temp/
