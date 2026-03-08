@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   Key, Copy, Check, ExternalLink, Loader2,
   CheckCircle, XCircle, ArrowRight, ArrowLeft,
-  Globe, Webhook, Zap, SkipForward, Trash2,
+  Globe, Webhook, Zap, SkipForward, Trash2, Pencil, X,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
@@ -48,6 +48,10 @@ export function ConnectWizardClient({
   >([])
   const [loadingWebhooks, setLoadingWebhooks] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingWebhook, setEditingWebhook] = useState<string | null>(null)
+  const [editUrl, setEditUrl] = useState('')
+  const [editEvents, setEditEvents] = useState<string[]>([])
+  const [savingEdit, setSavingEdit] = useState(false)
   const [webhookUrl, setWebhookUrl] = useState('')
   const [selectedEvents, setSelectedEvents] = useState<string[]>(['*'])
   const [creatingWebhook, setCreatingWebhook] = useState(false)
@@ -95,6 +99,62 @@ export function ConnectWizardClient({
       setExistingWebhooks((prev) => prev.filter((w) => w.id !== endpointId))
     } catch { /* ignore */ }
     setDeletingId(null)
+  }
+
+  const startEditing = (wh: typeof existingWebhooks[number]) => {
+    setEditingWebhook(wh.id)
+    setEditUrl(wh.url)
+    setEditEvents(wh.events || ['*'])
+    setWebhookError(null)
+  }
+
+  const cancelEditing = () => {
+    setEditingWebhook(null)
+    setEditUrl('')
+    setEditEvents([])
+    setWebhookError(null)
+  }
+
+  const toggleEditEvent = (value: string) => {
+    if (value === '*') {
+      setEditEvents(editEvents.includes('*') ? [] : ['*'])
+      return
+    }
+    const withoutAll = editEvents.filter(e => e !== '*')
+    if (withoutAll.includes(value)) {
+      setEditEvents(withoutAll.filter(e => e !== value))
+    } else {
+      setEditEvents([...withoutAll, value])
+    }
+  }
+
+  const saveEdit = async () => {
+    if (!editingWebhook || !editUrl.trim() || editEvents.length === 0) return
+    setSavingEdit(true)
+    setWebhookError(null)
+    try {
+      const res = await callLedgerFunction('webhooks', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: {
+          action: 'update',
+          endpoint_id: editingWebhook,
+          url: editUrl.trim(),
+          events: editEvents,
+        },
+      })
+      const data = await res.json()
+      if (!res.ok || data?.success === false) {
+        setWebhookError(data.error || 'Failed to update webhook')
+        setSavingEdit(false)
+        return
+      }
+      setEditingWebhook(null)
+      fetchWebhooks()
+    } catch {
+      setWebhookError('Network error — check your connection')
+    }
+    setSavingEdit(false)
   }
 
   const copyToClipboard = (text: string, key: string) => {
@@ -358,33 +418,108 @@ export function ConnectWizardClient({
             ) : existingWebhooks.length > 0 && (
               <div className="mb-6 space-y-2">
                 <h3 className="text-sm font-medium text-foreground mb-2">Active Endpoints</h3>
-                {existingWebhooks.map((wh) => (
-                  <div
-                    key={wh.id}
-                    className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/50 rounded-lg"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-mono truncate">{wh.url}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {Array.isArray(wh.events) && wh.events.includes('*')
-                          ? 'All events'
-                          : (wh.events || []).join(', ')}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => deleteWebhook(wh.id)}
-                      disabled={deletingId === wh.id}
-                      className="p-1.5 text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                      title="Delete endpoint"
-                    >
-                      {deletingId === wh.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
+                {existingWebhooks.map((wh) =>
+                  editingWebhook === wh.id ? (
+                    <div key={wh.id} className="px-4 py-4 bg-muted/50 rounded-lg space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">URL</label>
+                        <input
+                          type="url"
+                          value={editUrl}
+                          onChange={(e) => setEditUrl(e.target.value)}
+                          className="w-full border border-border rounded-md py-1.5 px-2.5 bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1.5">Events</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {EVENT_TYPES.map((event) => (
+                            <label
+                              key={event.value}
+                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded border cursor-pointer transition-colors text-xs ${
+                                editEvents.includes(event.value)
+                                  ? 'border-primary bg-primary/5 text-foreground'
+                                  : 'border-border hover:border-primary/50 text-muted-foreground'
+                              } ${event.value === '*' ? 'col-span-2' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editEvents.includes(event.value)}
+                                onChange={() => toggleEditEvent(event.value)}
+                                className="sr-only"
+                              />
+                              <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                                editEvents.includes(event.value)
+                                  ? 'bg-primary border-primary'
+                                  : 'border-border'
+                              }`}>
+                                {editEvents.includes(event.value) && (
+                                  <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                                )}
+                              </div>
+                              {event.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {webhookError && (
+                        <div className="bg-destructive/10 border border-destructive/20 text-destructive text-xs rounded-md p-2">
+                          {webhookError}
+                        </div>
                       )}
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={saveEdit}
+                          disabled={savingEdit || !editUrl.trim() || editEvents.length === 0}
+                          className="flex-1 bg-primary text-primary-foreground rounded-md py-1.5 px-3 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                        >
+                          {savingEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+                        </button>
+                        <button
+                          onClick={cancelEditing}
+                          className="px-3 py-1.5 border border-border rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-1.5"
+                        >
+                          <X className="w-3.5 h-3.5" /> Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      key={wh.id}
+                      className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/50 rounded-lg"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-mono truncate">{wh.url}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {Array.isArray(wh.events) && wh.events.includes('*')
+                            ? 'All events'
+                            : (wh.events || []).join(', ')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => startEditing(wh)}
+                          className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                          title="Edit endpoint"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteWebhook(wh.id)}
+                          disabled={deletingId === wh.id}
+                          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Delete endpoint"
+                        >
+                          {deletingId === wh.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
             )}
 
