@@ -12,7 +12,8 @@ import {
   validateString,
   escapeHtml,
   LedgerContext,
-  getClientIp
+  getClientIp,
+  safeWebhookFetch,
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -307,10 +308,10 @@ const handler = createHandler(
           }
 
           try {
-            const response = await fetch(config.config.webhook_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(testMessage)
+            const response = await safeWebhookFetch(config.config.webhook_url, testMessage, {
+              supabase,
+              ledgerId: ledger.id,
+              requestId: context.requestId,
             })
 
             if (response.ok) {

@@ -961,7 +961,8 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
     }
 
     const supabase = getSupabaseClient()
-    
+    let ledger: LedgerContext | null = null
+
     try {
       // ========================================================================
       // SECURITY FIX M1: Pre-auth rate limiting by IP
@@ -994,7 +995,6 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
       }
       
       // Validate API key if required
-      let ledger: LedgerContext | null = null
       if (options.requireAuth !== false) {
         if (internalLedgerId) {
           const { data: internalLedger, error: internalLedgerError } = await supabase
@@ -1160,7 +1160,7 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         endpoint: options.endpoint,
         ledgerId: ledger?.id || null,
         duration: Date.now() - startTime,
-        clientIp,
+        clientIp: clientIp ?? undefined,
       })
 
       // Log error for security monitoring - include request context
@@ -1405,25 +1405,27 @@ export async function storeNachaFile(
       // Don't fail - file is uploaded, just tracking failed
     }
     
-    // Audit log with full compliance info
-    await supabase.rpc('create_audit_entry', {
-      p_ledger_id: metadata.ledgerId,
-      p_action: 'nacha_generated',
-      p_entity_type: 'nacha_file',
-      p_entity_id: fileRecord?.id,
-      p_actor_type: 'api',
-      p_ip_address: clientIp,
-      p_user_agent: userAgent,
-      p_request_id: requestId,
-      p_metadata: {
-        file_name: fileName,
-        batch_count: metadata.batchCount,
-        entry_count: metadata.entryCount,
-        total_amount: metadata.totalDebitAmount + metadata.totalCreditAmount,
-        expires_at: expiresAt.toISOString(),
-      },
-      p_risk_score: 50,  // Financial data generation
-    }).catch(() => {})  // Don't fail on audit log error
+    // Audit log with full compliance info — don't fail on audit log error
+    try {
+      await supabase.rpc('create_audit_entry', {
+        p_ledger_id: metadata.ledgerId,
+        p_action: 'nacha_generated',
+        p_entity_type: 'nacha_file',
+        p_entity_id: fileRecord?.id,
+        p_actor_type: 'api',
+        p_ip_address: clientIp,
+        p_user_agent: userAgent,
+        p_request_id: requestId,
+        p_metadata: {
+          file_name: fileName,
+          batch_count: metadata.batchCount,
+          entry_count: metadata.entryCount,
+          total_amount: metadata.totalDebitAmount + metadata.totalCreditAmount,
+          expires_at: expiresAt.toISOString(),
+        },
+        p_risk_score: 50,  // Financial data generation
+      })
+    } catch { /* Don't fail on audit log error */ }
     
     return {
       signedUrl: signedUrlData.signedUrl,

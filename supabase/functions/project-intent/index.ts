@@ -21,6 +21,7 @@ import {
   LedgerContext,
   createAuditLog,
   escapeHtml,
+  safeWebhookFetch,
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -185,10 +186,10 @@ async function sendBreachAlerts(
       }
 
       try {
-        const response = await fetch(config.config.webhook_url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(slackMessage)
+        const response = await safeWebhookFetch(config.config.webhook_url, slackMessage, {
+          supabase,
+          ledgerId: ledger.id,
+          requestId: context.requestId,
         })
 
         // Log to alert history
