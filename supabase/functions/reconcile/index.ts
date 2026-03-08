@@ -21,6 +21,7 @@ interface ReconcileRequest {
   period_id?: string
   as_of_date?: string
   matches?: Array<{ transaction_id: string; bank_transaction_id: string }>
+  bank_aggregator_transaction_id?: string
 }
 
 async function generateHash(data: any): Promise<string> {
@@ -336,6 +337,28 @@ const handler = createHandler(
           success: true,
           unmatched_count: transactions?.length || 0,
           transactions: transactions || []
+        }, 200, req, requestId)
+      }
+
+      case 'auto_match': {
+        const bankAggTxnId = validateId(body.bank_aggregator_transaction_id, 36)
+        if (!bankAggTxnId) {
+          return errorResponse('bank_aggregator_transaction_id is required for auto_match', 400, req, requestId)
+        }
+
+        const { data: matchResult, error: matchError } = await supabase
+          .rpc('auto_match_bank_aggregator_transaction', {
+            p_bank_aggregator_txn_id: bankAggTxnId
+          })
+
+        if (matchError) {
+          return errorResponse(`Auto-match failed: ${matchError.message}`, 500, req, requestId)
+        }
+
+        return jsonResponse({
+          success: true,
+          action: 'auto_match',
+          result: matchResult?.[0] ?? { matched: false, match_type: null, matched_transaction_id: null }
         }, 200, req, requestId)
       }
 

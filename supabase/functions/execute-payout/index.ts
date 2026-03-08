@@ -533,7 +533,7 @@ async function executeSinglePayout(
     creator_id: creatorEntry.accounts.entity_id,
     creator_name: creatorEntry.accounts.name,
     amount: payout.amount,
-    currency: 'USD',
+    currency: (ledger.settings as any)?.currency || 'USD',
     payout_method: creatorMeta.payout_method,
   }
 
@@ -715,7 +715,7 @@ const handler = createHandler(
             creator_id: creatorEntry?.accounts?.entity_id || '',
             creator_name: creatorEntry?.accounts?.name || '',
             amount: p.amount,
-            currency: 'USD',
+            currency: (ledger.settings as any)?.currency || 'USD',
             payout_method: creatorEntry?.accounts?.metadata?.payout_method,
           }
         })

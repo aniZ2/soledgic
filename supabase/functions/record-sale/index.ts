@@ -246,27 +246,16 @@ async function getCreatorLiveBalance(
   ledgerId: string,
   creatorId: string
 ): Promise<number> {
+  // Read the denormalized balance column maintained by the update_account_balance() trigger.
+  // The trigger runs in the same transaction as the entry insert, so it's always consistent.
   const { data: account } = await supabase
     .from('accounts')
-    .select('id')
+    .select('balance')
     .eq('ledger_id', ledgerId)
     .eq('account_type', 'creator_balance')
     .eq('entity_id', creatorId)
     .eq('is_active', true)
     .maybeSingle()
 
-  if (!account?.id) return 0
-
-  const { data: entries } = await supabase
-    .from('entries')
-    .select('entry_type, amount')
-    .eq('account_id', account.id)
-
-  if (!entries?.length) return 0
-
-  // creator_balance is credit-normal: balance = credits - debits.
-  return entries.reduce((sum, row: any) => {
-    const amount = Number(row.amount || 0)
-    return row.entry_type === 'credit' ? sum + amount : sum - amount
-  }, 0)
+  return Number(account?.balance ?? 0)
 }

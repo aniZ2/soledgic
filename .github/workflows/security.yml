@@ -32,13 +32,13 @@ jobs:
       - name: Audit root dependencies
         run: |
           npm ci
-          npm audit --audit-level=high || true
+          npm audit --audit-level=high --omit=dev
 
       - name: Audit web dependencies
         run: |
           cd apps/web
           npm ci
-          npm audit --audit-level=high || true
+          npm audit --audit-level=high --omit=dev
 
   # ============================================================================
   # Secret Scanning

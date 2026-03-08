@@ -47,6 +47,12 @@ function centsFromMajor(amount: unknown): number {
   return Math.round(numeric * 100)
 }
 
+/**
+ * Build a deterministic refund reference ID from the refund parameters.
+ * WARNING: Two distinct partial refunds with identical (txId, amount, source, reason)
+ * will produce the same key and be treated as duplicates. Callers issuing multiple
+ * such refunds must provide an explicit idempotency_key to disambiguate.
+ */
 async function buildDeterministicRefundReferenceId(
   originalTransactionId: string,
   refundAmountCents: number,
