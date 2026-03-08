@@ -91,7 +91,6 @@ export default async function ConnectPage() {
       ledger={{ id: ledger.id, business_name: ledger.business_name }}
       apiKeyPreview={apiKeyPreview}
       hasApiKey={hasApiKey}
-      supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL || ''}
       wizardCompleted={wizardCompleted}
       existingWebhookCount={existingWebhookCount}
     />

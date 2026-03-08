@@ -25,7 +25,6 @@ interface ConnectWizardProps {
   ledger: { id: string; business_name: string }
   apiKeyPreview: string | null
   hasApiKey: boolean
-  supabaseUrl: string
   wizardCompleted: boolean
   existingWebhookCount: number
 }
@@ -34,7 +33,6 @@ export function ConnectWizardClient({
   ledger,
   apiKeyPreview,
   hasApiKey,
-  supabaseUrl,
   wizardCompleted,
   existingWebhookCount,
 }: ConnectWizardProps) {
@@ -57,7 +55,7 @@ export function ConnectWizardClient({
   const [webhookTestResult, setWebhookTestResult] = useState<'pass' | 'fail' | null>(null)
   const [completing, setCompleting] = useState(false)
 
-  const baseUrl = `${supabaseUrl}/functions/v1`
+  const baseUrl = 'https://api.soledgic.com/v1'
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -97,13 +95,14 @@ export function ConnectWizardClient({
 
       const data = await res.json()
 
-      if (!res.ok) {
+      if (!res.ok || data?.success === false) {
         setWebhookError(data.error || 'Failed to create webhook endpoint')
         return
       }
 
-      setWebhookSecret(data.secret || null)
-      setCreatedEndpointId(data.id || data.endpoint_id || null)
+      const payload = data?.data ?? data
+      setWebhookSecret(payload?.secret || null)
+      setCreatedEndpointId(payload?.id || payload?.endpoint_id || null)
     } catch {
       setWebhookError('Network error — check your connection')
     } finally {
@@ -116,13 +115,16 @@ export function ConnectWizardClient({
     setApiTestResult(null)
     setWebhookTestResult(null)
 
-    // Test 1: API connectivity
+    // Test 1: API connectivity through the authenticated proxy path
     try {
-      const res = await callLedgerFunction('health-check', {
+      const res = await callLedgerFunction('webhooks', {
         ledgerId: ledger.id,
-        method: 'GET',
+        method: 'POST',
+        body: { action: 'list' },
       })
-      setApiTestResult(res.ok ? 'pass' : 'fail')
+      const data = await res.json().catch(() => null)
+      const isHealthy = res.ok && data?.success === true && Array.isArray(data?.data)
+      setApiTestResult(isHealthy ? 'pass' : 'fail')
     } catch {
       setApiTestResult('fail')
     }
@@ -138,7 +140,9 @@ export function ConnectWizardClient({
             endpoint_id: createdEndpointId,
           },
         })
-        setWebhookTestResult(res.ok ? 'pass' : 'fail')
+        const data = await res.json().catch(() => null)
+        const delivered = data?.data?.delivered === true
+        setWebhookTestResult(res.ok && delivered ? 'pass' : 'fail')
       } catch {
         setWebhookTestResult('fail')
       }
