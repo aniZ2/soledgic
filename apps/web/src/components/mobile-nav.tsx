@@ -3,45 +3,28 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  Menu,
-  X,
-  LayoutDashboard,
-  BookOpen,
-  ArrowLeftRight,
-  FileText,
-  Settings,
-  LogOut,
-  CreditCard,
-  Users,
-  Wallet,
-  WalletCards,
-  Scale,
-  Plug,
-} from 'lucide-react'
-
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Connect', href: '/connect', icon: Plug },
-  { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
-  { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
-  { name: 'Creators', href: '/dashboard/creators', icon: Users },
-  { name: 'Reports', href: '/dashboard/reports', icon: FileText },
-  { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },
-  { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
-  { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
-  { name: 'Billing', href: '/billing', icon: CreditCard },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
+import { Menu, X, LogOut } from 'lucide-react'
+import { dashboardNavigation, type NavItem } from '@/lib/navigation'
 
 interface MobileNavProps {
   orgName: string
   userName: string
   userEmail: string
   livemode: boolean
+  navigation?: NavItem[]
+  brandLabel?: string
+  homePath?: string
 }
 
-export function MobileNav({ orgName, userName, userEmail, livemode }: MobileNavProps) {
+export function MobileNav({
+  orgName,
+  userName,
+  userEmail,
+  livemode,
+  navigation = dashboardNavigation,
+  brandLabel,
+  homePath = '/dashboard',
+}: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false)
   const pathname = usePathname()
 
@@ -49,8 +32,11 @@ export function MobileNav({ orgName, userName, userEmail, livemode }: MobileNavP
     <>
       {/* Mobile Header */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-card border-b border-border h-16 px-4 flex items-center justify-between">
-        <Link href="/dashboard" className="text-xl font-bold text-primary">
+        <Link href={homePath} className="text-xl font-bold text-primary">
           Soledgic
+          {brandLabel && (
+            <span className="ml-1 text-xs font-medium text-muted-foreground">{brandLabel}</span>
+          )}
           {!livemode && (
             <span className="ml-1 text-xs font-medium text-amber-500">(Test)</span>
           )}

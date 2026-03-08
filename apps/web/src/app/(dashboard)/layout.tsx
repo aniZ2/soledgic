@@ -2,20 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
-import {
-  LayoutDashboard,
-  BookOpen,
-  ArrowLeftRight,
-  FileText,
-  Settings,
-  LogOut,
-  CreditCard,
-  Users,
-  Wallet,
-  WalletCards,
-  Scale,
-  Plug
-} from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
 import { LiveModeToggle } from '@/components/livemode-toggle'
 import { LivemodeProvider } from '@/components/livemode-provider'
@@ -23,20 +10,7 @@ import { ToastProvider } from '@/components/notifications/toast-provider'
 import { isOverLedgerLimit } from '@/lib/entitlements'
 import { NotificationBell } from '@/components/notifications/notification-bell'
 import { MobileNav } from '@/components/mobile-nav'
-
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Connect', href: '/connect', icon: Plug },
-  { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
-  { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
-  { name: 'Creators', href: '/dashboard/creators', icon: Users },
-  { name: 'Reports', href: '/dashboard/reports', icon: FileText },
-  { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },
-  { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
-  { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
-  { name: 'Billing', href: '/billing', icon: CreditCard },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
+import { dashboardNavigation } from '@/lib/navigation'
 
 interface OrganizationSummary {
   id: string
@@ -195,7 +169,7 @@ export default async function DashboardLayout({
         </div>
 
         <nav className="p-4 space-y-1">
-          {navigation.map((item) => (
+          {dashboardNavigation.map((item) => (
             <Link
               key={item.name}
               href={item.href}

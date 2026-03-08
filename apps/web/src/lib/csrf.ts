@@ -17,10 +17,12 @@ const ALLOWED_ORIGINS = [
   'https://soledgic.com',
   'https://www.soledgic.com',
   'https://app.soledgic.com',
-  // Development
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://127.0.0.1:3000',
+  // Development only — gated behind NODE_ENV to prevent localhost bypass in production
+  ...(process.env.NODE_ENV !== 'production' ? [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+  ] : []),
   // Client domains via env (e.g. "https://booklyverse.com,https://app.booklyverse.com")
   ...EXTRA_ALLOWED_ORIGINS,
 ]
@@ -156,15 +158,15 @@ export async function validateCsrf(request: Request): Promise<{ valid: boolean; 
  * Constant-time string comparison to prevent timing attacks
  */
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false
+  const aLen = a.length
+  const bLen = b.length
+  const maxLen = Math.max(aLen, bLen)
+  let result = aLen ^ bLen
+  for (let i = 0; i < maxLen; i++) {
+    const aChar = i < aLen ? a.charCodeAt(i) : 0
+    const bChar = i < bLen ? b.charCodeAt(i) : 0
+    result |= aChar ^ bChar
   }
-  
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  
   return result === 0
 }
 

@@ -1256,7 +1256,7 @@ const spec = {
   info: {
     title: 'Soledgic API',
     version: '2026-03-01',
-    description: 'Double-entry accounting API for creator economy platforms. All amounts are in cents.',
+    description: 'Financial infrastructure API for digital platforms. All amounts are in cents.',
     license: { name: 'Proprietary', identifier: 'LicenseRef-Proprietary' },
   },
   servers: [

@@ -1,22 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import {
-  LayoutDashboard,
-  FileText,
-  Wallet,
-  Receipt,
-  Settings,
-  LogOut,
-} from 'lucide-react'
-
-const navigation = [
-  { name: 'Dashboard', href: '/creator', icon: LayoutDashboard },
-  { name: 'Earnings', href: '/creator/earnings', icon: Wallet },
-  { name: 'Statements', href: '/creator/statements', icon: FileText },
-  { name: 'Payouts', href: '/creator/payouts', icon: Receipt },
-  { name: 'Settings', href: '/creator/settings', icon: Settings },
-]
+import { LogOut } from 'lucide-react'
+import { creatorPortalNavigation } from '@/lib/navigation'
+import { MobileNav } from '@/components/mobile-nav'
 
 export default async function CreatorPortalLayout({
   children,
@@ -37,8 +24,19 @@ export default async function CreatorPortalLayout({
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 w-64 border-r border-border bg-card">
+      {/* Mobile Navigation */}
+      <MobileNav
+        orgName="Creator Portal"
+        userName={creatorName}
+        userEmail={creatorEmail || ''}
+        livemode={true}
+        navigation={creatorPortalNavigation}
+        brandLabel="Creator"
+        homePath="/creator"
+      />
+
+      {/* Desktop Sidebar - Hidden on mobile */}
+      <aside className="hidden lg:flex flex-col fixed inset-y-0 left-0 w-64 border-r border-border bg-card">
         <div className="flex h-16 items-center px-6 border-b border-border">
           <Link href="/creator" className="text-2xl font-bold text-primary">
             Soledgic
@@ -47,7 +45,7 @@ export default async function CreatorPortalLayout({
         </div>
 
         <nav className="p-4 space-y-1">
-          {navigation.map((item) => (
+          {creatorPortalNavigation.map((item) => (
             <Link
               key={item.name}
               href={item.href}
@@ -88,8 +86,8 @@ export default async function CreatorPortalLayout({
       </aside>
 
       {/* Main content */}
-      <main className="pl-64">
-        <div className="p-8">
+      <main className="pt-16 lg:pt-0 lg:pl-64">
+        <div className="p-4 lg:p-8">
           {children}
         </div>
       </main>

@@ -159,7 +159,8 @@ export function createApiHandler(
     const startTime = Date.now()
     const requestId = generateRequestId()
     const clientIp = getClientIp(request)
-    
+    let user: { id: string; email?: string } | null = null
+
     try {
       // 1. CSRF Protection (for mutations)
       if (csrfProtection) {
@@ -172,13 +173,12 @@ export function createApiHandler(
           )
         }
       }
-      
+
       // 2. Authentication
       // Track cookies set by Supabase during auth (e.g. token refresh)
       // so we can merge them into the final response. Without this,
       // a token refresh would consume the old refresh token but the new
       // tokens would be lost — logging the user out on the next request.
-      let user: { id: string; email?: string } | null = null
       const pendingAuthCookies: PendingAuthCookie[] = []
 
       if (requireAuth) {
@@ -328,10 +328,11 @@ export function createApiHandler(
         const supabase = await createClient()
         await supabase.from('audit_log').insert({
           action: 'api_error',
-          actor_type: 'system',
+          actor_type: user ? 'user' : 'system',
+          actor_id: user?.id ?? null,
           ip_address: clientIp,
           request_id: requestId,
-          request_body: { 
+          request_body: {
             route: routePath,
             error_type: errorName,
             // Don't log full error message for security
