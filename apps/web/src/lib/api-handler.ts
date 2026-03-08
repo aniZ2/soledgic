@@ -167,12 +167,10 @@ export function createApiHandler(
         const { valid, error } = await validateCsrf(request)
         if (!valid) {
           console.warn(`[${requestId}] CSRF validation failed: ${error}`)
-          const csrfResponse = NextResponse.json(
-            { error: 'Access denied', csrf_error: error, request_id: requestId },
+          return NextResponse.json(
+            { error: 'Access denied', request_id: requestId },
             { status: 403 }
           )
-          csrfResponse.headers.set('X-Csrf-Debug', error || 'unknown')
-          return csrfResponse
         }
       }
 
@@ -188,8 +186,22 @@ export function createApiHandler(
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
         const projectRef = new URL(supabaseUrl).hostname.split('.')[0]
         const authCookieBase = `sb-${projectRef}-auth-token`
-        const matchedAuthCookies = cookieStore
-          .getAll()
+
+        // Fallback: if cookies() returns empty (Next.js 16 edge case),
+        // parse cookies directly from the raw Cookie header.
+        let cookieEntries = cookieStore.getAll()
+        if (cookieEntries.length === 0) {
+          const rawCookie = request.headers.get('cookie') ?? ''
+          if (rawCookie) {
+            cookieEntries = rawCookie.split(';').map(pair => {
+              const idx = pair.indexOf('=')
+              if (idx === -1) return { name: pair.trim(), value: '' }
+              return { name: pair.slice(0, idx).trim(), value: pair.slice(idx + 1).trim() }
+            }).filter(c => c.name.length > 0)
+          }
+        }
+
+        const matchedAuthCookies = cookieEntries
           .filter(c => c.name === authCookieBase || c.name.startsWith(`${authCookieBase}.`))
 
         const supabase = createServerClient(
@@ -198,7 +210,7 @@ export function createApiHandler(
           {
             cookies: {
               getAll() {
-                return cookieStore.getAll()
+                return cookieEntries
               },
               setAll(cookiesToSet) {
                 pendingAuthCookies.push(...parsePendingAuthCookies(cookiesToSet))
@@ -209,46 +221,15 @@ export function createApiHandler(
         const { data: { user: cookieAuthUser }, error: authError } = await supabase.auth.getUser()
         let authUser = cookieAuthUser
 
-        // 2b. Bearer token fallback (via Supabase client)
+        // 2b. Bearer token fallback — if cookie auth fails, try the
+        // Authorization header (sent by fetchWithCsrf on the client).
         const authHeader = request.headers.get('authorization')
         const bearerMatch = authHeader?.match(/^Bearer\s+(.+)$/i)
         const bearerToken = bearerMatch?.[1]?.trim() ?? null
-        let bearerAuthErrorMessage: string | null = null
 
         if (!authUser && bearerToken) {
-          const { data: bearerData, error: bearerError } = await supabase.auth.getUser(bearerToken)
+          const { data: bearerData } = await supabase.auth.getUser(bearerToken)
           authUser = bearerData.user
-          bearerAuthErrorMessage = bearerError?.message ?? null
-        }
-
-        // 2c. Direct HTTP fallback — bypasses @supabase/ssr entirely.
-        // If the library has a cookie-parsing or internal-state bug, this
-        // raw fetch to the Auth API should still succeed with a valid JWT.
-        let directFetchError: string | null = null
-        if (!authUser && bearerToken) {
-          try {
-            const directRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${bearerToken}`,
-                'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-              },
-            })
-            if (directRes.ok) {
-              const userData = await directRes.json()
-              if (userData?.id) {
-                // The userData is a full Supabase User object from the Auth API
-                authUser = userData
-              } else {
-                directFetchError = `ok but no id: ${JSON.stringify(userData).slice(0, 120)}`
-              }
-            } else {
-              const errBody = await directRes.text().catch(() => '')
-              directFetchError = `${directRes.status}: ${errBody.slice(0, 120)}`
-            }
-          } catch (e) {
-            directFetchError = e instanceof Error ? e.message : 'unknown fetch error'
-          }
         }
 
         if (!authUser) {
@@ -259,40 +240,14 @@ export function createApiHandler(
           // 401 (e.g. /api/notifications polling) hard-logs the user out.
           //
           // Successful refreshes are merged into *successful* responses below.
-          const allCookieNames = cookieStore.getAll().map(c => c.name)
-          const hasBearer = !!authHeader
-          // Check if browser sends cookies via raw header even though cookies() is empty
-          const rawCookieHeader = request.headers.get('cookie') ?? ''
-          const debugInfo = {
-            auth_error: authError?.message ?? null,
-            bearer_error: bearerAuthErrorMessage,
-            direct_fetch_error: directFetchError,
-            bearer_present: hasBearer,
-            matched_cookies: matchedAuthCookies.length,
-            all_cookie_names: allCookieNames,
-            cookies_to_set: pendingAuthCookies.length,
-            supabase_url: supabaseUrl.replace(/\/\/(.{8}).*/, '//$1…'),
-            raw_cookie_len: rawCookieHeader.length,
-            raw_cookie_preview: rawCookieHeader.slice(0, 80),
-          }
-
           const response = NextResponse.json(
             {
               error: 'Unauthorized',
               request_id: requestId,
-              debug: debugInfo,
             },
             { status: 401 }
           )
 
-          // Compact debug in response header (user can read headers from DevTools)
-          response.headers.set('X-Auth-Debug', JSON.stringify({
-            ae: authError?.message ?? null,
-            be: bearerAuthErrorMessage,
-            df: directFetchError,
-            mc: matchedAuthCookies.length,
-            bp: hasBearer,
-          }))
           response.headers.set('X-Request-Id', requestId)
           response.headers.set('X-Content-Type-Options', 'nosniff')
           response.headers.set('X-Frame-Options', 'DENY')
@@ -302,12 +257,9 @@ export function createApiHandler(
             request.method,
             routePath,
             authError?.message ?? '(no auth error)',
-            bearerAuthErrorMessage ? `bearer=${bearerAuthErrorMessage}` : 'bearer=(not attempted)',
-            directFetchError ? `directFetch=${directFetchError}` : 'directFetch=(not attempted)',
             `matchedAuthCookies=${matchedAuthCookies.length}`,
-            `allCookies=${allCookieNames.join(',')}`,
-            `cookiesToSet=${pendingAuthCookies.length}`,
-            `supabaseUrl=${supabaseUrl}`
+            `totalCookies=${cookieEntries.length}`,
+            `bearer=${bearerToken ? 'present' : 'absent'}`,
           )
 
           return response

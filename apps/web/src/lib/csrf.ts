@@ -63,11 +63,18 @@ export async function validateCsrfToken(request: Request): Promise<boolean> {
   if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     return true
   }
-  
-  // Get token from cookie
+
+  // Get token from cookie (try cookies() first, fall back to raw header)
   const cookieStore = await cookies()
-  const cookieToken = cookieStore.get(CSRF_COOKIE_NAME)?.value
-  
+  let cookieToken = cookieStore.get(CSRF_COOKIE_NAME)?.value
+
+  if (!cookieToken) {
+    // Fallback: parse from raw Cookie header (Next.js 16 edge case)
+    const rawCookie = request.headers.get('cookie') ?? ''
+    const match = rawCookie.match(new RegExp(`(?:^|;\\s*)${CSRF_COOKIE_NAME}=([^;]*)`))
+    cookieToken = match?.[1]
+  }
+
   if (!cookieToken) {
     console.warn('CSRF: No token in cookie')
     return false
