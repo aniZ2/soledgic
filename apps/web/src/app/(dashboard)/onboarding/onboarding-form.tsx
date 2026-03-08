@@ -80,10 +80,10 @@ export default function OnboardingForm() {
       }
 
       // Show API keys before redirecting
-      const data = result.data as any
+      const data = result.data
       if (data?.testApiKey || data?.liveApiKey) {
-        setTestApiKey(data.testApiKey || null)
-        setLiveApiKey(data.liveApiKey || null)
+        setTestApiKey(data.testApiKey ?? null)
+        setLiveApiKey(data.liveApiKey ?? null)
         setLoading(false)
         setStep(4)
         return
