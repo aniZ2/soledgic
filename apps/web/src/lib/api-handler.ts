@@ -214,10 +214,17 @@ export function createApiHandler(
           // 401 (e.g. /api/notifications polling) hard-logs the user out.
           //
           // Successful refreshes are merged into *successful* responses below.
+          const debugInfo = {
+            auth_error: authError?.message ?? null,
+            matched_cookies: matchedAuthCookies.length,
+            cookies_to_set: pendingAuthCookies.length,
+          }
+
           const response = NextResponse.json(
             {
               error: 'Unauthorized',
               request_id: requestId,
+              ...(process.env.NODE_ENV !== 'production' ? { debug: debugInfo } : {}),
             },
             { status: 401 }
           )
@@ -225,6 +232,7 @@ export function createApiHandler(
           response.headers.set('X-Request-Id', requestId)
           response.headers.set('X-Content-Type-Options', 'nosniff')
           response.headers.set('X-Frame-Options', 'DENY')
+          response.headers.set('X-Auth-Debug', JSON.stringify(debugInfo))
 
           console.warn(
             `[${requestId}] Unauthorized:`,
