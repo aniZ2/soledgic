@@ -327,5 +327,5 @@ For creators to request payout from their connected account to bank.
 - `_shared/utils.ts` - Added Booklyverse CORS, rate limits
 
 ### Documentation
-- `docs/BOOKLYVERSE_INTEGRATION.md` - Basic integration guide
+- `docs/booklyverse-integration.md` - Integration guide
 - This file - Complete banker model documentation
