@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Key, Copy, Check, ExternalLink, Loader2,
   CheckCircle, XCircle, ArrowRight, ArrowLeft,
-  Globe, Webhook, Zap, SkipForward,
+  Globe, Webhook, Zap, SkipForward, Trash2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
@@ -43,6 +43,11 @@ export function ConnectWizardClient({
   const [copied, setCopied] = useState<string | null>(null)
 
   // Step 2 state
+  const [existingWebhooks, setExistingWebhooks] = useState<
+    { id: string; url: string; events: string[]; is_active: boolean; created_at: string }[]
+  >([])
+  const [loadingWebhooks, setLoadingWebhooks] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [webhookUrl, setWebhookUrl] = useState('')
   const [selectedEvents, setSelectedEvents] = useState<string[]>(['*'])
   const [creatingWebhook, setCreatingWebhook] = useState(false)
@@ -58,6 +63,39 @@ export function ConnectWizardClient({
   const [completing, setCompleting] = useState(false)
 
   const baseUrl = `${supabaseUrl}/functions/v1`
+
+  const fetchWebhooks = useCallback(async () => {
+    setLoadingWebhooks(true)
+    try {
+      const res = await callLedgerFunction('webhooks', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: { action: 'list' },
+      })
+      const json = await res.json()
+      if (json.success && Array.isArray(json.data)) {
+        setExistingWebhooks(json.data)
+      }
+    } catch { /* ignore */ }
+    setLoadingWebhooks(false)
+  }, [ledger.id])
+
+  useEffect(() => {
+    if (step === 2) fetchWebhooks()
+  }, [step, fetchWebhooks])
+
+  const deleteWebhook = async (endpointId: string) => {
+    setDeletingId(endpointId)
+    try {
+      await callLedgerFunction('webhooks', {
+        ledgerId: ledger.id,
+        method: 'POST',
+        body: { action: 'delete', endpoint_id: endpointId },
+      })
+      setExistingWebhooks((prev) => prev.filter((w) => w.id !== endpointId))
+    } catch { /* ignore */ }
+    setDeletingId(null)
+  }
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -104,6 +142,7 @@ export function ConnectWizardClient({
 
       setWebhookSecret(data.secret || null)
       setCreatedEndpointId(data.id || data.endpoint_id || null)
+      fetchWebhooks()
     } catch {
       setWebhookError('Network error — check your connection')
     } finally {
@@ -304,12 +343,50 @@ export function ConnectWizardClient({
             </div>
             <p className="text-sm text-muted-foreground mb-6">
               Webhooks notify your application in real time when events happen — like completed checkouts, payouts, or refunds.
-              {existingWebhookCount > 0 && (
+              {existingWebhooks.length > 0 && (
                 <span className="block mt-1 text-green-600">
-                  You already have {existingWebhookCount} active webhook endpoint{existingWebhookCount !== 1 ? 's' : ''}.
+                  You have {existingWebhooks.length} active webhook endpoint{existingWebhooks.length !== 1 ? 's' : ''}.
                 </span>
               )}
             </p>
+
+            {/* Existing webhooks list */}
+            {loadingWebhooks ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading webhooks...
+              </div>
+            ) : existingWebhooks.length > 0 && (
+              <div className="mb-6 space-y-2">
+                <h3 className="text-sm font-medium text-foreground mb-2">Active Endpoints</h3>
+                {existingWebhooks.map((wh) => (
+                  <div
+                    key={wh.id}
+                    className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/50 rounded-lg"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-mono truncate">{wh.url}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {Array.isArray(wh.events) && wh.events.includes('*')
+                          ? 'All events'
+                          : (wh.events || []).join(', ')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => deleteWebhook(wh.id)}
+                      disabled={deletingId === wh.id}
+                      className="p-1.5 text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                      title="Delete endpoint"
+                    >
+                      {deletingId === wh.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Show creation form or success */}
             {webhookSecret ? (
