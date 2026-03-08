@@ -36,7 +36,7 @@
 - **Project**: Soledgic
 - **Region**: West US (Oregon)
 - **Ref**: `<redacted>`
-- **URL**: `https://api.soledgic.com`
+- **URL**: `https://YOUR_PROJECT.supabase.co`
 
 ### Example Ledger (Test Customer)
 - **Ledger ID**: `<redacted>`
@@ -88,7 +88,7 @@ When a ledger is created, these accounts are auto-created:
 
 ### Base URL
 ```
-https://api.soledgic.com/v1
+https://YOUR_PROJECT.supabase.co/functions/v1
 ```
 
 ### Authentication
@@ -322,7 +322,7 @@ import { soledgic } from '@soledgic/sdk'
 
 const soledgic = new soledgic({
   apiKey: 'your_api_key',
-  baseUrl: 'https://api.soledgic.com/v1'
+  baseUrl: 'https://xxx.supabase.co/functions/v1'
 })
 
 // Record a sale
@@ -407,19 +407,19 @@ soledgic/
 
 ```bash
 # Record a sale
-curl -X POST "https://api.soledgic.com/v1/record-sale" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/record-sale" \
   -H "Authorization: Bearer <ANON_KEY>" \
   -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"reference_id": "test_002", "creator_id": "author_123", "amount": 999}'
 
 # Get balance
-curl "https://api.soledgic.com/v1/get-balance?creator_id=author_123" \
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/get-balance?creator_id=author_123" \
   -H "Authorization: Bearer <ANON_KEY>" \
   -H "x-api-key: <LEDGER_API_KEY>"
 
 # Export transactions
-curl -X POST "https://api.soledgic.com/v1/export-report" \
+curl -X POST "https://YOUR_PROJECT.supabase.co/functions/v1/export-report" \
   -H "Authorization: Bearer <ANON_KEY>" \
   -H "x-api-key: <LEDGER_API_KEY>" \
   -H "Content-Type: application/json" \

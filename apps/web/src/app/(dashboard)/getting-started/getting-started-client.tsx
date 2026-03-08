@@ -21,14 +21,15 @@ interface GettingStartedClientProps {
     hasPayout: boolean
   }
   initialMode?: 'dashboard' | 'developer'
+  supabaseUrl: string
 }
 
 export function GettingStartedClient({
   ledger,
   progress,
-  initialMode
+  initialMode,
+  supabaseUrl
 }: GettingStartedClientProps) {
-  const apiBaseUrl = 'https://api.soledgic.com/v1'
   const [mode, setMode] = useState<'dashboard' | 'developer' | null>(initialMode || null)
   const [copied, setCopied] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
@@ -356,10 +357,10 @@ export function GettingStartedClient({
         <h2 className="text-lg font-semibold text-foreground mb-4">Base URL</h2>
         <div className="flex items-center gap-2">
           <code className="flex-1 bg-muted px-4 py-3 rounded-md text-sm font-mono">
-            {apiBaseUrl}
+            {supabaseUrl}/functions/v1
           </code>
           <button
-            onClick={() => copyToClipboard(apiBaseUrl, 'base-url')}
+            onClick={() => copyToClipboard(`${supabaseUrl}/functions/v1`, 'base-url')}
             className="p-2 hover:bg-muted rounded-md transition-colors"
           >
             {copied === 'base-url' ? (
@@ -386,7 +387,7 @@ export function GettingStartedClient({
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
-{`curl -X POST '${apiBaseUrl}/create-creator' \\
+{`curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\
   -H 'Content-Type: application/json' \\
   -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
@@ -397,7 +398,7 @@ export function GettingStartedClient({
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${apiBaseUrl}/create-creator' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "display_name": "John Smith", "email": "john@example.com"}'`,
+                  `curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "display_name": "John Smith", "email": "john@example.com"}'`,
                   'create-creator'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
@@ -419,7 +420,7 @@ export function GettingStartedClient({
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
-{`curl -X POST '${apiBaseUrl}/record-sale' \\
+{`curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\
   -H 'Content-Type: application/json' \\
   -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
@@ -431,7 +432,7 @@ export function GettingStartedClient({
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${apiBaseUrl}/record-sale' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"reference_id": "sale_abc123", "creator_id": "creator_123", "amount": 5000, "description": "Product sale"}'`,
+                  `curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"reference_id": "sale_abc123", "creator_id": "creator_123", "amount": 5000, "description": "Product sale"}'`,
                   'record-sale'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
@@ -453,7 +454,7 @@ export function GettingStartedClient({
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
-{`curl -X POST '${apiBaseUrl}/process-payout' \\
+{`curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\
   -H 'Content-Type: application/json' \\
   -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
@@ -464,7 +465,7 @@ export function GettingStartedClient({
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${apiBaseUrl}/process-payout' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "amount": 4000, "description": "Weekly payout"}'`,
+                  `curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "amount": 4000, "description": "Weekly payout"}'`,
                   'process-payout'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"

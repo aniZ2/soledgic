@@ -404,7 +404,7 @@ export default function ApiReferencePage() {
             <code className="text-sm text-slate-300">{API_BASE_URL}/v1</code>
           </div>
           <div className="bg-slate-900 rounded-lg p-4">
-            <code className="text-sm text-slate-300">https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1</code>
+            <code className="text-sm text-slate-300">https://YOUR_PROJECT.supabase.co/functions/v1</code>
           </div>
         </div>
         <p className="text-sm text-muted-foreground mt-3">

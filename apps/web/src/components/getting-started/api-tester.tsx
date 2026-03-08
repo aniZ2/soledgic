@@ -27,7 +27,7 @@ const COMMANDS = {
   creator: {
     title: 'Create a Creator',
     description: 'Register a creator who will receive payouts from your platform.',
-    endpoint: '/v1/create-creator',
+    endpoint: '/functions/v1/create-creator',
     method: 'POST',
     body: {
       creator_id: 'creator_demo_1',
@@ -39,7 +39,7 @@ const COMMANDS = {
   transaction: {
     title: 'Record a Transaction',
     description: 'Record a sale that splits revenue to the creator.',
-    endpoint: '/v1/record-sale',
+    endpoint: '/functions/v1/record-sale',
     method: 'POST',
     body: {
       reference_id: 'sale_demo_1',
@@ -51,7 +51,7 @@ const COMMANDS = {
   webhook: {
     title: 'Configure a Webhook',
     description: 'Set up a webhook to receive real-time event notifications.',
-    endpoint: '/v1/webhooks',
+    endpoint: '/functions/v1/webhooks',
     method: 'POST',
     body: {
       action: 'create',
@@ -68,7 +68,7 @@ export function ApiTester({ apiKey, step, onSuccess }: ApiTesterProps) {
   const [copied, setCopied] = useState(false)
 
   const command = COMMANDS[step]
-  const baseUrl = 'https://api.soledgic.com'
+  const baseUrl = 'https://soledgic.supabase.co'
 
   const curlCommand = `curl -X ${command.method} ${baseUrl}${command.endpoint} \\
   -H "Content-Type: application/json" \\
