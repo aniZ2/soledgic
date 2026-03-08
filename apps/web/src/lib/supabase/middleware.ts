@@ -15,13 +15,6 @@ export async function updateSession(request: NextRequest) {
   let setAllCalled = false
   let pendingCookies: Array<{ name: string; value: string; options?: Record<string, unknown> }> = []
 
-  // Avoid refresh-token rotation races on non-idempotent requests (notably
-  // Next.js Server Actions, which are POSTs). We'll refresh on the subsequent
-  // GET navigation/refresh instead.
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return originalResponse
-  }
-
   // Only check auth cookies for this project; ignore stale cookies from
   // other Supabase projects that may exist in the same browser.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
