@@ -2,8 +2,6 @@
 // Wrapper for API calls in tests - matches actual Edge Function APIs
 // SECURITY: All API keys must come from environment variables, never hardcoded
 
-const SOLEDGIC_URL = process.env.SOLEDGIC_URL || 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
-
 export class SoledgicTestClient {
   private apiKey: string
   private anonKey: string
@@ -12,7 +10,11 @@ export class SoledgicTestClient {
   constructor(apiKey: string, anonKey: string, baseUrl?: string) {
     this.apiKey = apiKey
     this.anonKey = anonKey
-    this.baseUrl = baseUrl || SOLEDGIC_URL
+    const resolved = baseUrl || process.env.SOLEDGIC_URL || ''
+    if (!resolved) {
+      throw new Error('SOLEDGIC_URL environment variable is required. Set it in .env.test')
+    }
+    this.baseUrl = resolved
   }
 
   async request(endpoint: string, body: any, _deadline?: number): Promise<any> {
@@ -444,7 +446,11 @@ export class SoledgicServiceClient {
 
   constructor(serviceRoleKey: string, baseUrl?: string) {
     this.serviceRoleKey = serviceRoleKey
-    this.baseUrl = baseUrl || SOLEDGIC_URL
+    const resolved = baseUrl || process.env.SOLEDGIC_URL || ''
+    if (!resolved) {
+      throw new Error('SOLEDGIC_URL environment variable is required. Set it in .env.test')
+    }
+    this.baseUrl = resolved
   }
 
   async request(endpoint: string, body: any): Promise<any> {

@@ -10,6 +10,7 @@ import { ToastProvider } from '@/components/notifications/toast-provider'
 import { isOverLedgerLimit } from '@/lib/entitlements'
 import { NotificationBell } from '@/components/notifications/notification-bell'
 import { MobileNav } from '@/components/mobile-nav'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { dashboardNavigation } from '@/lib/navigation'
 
 interface OrganizationSummary {
@@ -196,6 +197,7 @@ export default async function DashboardLayout({
                 {user.email}
               </p>
             </div>
+            <ThemeToggle />
           </div>
           <form action="/auth/signout" method="post">
             <button

@@ -21,7 +21,8 @@
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",
     "deploy:migrations": "npm run security-gate && npx supabase db push",
     "check:runbooks": "tsx scripts/runbook-check.ts",
-    "generate:openapi": "tsx scripts/generate-openapi.ts"
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "test:unit": "cd supabase && deno test --allow-env --allow-read functions/_shared/__tests__/"
   },
   "keywords": [
     "accounting",

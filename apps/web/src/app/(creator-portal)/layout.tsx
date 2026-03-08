@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { LogOut } from 'lucide-react'
 import { creatorPortalNavigation } from '@/lib/navigation'
 import { MobileNav } from '@/components/mobile-nav'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default async function CreatorPortalLayout({
   children,
@@ -72,6 +73,7 @@ export default async function CreatorPortalLayout({
                 {creatorEmail}
               </p>
             </div>
+            <ThemeToggle />
           </div>
           <form action="/auth/signout" method="post">
             <button

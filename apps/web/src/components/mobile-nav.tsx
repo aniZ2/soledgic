@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X, LogOut } from 'lucide-react'
 import { dashboardNavigation, type NavItem } from '@/lib/navigation'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 interface MobileNavProps {
   orgName: string
@@ -42,13 +43,16 @@ export function MobileNav({
           )}
         </Link>
 
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          aria-label="Toggle menu"
-        >
-          {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            aria-label="Toggle menu"
+          >
+            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </header>
 
       {/* Mobile Menu Overlay */}

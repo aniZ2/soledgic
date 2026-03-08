@@ -15,7 +15,7 @@ const PII_PATTERNS: [RegExp, string][] = [
   [/\b[A-Za-z0-9+/]{40,}\b/g, '[REDACTED]'],
 ]
 
-function scrubPII(value: string): string {
+export function scrubPII(value: string): string {
   let result = value
   for (const [pattern, replacement] of PII_PATTERNS) {
     result = result.replace(pattern, replacement)
@@ -152,7 +152,7 @@ async function sendEnvelope(
   })
 }
 
-function parseStackFrames(
+export function parseStackFrames(
   stack: string,
 ): Array<{ filename: string; lineno?: number; colno?: number; function?: string }> {
   const frames: Array<{

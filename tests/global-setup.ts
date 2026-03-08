@@ -18,7 +18,11 @@ export default async function globalSetup() {
 
   const apiKey = env.TEST_API_KEY_BOOKLYVERSE
   const anonKey = env.SUPABASE_ANON_KEY
-  const baseUrl = env.SOLEDGIC_URL || 'https://ocjrcsmoeikxfooeglkt.supabase.co/functions/v1'
+  const baseUrl = env.SOLEDGIC_URL
+  if (!baseUrl) {
+    console.log('⚠️ Missing SOLEDGIC_URL - skipping cleanup\n')
+    return
+  }
 
   if (isPlaceholder(apiKey) || isPlaceholder(anonKey)) {
     console.log('⚠️ Missing real TEST_API_KEY_BOOKLYVERSE or SUPABASE_ANON_KEY - skipping cleanup\n')

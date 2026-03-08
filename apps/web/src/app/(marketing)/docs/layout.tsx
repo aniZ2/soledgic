@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { BookOpen, Key, Code, Lightbulb, Bell, Package, Home, ArrowLeft, Menu, X, Terminal, History } from 'lucide-react'
 import { useState } from 'react'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 const navigation = [
   { name: 'Overview', href: '/docs', icon: Home },
@@ -70,6 +71,7 @@ export default function DocsLayout({
                 <ArrowLeft className="w-4 h-4" />
                 Dashboard
               </Link>
+              <ThemeToggle />
               <Link
                 href="/login?redirect=/docs"
                 className="text-sm font-medium text-primary hover:underline"
