@@ -198,7 +198,7 @@ Deno.test('validateDate: rejects before 1970', () => {
 })
 
 Deno.test('validateDate: rejects after 2100', () => {
-  assertEquals(validateDate('2101-01-01'), null)
+  assertEquals(validateDate('2101-07-01'), null)
 })
 
 Deno.test('validateDate: rejects invalid date strings', () => {

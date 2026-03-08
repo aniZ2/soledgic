@@ -39,7 +39,8 @@ Deno.test('scrubPII: redacts IP addresses', () => {
 })
 
 Deno.test('scrubPII: truncates to 500 characters', () => {
-  const longString = 'a'.repeat(600)
+  // Use spaces — they don't match any PII regex patterns
+  const longString = 'x '.repeat(300)
   const result = scrubPII(longString)
   assertEquals(result.length, 500)
 })

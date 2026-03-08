@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
-    "strict": true,
-    "allowJs": true
+    "strict": true
   },
   "test": {
     "include": ["functions/_shared/__tests__/"]
