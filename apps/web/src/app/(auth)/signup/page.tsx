@@ -36,11 +36,13 @@ export default function SignupPage() {
 
   const handleGoogleSignup = async () => {
     const supabase = createClient()
+    const callbackUrl = new URL(toAppUrl('/auth/callback'))
+    callbackUrl.searchParams.set('redirect', '/dashboard')
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: toAppUrl('/auth/callback'),
+        redirectTo: callbackUrl.toString(),
       },
     })
 
