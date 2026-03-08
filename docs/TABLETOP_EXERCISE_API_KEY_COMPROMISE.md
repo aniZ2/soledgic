@@ -14,7 +14,7 @@ You receive an urgent Slack message from a customer:
 
 > "Hey, we think our Soledgic API key might have been exposed. One of our developers 
 > accidentally committed it to a public GitHub repo about 2 hours ago. The repo has 
-> been private for about 30 minutes now, but we're worried. Our ledger is 'Booklyverse'.
+> been private for about 30 minutes now, but we're worried. Our ledger is 'Acme Corp'.
 > What should we do?"
 
 ---
@@ -365,9 +365,9 @@ INSERT INTO security_alerts (
 ) VALUES (
   'critical',
   'api_key_compromise',
-  'API Key Compromise - Booklyverse',
+  'API Key Compromise - Acme Corp',
   '{
-    "ledger_id": "0a885204-e07a-48c1-97e9-495ac96a2581",
+    "ledger_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     "exposure_source": "public_github",
     "attacker_ip": "203.0.113.42",
     "transactions_reversed": 2

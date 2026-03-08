@@ -18,7 +18,7 @@ If money moves through your platform, Soledgic can:
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           YOUR PLATFORM                                  │
-│                    (Booklyverse, Patreon, etc.)                         │
+│                    (Client platforms)                         │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │ API calls

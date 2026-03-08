@@ -10,7 +10,7 @@
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                          ESCROW HOLDING                              │   │
 │  │   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐           │   │
-│  │   │ Booklyverse  │   │   MTF Prop   │   │   Future     │           │   │
+│  │   │  Venture A   │   │  Venture B   │   │   Future     │           │   │
 │  │   │    $5,000    │   │   $12,000    │   │   Venture    │           │   │
 │  │   │    HELD      │   │    HELD      │   │    HELD      │           │   │
 │  │   └──────────────┘   └──────────────┘   └──────────────┘           │   │
@@ -89,8 +89,8 @@ Create and manage Payment Processor Custom accounts for creators.
 {
   action: 'create_onboarding_link',
   processor_account_id: 'acct_xxx',
-  return_url: 'https://booklyverse.com/author/dashboard',
-  refresh_url: 'https://booklyverse.com/author/onboarding'
+  return_url: 'https://example.com/creator/dashboard',
+  refresh_url: 'https://example.com/creator/onboarding'
 }
 ```
 
@@ -123,7 +123,7 @@ The banker's control panel.
 ```typescript
 {
   action: 'get_held',
-  venture_id: 'booklyverse',  // Optional filter
+  venture_id: 'my_venture',   // Optional filter
   ready_only: true            // Only entries past hold period
 }
 ```
@@ -235,9 +235,9 @@ For creators to request payout from their connected account to bank.
 ## Flow: Reader Buys Book
 
 ```
-1. Reader → Booklyverse → POST /create-checkout
+1. Buyer → Client App → POST /create-checkout
    ↓
-2. Booklyverse shows Payment Processor Elements checkout
+2. Client App shows Payment Processor Elements checkout
    ↓
 3. Reader pays $9.99
    ↓

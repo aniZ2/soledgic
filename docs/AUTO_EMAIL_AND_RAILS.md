@@ -22,8 +22,8 @@ const ledger = new Soledgic('sk_live_...')
 await ledger.configureEmail({
   enabled: true,
   sendDay: 1, // Day of month to send (1-28)
-  fromName: 'Booklyverse',
-  fromEmail: 'statements@booklyverse.com',
+  fromName: 'My Platform',
+  fromEmail: 'statements@example.com',
   subjectTemplate: 'Your {{month}} {{year}} Earnings Statement',
   bodyTemplate: `Hi {{creator_name}},
 
@@ -43,7 +43,7 @@ The {{business_name}} Team`,
 | `{{creator_name}}` | Creator's display name | "Jane Doe" |
 | `{{month}}` | Full month name | "December" |
 | `{{year}}` | Four-digit year | "2024" |
-| `{{business_name}}` | Your platform name | "Booklyverse" |
+| `{{business_name}}` | Your platform name | "My Platform" |
 
 ### Manual Sending
 

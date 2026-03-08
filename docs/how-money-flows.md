@@ -96,7 +96,7 @@ Payment Processor sends $10,000 to your bank
 Set via `ledger.mode`:
 ```typescript
 await soledgic.createLedger({
-  businessName: 'Booklyverse',
+  businessName: 'My Platform',
   mode: 'marketplace',
   defaultSplitPercent: 80 // Creator gets 80%
 })
