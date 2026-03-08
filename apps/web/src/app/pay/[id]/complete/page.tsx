@@ -58,16 +58,16 @@ function CheckoutCompleteInner() {
 
   if (missingCallbackParams) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="max-w-md w-full mx-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="bg-card rounded-xl shadow-sm border border-border p-8 text-center">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">Payment Failed</h1>
-            <p className="mt-2 text-sm text-gray-500">Missing required callback parameters.</p>
+            <h1 className="text-xl font-semibold text-foreground">Payment Failed</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Missing required callback parameters.</p>
           </div>
         </div>
       </div>
@@ -76,16 +76,16 @@ function CheckoutCompleteInner() {
 
   if (status === 'pending') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="max-w-md w-full mx-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="bg-card rounded-xl shadow-sm border border-border p-8 text-center">
+            <div className="w-16 h-16 bg-yellow-100 dark:bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">Payment Received</h1>
-            <p className="mt-2 text-sm text-gray-500">{pendingMessage}</p>
+            <h1 className="text-xl font-semibold text-foreground">Payment Received</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{pendingMessage}</p>
           </div>
         </div>
       </div>
@@ -94,16 +94,16 @@ function CheckoutCompleteInner() {
 
   if (status === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="max-w-md w-full mx-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="bg-card rounded-xl shadow-sm border border-border p-8 text-center">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">Payment Failed</h1>
-            <p className="mt-2 text-sm text-gray-500">{error}</p>
+            <h1 className="text-xl font-semibold text-foreground">Payment Failed</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{error}</p>
           </div>
         </div>
       </div>
@@ -111,17 +111,17 @@ function CheckoutCompleteInner() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="max-w-md w-full mx-4">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+        <div className="bg-card rounded-xl shadow-sm border border-border p-8 text-center">
           <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <svg className="w-10 h-10 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+            <svg className="w-10 h-10 text-primary animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">Processing Payment</h1>
-          <p className="mt-2 text-sm text-gray-500">Please wait while we complete your payment...</p>
+          <h1 className="text-xl font-semibold text-foreground">Processing Payment</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Please wait while we complete your payment...</p>
         </div>
       </div>
     </div>
@@ -131,17 +131,17 @@ function CheckoutCompleteInner() {
 // Suspense boundary required for useSearchParams() in Next.js 14+
 function LoadingFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="max-w-md w-full mx-4">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+        <div className="bg-card rounded-xl shadow-sm border border-border p-8 text-center">
           <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <svg className="w-10 h-10 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+            <svg className="w-10 h-10 text-primary animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">Processing Payment</h1>
-          <p className="mt-2 text-sm text-gray-500">Please wait while we complete your payment...</p>
+          <h1 className="text-xl font-semibold text-foreground">Processing Payment</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Please wait while we complete your payment...</p>
         </div>
       </div>
     </div>

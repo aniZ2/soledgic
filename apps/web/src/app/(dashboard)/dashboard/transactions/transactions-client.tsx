@@ -59,10 +59,10 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
       completed: 'bg-green-500/10 text-green-600',
       pending: 'bg-yellow-500/10 text-yellow-600',
       voided: 'bg-red-500/10 text-red-600',
-      reversed: 'bg-gray-500/10 text-gray-600',
+      reversed: 'bg-muted text-muted-foreground',
       draft: 'bg-blue-500/10 text-blue-600',
     }
-    return styles[status] || 'bg-gray-500/10 text-gray-600'
+    return styles[status] || 'bg-muted text-muted-foreground'
   }
 
   const handleSuccess = () => {
@@ -203,7 +203,7 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
                         ? 'bg-red-500/10'
                         : tx.transaction_type === 'transfer'
                         ? 'bg-blue-500/10'
-                        : 'bg-gray-500/10'
+                        : 'bg-muted'
                     }`}>
                       {tx.transaction_type === 'sale' || tx.transaction_type === 'income' ? (
                         <ArrowDownRight className="w-4 h-4 text-green-500" />

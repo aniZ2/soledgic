@@ -243,13 +243,13 @@ export default function TaxDocumentsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'calculated':
-        return <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-700">Calculated</span>
+        return <span className="px-2 py-1 text-xs rounded bg-blue-500/10 text-blue-700 dark:text-blue-400">Calculated</span>
       case 'exported':
-        return <span className="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-700">Exported</span>
+        return <span className="px-2 py-1 text-xs rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">Exported</span>
       case 'filed':
-        return <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-700">Filed</span>
+        return <span className="px-2 py-1 text-xs rounded bg-green-500/10 text-green-700 dark:text-green-400">Filed</span>
       default:
-        return <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">{status}</span>
+        return <span className="px-2 py-1 text-xs rounded bg-muted text-muted-foreground">{status}</span>
     }
   }
 
@@ -257,8 +257,8 @@ export default function TaxDocumentsPage() {
     return (
       <div className="p-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 w-64 bg-gray-200 rounded" />
-          <div className="h-4 w-96 bg-gray-200 rounded" />
+          <div className="h-8 w-64 bg-muted rounded" />
+          <div className="h-4 w-96 bg-muted rounded" />
         </div>
       </div>
     )
@@ -267,22 +267,22 @@ export default function TaxDocumentsPage() {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <Link href="/dashboard/reports" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+        <Link href="/dashboard/reports" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Back to Reports
         </Link>
       </div>
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">1099 Tax Reporting</h1>
-          <p className="text-gray-500 mt-1">Payment summaries for creators earning $600+</p>
+          <h1 className="text-2xl font-bold text-foreground">1099 Tax Reporting</h1>
+          <p className="text-muted-foreground mt-1">Payment summaries for creators earning $600+</p>
         </div>
 
         <div className="flex items-center gap-3">
           <select
             value={taxYear}
             onChange={(e) => setTaxYear(parseInt(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground"
           >
             {[...Array(5)].map((_, i) => {
               const year = new Date().getFullYear() - 1 - i
@@ -293,7 +293,7 @@ export default function TaxDocumentsPage() {
           <button
             onClick={generateAll}
             disabled={generating}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
           >
             <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
             {generating ? 'Generating...' : 'Calculate All'}
@@ -302,14 +302,14 @@ export default function TaxDocumentsPage() {
       </div>
 
       {/* Important Notice */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+      <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg p-4 mb-6">
         <div className="flex gap-3">
-          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-blue-900">No Personal Information Stored</p>
-            <p className="text-blue-700 mt-1">
-              Soledgic tracks payment <strong>amounts only</strong> — no SSNs, EINs, names, or addresses. 
-              Export this data and merge with your own recipient records (from your CRM, database, or W-9 files) 
+            <p className="font-medium text-blue-900 dark:text-blue-300">No Personal Information Stored</p>
+            <p className="text-blue-700 dark:text-blue-400 mt-1">
+              Soledgic tracks payment <strong>amounts only</strong> — no SSNs, EINs, names, or addresses.
+              Export this data and merge with your own recipient records (from your CRM, database, or W-9 files)
               to complete 1099 forms for filing.
             </p>
           </div>
@@ -319,25 +319,25 @@ export default function TaxDocumentsPage() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-5 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="bg-card p-4 rounded-lg border border-border">
             <div className="text-2xl font-bold">{stats.total}</div>
-            <div className="text-sm text-gray-500">Total Recipients</div>
+            <div className="text-sm text-muted-foreground">Total Recipients</div>
           </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="bg-card p-4 rounded-lg border border-border">
             <div className="text-2xl font-bold text-blue-600">{stats.calculated}</div>
-            <div className="text-sm text-gray-500">Calculated</div>
+            <div className="text-sm text-muted-foreground">Calculated</div>
           </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="bg-card p-4 rounded-lg border border-border">
             <div className="text-2xl font-bold text-yellow-600">{stats.exported}</div>
-            <div className="text-sm text-gray-500">Exported</div>
+            <div className="text-sm text-muted-foreground">Exported</div>
           </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="bg-card p-4 rounded-lg border border-border">
             <div className="text-2xl font-bold text-green-600">{stats.filed}</div>
-            <div className="text-sm text-gray-500">Filed</div>
+            <div className="text-sm text-muted-foreground">Filed</div>
           </div>
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="bg-card p-4 rounded-lg border border-border">
             <div className="text-2xl font-bold">${stats.total_amount.toLocaleString()}</div>
-            <div className="text-sm text-gray-500">Total Gross</div>
+            <div className="text-sm text-muted-foreground">Total Gross</div>
           </div>
         </div>
       )}
@@ -347,7 +347,7 @@ export default function TaxDocumentsPage() {
         <button
           onClick={exportCSV}
           disabled={exporting || documents.length === 0}
-          className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+          className="px-4 py-2 bg-card border border-border rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2"
         >
           <Download className="w-4 h-4" />
           {exporting ? 'Exporting...' : 'Export CSV'}
@@ -357,7 +357,7 @@ export default function TaxDocumentsPage() {
           <select
             value={copyType}
             onChange={(e) => setCopyType(e.target.value as 'a' | 'b' | '1' | '2')}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            className="px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground"
           >
             <option value="b">Copy B (Recipient)</option>
             <option value="a">Copy A (IRS)</option>
@@ -368,7 +368,7 @@ export default function TaxDocumentsPage() {
           <button
             onClick={generateAllPdfs}
             disabled={generatingAllPdfs || documents.length === 0}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-card border border-border rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2"
           >
             <FileText className="w-4 h-4" />
             {generatingAllPdfs ? 'Generating...' : 'Generate All PDFs'}
@@ -388,37 +388,37 @@ export default function TaxDocumentsPage() {
 
       {/* Documents Table */}
       {documents.length === 0 ? (
-        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">No tax documents for {taxYear}</p>
-          <p className="text-sm text-gray-400 mt-1">Click &quot;Calculate All&quot; to generate summaries for qualifying creators</p>
+        <div className="bg-card rounded-lg border border-border p-8 text-center">
+          <FileText className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
+          <p className="text-muted-foreground">No tax documents for {taxYear}</p>
+          <p className="text-sm text-muted-foreground/70 mt-1">Click &quot;Calculate All&quot; to generate summaries for qualifying creators</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-muted/50 border-b border-border">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recipient ID</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Gross Amount</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Transactions</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">PDF</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Recipient ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Type</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Gross Amount</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Transactions</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">PDF</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-border">
               {documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-gray-50">
+                <tr key={doc.id} className="hover:bg-muted/50">
                   <td className="px-4 py-3">
-                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">{doc.recipient_id}</code>
+                    <code className="text-sm bg-muted px-2 py-1 rounded">{doc.recipient_id}</code>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
                     {doc.document_type}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium">
                     ${Number(doc.gross_amount).toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-600">
+                  <td className="px-4 py-3 text-sm text-right text-muted-foreground">
                     {doc.transaction_count || '-'}
                   </td>
                   <td className="px-4 py-3">
@@ -428,7 +428,7 @@ export default function TaxDocumentsPage() {
                     <button
                       onClick={() => downloadPdf(doc.id)}
                       disabled={generatingPdf === doc.id}
-                      className="text-sm text-blue-600 hover:text-blue-800 disabled:text-gray-400 flex items-center gap-1 ml-auto"
+                      className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:text-muted-foreground flex items-center gap-1 ml-auto"
                     >
                       <Download className="w-3.5 h-3.5" />
                       {generatingPdf === doc.id ? '...' : doc.pdf_path ? 'Re-download' : 'Download'}
@@ -442,8 +442,8 @@ export default function TaxDocumentsPage() {
       )}
 
       {/* Filing Checklist */}
-      <div className="mt-8 bg-gray-50 rounded-lg p-6">
-        <h3 className="font-medium text-gray-900 mb-4">Filing Checklist</h3>
+      <div className="mt-8 bg-muted/50 rounded-lg p-6">
+        <h3 className="font-medium text-foreground mb-4">Filing Checklist</h3>
         <div className="space-y-3 text-sm">
           <label className="flex items-start gap-3">
             <input type="checkbox" className="mt-0.5" />

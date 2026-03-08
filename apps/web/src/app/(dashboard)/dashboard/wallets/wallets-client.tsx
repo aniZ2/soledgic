@@ -198,7 +198,7 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
                       className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                         wallet.is_active
                           ? 'bg-green-500/10 text-green-600'
-                          : 'bg-gray-500/10 text-gray-500'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {wallet.is_active ? 'Active' : 'Inactive'}

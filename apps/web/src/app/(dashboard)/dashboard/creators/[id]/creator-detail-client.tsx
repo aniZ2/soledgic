@@ -257,7 +257,7 @@ export function CreatorDetailClient({
 
         <div className="bg-card border border-border rounded-lg p-5">
           <div className="flex items-center gap-3 mb-2">
-            <FileText className="w-5 h-5 text-gray-500" />
+            <FileText className="w-5 h-5 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">Tax Info</span>
           </div>
           <p className={`text-lg font-medium ${hasTaxInfo ? 'text-green-600' : 'text-yellow-600'}`}>
@@ -352,7 +352,7 @@ export function CreatorDetailClient({
                         ? 'bg-blue-500/10 text-blue-600'
                         : tx.transaction_type === 'refund'
                         ? 'bg-red-500/10 text-red-600'
-                        : 'bg-gray-500/10 text-gray-600'
+                        : 'bg-muted text-muted-foreground'
                     }`}>
                       {tx.transaction_type}
                     </span>
@@ -368,7 +368,7 @@ export function CreatorDetailClient({
                       tx.status === 'completed' ? 'bg-green-500/10 text-green-600' :
                       tx.status === 'pending' ? 'bg-yellow-500/10 text-yellow-600' :
                       tx.status === 'voided' || tx.status === 'reversed' ? 'bg-red-500/10 text-red-600' :
-                      'bg-gray-500/10 text-gray-600'
+                      'bg-muted text-muted-foreground'
                     }`}>
                       {tx.status}
                     </span>

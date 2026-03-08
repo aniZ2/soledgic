@@ -49,7 +49,7 @@ function RoleBadge({ role }: { role: string }) {
     owner: { label: 'Owner', className: 'bg-amber-500/10 text-amber-600', icon: Crown },
     admin: { label: 'Admin', className: 'bg-blue-500/10 text-blue-600', icon: ShieldCheck },
     member: { label: 'Member', className: 'bg-green-500/10 text-green-600', icon: Shield },
-    viewer: { label: 'Viewer', className: 'bg-gray-500/10 text-gray-600', icon: Eye },
+    viewer: { label: 'Viewer', className: 'bg-muted text-muted-foreground', icon: Eye },
   }
 
   const c = config[role] || config.member

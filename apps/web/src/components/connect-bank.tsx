@@ -136,7 +136,7 @@ export function ConnectionList({
       case 'pending':
         return <AlertCircle className="w-4 h-4 text-yellow-500" />
       default:
-        return <Unplug className="w-4 h-4 text-gray-400" />
+        return <Unplug className="w-4 h-4 text-muted-foreground" />
     }
   }
 
@@ -165,7 +165,7 @@ export function ConnectionList({
               <button
                 onClick={() => onSync(conn.id)}
                 disabled={syncingConnectionId === conn.id}
-                className="text-xs px-3 py-1 bg-white border border-border rounded-md hover:bg-muted disabled:opacity-50"
+                className="text-xs px-3 py-1 bg-card border border-border rounded-md hover:bg-muted disabled:opacity-50"
               >
                 {syncingConnectionId === conn.id ? 'Syncing...' : 'Sync Now'}
               </button>

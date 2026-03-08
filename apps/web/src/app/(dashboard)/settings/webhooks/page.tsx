@@ -349,7 +349,7 @@ export default function WebhooksPage() {
                       <span className={`px-2 py-0.5 rounded-full text-xs ${
                         endpoint.is_active 
                           ? 'bg-green-500/10 text-green-600' 
-                          : 'bg-gray-500/10 text-gray-600'
+                          : 'bg-muted text-muted-foreground'
                       }`}>
                         {endpoint.is_active ? 'Active' : 'Disabled'}
                       </span>

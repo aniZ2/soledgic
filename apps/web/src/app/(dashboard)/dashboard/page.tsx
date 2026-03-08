@@ -229,7 +229,7 @@ export default async function DashboardPage() {
                           ? 'bg-green-500/10' 
                           : tx.transaction_type === 'payout'
                           ? 'bg-blue-500/10'
-                          : 'bg-gray-500/10'
+                          : 'bg-muted'
                       }`}>
                         {tx.transaction_type === 'sale' ? (
                           <ArrowDownRight className={`w-5 h-5 text-green-500`} />

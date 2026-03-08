@@ -45,7 +45,7 @@ const RAIL_CONFIG = {
     name: 'Manual Payouts',
     description: 'Record manual bank transfers, checks, or other payment methods',
     icon: CreditCard,
-    color: 'bg-gray-500/10 text-gray-600',
+    color: 'bg-muted text-muted-foreground',
   },
 }
 

@@ -136,7 +136,7 @@ export function MfaEnrollModal({
               <div className="space-y-4">
                 {/* QR Code */}
                 <div className="flex justify-center">
-                  <div className="bg-white p-4 rounded-lg">
+                  <div className="bg-card p-4 rounded-lg border border-border">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={qrCode.startsWith('data:') ? qrCode : `data:image/svg+xml;utf8,${qrCode}`}

@@ -53,7 +53,7 @@ const ROLE_CONFIG = {
   viewer: {
     label: 'Viewer',
     icon: Eye,
-    color: 'text-gray-600 bg-gray-500/10',
+    color: 'text-muted-foreground bg-muted',
     description: 'Read-only access',
   },
 }

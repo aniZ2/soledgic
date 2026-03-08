@@ -73,7 +73,7 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
       case 'failed':
         return <XCircle className="w-4 h-4 text-red-500" />
       default:
-        return <AlertCircle className="w-4 h-4 text-gray-500" />
+        return <AlertCircle className="w-4 h-4 text-muted-foreground" />
     }
   }
 

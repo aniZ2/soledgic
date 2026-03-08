@@ -513,7 +513,7 @@ export default function ImportTransactionsPage() {
             )}
             {importResult.skipped > 0 && (
               <div className="flex items-center gap-3 text-sm">
-                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                <div className="w-2 h-2 rounded-full bg-muted-foreground"></div>
                 <span className="text-muted-foreground">
                   {importResult.skipped} duplicate transactions were skipped
                 </span>
