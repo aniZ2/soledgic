@@ -28,6 +28,43 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+interface CookieEntry {
+  name: string
+  value: string
+}
+
+function parseCookieHeader(rawCookie: string): CookieEntry[] {
+  if (!rawCookie) return []
+
+  return rawCookie
+    .split(';')
+    .map((pair) => {
+      const idx = pair.indexOf('=')
+      if (idx === -1) return { name: pair.trim(), value: '' }
+      return {
+        name: pair.slice(0, idx).trim(),
+        value: pair.slice(idx + 1).trim(),
+      }
+    })
+    .filter((cookie) => cookie.name.length > 0)
+}
+
+function mergeCookieEntries(primary: CookieEntry[], fallback: CookieEntry[]): CookieEntry[] {
+  const merged = new Map<string, string>()
+
+  for (const cookie of primary) {
+    merged.set(cookie.name, cookie.value)
+  }
+
+  for (const cookie of fallback) {
+    if (!merged.has(cookie.name)) {
+      merged.set(cookie.name, cookie.value)
+    }
+  }
+
+  return Array.from(merged.entries()).map(([name, value]) => ({ name, value }))
+}
+
 function parsePendingAuthCookies(cookiesToSet: unknown): PendingAuthCookie[] {
   if (!Array.isArray(cookiesToSet)) return []
 
@@ -187,19 +224,13 @@ export function createApiHandler(
         const projectRef = new URL(supabaseUrl).hostname.split('.')[0]
         const authCookieBase = `sb-${projectRef}-auth-token`
 
-        // Fallback: if cookies() returns empty (Next.js 16 edge case),
-        // parse cookies directly from the raw Cookie header.
-        let cookieEntries = cookieStore.getAll()
-        if (cookieEntries.length === 0) {
-          const rawCookie = request.headers.get('cookie') ?? ''
-          if (rawCookie) {
-            cookieEntries = rawCookie.split(';').map(pair => {
-              const idx = pair.indexOf('=')
-              if (idx === -1) return { name: pair.trim(), value: '' }
-              return { name: pair.slice(0, idx).trim(), value: pair.slice(idx + 1).trim() }
-            }).filter(c => c.name.length > 0)
-          }
-        }
+        // Merge cookies() with raw Cookie header fallback.
+        // In some runtimes, cookies() can be partially populated for chunked
+        // auth cookies even when non-auth cookies are present.
+        const cookieEntries = mergeCookieEntries(
+          cookieStore.getAll(),
+          parseCookieHeader(request.headers.get('cookie') ?? '')
+        )
 
         const matchedAuthCookies = cookieEntries
           .filter(c => c.name === authCookieBase || c.name.startsWith(`${authCookieBase}.`))
@@ -220,6 +251,7 @@ export function createApiHandler(
         )
         const { data: { user: cookieAuthUser }, error: authError } = await supabase.auth.getUser()
         let authUser = cookieAuthUser
+        let bearerErrorMessage: string | null = null
 
         // 2b. Bearer token fallback — if cookie auth fails, try the
         // Authorization header (sent by fetchWithCsrf on the client).
@@ -228,7 +260,8 @@ export function createApiHandler(
         const bearerToken = bearerMatch?.[1]?.trim() ?? null
 
         if (!authUser && bearerToken) {
-          const { data: bearerData } = await supabase.auth.getUser(bearerToken)
+          const { data: bearerData, error: bearerError } = await supabase.auth.getUser(bearerToken)
+          bearerErrorMessage = bearerError?.message ?? null
           authUser = bearerData.user
         }
 
@@ -240,10 +273,23 @@ export function createApiHandler(
           // 401 (e.g. /api/notifications polling) hard-logs the user out.
           //
           // Successful refreshes are merged into *successful* responses below.
+          const includeDebug = process.env.AUTH_DEBUG_LOGS === 'true'
           const response = NextResponse.json(
             {
               error: 'Unauthorized',
               request_id: requestId,
+              ...(includeDebug
+                ? {
+                    debug: {
+                      auth_error: authError?.message ?? null,
+                      bearer_error: bearerErrorMessage,
+                      bearer_present: bearerToken !== null,
+                      matched_auth_cookies: matchedAuthCookies.map((c) => c.name),
+                      total_cookie_count: cookieEntries.length,
+                      pending_auth_cookie_count: pendingAuthCookies.length,
+                    },
+                  }
+                : {}),
             },
             { status: 401 }
           )
