@@ -215,7 +215,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - name: Run shared utility unit tests
         run: cd supabase && deno test --allow-env --allow-read functions/_shared/__tests__/
 
