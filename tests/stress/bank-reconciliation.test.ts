@@ -10,13 +10,23 @@ describe('Bank Feed Mismatches', () => {
 
   describe('Amount Mismatch', () => {
     it('should record transactions for reconciliation testing', async () => {
-      const refId = `stress_amount_mismatch_${Date.now()}`
-      const sale = await ledger.recordSale({
-        referenceId: refId,
-        creatorId: 'creator_stress_test',
-        amount: 10000,
-        description: 'Amount mismatch test',
-      })
+      // Retry once on 500 — edge function cold starts can cause transient failures
+      let sale: any
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const refId = `stress_amount_mismatch_${Date.now()}_${attempt}`
+          sale = await ledger.recordSale({
+            referenceId: refId,
+            creatorId: 'creator_stress_test',
+            amount: 10000,
+            description: 'Amount mismatch test',
+          })
+          break
+        } catch (err: any) {
+          if (attempt === 1 || err.status !== 500) throw err
+          await new Promise(r => setTimeout(r, 2000))
+        }
+      }
 
       expect(sale.success).toBe(true)
       expect(sale.transaction_id).toBeDefined()

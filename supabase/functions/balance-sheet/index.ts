@@ -82,51 +82,23 @@ const handler = createHandler(
       return errorResponse('Invalid date format. Use YYYY-MM-DD', 400, req, requestId)
     }
 
-    // Get all accounts with their balances
+    // Compute per-account balances in SQL to avoid PostgREST row limits.
+    // The RPC aggregates all entries server-side, returning one row per account.
     const { data: accounts, error: accountsError } = await supabase
-      .from('accounts')
-      .select('id, name, account_type, entity_type')
-      .eq('ledger_id', ledger.id)
+      .rpc('account_balances_as_of', {
+        p_ledger_id: ledger.id,
+        p_as_of_date: asOfDate + 'T23:59:59Z'
+      })
 
     if (accountsError) {
-      console.error('Failed to fetch accounts:', accountsError)
-      return errorResponse('Failed to fetch accounts', 500, req, requestId)
+      console.error('Failed to fetch account balances:', accountsError)
+      return errorResponse('Failed to fetch account balances', 500, req, requestId)
     }
 
-    // Get all entries up to as_of_date
-    const { data: entries, error: entriesError } = await supabase
-      .from('entries')
-      .select(`
-        account_id,
-        entry_type,
-        amount,
-        transaction:transactions!inner(created_at, status)
-      `)
-      .eq('transactions.ledger_id', ledger.id)
-      .eq('transactions.status', 'completed')
-      .lte('transactions.created_at', asOfDate + 'T23:59:59Z')
-
-    if (entriesError) {
-      console.error('Failed to fetch entries:', entriesError)
-      return errorResponse('Failed to fetch entries', 500, req, requestId)
-    }
-
-    // Calculate balance for each account
+    // Build a lookup of raw balances (debit - credit) per account
     const accountBalances: Record<string, number> = {}
-    
-    for (const entry of entries || []) {
-      const accountId = entry.account_id
-      if (!accountBalances[accountId]) {
-        accountBalances[accountId] = 0
-      }
-      
-      // Debits increase, credits decrease for debit-normal accounts
-      // Credits increase, debits decrease for credit-normal accounts
-      if (entry.entry_type === 'debit') {
-        accountBalances[accountId] += Number(entry.amount)
-      } else {
-        accountBalances[accountId] -= Number(entry.amount)
-      }
+    for (const account of accounts || []) {
+      accountBalances[account.account_id] = Number(account.balance)
     }
 
     // Organize accounts into balance sheet sections
@@ -141,7 +113,7 @@ const handler = createHandler(
     let totalExpenses = 0
 
     for (const account of accounts || []) {
-      let balance = accountBalances[account.id] || 0
+      let balance = Number(account.balance)
       const accountType = account.account_type
 
       // For credit-normal accounts, flip the sign for display
@@ -154,8 +126,8 @@ const handler = createHandler(
       if (Math.abs(balance) < 0.005) continue
 
       const accountBalance: AccountBalance = {
-        account_id: account.id,
-        account_name: account.name,
+        account_id: account.account_id,
+        account_name: account.account_name,
         account_type: accountType,
         balance: Math.round(balance * 100) / 100
       }
@@ -179,7 +151,7 @@ const handler = createHandler(
         totalRevenue += balance
       } else if (accountType === 'expense') {
         // Expenses are debit-normal, balance is already positive
-        totalExpenses += Math.abs(accountBalances[account.id] || 0)
+        totalExpenses += Math.abs(accountBalances[account.account_id] || 0)
       }
     }
 
