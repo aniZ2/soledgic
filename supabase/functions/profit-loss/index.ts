@@ -70,60 +70,30 @@ async function calculatePeriodPL(
   endDate: string,
   _platformAccountId: string | null
 ) {
-  // Get all accounts for this ledger
-  const { data: accounts } = await supabase
-    .from('accounts')
-    .select('id, name, account_type')
-    .eq('ledger_id', ledgerId)
+  // Compute per-account balances in SQL to avoid PostgREST row limits.
+  const { data: accounts, error: rpcError } = await supabase
+    .rpc('account_balances_for_period', {
+      p_ledger_id: ledgerId,
+      p_start_date: startDate,
+      p_end_date: endDate + 'T23:59:59Z'
+    })
 
-  if (!accounts || accounts.length === 0) {
+  if (rpcError || !accounts || accounts.length === 0) {
+    if (rpcError) console.error('Failed to fetch account balances:', rpcError)
     return { grossSales: 0, refunds: 0, netRevenue: 0, platformFeesEarned: 0, expensesByCategory: [], totalExpenses: 0, netIncome: 0 }
   }
 
-  // Get all entries for these accounts within the date range
-  // This mirrors exactly how the balance sheet calculates account balances
-  const { data: entries } = await supabase
-    .from('entries')
-    .select(`
-      account_id,
-      entry_type,
-      amount,
-      transaction:transactions!inner(created_at, status)
-    `)
-    .eq('transactions.ledger_id', ledgerId)
-    .eq('transactions.status', 'completed')
-    .gte('transactions.created_at', startDate)
-    .lte('transactions.created_at', endDate + 'T23:59:59Z')
-
-  // Calculate balance for each account (same logic as balance sheet)
-  const accountBalances: Record<string, number> = {}
-  for (const entry of entries || []) {
-    const accountId = entry.account_id
-    if (!accountBalances[accountId]) {
-      accountBalances[accountId] = 0
-    }
-    // Debit increases, credit decreases (for debit-normal accounts)
-    // We'll handle the sign flip for credit-normal accounts when summing
-    if (entry.entry_type === 'debit') {
-      accountBalances[accountId] += Number(entry.amount)
-    } else {
-      accountBalances[accountId] -= Number(entry.amount)
-    }
-  }
-
-  // Sum up revenue and expenses (same logic as balance sheet)
+  // Sum up revenue and expenses
   let totalRevenue = 0
   let totalExpenses = 0
   let platformFeesEarned = 0
 
   for (const account of accounts) {
-    const balance = accountBalances[account.id] || 0
+    const balance = Number(account.balance)
     const accountType = account.account_type
 
     if (REVENUE_ACCOUNT_TYPES.includes(accountType)) {
       // Revenue accounts are credit-normal, so flip the sign
-      // A credit to revenue makes balance negative in our calculation,
-      // but we want it as positive revenue
       const revenueAmount = -balance
       totalRevenue += revenueAmount
 

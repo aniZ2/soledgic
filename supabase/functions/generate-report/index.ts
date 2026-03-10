@@ -23,7 +23,10 @@ interface ReportRequest {
   format?: 'json' | 'csv'
 }
 
-const EXCLUDED_STATUSES = ['voided', 'reversed']
+// Only count completed transactions in financial reports.
+// This matches the balance-sheet function's filter and ensures consistency
+// across P&L, trial balance, and balance sheet.
+const INCLUDED_STATUS = 'completed'
 
 const handler = createHandler(
   { endpoint: 'generate-report', requireAuth: true, rateLimit: true },
@@ -63,7 +66,7 @@ const handler = createHandler(
             .eq('account_id', account.id)
             .gte('transactions.created_at', startDate)
             .lte('transactions.created_at', endDate + 'T23:59:59')
-            .not('transactions.status', 'in', `(${EXCLUDED_STATUSES.map(s => `"${s}"`).join(',')})`)
+            .eq('transactions.status', INCLUDED_STATUS)
 
           let balance = 0
           for (const e of entries || []) {
@@ -109,7 +112,7 @@ const handler = createHandler(
             .from('entries')
             .select('entry_type, amount, transactions!inner(status)')
             .eq('account_id', account.id)
-            .not('transactions.status', 'in', `(${EXCLUDED_STATUSES.map(s => `"${s}"`).join(',')})`)
+            .eq('transactions.status', INCLUDED_STATUS)
 
           let debits = 0, credits = 0
           for (const e of entries || []) {
@@ -168,7 +171,7 @@ const handler = createHandler(
             .eq('transactions.transaction_type', 'payout')
             .gte('transactions.created_at', yearStart)
             .lte('transactions.created_at', yearEnd + 'T23:59:59')
-            .not('transactions.status', 'in', `(${EXCLUDED_STATUSES.map(s => `"${s}"`).join(',')})`)
+            .eq('transactions.status', INCLUDED_STATUS)
 
           let totalPaid = 0
           for (const e of payoutEntries || []) totalPaid += Number(e.amount)
@@ -216,7 +219,7 @@ const handler = createHandler(
             .eq('entry_type', 'credit')
             .gte('transactions.created_at', startDate)
             .lte('transactions.created_at', endDate + 'T23:59:59')
-            .not('transactions.status', 'in', `(${EXCLUDED_STATUSES.map(s => `"${s}"`).join(',')})`)
+            .eq('transactions.status', INCLUDED_STATUS)
 
           const { data: debitEntries } = await supabase
             .from('entries')
@@ -225,7 +228,7 @@ const handler = createHandler(
             .eq('entry_type', 'debit')
             .gte('transactions.created_at', startDate)
             .lte('transactions.created_at', endDate + 'T23:59:59')
-            .not('transactions.status', 'in', `(${EXCLUDED_STATUSES.map(s => `"${s}"`).join(',')})`)
+            .eq('transactions.status', INCLUDED_STATUS)
 
           let totalEarned = 0, totalPaid = 0
           for (const e of creditEntries || []) totalEarned += Number(e.amount)
@@ -275,7 +278,7 @@ const handler = createHandler(
 
         const annotated = (transactions || []).map(tx => ({
           ...tx,
-          is_active: !EXCLUDED_STATUSES.includes(tx.status)
+          is_active: tx.status === INCLUDED_STATUS
         }))
 
         return jsonResponse({

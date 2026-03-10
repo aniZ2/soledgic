@@ -58,9 +58,9 @@ const LONG_TERM_LIABILITY_TYPES = ['long_term_debt', 'notes_payable', 'deferred_
 const EQUITY_TYPES = ['owner_equity', 'retained_earnings', 'common_stock', 'additional_paid_in_capital']
 
 // Debit-normal accounts (positive balance means debit > credit)
-const DEBIT_NORMAL_TYPES = ['cash', 'accounts_receivable', 'inventory', 'prepaid_expense', 'fixed_asset', 'property', 'equipment', 'expense']
+const DEBIT_NORMAL_TYPES = ['cash', 'accounts_receivable', 'inventory', 'prepaid_expense', 'fixed_asset', 'property', 'equipment', 'expense', 'processing_fees', 'cost_of_goods']
 // Credit-normal accounts (positive balance means credit > debit)
-const CREDIT_NORMAL_TYPES = ['accounts_payable', 'creator_balance', 'payee_balance', 'accrued_expense', 'tax_payable', 'unearned_revenue', 'long_term_debt', 'notes_payable', 'owner_equity', 'retained_earnings', 'revenue', 'platform_revenue']
+const CREDIT_NORMAL_TYPES = ['accounts_payable', 'creator_balance', 'payee_balance', 'accrued_expense', 'tax_payable', 'unearned_revenue', 'long_term_debt', 'notes_payable', 'owner_equity', 'retained_earnings', 'revenue', 'platform_revenue', 'other_income']
 
 const handler = createHandler(
   { endpoint: 'balance-sheet', requireAuth: true, rateLimit: true },
@@ -147,10 +147,11 @@ const handler = createHandler(
         longTermLiabilities.push(accountBalance)
       } else if (EQUITY_TYPES.includes(accountType)) {
         ownerEquity.push(accountBalance)
-      } else if (accountType === 'revenue' || accountType === 'platform_revenue') {
+      } else if (accountType === 'revenue' || accountType === 'platform_revenue' || accountType === 'other_income') {
         totalRevenue += balance
-      } else if (accountType === 'expense') {
-        // Expenses are debit-normal, balance is already positive
+      } else if (accountType === 'expense' || accountType === 'processing_fees' || accountType === 'cost_of_goods') {
+        // Expenses/fees are debit-normal (expense) or credit-normal (processing_fees).
+        // Use raw balance from entries to avoid double-flipping.
         totalExpenses += Math.abs(accountBalances[account.account_id] || 0)
       }
     }
