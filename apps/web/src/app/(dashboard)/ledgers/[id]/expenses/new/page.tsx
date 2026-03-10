@@ -104,8 +104,8 @@ export default function NewExpensePage({
 
       if (uploadError) throw uploadError
 
-      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path)
-      setReceiptUrl(urlData.publicUrl)
+      // Store the storage path — signed URLs are generated on demand when viewing
+      setReceiptUrl(`receipts/${path}`)
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Failed to upload receipt'))
       setReceiptFile(null)
