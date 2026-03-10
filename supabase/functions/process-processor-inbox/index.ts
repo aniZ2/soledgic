@@ -173,7 +173,70 @@ async function handleRefundUpdate(
     .or(`reference_id.eq.${ev.resource_id},metadata->>external_refund_id.eq.${ev.resource_id}`)
     .maybeSingle()
 
-  if (!refundTx?.id) return { transactionId: null, webhookQueued: false }
+  // ========================================================================
+  // AUTO-REPAIR: If no ledger refund transaction exists, check for a pending
+  // processor refund record (created when record-refund's ledger write failed
+  // after a successful processor refund) and attempt to book it now.
+  // ========================================================================
+  if (!refundTx?.id) {
+    const { data: pending } = await supabase
+      .from('pending_processor_refunds')
+      .select('*')
+      .eq('ledger_id', ledgerId)
+      .eq('external_refund_id', ev.resource_id)
+      .eq('status', 'pending')
+      .maybeSingle()
+
+    if (pending) {
+      const { data: repairResult, error: repairError } = await supabase.rpc('record_refund_atomic_v2', {
+        p_ledger_id: pending.ledger_id,
+        p_reference_id: pending.reference_id,
+        p_original_tx_id: pending.original_transaction_id,
+        p_refund_amount: pending.refund_amount,
+        p_reason: pending.reason || 'Auto-repaired from processor webhook',
+        p_refund_from: pending.refund_from || 'both',
+        p_external_refund_id: pending.external_refund_id,
+        p_metadata: {
+          ...(pending.metadata || {}),
+          auto_repaired: true,
+          repaired_from: 'process_processor_inbox',
+          repair_event_id: ev.source_event_id,
+        },
+        p_entry_method: 'system',
+      })
+
+      const repairedRow = Array.isArray(repairResult) ? repairResult[0] : repairResult
+      if (!repairError && repairedRow?.out_transaction_id) {
+        // Mark pending record as repaired
+        await supabase
+          .from('pending_processor_refunds')
+          .update({ status: 'repaired', repaired_at: new Date().toISOString() })
+          .eq('id', pending.id)
+
+        console.log(`[inbox] Auto-repaired refund: pending_id=${pending.id} → tx=${repairedRow.out_transaction_id}`)
+
+        await queueWebhook(supabase, ledgerId, 'sale.refunded', {
+          refund_transaction_id: repairedRow.out_transaction_id,
+          refund_id: ev.resource_id,
+          original_sale_reference: ev.tags.soledgic_original_sale_reference || null,
+          occurred_at: ev.occurred_at,
+          auto_repaired: true,
+        })
+        return { transactionId: repairedRow.out_transaction_id, webhookQueued: true }
+      } else {
+        console.error(`[inbox] Auto-repair failed for pending refund ${pending.id}:`, repairError)
+        await supabase
+          .from('pending_processor_refunds')
+          .update({
+            status: 'repair_failed',
+            error_message: String(repairError?.message || 'Unknown').slice(0, 500),
+          })
+          .eq('id', pending.id)
+      }
+    }
+
+    return { transactionId: null, webhookQueued: false }
+  }
 
   const prev = String(refundTx.metadata?.processor_refund_status || '')
   const next = ev.status
@@ -360,6 +423,177 @@ async function markInboxRow(
     .eq('id', inboxId)
 }
 
+/**
+ * Resolve the creator split percentage using the same cascade as create-checkout:
+ *   1. Product-specific split (product_splits table)
+ *   2. Creator-specific custom_split_percent (accounts.metadata)
+ *   3. Creator tier split (creator_tiers table)
+ *   4. Ledger default (settings.default_split_percent or 100 - default_platform_fee_percent)
+ *   5. Ultimate fallback: 80%
+ */
+async function resolveCreatorSplitPercent(
+  supabase: any,
+  ledgerId: string,
+  creatorId: string,
+  productId: string | null,
+  ledgerSettings: Record<string, any>,
+): Promise<number> {
+  // 1. Product-specific split
+  if (productId) {
+    const { data: productSplit } = await supabase
+      .from('product_splits')
+      .select('creator_percent')
+      .eq('ledger_id', ledgerId)
+      .eq('product_id', productId)
+      .maybeSingle()
+    if (productSplit?.creator_percent !== undefined) return productSplit.creator_percent
+  }
+
+  // 2. Creator-specific split or 3. tier-based split
+  const { data: creatorAccount } = await supabase
+    .from('accounts')
+    .select('metadata')
+    .eq('ledger_id', ledgerId)
+    .eq('account_type', 'creator_balance')
+    .eq('entity_id', creatorId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (creatorAccount?.metadata?.custom_split_percent !== undefined) {
+    return creatorAccount.metadata.custom_split_percent
+  }
+
+  if (creatorAccount?.metadata?.tier_id) {
+    const { data: tier } = await supabase
+      .from('creator_tiers')
+      .select('creator_percent')
+      .eq('id', creatorAccount.metadata.tier_id)
+      .maybeSingle()
+    if (tier?.creator_percent !== undefined) return tier.creator_percent
+  }
+
+  // 4. Ledger defaults
+  if (ledgerSettings.default_split_percent !== undefined) return ledgerSettings.default_split_percent
+  if (ledgerSettings.default_platform_fee_percent !== undefined) return 100 - ledgerSettings.default_platform_fee_percent
+
+  // 5. Ultimate fallback
+  return 80
+}
+
+/**
+ * Handle a completed charge event from the processor.
+ * If the charge has Soledgic tags (ledger_id, creator_id) but no matching
+ * ledger sale transaction, this books the sale automatically. This is the
+ * safety net for the direct-charge path in create-checkout which doesn't
+ * write ledger entries synchronously.
+ *
+ * IMPORTANT: record_sale_atomic expects amounts in CENTS (minor units).
+ * amountToMajorUnits converts processor amounts to major units for display,
+ * but the RPC divides by 100 internally, so we must pass cents.
+ */
+async function handleChargeCompleted(
+  supabase: any,
+  ev: NormalizedProcessorEvent,
+): Promise<{ transactionId: string | null; webhookQueued: boolean }> {
+  const ledgerId = ev.ledger_id
+  const creatorId = (ev.tags.soledgic_creator_id || ev.tags.creator_id || '').trim()
+  if (!ledgerId || !creatorId) return { transactionId: null, webhookQueued: false }
+
+  const amountMinor = ev.amount_minor_units
+  if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor) || amountMinor <= 0) {
+    return { transactionId: null, webhookQueued: false }
+  }
+
+  // Derive a stable reference from the processor transfer ID
+  const referenceId = ev.tags.soledgic_checkout_session_id
+    ? `checkout_${ev.tags.soledgic_checkout_session_id}`
+    : `charge_${ev.resource_id}`
+
+  // Check if sale already booked (idempotent)
+  const { data: existingSale } = await supabase
+    .from('transactions')
+    .select('id')
+    .eq('ledger_id', ledgerId)
+    .eq('reference_id', referenceId)
+    .eq('transaction_type', 'sale')
+    .maybeSingle()
+
+  if (existingSale?.id) {
+    return { transactionId: existingSale.id, webhookQueued: false }
+  }
+
+  // Resolve the amount in cents for record_sale_atomic.
+  // amountToMajorUnits handles the PROCESSOR_AMOUNT_UNIT env var:
+  //   - If 'major', amountMinor is already in major units → convert to cents
+  //   - If 'minor' (default), amountMinor is already in cents → pass through
+  const unitMode = (Deno.env.get('PROCESSOR_AMOUNT_UNIT') || 'minor').toLowerCase().trim()
+  const amountCents = unitMode === 'major'
+    ? Math.round(Number(amountMinor) * minorUnitFactor(ev.currency))
+    : Number(amountMinor)
+
+  // Resolve split using the same cascade as create-checkout
+  const { data: ledgerRow } = await supabase
+    .from('ledgers')
+    .select('settings')
+    .eq('id', ledgerId)
+    .maybeSingle()
+
+  const settings = (ledgerRow?.settings || {}) as Record<string, any>
+  const productId = (ev.tags.product_id || '').trim() || null
+  const creatorPercent = await resolveCreatorSplitPercent(
+    supabase, ledgerId, creatorId, productId, settings
+  )
+
+  const creatorAmountCents = Math.floor(amountCents * (creatorPercent / 100))
+  const platformAmountCents = amountCents - creatorAmountCents
+
+  const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
+    p_ledger_id: ledgerId,
+    p_reference_id: referenceId,
+    p_creator_id: creatorId,
+    p_gross_amount: amountCents,
+    p_creator_amount: creatorAmountCents,
+    p_platform_amount: platformAmountCents,
+    p_processing_fee: 0,
+    p_product_id: productId,
+    p_product_name: ev.tags.product_name || null,
+    p_metadata: {
+      auto_booked: true,
+      booked_from: 'process_processor_inbox',
+      processor_transfer_id: ev.resource_id,
+      source_event_id: ev.source_event_id,
+    },
+    p_entry_method: 'system',
+  })
+
+  if (saleError) {
+    // Duplicate reference means it was already booked (race condition) — not an error
+    if (saleError.code === '23505' || String(saleError.message || '').includes('duplicate')) {
+      return { transactionId: null, webhookQueued: false }
+    }
+    console.error(`[inbox] Failed to auto-book charge ${ev.resource_id}:`, saleError)
+    return { transactionId: null, webhookQueued: false }
+  }
+
+  const saleRow = Array.isArray(saleResult) ? saleResult[0] : saleResult
+  const txId = saleRow?.out_transaction_id || null
+
+  if (txId) {
+    console.log(`[inbox] Auto-booked charge ${ev.resource_id} → sale tx=${txId}`)
+    await queueWebhook(supabase, ledgerId, 'checkout.completed', {
+      payment_id: ev.resource_id,
+      reference_id: referenceId,
+      amount: amountCents / 100,
+      creator_id: creatorId,
+      auto_booked: true,
+      occurred_at: ev.occurred_at,
+    })
+    return { transactionId: txId, webhookQueued: true }
+  }
+
+  return { transactionId: null, webhookQueued: false }
+}
+
 interface ProcessInboxRequest {
   limit?: number
   dry_run?: boolean
@@ -464,6 +698,17 @@ Deno.serve(async (req: Request) => {
 
       if (!dryRun && ev.kind === 'dispute') {
         await handleDisputeUpdate(supabase, ev)
+      }
+
+      // ====================================================================
+      // CHARGE HANDLER: Auto-book charges that have no matching ledger sale.
+      // This catches direct charges from create-checkout (payment_method_id
+      // flow) where ledger booking was skipped or failed.
+      // ====================================================================
+      if (!dryRun && ev.kind === 'charge' && ev.status === 'completed') {
+        const chargeResult = await handleChargeCompleted(supabase, ev)
+        if (chargeResult.transactionId) linkedTxId = chargeResult.transactionId
+        if (chargeResult.webhookQueued) results.webhooks_queued++
       }
 
       // Book transfers are recorded in processor_transactions for reconciliation

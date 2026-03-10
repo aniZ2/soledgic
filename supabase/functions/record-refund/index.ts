@@ -201,6 +201,20 @@ const handler = createHandler(
       )
     }
 
+    // Derive refund reference ID early so both processor + ledger use the same key.
+    if (externalRefundId) {
+      // Will be overwritten by processor refund ID if available
+    }
+
+    let refundRefId: string
+    if (externalRefundId) {
+      refundRefId = externalRefundId
+    } else if (idempotencyKey) {
+      refundRefId = `refund_${idempotencyKey}`
+    } else {
+      refundRefId = await buildDeterministicRefundReferenceId(originalSale.id, effectiveRefundCents, refundFrom, reason)
+    }
+
     if (executeProcessorRefund) {
       const provider = getPaymentProvider('card')
       const paymentId = processorPaymentId || originalRef
@@ -229,18 +243,10 @@ const handler = createHandler(
       if (refundResult.refund_id && !providerRefundId) {
         return errorResponse('Processor returned invalid refund ID', 502, req, requestId)
       }
-      if (providerRefundId && !externalRefundId) {
+      if (providerRefundId) {
         externalRefundId = providerRefundId
+        refundRefId = providerRefundId
       }
-    }
-
-    let refundRefId: string
-    if (externalRefundId) {
-      refundRefId = externalRefundId
-    } else if (idempotencyKey) {
-      refundRefId = `refund_${idempotencyKey}`
-    } else {
-      refundRefId = await buildDeterministicRefundReferenceId(originalSale.id, effectiveRefundCents, refundFrom, reason)
     }
 
     refundRefId = validateId(refundRefId, 255) || ''
@@ -251,6 +257,10 @@ const handler = createHandler(
     const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
       ? body.metadata
       : {}
+
+    // Ledger-only refunds are manual bookkeeping entries (no processor verification).
+    // Processor refunds are processor-verified.
+    const refundEntryMethod = executeProcessorRefund ? 'processor' : 'manual'
 
     const { data: atomicResult, error: txError } = await supabase.rpc('record_refund_atomic_v2', {
       p_ledger_id: ledger.id,
@@ -265,6 +275,7 @@ const handler = createHandler(
         processor_refund_executed: executeProcessorRefund,
         processor_payment_id: executeProcessorRefund ? (processorPaymentId || originalRef) : null,
       },
+      p_entry_method: refundEntryMethod,
     })
 
     if (txError) {
@@ -303,6 +314,54 @@ const handler = createHandler(
       }
 
       console.error(`[${requestId}] Failed to create refund transaction:`, txError)
+
+      // CRITICAL: If processor refund already succeeded, store a pending record
+      // so process-processor-inbox or manual ops can repair the ledger entry.
+      if (executeProcessorRefund) {
+        console.error(`[${requestId}] PROCESSOR REFUND SUCCEEDED but ledger write failed — storing pending_processor_refund for repair`)
+        await supabase.from('pending_processor_refunds').upsert(
+          {
+            ledger_id: ledger.id,
+            reference_id: refundRefId,
+            original_transaction_id: originalSale.id,
+            refund_amount: effectiveRefundCents,
+            reason,
+            refund_from: refundFrom,
+            external_refund_id: externalRefundId,
+            processor_payment_id: processorPaymentId || originalRef,
+            metadata: { ...metadata, processor_refund_executed: true },
+            status: 'pending',
+            error_message: String(txError.message || '').slice(0, 500),
+          },
+          { onConflict: 'ledger_id,reference_id' }
+        ).then(({ error: pendingErr }) => {
+          if (pendingErr) console.error(`[${requestId}] Failed to store pending_processor_refund:`, pendingErr)
+        })
+
+        createAuditLogAsync(supabase, req, {
+          ledger_id: ledger.id,
+          action: 'refund_ledger_write_failed',
+          entity_type: 'transaction',
+          actor_type: 'system',
+          request_body: sanitizeForAudit({
+            reference_id: refundRefId,
+            original_sale_reference: originalRef,
+            refund_amount_cents: effectiveRefundCents,
+            external_refund_id: externalRefundId,
+            error: String(txError.message || '').slice(0, 200),
+          }),
+          response_status: 500,
+          risk_score: 80,
+        }, requestId)
+
+        return errorResponse(
+          'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
+          202,
+          req,
+          requestId,
+        )
+      }
+
       return errorResponse('Failed to create refund transaction', 500, req, requestId)
     }
 

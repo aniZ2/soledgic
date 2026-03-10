@@ -448,7 +448,7 @@ function getInternalLedgerId(req: Request): string | null {
 
   const providedToken = req.headers.get(INTERNAL_TOKEN_HEADER) || ''
   if (!providedToken) return null
-  if (!timingSafeEqual(providedToken, expectedToken)) return null
+  if (!timingSafeEqual(providedToken.trim(), expectedToken.trim())) return null
 
   const ledgerId = req.headers.get(INTERNAL_LEDGER_HEADER)?.trim() || ''
   return ledgerId.length > 0 ? ledgerId : null

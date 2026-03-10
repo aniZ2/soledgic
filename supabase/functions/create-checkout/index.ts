@@ -410,9 +410,83 @@ const handler = createHandler(
     }
     
     // ========================================================================
+    // LEDGER BOOKING: Record the sale atomically in the ledger.
+    // If the charge status indicates a terminal failure, skip booking.
+    // If booking fails, the charge handler in process-processor-inbox will
+    // auto-book when the completed webhook arrives.
+    // ========================================================================
+
+    const chargeStatus = (checkoutPayment.status || '').toUpperCase()
+    const isChargeFailed = chargeStatus === 'FAILED' || chargeStatus === 'CANCELED'
+
+    let saleBooked = false
+    let saleTransactionId: string | null = null
+
+    if (!isChargeFailed && !checkoutPayment.requires_action) {
+      const directChargeReferenceId = `charge_${checkoutPayment.id}`
+      try {
+        const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
+          p_ledger_id: ledger.id,
+          p_reference_id: directChargeReferenceId,
+          p_creator_id: creatorId,
+          p_gross_amount: amount,
+          p_creator_amount: creatorAmount,
+          p_platform_amount: platformAmount,
+          p_processing_fee: 0,
+          p_product_id: productId || null,
+          p_product_name: productName || null,
+          p_metadata: {
+            ...(body.metadata || {}),
+            checkout_provider: 'card',
+            processor_transfer_id: checkoutPayment.id,
+            direct_charge: true,
+          },
+        })
+        if (saleError) {
+          // Duplicate means already booked (idempotent retry)
+          if (saleError.code === '23505' || String(saleError.message || '').includes('duplicate')) {
+            saleBooked = true
+          } else {
+            console.error(`[${requestId}] Direct charge ledger booking failed:`, saleError.message)
+          }
+        } else {
+          saleBooked = true
+          const row = Array.isArray(saleResult) ? saleResult[0] : saleResult
+          saleTransactionId = row?.out_transaction_id || null
+        }
+      } catch (err: unknown) {
+        console.error(`[${requestId}] Direct charge ledger booking error:`, err)
+      }
+
+      if (saleBooked && saleTransactionId) {
+        // Queue webhook for the completed sale
+        supabase.rpc('queue_webhook', {
+          p_ledger_id: ledger.id,
+          p_event_type: 'checkout.completed',
+          p_payload: {
+            event: 'checkout.completed',
+            data: {
+              payment_id: checkoutPayment.id,
+              reference_id: directChargeReferenceId,
+              transaction_id: saleTransactionId,
+              amount: amount / 100,
+              currency,
+              creator_id: creatorId,
+              product_id: productId,
+              direct_charge: true,
+              created_at: new Date().toISOString(),
+            },
+          },
+        }).then(({ error }) => {
+          if (error) console.error(`[${requestId}] Failed to queue checkout webhook:`, error)
+        })
+      }
+    }
+
+    // ========================================================================
     // AUDIT LOG
     // ========================================================================
-    
+
     createAuditLogAsync(supabase, req, {
       ledger_id: ledger.id,
       action: 'checkout_created',
@@ -426,15 +500,16 @@ const handler = createHandler(
         product_id: productId,
         creator_percent: creatorPercent,
         provider: 'card',
+        sale_booked: saleBooked,
       }),
       response_status: 200,
       risk_score: 10,
     }, requestId)
-    
+
     // ========================================================================
     // RESPONSE
     // ========================================================================
-    
+
     const response: CreateCheckoutResponse = {
       success: true,
       provider: 'card',
@@ -453,7 +528,7 @@ const handler = createHandler(
         creator_percent: creatorPercent,
       }
     }
-    
+
     return jsonResponse(response, 200, req, requestId)
   }
 )

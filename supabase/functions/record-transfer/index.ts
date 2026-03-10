@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
 
     const transferAmount = amount / 100
 
-    // Create transfer transaction
+    // Create transfer transaction (entry_method: 'manual' — internal bookkeeping move)
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
       .insert({
@@ -137,6 +137,7 @@ Deno.serve(async (req) => {
         amount: transferAmount,
         currency: 'USD',
         status: 'completed',
+        entry_method: 'manual',
         metadata: {
           transfer_type: transferType,
           from_account: fromAccountType,

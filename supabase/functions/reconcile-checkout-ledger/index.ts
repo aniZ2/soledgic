@@ -11,7 +11,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getCorsHeaders, timingSafeEqual } from '../_shared/utils.ts'
 
 interface ReconcileRequest {
-  limit?: number   // Max sessions to process per invocation (default 20)
+  limit?: number       // Max sessions to process per invocation (default 20)
+  max_age_days?: number // Max session age to consider (default 30)
   dry_run?: boolean
 }
 
@@ -51,6 +52,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const limit = Math.min(body.limit ?? 20, 100)
+  const maxAgeDays = Math.min(Math.max(body.max_age_days ?? 30, 1), 365)
   const dryRun = body.dry_run === true
   const requestId = crypto.randomUUID()
 
@@ -61,11 +63,12 @@ Deno.serve(async (req: Request) => {
   )
 
   // Find sessions stuck in charged_pending_ledger (charge succeeded, ledger write failed).
-  // Only retry sessions less than 24 hours old; older ones need manual review.
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Retry sessions up to max_age_days old (default 30 days, was previously 24h).
+  // Sessions older than 24 hours get an elevated audit log entry for ops visibility.
+  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString()
   const { data: sessions, error: fetchError } = await supabase
     .from('checkout_sessions')
-    .select('id, ledger_id, creator_id, amount, creator_amount, platform_amount, product_id, product_name, metadata, payment_id, reference_id')
+    .select('id, ledger_id, creator_id, amount, creator_amount, platform_amount, product_id, product_name, metadata, payment_id, reference_id, updated_at')
     .eq('status', 'charged_pending_ledger')
     .gte('updated_at', cutoff)
     .order('updated_at', { ascending: true })
@@ -100,10 +103,42 @@ Deno.serve(async (req: Request) => {
 
   let reconciled = 0
   let failed = 0
+  let staleCount = 0
   const errors: Array<{ session_id: string; error: string }> = []
+  const staleThreshold = Date.now() - 24 * 60 * 60 * 1000
 
   for (const session of sessions) {
     const referenceId = session.reference_id || `checkout_${session.id}`
+
+    // Flag sessions older than 24h for ops visibility (deduplicated: one audit row per session)
+    const sessionAge = Date.now() - new Date(session.updated_at).getTime()
+    if (sessionAge > 24 * 60 * 60 * 1000) {
+      staleCount++
+      const ageHours = Math.round(sessionAge / (60 * 60 * 1000))
+      console.warn(`[${requestId}] Stale session ${session.id}: stuck for ${ageHours}h, amount=${session.amount}`)
+
+      // Only insert if no existing reconcile_stale_session audit row for this session
+      const { count } = await supabase
+        .from('audit_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('action', 'reconcile_stale_session')
+        .eq('entity_id', session.id)
+        .limit(1)
+
+      if (!count || count === 0) {
+        supabase.from('audit_log').insert({
+          ledger_id: session.ledger_id,
+          action: 'reconcile_stale_session',
+          entity_type: 'checkout_session',
+          entity_id: session.id,
+          actor_type: 'system',
+          request_body: { age_hours: ageHours, amount: session.amount, payment_id: session.payment_id },
+          response_status: null,
+          risk_score: 60,
+          request_id: requestId,
+        }).then(() => {})
+      }
+    }
 
     try {
       const { error: rpcError } = await supabase.rpc('record_sale_atomic', {
@@ -188,6 +223,7 @@ Deno.serve(async (req: Request) => {
     processed: sessions.length,
     reconciled,
     failed,
+    stale: staleCount > 0 ? staleCount : undefined,
     errors: errors.length > 0 ? errors : undefined,
   }), {
     status: 200,

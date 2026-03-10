@@ -112,7 +112,7 @@ const handler = createHandler(
       revenueAccount = newRevenue
     }
 
-    // Create transaction
+    // Create transaction (entry_method: 'manual' — no processor verification)
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
       .insert({
@@ -124,6 +124,7 @@ const handler = createHandler(
         amount: amountDollars,
         currency: 'USD',
         status: 'completed',
+        entry_method: 'manual',
         metadata: {
           category: category,
           customer_id: customerId,

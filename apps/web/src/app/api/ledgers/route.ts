@@ -64,7 +64,7 @@ export const POST = createApiHandler(
     // Check plan limits
     const { data: org } = await supabase
       .from('organizations')
-      .select('max_ledgers, current_ledger_count, plan, status')
+      .select('max_ledgers, current_ledger_count, plan, status, settings')
       .eq('id', organization_id)
       .single()
 
@@ -76,7 +76,7 @@ export const POST = createApiHandler(
     }
 
     // Enforce billing status + plan limits for live ledger creation
-    const entitlement = canCreateLiveLedger(org)
+    const entitlement = canCreateLiveLedger(org as unknown as Parameters<typeof canCreateLiveLedger>[0])
     if (!entitlement.allowed) {
       return NextResponse.json(
         { error: entitlement.message, code: entitlement.code },

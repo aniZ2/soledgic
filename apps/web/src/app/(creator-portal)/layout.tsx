@@ -45,16 +45,27 @@ export default async function CreatorPortalLayout({
           </Link>
         </div>
 
-        <nav className="p-4 space-y-1">
-          {creatorPortalNavigation.map((item) => (
-            <Link
-              key={item.name}
-              href={item.href}
-              className="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <item.icon className="h-5 w-5" />
-              {item.name}
-            </Link>
+        <nav className="p-4 space-y-4">
+          {creatorPortalNavigation.map((section, idx) => (
+            <div key={section.label ?? `section-${idx}`}>
+              {section.label && (
+                <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  {section.label}
+                </p>
+              )}
+              <div className="space-y-1">
+                {section.items.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    {item.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 

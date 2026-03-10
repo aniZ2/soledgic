@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { X, Loader2, UserPlus, Shield, User, Eye } from 'lucide-react'
 
 interface InviteMemberDialogProps {
   isOpen: boolean
   onClose: () => void
-  onInvite: (email: string, role: string) => Promise<{ success: boolean; error?: string }>
+  onInvite: (email: string, role: string) => Promise<{ success: boolean; error?: string; code?: string }>
   currentUserRole: string
 }
 
@@ -48,10 +49,12 @@ export function InviteMemberDialog({
   const [role, setRole] = useState('member')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setErrorCode(null)
 
     if (!email) {
       setError('Email is required')
@@ -74,6 +77,7 @@ export function InviteMemberDialog({
         onClose()
       } else {
         setError(result.error || 'Failed to send invitation')
+        if (result.code) setErrorCode(result.code)
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'An unexpected error occurred'))
@@ -87,6 +91,7 @@ export function InviteMemberDialog({
       setEmail('')
       setRole('member')
       setError(null)
+      setErrorCode(null)
       onClose()
     }
   }
@@ -137,7 +142,15 @@ export function InviteMemberDialog({
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 text-red-600 text-sm rounded-md p-3">
-                {error}
+                <p>{error}</p>
+                {errorCode === 'billing_method_required' && (
+                  <Link
+                    href="/billing"
+                    className="mt-1 inline-block font-medium underline hover:no-underline"
+                  >
+                    Go to Billing to add a payment method
+                  </Link>
+                )}
               </div>
             )}
 

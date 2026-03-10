@@ -64,7 +64,7 @@ export default function TeamSettingsPage() {
     loadTeamData()
   }, [loadTeamData])
 
-  const handleInvite = async (email: string, role: string): Promise<{ success: boolean; error?: string }> => {
+  const handleInvite = async (email: string, role: string): Promise<{ success: boolean; error?: string; code?: string }> => {
     try {
       const res = await fetchWithCsrf('/api/team', {
         method: 'POST',
@@ -74,7 +74,7 @@ export default function TeamSettingsPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        return { success: false, error: data.error || 'Failed to send invitation' }
+        return { success: false, error: data.error || 'Failed to send invitation', code: data.code }
       }
 
       // Reload team data

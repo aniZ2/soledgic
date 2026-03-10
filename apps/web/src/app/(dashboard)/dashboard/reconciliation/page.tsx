@@ -10,6 +10,7 @@ import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provi
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { ConnectBank, ConnectionList } from '@/components/connect-bank'
+import { ProvenanceReport } from '@/components/reconciliation/provenance-report'
 
 interface Connection {
   id: string
@@ -131,6 +132,9 @@ export default function ReconciliationPage() {
           Import transactions and match them to your ledger to keep books clean.
         </p>
       </div>
+
+      {/* Provenance Integrity */}
+      <ProvenanceReport />
 
       {/* Connect Bank Account */}
       {ledgerId && (

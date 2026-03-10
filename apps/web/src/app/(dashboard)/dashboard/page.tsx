@@ -216,7 +216,7 @@ export default async function DashboardPage() {
                   href="/dashboard/transactions"
                   className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 text-sm"
                 >
-                  Record Your First Transaction
+                  Get Started
                 </Link>
               </div>
             ) : (
@@ -286,8 +286,8 @@ export default async function DashboardPage() {
                   <TrendingUp className="w-5 h-5 text-green-500" />
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Record Transaction</p>
-                  <p className="text-xs text-muted-foreground">Log income or expense</p>
+                  <p className="font-medium text-foreground">Transactions</p>
+                  <p className="text-xs text-muted-foreground">View or record transactions</p>
                 </div>
               </Link>
               <Link

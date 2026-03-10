@@ -177,7 +177,7 @@ export const POST = createApiHandler(
     // Get org for entitlement check
     const { data: org } = await supabase
       .from('organizations')
-      .select('id, name, plan, status, max_team_members, current_member_count')
+      .select('id, name, plan, status, max_team_members, current_member_count, settings')
       .eq('id', membership.organization_id)
       .single()
 
@@ -189,7 +189,7 @@ export const POST = createApiHandler(
     }
 
     // Entitlement check
-    const entitlement = canAddTeamMember(org)
+    const entitlement = canAddTeamMember(org as unknown as Parameters<typeof canAddTeamMember>[0])
     if (!entitlement.allowed) {
       return NextResponse.json(
         { error: entitlement.message, code: entitlement.code },

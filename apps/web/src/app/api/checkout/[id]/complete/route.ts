@@ -228,6 +228,28 @@ export async function POST(
   }
 
   // ========================================================================
+  // CHECK TRANSFER STATE: If the processor returned a terminal failure state,
+  // do NOT book the sale. Revert to collecting so the buyer can retry.
+  // Must match all failure states from payment-provider.ts mapStatus().
+  // ========================================================================
+  const transferState = (transfer.state || '').toUpperCase()
+  const TERMINAL_FAILURE_STATES = ['FAILED', 'CANCELED', 'CANCELLED', 'REJECTED', 'DECLINED', 'RETURNED']
+  if (TERMINAL_FAILURE_STATES.includes(transferState)) {
+    await supabase
+      .from('checkout_sessions')
+      .update({
+        status: 'collecting',
+        updated_at: new Date().toISOString(),
+        payment_id: transfer.id,
+      })
+      .eq('id', sessionId)
+    return NextResponse.json(
+      { error: 'Payment was declined. Please try a different payment method.' },
+      { status: 402 }
+    )
+  }
+
+  // ========================================================================
   // Record sale via record_sale_atomic.
   // If this fails, mark session as 'charged_pending_ledger' so it can be
   // retried by reconciliation instead of silently losing the journal entry.

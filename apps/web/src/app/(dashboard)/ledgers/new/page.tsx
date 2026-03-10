@@ -15,19 +15,21 @@ export default function NewLedgerPage() {
   const [platformFee, setPlatformFee] = useState('20')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+  const [errorCode, setErrorCode] = useState<string | null>(null)
+
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setErrorCode(null)
 
     try {
       // Get organization ID from API
       const orgRes = await fetch('/api/organizations')
       const orgData = await orgRes.json()
-      
+
       if (!orgData.organizations || orgData.organizations.length === 0) {
         router.push('/onboarding')
         return
@@ -47,6 +49,7 @@ export default function NewLedgerPage() {
       const result = await response.json()
 
       if (!response.ok) {
+        if (result.code) setErrorCode(result.code)
         throw new Error(result.error || 'Failed to create ledger')
       }
 
@@ -75,7 +78,15 @@ export default function NewLedgerPage() {
       <div className="mt-8 bg-card border border-border rounded-lg p-6">
         {error && (
           <div className="mb-6 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
-            {error}
+            <p>{error}</p>
+            {errorCode === 'billing_method_required' && (
+              <Link
+                href="/billing"
+                className="mt-2 inline-block font-medium underline hover:no-underline"
+              >
+                Go to Billing to add a payment method
+              </Link>
+            )}
           </div>
         )}
 

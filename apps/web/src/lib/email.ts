@@ -143,7 +143,7 @@ export async function sendWelcomeEmail({
     <ul style="margin:0 0 24px;padding-left:20px;font-size:14px;color:#6b7280;line-height:1.8;">
       <li>Complete onboarding to create your first ledger</li>
       <li>Generate API keys for your integration</li>
-      <li>Record your first transaction</li>
+      <li>Send your first transaction via the API</li>
     </ul>
     <a href="${APP_URL}/connect" style="${buttonStyle}">
       Get Started

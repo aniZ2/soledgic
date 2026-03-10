@@ -14,6 +14,7 @@ export interface EntitlementOrg {
   max_ledgers: number          // -1 = unlimited (Scale)
   current_ledger_count: number
   plan: string
+  settings?: { billing?: { payment_method_id?: string | null } } | null
 }
 
 // ── Results ──────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ export type EntitlementResult =
 export type EntitlementCode =
   | 'payment_past_due'
   | 'subscription_canceled'
+  | 'billing_method_required'
 
 /** Extended org shape for team member entitlement checks. */
 export interface TeamEntitlementOrg {
@@ -32,6 +34,16 @@ export interface TeamEntitlementOrg {
   plan: string
   max_team_members: number       // included members before overage
   current_member_count: number
+  settings?: { billing?: { payment_method_id?: string | null } } | null
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function hasBillingMethod(
+  settings: { billing?: { payment_method_id?: string | null } } | null | undefined
+): boolean {
+  const id = settings?.billing?.payment_method_id
+  return typeof id === 'string' && id.trim().length > 0
 }
 
 // ── Checks ───────────────────────────────────────────────────────────
@@ -65,6 +77,21 @@ export function canCreateLiveLedger(org: EntitlementOrg): EntitlementResult {
       httpStatus: 403,
       message:
         'Your billing account is inactive. Update billing on the Billing page to continue creating ledgers.',
+    }
+  }
+
+  // Require billing method before exceeding the included ledger limit
+  if (
+    org.max_ledgers !== -1 &&
+    org.current_ledger_count >= org.max_ledgers &&
+    !hasBillingMethod(org.settings)
+  ) {
+    return {
+      allowed: false,
+      code: 'billing_method_required',
+      httpStatus: 402,
+      message:
+        'Please add a billing method before creating additional ledgers. Extra ledgers are billed at $20/month each.',
     }
   }
 
@@ -105,6 +132,21 @@ export function canAddTeamMember(org: TeamEntitlementOrg): EntitlementResult {
       httpStatus: 403,
       message:
         'Your billing account is inactive. Update billing on the Billing page before inviting team members.',
+    }
+  }
+
+  // Require billing method before exceeding the included team member limit
+  if (
+    org.max_team_members !== -1 &&
+    org.current_member_count >= org.max_team_members &&
+    !hasBillingMethod(org.settings)
+  ) {
+    return {
+      allowed: false,
+      code: 'billing_method_required',
+      httpStatus: 402,
+      message:
+        'Please add a billing method before inviting additional team members. Extra members are billed at $20/month each.',
     }
   }
 

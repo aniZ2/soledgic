@@ -326,6 +326,7 @@ const handler = createHandler(
       amount: amountDollars,
       currency: 'USD',
       status: 'completed',
+      entry_method: 'manual',
       metadata: transactionMetadata
     }
 

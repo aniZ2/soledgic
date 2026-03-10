@@ -3,9 +3,9 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
-import { TransactionsClient } from './transactions-client'
+import { ExpensesClient } from './expenses-client'
 
-export default async function TransactionsPage() {
+export default async function ExpensesPage() {
   const supabase = await createClient()
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
@@ -22,7 +22,6 @@ export default async function TransactionsPage() {
 
   if (!membership) redirect('/onboarding')
 
-  // Get ledgers, prefer active group
   const { data: ledgers } = await supabase
     .from('ledgers')
     .select('id, business_name, ledger_group_id')
@@ -43,32 +42,27 @@ export default async function TransactionsPage() {
     )
   }
 
-  // Get transactions (exclude expenses — they have their own page)
-  const { data: transactions } = await supabase
+  const { data: expenses } = await supabase
     .from('transactions')
-    .select(`
-      id,
-      transaction_type,
-      reference_id,
-      amount,
-      description,
-      status,
-      created_at,
-      metadata,
-      entry_method
-    `)
+    .select('id, amount, description, created_at, metadata')
     .eq('ledger_id', ledger.id)
-    .neq('transaction_type', 'expense')
+    .eq('transaction_type', 'expense')
     .order('created_at', { ascending: false })
     .limit(100)
 
+  const totalExpenses = expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
+
   return (
-    <TransactionsClient
-      ledger={{
-        id: ledger.id,
-        business_name: ledger.business_name,
-      }}
-      transactions={transactions || []}
+    <ExpensesClient
+      ledger={{ id: ledger.id, business_name: ledger.business_name }}
+      expenses={(expenses || []).map((e) => ({
+        id: e.id,
+        amount: e.amount,
+        description: e.description,
+        created_at: e.created_at,
+        metadata: e.metadata as Record<string, unknown> | null,
+      }))}
+      totalExpenses={totalExpenses}
     />
   )
 }

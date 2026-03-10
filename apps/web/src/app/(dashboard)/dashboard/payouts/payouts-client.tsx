@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { Wallet, Clock, CheckCircle, XCircle, AlertCircle, Plus } from 'lucide-react'
+import { Wallet, Clock, CheckCircle, XCircle, AlertCircle, Plus, FileText } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
+import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Payout {
   id: string
@@ -40,6 +41,114 @@ interface PayoutsClientProps {
 
 export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [batchLoading, setBatchLoading] = useState<'execute' | 'nacha' | null>(null)
+  const [batchError, setBatchError] = useState<string | null>(null)
+
+  const pendingPayouts = useMemo(
+    () => payouts.filter((p) => p.status === 'pending'),
+    [payouts]
+  )
+
+  const pendingIds = useMemo(
+    () => new Set(pendingPayouts.map((p) => p.id)),
+    [pendingPayouts]
+  )
+
+  const selectedTotal = useMemo(
+    () =>
+      payouts
+        .filter((p) => selectedIds.has(p.id))
+        .reduce((sum, p) => sum + Number(p.amount), 0),
+    [payouts, selectedIds]
+  )
+
+  const allPendingSelected =
+    pendingPayouts.length > 0 &&
+    pendingPayouts.every((p) => selectedIds.has(p.id))
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    if (allPendingSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(pendingPayouts.map((p) => p.id)))
+    }
+  }, [allPendingSelected, pendingPayouts])
+
+  const handleBatchExecute = async () => {
+    if (selectedIds.size === 0) return
+    setBatchLoading('execute')
+    setBatchError(null)
+    try {
+      const res = await callLedgerFunction('execute-payout', {
+        ledgerId: ledger.id,
+        body: {
+          action: 'batch_execute',
+          payout_ids: Array.from(selectedIds),
+        },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || `Batch execute failed (${res.status})`)
+      }
+      window.location.reload()
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : 'Batch execute failed')
+    } finally {
+      setBatchLoading(null)
+    }
+  }
+
+  const handleGenerateNacha = async () => {
+    if (selectedIds.size === 0) return
+    setBatchLoading('nacha')
+    setBatchError(null)
+    try {
+      const res = await callLedgerFunction('execute-payout', {
+        ledgerId: ledger.id,
+        body: {
+          action: 'generate_batch_file',
+          payout_ids: Array.from(selectedIds),
+        },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || `NACHA generation failed (${res.status})`)
+      }
+      // If the response is a file download, trigger it
+      const contentType = res.headers.get('content-type') || ''
+      if (contentType.includes('application/octet-stream') || contentType.includes('text/plain')) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `nacha-batch-${new Date().toISOString().slice(0, 10)}.ach`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      } else {
+        // JSON response — reload to reflect any status changes
+        window.location.reload()
+      }
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : 'NACHA generation failed')
+    } finally {
+      setBatchLoading(null)
+    }
+  }
 
   const formatRailLabel = (rail: PayoutRail) => {
     const name = String(rail?.rail || '').toLowerCase()
@@ -78,7 +187,6 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
   }
 
   const handlePayoutSuccess = () => {
-    // Trigger a page refresh to show the new payout
     window.location.reload()
   }
 
@@ -162,6 +270,37 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
         </div>
       </div>
 
+      {/* Batch Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg px-6 py-4 mb-4 flex items-center justify-between">
+          <div className="text-sm text-foreground">
+            <span className="font-semibold">{selectedIds.size}</span> payout{selectedIds.size !== 1 ? 's' : ''} selected
+            <span className="mx-2 text-muted-foreground">|</span>
+            Total: <span className="font-semibold">{formatCurrency(selectedTotal)}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {batchError && (
+              <span className="text-sm text-red-600 mr-2">{batchError}</span>
+            )}
+            <button
+              onClick={handleGenerateNacha}
+              disabled={batchLoading !== null}
+              className="inline-flex items-center gap-2 bg-card border border-border text-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              <FileText className="w-4 h-4" />
+              {batchLoading === 'nacha' ? 'Generating...' : 'Generate NACHA File'}
+            </button>
+            <button
+              onClick={handleBatchExecute}
+              disabled={batchLoading !== null}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              {batchLoading === 'execute' ? 'Executing...' : 'Execute Selected'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Payouts List */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
@@ -187,6 +326,17 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
           <table className="w-full">
             <thead className="bg-muted/50">
               <tr>
+                <th className="px-4 py-3 text-left w-10">
+                  {pendingPayouts.length > 0 && (
+                    <input
+                      type="checkbox"
+                      checked={allPendingSelected}
+                      onChange={toggleSelectAll}
+                      className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                      title="Select all pending payouts"
+                    />
+                  )}
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                   Reference
                 </th>
@@ -208,33 +358,52 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {payouts.map((payout) => (
-                <tr key={payout.id} className="hover:bg-muted/30">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <code className="text-xs bg-muted px-2 py-1 rounded">
-                      {payout.reference_id}
-                    </code>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                    {payout.metadata?.creator_id || '—'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      {getStatusIcon(payout.status)}
-                      <span className="text-sm capitalize">{payout.status}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground capitalize">
-                    {payout.metadata?.rail_used || 'pending'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-medium text-foreground">
-                    {formatCurrency(payout.amount)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                    {formatDate(payout.created_at)}
-                  </td>
-                </tr>
-              ))}
+              {payouts.map((payout) => {
+                const isPending = pendingIds.has(payout.id)
+                const isSelected = selectedIds.has(payout.id)
+                return (
+                  <tr
+                    key={payout.id}
+                    className={`hover:bg-muted/30 ${isSelected ? 'bg-primary/5' : ''}`}
+                  >
+                    <td className="px-4 py-4 w-10">
+                      {isPending ? (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(payout.id)}
+                          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                      ) : (
+                        <span className="block w-4" />
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <code className="text-xs bg-muted px-2 py-1 rounded">
+                        {payout.reference_id}
+                      </code>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
+                      {payout.metadata?.creator_id || '\u2014'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(payout.status)}
+                        <span className="text-sm capitalize">{payout.status}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground capitalize">
+                      {payout.metadata?.rail_used || 'pending'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right font-medium text-foreground">
+                      {formatCurrency(payout.amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                      {formatDate(payout.created_at)}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

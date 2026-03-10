@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X, LogOut } from 'lucide-react'
-import { dashboardNavigation, type NavItem } from '@/lib/navigation'
+import { dashboardNavigation, type NavSection } from '@/lib/navigation'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 interface MobileNavProps {
@@ -12,7 +12,7 @@ interface MobileNavProps {
   userName: string
   userEmail: string
   livemode: boolean
-  navigation?: NavItem[]
+  navigation?: NavSection[]
   brandLabel?: string
   homePath?: string
 }
@@ -79,25 +79,36 @@ export function MobileNav({
           </button>
         </div>
 
-        <div className="p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-12rem)]">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname?.startsWith(item.href + '/')
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setIsOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                  isActive
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                }`}
-              >
-                <item.icon className="h-5 w-5" />
-                {item.name}
-              </Link>
-            )
-          })}
+        <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-12rem)]">
+          {navigation.map((section, idx) => (
+            <div key={section.label ?? `section-${idx}`}>
+              {section.label && (
+                <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  {section.label}
+                </p>
+              )}
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = pathname === item.href || pathname?.startsWith(item.href + '/')
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={() => setIsOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                        isActive
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                      }`}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.name}
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* User Info */}

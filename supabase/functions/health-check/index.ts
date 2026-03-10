@@ -28,15 +28,33 @@ const handler = createHandler(
     const expectedSecret = Deno.env.get('CRON_SECRET')
     const isCronJob = cronSecret && expectedSecret && timingSafeEqual(cronSecret, expectedSecret)
 
-    // Manually validate API key since requireAuth is false
+    // Validate caller: API key, internal proxy token, or cron secret
     const apiKey = req.headers.get('x-api-key')
     let ledger: LedgerContext | null = null
-    
+
     if (apiKey) {
       ledger = await validateApiKey(supabase, apiKey, context.requestId)
     }
 
-    // Must have either valid API key or cron secret
+    // Internal proxy token fallback (sent by Next.js api-handler)
+    if (!ledger && !isCronJob) {
+      const internalToken = req.headers.get('x-soledgic-internal-token') || ''
+      const expectedInternal = Deno.env.get('SOLEDGIC_INTERNAL_FUNCTION_TOKEN') || Deno.env.get('INTERNAL_FUNCTION_TOKEN') || ''
+      const ledgerId = req.headers.get('x-ledger-id')?.trim() || ''
+
+      if (internalToken && expectedInternal && timingSafeEqual(internalToken.trim(), expectedInternal.trim()) && ledgerId) {
+        const { data: internalLedger } = await supabase
+          .from('ledgers')
+          .select('id, business_name, ledger_mode, status, settings, organization_id')
+          .eq('id', ledgerId)
+          .single()
+        if (internalLedger) {
+          ledger = internalLedger as LedgerContext
+        }
+      }
+    }
+
+    // Must have either valid API key, internal token, or cron secret
     if (!ledger && !isCronJob) {
       return errorResponse('Unauthorized', 401, req, context.requestId)
     }
