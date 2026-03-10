@@ -5,7 +5,7 @@ import { Download, Loader2, FileText, Table } from 'lucide-react'
 import { useToast } from '@/components/notifications/toast-provider'
 
 interface ExportButtonProps {
-  reportType: 'profit-loss' | 'trial-balance' | 'transactions' | 'creators' | 'creator-statements'
+  reportType: 'profit-loss' | 'trial-balance' | 'transactions' | 'creators' | 'creator-statements' | 'provenance'
   ledgerId: string
   year?: number
   month?: number

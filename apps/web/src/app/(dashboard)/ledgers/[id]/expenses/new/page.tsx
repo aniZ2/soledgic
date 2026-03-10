@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState, useRef, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Upload } from 'lucide-react'
+import { ArrowLeft, Upload, X, FileText, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 const EXPENSE_CATEGORIES = [
   { code: 'advertising', name: 'Advertising', schedule_c_line: '8' },
@@ -56,8 +57,76 @@ export default function NewExpensePage({
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
+  // Receipt upload state
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const router = useRouter()
+
+  const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+  const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+
+  const handleFileSelect = async (file: File) => {
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setError('Invalid file type. Please upload a JPG, PNG, WebP, or PDF.')
+      return
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setError('File too large. Maximum size is 10MB.')
+      return
+    }
+
+    setReceiptFile(file)
+    setError(null)
+
+    // Show preview for images
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file)
+      setReceiptPreview(url)
+    } else {
+      setReceiptPreview(null)
+    }
+
+    // Upload to Supabase Storage
+    setUploading(true)
+    try {
+      const supabase = createClient()
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${ledgerId}/${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(path, file, { contentType: file.type, upsert: false })
+
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path)
+      setReceiptUrl(urlData.publicUrl)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to upload receipt'))
+      setReceiptFile(null)
+      setReceiptPreview(null)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files[0]
+    if (file) handleFileSelect(file)
+  }
+
+  const removeReceipt = () => {
+    setReceiptFile(null)
+    setReceiptPreview(null)
+    setReceiptUrl(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,6 +143,7 @@ export default function NewExpensePage({
           merchant_name: merchantName,
           business_purpose: description,
           expense_date: expenseDate,
+          receipt_url: receiptUrl || undefined,
         }),
       })
 
@@ -199,17 +269,80 @@ export default function NewExpensePage({
             />
           </div>
 
-          <div className="border border-dashed border-border rounded-lg p-6 text-center">
-            <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              Receipt upload coming soon
-            </p>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Receipt <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            {receiptFile ? (
+              <div className="border border-border rounded-lg p-4">
+                <div className="flex items-start gap-4">
+                  {receiptPreview ? (
+                    <img
+                      src={receiptPreview}
+                      alt="Receipt preview"
+                      className="w-20 h-20 object-cover rounded-md border border-border"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 bg-muted rounded-md flex items-center justify-center">
+                      <FileText className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{receiptFile.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {(receiptFile.size / 1024).toFixed(0)} KB
+                    </p>
+                    {uploading && (
+                      <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Uploading...
+                      </div>
+                    )}
+                    {receiptUrl && !uploading && (
+                      <p className="text-xs text-green-600 mt-2">Uploaded</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={removeReceipt}
+                    className="p-1 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+              >
+                <Upload className="h-8 w-8 text-muted-foreground mx-auto" />
+                <p className="mt-2 text-sm font-medium text-foreground">
+                  Drop a receipt here or click to browse
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  JPG, PNG, WebP, or PDF up to 10MB
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,.pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleFileSelect(file)
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex gap-4 pt-4">
             <button
               type="submit"
-              disabled={loading || !amount || !category || !merchantName || !description}
+              disabled={loading || uploading || !amount || !category || !merchantName || !description}
               className="flex-1 bg-primary text-primary-foreground py-3 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
             >
               {loading ? 'Recording...' : 'Record expense'}

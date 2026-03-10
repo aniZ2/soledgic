@@ -9,6 +9,7 @@ type ExpenseBody = {
   merchant_name?: string
   business_purpose?: string
   expense_date?: string
+  receipt_url?: string
 }
 
 type JsonRecord = Record<string, unknown>
@@ -42,7 +43,7 @@ export async function POST(
         )
       }
 
-      const { amount, category_code, merchant_name, business_purpose, expense_date } = body
+      const { amount, category_code, merchant_name, business_purpose, expense_date, receipt_url } = body
       if (!Number.isFinite(amount) || amount <= 0) {
         return NextResponse.json(
           { error: 'amount must be a positive number (cents)', request_id: requestId },
@@ -94,10 +95,11 @@ export async function POST(
           method: 'POST',
           body: {
             amount,
-            category_code,
-            merchant_name,
-            business_purpose,
+            description: business_purpose,
+            category: category_code,
+            vendor_name: merchant_name,
             expense_date,
+            receipt_url,
             reference_id: `exp_${Date.now()}`,
           },
         })

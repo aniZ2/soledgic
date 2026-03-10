@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Copy, CheckCircle, Eye, EyeOff } from 'lucide-react'
+import { Check, Copy, CheckCircle, Eye, EyeOff, Receipt, ArrowRight, Landmark } from 'lucide-react'
 import { createOrganizationWithLedger } from './actions'
 
 type LedgerMode = 'standard' | 'marketplace'
@@ -103,7 +103,7 @@ export default function OnboardingForm() {
       <div className="w-full max-w-2xl">
         {/* Progress */}
         <div className="flex items-center justify-center mb-8">
-          {[1, 2, 3, 4].map((s) => (
+          {[1, 2, 3, 4, 5].map((s) => (
             <div key={s} className="flex items-center">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -114,9 +114,9 @@ export default function OnboardingForm() {
               >
                 {s}
               </div>
-              {s < 4 && (
+              {s < 5 && (
                 <div
-                  className={`w-16 h-0.5 ${
+                  className={`w-12 h-0.5 ${
                     step > s ? 'bg-primary' : 'bg-muted'
                   }`}
                 />
@@ -413,10 +413,73 @@ export default function OnboardingForm() {
               </div>
 
               <button
-                onClick={() => router.replace('/connect')}
+                onClick={() => setStep(5)}
                 className="w-full bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors"
               >
-                Continue to setup
+                Continue
+              </button>
+            </>
+          )}
+
+          {/* Step 5: Expense Tracking (Optional) */}
+          {step === 5 && (
+            <>
+              <h1 className="text-2xl font-bold text-foreground mb-2">
+                Integrate expenses
+              </h1>
+              <p className="text-muted-foreground mb-8">
+                Soledgic can track business expenses alongside your revenue. This step is optional — you can always set it up later.
+              </p>
+
+              <div className="space-y-4 mb-8">
+                <button
+                  type="button"
+                  onClick={() => router.replace('/dashboard/reconciliation')}
+                  className="w-full p-5 rounded-lg border-2 border-border hover:border-primary/50 text-left transition-colors group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center group-hover:bg-primary/20 transition-colors shrink-0">
+                      <Landmark className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-foreground group-hover:text-primary transition-colors">
+                        Connect a bank account
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        Automatically sync expenses from your business bank account. Transactions are matched and categorized for you.
+                      </div>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary mt-2 shrink-0 transition-colors" />
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => router.replace('/dashboard/expenses')}
+                  className="w-full p-5 rounded-lg border-2 border-border hover:border-primary/50 text-left transition-colors group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center group-hover:bg-primary/10 transition-colors shrink-0">
+                      <Receipt className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-foreground group-hover:text-primary transition-colors">
+                        Add expenses manually
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        Record expenses by hand or send them via the API from your integration.
+                      </div>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-muted-foreground group-hover:text-primary mt-2 shrink-0 transition-colors" />
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => router.replace('/connect')}
+                className="w-full border border-border rounded-md py-2.5 px-4 font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                Skip for now
               </button>
             </>
           )}

@@ -13,7 +13,7 @@ import {
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-type ReportType = 'profit_loss' | 'trial_balance' | 'general_ledger' | '1099_summary' | 'creator_earnings' | 'transaction_history'
+type ReportType = 'profit_loss' | 'trial_balance' | 'general_ledger' | '1099_summary' | 'creator_earnings' | 'transaction_history' | 'provenance'
 
 interface ReportRequest {
   report_type: ReportType
@@ -288,6 +288,88 @@ const handler = createHandler(
             count: annotated.length,
             active_count: annotated.filter(t => t.is_active).length
           }
+        }, 200, req)
+      }
+
+      case 'provenance': {
+        // Counts by entry_method
+        const countsByMethod: Record<string, number> = {}
+        for (const method of ['processor', 'manual', 'system', 'import']) {
+          const { count: methodCount } = await supabase
+            .from('transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('ledger_id', ledger.id)
+            .eq('entry_method', method)
+          countsByMethod[method] = methodCount || 0
+        }
+        const { count: untaggedCount } = await supabase
+          .from('transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('ledger_id', ledger.id)
+          .is('entry_method', null)
+        countsByMethod['untagged'] = untaggedCount || 0
+
+        // Manual revenue entries (sales/income without processor verification)
+        const { data: manualRev } = await supabase
+          .from('transactions')
+          .select('id, transaction_type, reference_id, amount, description, status, created_at, metadata, entry_method')
+          .eq('ledger_id', ledger.id)
+          .eq('entry_method', 'manual')
+          .in('transaction_type', ['sale', 'income'])
+          .gte('created_at', startDate)
+          .lte('created_at', endDate + 'T23:59:59')
+          .order('created_at', { ascending: false })
+          .limit(200)
+
+        // System-repaired entries
+        const { data: sysRepaired } = await supabase
+          .from('transactions')
+          .select('id, transaction_type, reference_id, amount, description, status, created_at, metadata, entry_method')
+          .eq('ledger_id', ledger.id)
+          .eq('entry_method', 'system')
+          .gte('created_at', startDate)
+          .lte('created_at', endDate + 'T23:59:59')
+          .order('created_at', { ascending: false })
+          .limit(200)
+
+        // Revenue totals for ratio
+        const { data: manualRevSum } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('ledger_id', ledger.id)
+          .eq('entry_method', 'manual')
+          .in('transaction_type', ['sale', 'income'])
+          .eq('status', 'completed')
+
+        const { data: processorRevSum } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('ledger_id', ledger.id)
+          .eq('entry_method', 'processor')
+          .in('transaction_type', ['sale', 'income'])
+          .eq('status', 'completed')
+
+        const manualRevTotal = (manualRevSum || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0)
+        const processorRevTotal = (processorRevSum || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0)
+        const combinedRevenue = manualRevTotal + processorRevTotal
+        const manualRatio = combinedRevenue > 0 ? manualRevTotal / combinedRevenue : 0
+
+        return jsonResponse({
+          success: true,
+          report: {
+            type: 'provenance',
+            business: ledger.business_name,
+            period: { start: startDate, end: endDate },
+            counts: countsByMethod,
+            health: manualRatio < 0.05 ? 'green' : manualRatio < 0.20 ? 'yellow' : 'red',
+            manual_revenue_ratio: Math.round(manualRatio * 10000) / 100,
+            totals: {
+              manual_revenue: Math.round(manualRevTotal * 100) / 100,
+              processor_revenue: Math.round(processorRevTotal * 100) / 100,
+            },
+            manual_revenue: manualRev || [],
+            system_repaired: sysRepaired || [],
+          },
         }, 200, req)
       }
 

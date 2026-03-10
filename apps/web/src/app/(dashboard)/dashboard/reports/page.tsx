@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, Calendar, TrendingUp, Scale } from 'lucide-react'
+import { FileText, Calendar, TrendingUp, Scale, ShieldCheck } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 
@@ -71,6 +71,13 @@ export default async function ReportsPage() {
       description: 'Tax reporting summary for creator payments',
       icon: Calendar,
       href: `/dashboard/reports/1099`,
+    },
+    {
+      id: 'provenance',
+      name: 'Provenance',
+      description: 'Transaction origin audit — manual vs processor-verified entries',
+      icon: ShieldCheck,
+      href: `/dashboard/reports/provenance`,
     },
   ]
 
