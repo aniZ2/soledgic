@@ -428,6 +428,42 @@ export class SoledgicTestClient {
   }
 
   // ============================================================================
+  // EXPENSES
+  // ============================================================================
+
+  async recordExpense(params: {
+    referenceId: string
+    amount: number
+    description: string
+    category?: string
+    vendorName?: string
+    receiptUrl?: string
+    metadata?: Record<string, any>
+  }) {
+    return this.request('record-expense', {
+      reference_id: params.referenceId,
+      amount: params.amount,
+      description: params.description,
+      category: params.category,
+      vendor_name: params.vendorName,
+      receipt_url: params.receiptUrl,
+      metadata: params.metadata,
+    })
+  }
+
+  // ============================================================================
+  // PROVENANCE REPORT
+  // ============================================================================
+
+  async getProvenanceReport(startDate?: string, endDate?: string) {
+    return this.request('generate-report', {
+      report_type: 'provenance',
+      start_date: startDate,
+      end_date: endDate,
+    })
+  }
+
+  // ============================================================================
   // TEST UTILITIES
   // ============================================================================
 
