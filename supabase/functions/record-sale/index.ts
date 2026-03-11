@@ -134,6 +134,14 @@ const handler = createHandler(
         }, 409, req, requestId)
       }
 
+      // Handle uninitialized ledger (missing platform_revenue or cash accounts)
+      if (txError.message?.includes('Platform accounts not initialized')) {
+        return errorResponse(
+          'Ledger not fully initialized: platform revenue and cash accounts are required before recording sales',
+          400, req, requestId
+        )
+      }
+
       console.error('Atomic transaction failed:', txError)
       return errorResponse('Failed to record sale', 500, req, requestId)
     }
