@@ -46,7 +46,11 @@ async function proxyToSupabase(req: NextRequest, { params }: { params: Promise<{
 
   const responseHeaders = new Headers(upstream.headers)
   responseHeaders.delete('transfer-encoding')
-  // Ensure content-length matches the actual body we're forwarding
+  // fetch() auto-decompresses gzip/br, but the original content-encoding
+  // header is still present. Remove it so the client doesn't try to
+  // decompress the already-decompressed body (which produces 0 bytes).
+  responseHeaders.delete('content-encoding')
+  // Set content-length to the actual decompressed body size
   responseHeaders.set('content-length', String(responseBody.byteLength))
 
   return new NextResponse(responseBody, {
