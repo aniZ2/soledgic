@@ -33,6 +33,20 @@ export class SoledgicTestClient {
       body: bodyStr,
     })
 
+    // Guard against non-JSON upstream responses (proxy 502/503, cold start HTML errors)
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.request(endpoint, body, deadline)
+      }
+      const error: any = new Error(`Non-JSON response from ${endpoint} (${res.status}, content-type: ${contentType})`)
+      error.status = res.status
+      error.code = 'NON_JSON_RESPONSE'
+      throw error
+    }
+
     const data = await res.json()
 
     // Retry on rate limit (429) only if we have budget remaining
@@ -52,6 +66,15 @@ export class SoledgicTestClient {
       throw error
     }
 
+    // Retry on transient server errors (502, 503, 504) if budget remains
+    if (res.status >= 502 && res.status <= 504) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.request(endpoint, body, deadline)
+      }
+    }
+
     if (!res.ok && !data.success) {
       const error: any = new Error(data.error || `HTTP ${res.status}`)
       error.status = res.status
@@ -63,7 +86,9 @@ export class SoledgicTestClient {
     return data
   }
 
-  async requestGet(endpoint: string): Promise<any> {
+  async requestGet(endpoint: string, _deadline?: number): Promise<any> {
+    const deadline = _deadline ?? Date.now() + 60_000
+
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'GET',
       headers: {
@@ -72,8 +97,31 @@ export class SoledgicTestClient {
       },
     })
 
+    // Guard against non-JSON upstream responses
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.requestGet(endpoint, deadline)
+      }
+      const error: any = new Error(`Non-JSON response from GET ${endpoint} (${res.status})`)
+      error.status = res.status
+      error.code = 'NON_JSON_RESPONSE'
+      throw error
+    }
+
     const data = await res.json()
-    
+
+    // Retry on transient server errors
+    if (res.status >= 502 && res.status <= 504) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.requestGet(endpoint, deadline)
+      }
+    }
+
     if (!res.ok && !data.success) {
       const error: any = new Error(data.error || `HTTP ${res.status}`)
       error.status = res.status
@@ -489,7 +537,9 @@ export class SoledgicServiceClient {
     this.baseUrl = resolved
   }
 
-  async request(endpoint: string, body: any): Promise<any> {
+  async request(endpoint: string, body: any, _deadline?: number): Promise<any> {
+    const deadline = _deadline ?? Date.now() + 60_000
+
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'POST',
       headers: {
@@ -499,7 +549,30 @@ export class SoledgicServiceClient {
       body: JSON.stringify(body),
     })
 
+    // Guard against non-JSON upstream responses
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.request(endpoint, body, deadline)
+      }
+      const error: any = new Error(`Non-JSON response from ${endpoint} (${res.status})`)
+      error.status = res.status
+      error.code = 'NON_JSON_RESPONSE'
+      throw error
+    }
+
     const data = await res.json()
+
+    // Retry on transient server errors
+    if (res.status >= 502 && res.status <= 504) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.request(endpoint, body, deadline)
+      }
+    }
 
     if (!res.ok && !data.success) {
       const error: any = new Error(data.error || `HTTP ${res.status}`)

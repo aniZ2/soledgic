@@ -68,6 +68,12 @@ function CheckoutCompleteInner() {
             </div>
             <h1 className="text-xl font-semibold text-foreground">Payment Failed</h1>
             <p className="mt-2 text-sm text-muted-foreground">Missing required callback parameters.</p>
+            <a
+              href={`/pay/${sessionId}`}
+              className="mt-4 inline-block px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Try Again
+            </a>
           </div>
         </div>
       </div>
@@ -104,6 +110,12 @@ function CheckoutCompleteInner() {
             </div>
             <h1 className="text-xl font-semibold text-foreground">Payment Failed</h1>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+            <a
+              href={`/pay/${sessionId}`}
+              className="mt-4 inline-block px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              Try Again
+            </a>
           </div>
         </div>
       </div>

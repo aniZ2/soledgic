@@ -350,8 +350,7 @@ const report = await soledgic.exportReport({
 soledgic/
 ├── supabase/
 │   ├── migrations/
-│   │   ├── 20251218_initial_schema.sql      # Core tables
-│   │   └── 20251219_reporting_reconciliation.sql  # Reporting tables
+│   │   └── 00000000000000_v1_baseline.sql   # Full schema baseline
 │   └── functions/
 │       ├── record-sale/          # Record sales with split
 │       ├── get-balance/          # Query balances

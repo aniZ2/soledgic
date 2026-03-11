@@ -489,8 +489,8 @@ async function executeSinglePayout(
   ledger: LedgerContext,
   payoutRails: RailConfig[],
   payoutId: string,
-  rail?: PayoutRail,
   req: Request,
+  rail?: PayoutRail,
   requestId?: string
 ): Promise<PayoutResult> {
   // Get payout details
@@ -638,8 +638,8 @@ const handler = createHandler(
           ledger,
           payoutRails,
           body.payout_id,
-          body.rail,
           req,
+          body.rail,
           requestId
         )
 
@@ -668,8 +668,8 @@ const handler = createHandler(
             ledger,
             payoutRails,
             payoutId,
-            body.rail,
             req,
+            body.rail,
             requestId
           )
           results.push(result)

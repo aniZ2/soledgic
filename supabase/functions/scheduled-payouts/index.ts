@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
 
   if (req.method !== 'POST') {
     return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
+      JSON.stringify({ success: false, error: 'Method not allowed' }),
       {
         status: 405,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -74,7 +74,7 @@ Deno.serve(async (req: Request) => {
 
     if (!isAuthorizedCronRequest(req, supabaseKey, Deno.env.get('CRON_SECRET'))) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
         {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -276,7 +276,7 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error('Scheduled payouts error:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ success: false, error: error.message }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

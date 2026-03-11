@@ -31,14 +31,14 @@ Deno.serve(async (req: Request) => {
 
   const serviceRoleKey = (Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim()
   if (!serviceRoleKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
+    return new Response(JSON.stringify({ success: false, error: 'Server misconfigured' }), {
       status: 500,
       headers: { ...getCorsHeaders(req), 'content-type': 'application/json' },
     })
   }
 
   if (!isAuthorized(req.headers.get('authorization'), serviceRoleKey)) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
       status: 401,
       headers: { ...getCorsHeaders(req), 'content-type': 'application/json' },
     })
@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
 
   if (fetchError) {
     console.error(`[${requestId}] Failed to fetch pending sessions:`, fetchError)
-    return new Response(JSON.stringify({ error: 'Failed to fetch pending sessions' }), {
+    return new Response(JSON.stringify({ success: false, error: 'Failed to fetch pending sessions' }), {
       status: 500,
       headers: { ...getCorsHeaders(req), 'content-type': 'application/json' },
     })
