@@ -64,6 +64,22 @@ export interface ProcessPayoutRequest {
   metadata?: Record<string, unknown>
 }
 
+export interface ExecutePayoutRequest {
+  /** Payout transaction ID returned by processPayout() */
+  payoutId: string
+  /** Payment rail to use */
+  rail?: 'card' | 'wise' | 'manual' | 'crypto'
+  /** Rail-specific configuration */
+  railConfig?: Record<string, unknown>
+}
+
+export interface BatchExecutePayoutRequest {
+  /** Array of payout transaction IDs */
+  payoutIds: string[]
+  /** Payment rail to use */
+  rail?: 'card' | 'wise' | 'manual' | 'crypto'
+}
+
 export interface RecordRefundRequest {
   /** Reference ID of the original sale */
   originalSaleReference: string
@@ -118,7 +134,214 @@ export interface GetTransactionsRequest {
   includeEntries?: boolean
 }
 
-// ---- Response Types ----
+// ---- Creator Types ----
+
+export interface CreateCreatorRequest {
+  /** Unique creator identifier */
+  creatorId: string
+  /** Display name */
+  displayName?: string
+  /** Email address */
+  email?: string
+  /** Default revenue split percentage (0-100) */
+  defaultSplitPercent?: number
+  /** Tax information */
+  taxInfo?: {
+    taxIdType?: 'ssn' | 'ein' | 'itin'
+    taxIdLast4?: string
+    legalName?: string
+    businessType?: 'individual' | 'sole_proprietor' | 'llc' | 'corporation' | 'partnership'
+    address?: {
+      line1?: string
+      line2?: string
+      city?: string
+      state?: string
+      postalCode?: string
+      country?: string
+    }
+  }
+  /** Payout preferences */
+  payoutPreferences?: {
+    schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
+    minimumAmount?: number
+    method?: 'card' | 'manual'
+  }
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+// ---- Report Types ----
+
+export interface ExportReportRequest {
+  /** Report type */
+  reportType: 'transaction_detail' | 'creator_earnings' | 'platform_revenue' | 'payout_summary' | 'reconciliation' | 'audit_log'
+  /** Export format */
+  format: 'csv' | 'json'
+  /** Start date (YYYY-MM-DD) */
+  startDate?: string
+  /** End date (YYYY-MM-DD) */
+  endDate?: string
+  /** Filter by creator */
+  creatorId?: string
+}
+
+export interface GenerateReportRequest {
+  /** Report type */
+  reportType: 'profit_loss' | 'trial_balance' | 'general_ledger' | '1099_summary'
+  /** Start date (YYYY-MM-DD) */
+  startDate?: string
+  /** End date (YYYY-MM-DD) */
+  endDate?: string
+  /** Filter by creator */
+  creatorId?: string
+  /** Output format */
+  format?: 'json' | 'csv'
+}
+
+export interface GeneratePdfRequest {
+  /** Report type */
+  reportType: 'creator_statement' | 'profit_loss' | 'balance_sheet' | '1099' | 'reconciliation'
+  /** Period ID for frozen statements */
+  periodId?: string
+  /** Creator ID */
+  creatorId?: string
+  /** Start date (YYYY-MM-DD) */
+  startDate?: string
+  /** End date (YYYY-MM-DD) */
+  endDate?: string
+  /** Tax year */
+  taxYear?: number
+}
+
+// ---- Tax Types ----
+
+export interface GenerateTaxSummaryRequest {
+  /** Tax year */
+  taxYear: number
+  /** Filter by creator */
+  creatorId?: string
+}
+
+// ---- Webhook Types ----
+
+export interface CreateWebhookEndpointRequest {
+  /** Webhook URL */
+  url: string
+  /** Events to subscribe to */
+  events: string[]
+  /** Optional description */
+  description?: string
+}
+
+// ---- Split Configuration Types ----
+
+export interface ManageSplitsRequest {
+  /** Action to perform */
+  action: 'get' | 'set_default' | 'set_creator' | 'set_product' | 'set_tiers' | 'list_creators'
+  /** Creator ID (for set_creator) */
+  creatorId?: string
+  /** Creator's revenue split percentage (0-100) */
+  creatorPercent?: number
+  /** Product ID (for set_product) */
+  productId?: string
+  /** Tiered pricing rules (for set_tiers) */
+  tiers?: Array<{
+    minAmount: number
+    maxAmount?: number
+    creatorPercent: number
+  }>
+}
+
+// ---- Risk Types ----
+
+export interface RiskEvaluationRequest {
+  /** Idempotency key for caching */
+  idempotencyKey: string
+  /** Amount in cents */
+  amount: number
+  /** Currency code */
+  currency?: string
+  /** Counterparty name */
+  counterpartyName?: string
+  /** Authorizing instrument UUID */
+  authorizingInstrumentId?: string
+  /** Expected date (YYYY-MM-DD) */
+  expectedDate?: string
+  /** Expense category */
+  category?: string
+}
+
+// ---- Receipt Types ----
+
+export interface UploadReceiptRequest {
+  /** File URL (must be Supabase storage) */
+  fileUrl: string
+  /** File name */
+  fileName?: string
+  /** File size in bytes (max 50MB) */
+  fileSize?: number
+  /** MIME type */
+  mimeType?: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | 'application/pdf'
+  /** Merchant name */
+  merchantName?: string
+  /** Transaction date (YYYY-MM-DD) */
+  transactionDate?: string
+  /** Total amount in cents */
+  totalAmount?: number
+  /** Link to existing transaction */
+  transactionId?: string
+}
+
+// ---- Invoice Types ----
+
+export interface CreateInvoiceRequest {
+  /** Customer ID */
+  customerId?: string
+  /** Customer name */
+  customerName?: string
+  /** Customer email */
+  customerEmail?: string
+  /** Invoice amount in cents */
+  amount: number
+  /** Line items */
+  lineItems?: Array<{
+    description: string
+    quantity: number
+    unitPrice: number
+    amount: number
+  }>
+  /** Due date (YYYY-MM-DD) */
+  dueDate?: string
+  /** Invoice notes */
+  notes?: string
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+// ---- Payment Receipt Types ----
+
+export interface ReceivePaymentRequest {
+  /** Amount in cents */
+  amount: number
+  /** Invoice transaction to apply payment to */
+  invoiceTransactionId?: string
+  /** Customer name */
+  customerName?: string
+  /** Customer ID */
+  customerId?: string
+  /** External reference ID */
+  referenceId?: string
+  /** Payment method used */
+  paymentMethod?: string
+  /** Payment date (YYYY-MM-DD) */
+  paymentDate?: string
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+// ============================================================================
+// Response Types
+// ============================================================================
 
 export interface SaleBreakdown {
   /** Gross sale amount in major currency units (e.g. dollars). */
@@ -204,6 +427,41 @@ export interface ProcessPayoutResponse {
   error?: string
 }
 
+export interface ExecutePayoutResponse {
+  success: boolean
+  payoutId?: string
+  status?: string
+  executionDetails?: Record<string, unknown>
+  error?: string
+}
+
+export interface BatchExecutePayoutResponse {
+  success: boolean
+  results?: Array<{
+    payoutId: string
+    status: string
+    error?: string
+  }>
+  error?: string
+}
+
+export interface PayoutStatusResponse {
+  success: boolean
+  payoutId?: string
+  status?: string
+  executionDetails?: Record<string, unknown>
+  error?: string
+}
+
+export interface CheckPayoutEligibilityResponse {
+  success: boolean
+  eligible?: boolean
+  holds?: Array<{ reason: string; amount?: number }>
+  minimumBalance?: number
+  reason?: string
+  error?: string
+}
+
 export interface RefundBreakdown {
   fromCreator: number
   fromPlatform: number
@@ -265,42 +523,6 @@ export interface GetTransactionsResponse {
   error?: string
 }
 
-// ---- Creator & Ledger Types ----
-
-export interface CreateCreatorRequest {
-  /** Unique creator identifier */
-  creatorId: string
-  /** Display name */
-  displayName?: string
-  /** Email address */
-  email?: string
-  /** Default revenue split percentage (0-100) */
-  defaultSplitPercent?: number
-  /** Tax information */
-  taxInfo?: {
-    taxIdType?: 'ssn' | 'ein' | 'itin'
-    taxIdLast4?: string
-    legalName?: string
-    businessType?: 'individual' | 'sole_proprietor' | 'llc' | 'corporation' | 'partnership'
-    address?: {
-      line1?: string
-      line2?: string
-      city?: string
-      state?: string
-      postalCode?: string
-      country?: string
-    }
-  }
-  /** Payout preferences */
-  payoutPreferences?: {
-    schedule?: 'manual' | 'weekly' | 'biweekly' | 'monthly'
-    minimumAmount?: number
-    method?: 'card' | 'manual'
-  }
-  /** Additional metadata */
-  metadata?: Record<string, unknown>
-}
-
 export interface CreateCreatorResponse {
   success: boolean
   creator: {
@@ -314,111 +536,158 @@ export interface CreateCreatorResponse {
   }
 }
 
-export interface CreateLedgerRequest {
-  /** Business name */
-  businessName: string
-  /** Owner email */
-  ownerEmail: string
-  /** Ledger mode */
-  ledgerMode?: 'standard' | 'platform'
-  /** Ledger settings */
-  settings?: {
-    defaultTaxRate?: number
-    defaultSplitPercent?: number
-    platformFeePercent?: number
-    minPayoutAmount?: number
-    payoutSchedule?: 'manual' | 'weekly' | 'monthly'
-    taxWithholdingPercent?: number
-    currency?: string
-    fiscalYearStart?: string
-    receiptThreshold?: number
-  }
+export interface DeleteCreatorResponse {
+  success: boolean
+  message?: string
+  error?: string
 }
 
-export interface CreateLedgerResponse {
+export interface ExportReportJsonResponse {
   success: boolean
-  ledger: {
+  reportType: string
+  generatedAt: string
+  rowCount: number
+  data: any[]
+}
+
+export interface ExportReportCsvResponse {
+  csv: string
+  filename: string
+}
+
+export interface GenerateReportResponse {
+  success: boolean
+  reportData?: Record<string, unknown>
+  error?: string
+}
+
+export interface GeneratePdfResponse {
+  success: boolean
+  pdfUrl?: string
+  reportId?: string
+  error?: string
+}
+
+export interface BalanceSheetResponse {
+  success: boolean
+  asOfDate?: string
+  assets?: {
+    currentAssets: Record<string, number>
+    fixedAssets?: Record<string, number>
+    totalAssets: number
+  }
+  liabilities?: {
+    currentLiabilities: Record<string, number>
+    totalLiabilities: number
+  }
+  equity?: {
+    retainedEarnings: number
+    totalEquity: number
+  }
+  error?: string
+}
+
+export interface ProfitLossResponse {
+  success: boolean
+  period?: { startDate: string; endDate: string }
+  revenue?: Record<string, number>
+  expenses?: Record<string, number>
+  totalRevenue?: number
+  totalExpenses?: number
+  netIncome?: number
+  monthlyData?: Array<{
+    month: string
+    revenue: number
+    expenses: number
+    netIncome: number
+  }>
+  error?: string
+}
+
+export interface TrialBalanceResponse {
+  success: boolean
+  accounts?: Array<{
+    accountType: string
+    name: string
+    debitBalance: number
+    creditBalance: number
+  }>
+  totals?: {
+    debits: number
+    credits: number
+    difference: number
+    isBalanced: boolean
+  }
+  error?: string
+}
+
+export interface AgingBucket {
+  range: string
+  amount: number
+  count: number
+}
+
+export interface ApAgingResponse {
+  success: boolean
+  agingBuckets?: AgingBucket[]
+  totalOutstanding?: number
+  error?: string
+}
+
+export interface ArAgingResponse {
+  success: boolean
+  agingBuckets?: AgingBucket[]
+  totalOutstanding?: number
+  error?: string
+}
+
+export interface GetRunwayResponse {
+  success: boolean
+  runwayMonths?: number
+  cashPosition?: number
+  burnRate?: number
+  healthScore?: number
+  error?: string
+}
+
+export interface GenerateTaxSummaryResponse {
+  success: boolean
+  creatorTaxSummaries?: Array<{
+    creatorId: string
+    grossEarnings: number
+    netEarnings: number
+    totalPayouts: number
+    totalRefunds: number
+  }>
+  totalGrossEarnings?: number
+  error?: string
+}
+
+export interface WebhookEndpointResponse {
+  success: boolean
+  endpointId?: string
+  secret?: string
+  error?: string
+}
+
+export interface ListWebhookEndpointsResponse {
+  success: boolean
+  endpoints?: Array<{
     id: string
-    businessName: string
-    ledgerMode: string
-    apiKey: string
+    url: string
+    events: string[]
     status: string
     createdAt: string
-  }
-  warning: string
-}
-
-// ---- Accounting Types ----
-
-export interface RecordAdjustmentRequest {
-  /** Type of adjustment */
-  adjustmentType: 'correction' | 'reclassification' | 'accrual' | 'deferral' | 'depreciation' | 'write_off' | 'year_end' | 'opening_balance' | 'other'
-  /** Journal entries (min 2, must balance) */
-  entries: Array<{
-    accountType: string
-    entityId?: string
-    entryType: 'debit' | 'credit'
-    amount: number
   }>
-  /** Reason for adjustment (required for audit) */
-  reason: string
-  /** Adjustment date (YYYY-MM-DD) */
-  adjustmentDate?: string
-  /** Original transaction being corrected */
-  originalTransactionId?: string
-  /** Supporting documentation */
-  supportingDocumentation?: string
-  /** Person who prepared the adjustment */
-  preparedBy: string
+  error?: string
 }
 
-export interface RecordOpeningBalanceRequest {
-  /** As-of date (YYYY-MM-DD) */
-  asOfDate: string
-  /** Source of the opening balance */
-  source: 'manual' | 'imported' | 'migrated' | 'year_start'
-  /** Description of source */
-  sourceDescription?: string
-  /** Account balances to set */
-  balances: Array<{
-    accountType: string
-    entityId?: string
-    balance: number
-  }>
-}
-
-export interface RecordTransferRequest {
-  /** Source account type */
-  fromAccountType: string
-  /** Destination account type */
-  toAccountType: string
-  /** Amount in cents */
-  amount: number
-  /** Transfer type */
-  transferType: 'tax_reserve' | 'payout_reserve' | 'owner_draw' | 'owner_contribution' | 'operating' | 'savings' | 'investment' | 'other'
-  /** Transfer description */
-  description?: string
-  /** External reference ID */
-  referenceId?: string
-}
-
-// ---- Risk & Tax Types ----
-
-export interface RiskEvaluationRequest {
-  /** Idempotency key for caching */
-  idempotencyKey: string
-  /** Amount in cents */
-  amount: number
-  /** Currency code */
-  currency?: string
-  /** Counterparty name */
-  counterpartyName?: string
-  /** Authorizing instrument UUID */
-  authorizingInstrumentId?: string
-  /** Expected date (YYYY-MM-DD) */
-  expectedDate?: string
-  /** Expense category */
-  category?: string
+export interface ManageSplitsResponse {
+  success: boolean
+  effectiveSplit?: { creatorPercent: number; platformPercent: number }
+  tiers?: Array<{ minAmount: number; maxAmount?: number; creatorPercent: number }>
+  creators?: Array<{ creatorId: string; creatorPercent: number }>
+  error?: string
 }
 
 export interface RiskEvaluationResponse {
@@ -439,106 +708,33 @@ export interface RiskEvaluationResponse {
   }
 }
 
-export interface ExportReportRequest {
-  /** Report type */
-  reportType: 'transaction_detail' | 'creator_earnings' | 'platform_revenue' | 'payout_summary' | 'reconciliation' | 'audit_log'
-  /** Export format */
-  format: 'csv' | 'json'
-  /** Start date (YYYY-MM-DD) */
-  startDate?: string
-  /** End date (YYYY-MM-DD) */
-  endDate?: string
-  /** Filter by creator */
-  creatorId?: string
-}
-
-export interface UploadReceiptRequest {
-  /** File URL (must be Supabase storage) */
-  fileUrl: string
-  /** File name */
-  fileName?: string
-  /** File size in bytes (max 50MB) */
-  fileSize?: number
-  /** MIME type */
-  mimeType?: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | 'application/pdf'
-  /** Merchant name */
-  merchantName?: string
-  /** Transaction date (YYYY-MM-DD) */
-  transactionDate?: string
-  /** Total amount in cents */
-  totalAmount?: number
-  /** Link to existing transaction */
-  transactionId?: string
-}
-
-export interface ReceivePaymentRequest {
-  /** Amount in cents */
-  amount: number
-  /** Invoice transaction to apply payment to */
-  invoiceTransactionId?: string
-  /** Customer name */
-  customerName?: string
-  /** Customer ID */
-  customerId?: string
-  /** External reference ID */
-  referenceId?: string
-  /** Payment method used */
-  paymentMethod?: string
-  /** Payment date (YYYY-MM-DD) */
-  paymentDate?: string
-  /** Additional metadata */
-  metadata?: Record<string, unknown>
-}
-
-// ---- Additional Response Types ----
-
-export interface RecordAdjustmentResponse {
-  success: boolean
-  transactionId: string
-  adjustmentId: string
-  entriesCreated: number
-}
-
-export interface RecordOpeningBalanceResponse {
-  success: boolean
-  openingBalanceId: string
-  transactionId: string
-  summary: {
-    asOfDate: string
-    totalAssets: number
-    totalLiabilities: number
-    totalEquity: number
-    accountsSet: number
-  }
-}
-
-export interface RecordTransferResponse {
-  success: boolean
-  transferId: string
-  transactionId: string
-  amount: number
-  fromAccount: string
-  toAccount: string
-}
-
-export interface ExportReportJsonResponse {
-  success: boolean
-  reportType: string
-  generatedAt: string
-  rowCount: number
-  data: any[]
-}
-
-export interface ExportReportCsvResponse {
-  csv: string
-  filename: string
-}
-
 export interface UploadReceiptResponse {
   success: boolean
   receiptId: string
   status: 'uploaded' | 'matched' | 'orphan'
   linkedTransactionId: string | null
+}
+
+export interface InvoiceResponse {
+  success: boolean
+  invoiceId?: string
+  status?: string
+  total?: number
+  error?: string
+}
+
+export interface ListInvoicesResponse {
+  success: boolean
+  invoices?: Array<{
+    id: string
+    customerId: string | null
+    customerName: string | null
+    amount: number
+    status: string
+    dueDate: string | null
+    createdAt: string
+  }>
+  error?: string
 }
 
 export interface ReceivePaymentResponse {
@@ -547,20 +743,9 @@ export interface ReceivePaymentResponse {
   amount: number
 }
 
-export interface SendBreachAlertResponse {
-  success: boolean
-  message?: string
-  alertsSent: number
-  alertsFailed?: number
-  alertsSkipped?: number
-  results?: Array<{
-    channel: string
-    success: boolean
-    error?: string
-  }>
-}
-
-// ---- Config Types ----
+// ============================================================================
+// Config Types
+// ============================================================================
 
 export interface SoledgicConfig {
   /** Your Soledgic API key */
@@ -573,7 +758,9 @@ export interface SoledgicConfig {
   fetch?: typeof fetch
 }
 
-// ---- Error Types ----
+// ============================================================================
+// Error Types
+// ============================================================================
 
 export class SoledgicError extends Error {
   constructor(

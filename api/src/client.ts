@@ -5,19 +5,69 @@ import {
   ValidationError,
   NotFoundError,
   ConflictError,
+  // Payments
   CreateCheckoutRequest,
   CreateCheckoutResponse,
   RecordSaleRequest,
   RecordSaleResponse,
-  GetBalanceResponse,
   ProcessPayoutRequest,
   ProcessPayoutResponse,
+  ExecutePayoutRequest,
+  ExecutePayoutResponse,
+  BatchExecutePayoutRequest,
+  BatchExecutePayoutResponse,
+  PayoutStatusResponse,
+  CheckPayoutEligibilityResponse,
   RecordRefundRequest,
   RecordRefundResponse,
   ReverseTransactionRequest,
   ReverseTransactionResponse,
+  // Balances
+  GetBalanceResponse,
+  // Transactions
   GetTransactionsRequest,
   GetTransactionsResponse,
+  // Creators
+  CreateCreatorRequest,
+  CreateCreatorResponse,
+  DeleteCreatorResponse,
+  // Reports
+  ExportReportRequest,
+  ExportReportJsonResponse,
+  ExportReportCsvResponse,
+  GenerateReportRequest,
+  GenerateReportResponse,
+  GeneratePdfRequest,
+  GeneratePdfResponse,
+  BalanceSheetResponse,
+  ProfitLossResponse,
+  TrialBalanceResponse,
+  ApAgingResponse,
+  ArAgingResponse,
+  GetRunwayResponse,
+  // Tax
+  GenerateTaxSummaryRequest,
+  GenerateTaxSummaryResponse,
+  // Webhooks
+  CreateWebhookEndpointRequest,
+  WebhookEndpointResponse,
+  ListWebhookEndpointsResponse,
+  // Splits
+  ManageSplitsRequest,
+  ManageSplitsResponse,
+  // Risk
+  RiskEvaluationRequest,
+  RiskEvaluationResponse,
+  // Receipts
+  UploadReceiptRequest,
+  UploadReceiptResponse,
+  // Invoices
+  CreateInvoiceRequest,
+  InvoiceResponse,
+  ListInvoicesResponse,
+  // Payments received
+  ReceivePaymentRequest,
+  ReceivePaymentResponse,
 } from './types'
 
 // ============================================================================
@@ -34,7 +84,7 @@ import {
 function createSecureKeyHolder(key: string): () => string {
   // Store key in closure - not accessible via object inspection
   let secureKey: string | null = key
-  
+
   return () => {
     if (!secureKey) {
       throw new AuthenticationError('API key has been invalidated')
@@ -45,26 +95,26 @@ function createSecureKeyHolder(key: string): () => string {
 
 /**
  * Soledgic SDK Client
- * 
+ *
  * SECURITY NOTES:
  * - API key is stored securely in a closure, not as a class property
  * - Use destroy() method to clear the API key from memory when done
  * - Errors are sanitized to prevent information leakage
- * 
+ *
  * @example
  * ```typescript
  * const soledgic = new Soledgic({
  *   apiKey: 'your_api_key',
- *   baseUrl: 'https://your-project.supabase.co/functions/v1'
+ *   baseUrl: 'https://api.soledgic.com/v1'
  * })
- * 
+ *
  * // Record a sale
  * const sale = await soledgic.recordSale({
  *   referenceId: 'sale_123',
  *   creatorId: 'author_123',
  *   amount: 1999
  * })
- * 
+ *
  * // When done, clear the API key from memory
  * soledgic.destroy()
  * ```
@@ -84,11 +134,7 @@ export class Soledgic {
 
     // SECURITY FIX H1: Store API key in secure closure
     this.getApiKey = createSecureKeyHolder(config.apiKey)
-    
-    // Clear API key from config object to prevent accidental exposure
-    // Note: This doesn't affect the original object if passed by reference
-    // but prevents the SDK from holding a reference to it
-    
+
     this.baseUrl = config.baseUrl?.replace(/\/$/, '') || ''
     this.timeout = config.timeout || 30000
     this.fetchFn = config.fetch || fetch
@@ -100,7 +146,6 @@ export class Soledgic {
    */
   destroy(): void {
     this.destroyed = true
-    // Replace getApiKey with a function that throws
     this.getApiKey = () => {
       throw new AuthenticationError('Client has been destroyed')
     }
@@ -125,14 +170,12 @@ export class Soledgic {
       params?: Record<string, string | number | boolean | undefined>
     } = {}
   ): Promise<T> {
-    // SECURITY: Check if client has been destroyed
     if (this.destroyed) {
       throw new AuthenticationError('Client has been destroyed')
     }
 
     const { method = 'GET', body, params } = options
 
-    // Build URL with query params
     let url = `${this.baseUrl}/${endpoint}`
     if (params) {
       const searchParams = new URLSearchParams()
@@ -147,7 +190,6 @@ export class Soledgic {
       }
     }
 
-    // Set up abort controller for timeout
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
@@ -156,7 +198,7 @@ export class Soledgic {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': this.getApiKey(),  // SECURITY FIX H1: Get key from secure closure
+          'x-api-key': this.getApiKey(),
         },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
@@ -166,11 +208,9 @@ export class Soledgic {
 
       const data: any = await response.json()
 
-      // Handle errors
       if (!response.ok || data.success === false) {
-        // SECURITY FIX L1: Sanitize error messages
         const message = this.sanitizeErrorMessage(data.error || 'Request failed')
-        
+
         switch (response.status) {
           case 400:
             throw new ValidationError(message)
@@ -185,7 +225,6 @@ export class Soledgic {
           case 503:
             throw new SoledgicError('Service temporarily unavailable', 503, 'SERVICE_UNAVAILABLE')
           default:
-            // SECURITY FIX L1: Don't expose server error details
             if (response.status >= 500) {
               throw new SoledgicError('An unexpected error occurred', response.status, 'SERVER_ERROR')
             }
@@ -196,41 +235,36 @@ export class Soledgic {
       return data as T
     } catch (error) {
       clearTimeout(timeoutId)
-      
+
       if (error instanceof SoledgicError) {
         throw error
       }
-      
+
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           throw new SoledgicError('Request timeout', 408, 'TIMEOUT')
         }
-        // SECURITY FIX L1: Don't expose internal error details
         throw new SoledgicError('Network error occurred', 0, 'NETWORK_ERROR')
       }
-      
+
       throw new SoledgicError('Unknown error', 500, 'UNKNOWN')
     }
   }
 
-  /**
-   * SECURITY FIX L1: Sanitize error messages to prevent information leakage
-   */
   private sanitizeErrorMessage(message: string): string {
     if (!message || typeof message !== 'string') {
       return 'An error occurred'
     }
-    
-    // Remove potentially sensitive patterns
+
     return message
-      .replace(/\/[^\s]+/g, '[path]')           // File paths
-      .replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, '[ip]')  // IP addresses
-      .replace(/eyJ[A-Za-z0-9_-]+/g, '[token]') // JWT tokens
-      .replace(/sk_[a-zA-Z0-9]+/g, '[key]')     // API keys
-      .replace(/whsec_[a-zA-Z0-9]+/g, '[secret]') // Webhook secrets
-      .replace(/postgres:\/\/[^\s]+/g, '[db]')  // Database URLs
-      .replace(/redis:\/\/[^\s]+/g, '[redis]')  // Redis URLs
-      .substring(0, 200) // Limit length
+      .replace(/\/[^\s]+/g, '[path]')
+      .replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, '[ip]')
+      .replace(/eyJ[A-Za-z0-9_-]+/g, '[token]')
+      .replace(/sk_[a-zA-Z0-9]+/g, '[key]')
+      .replace(/whsec_[a-zA-Z0-9]+/g, '[secret]')
+      .replace(/postgres:\/\/[^\s]+/g, '[db]')
+      .replace(/redis:\/\/[^\s]+/g, '[redis]')
+      .substring(0, 200)
   }
 
   private toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -246,13 +280,12 @@ export class Soledgic {
     const result: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(obj)) {
       const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
-      
-      // Handle nested objects
+
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         result[camelKey] = this.toCamelCase(value as Record<string, unknown>)
       } else if (Array.isArray(value)) {
-        result[camelKey] = value.map(item => 
-          typeof item === 'object' && item !== null 
+        result[camelKey] = value.map(item =>
+          typeof item === 'object' && item !== null
             ? this.toCamelCase(item as Record<string, unknown>)
             : item
         )
@@ -264,25 +297,12 @@ export class Soledgic {
   }
 
   // ============================================================================
-  // Public API Methods
+  // Payments
   // ============================================================================
 
   /**
    * Create a checkout payment (direct charge or hosted session).
    * Omit paymentMethodId to create a hosted checkout session.
-   *
-   * @example
-   * ```typescript
-   * // Hosted session (buyer enters card on hosted page)
-   * const session = await soledgic.createCheckout({
-   *   amount: 1999,
-   *   creatorId: 'author_123',
-   *   productName: 'Book purchase',
-   *   successUrl: 'https://example.com/success',
-   *   cancelUrl: 'https://example.com/cancel',
-   * })
-   * // Redirect buyer to session.checkoutUrl
-   * ```
    */
   async createCheckout(request: CreateCheckoutRequest): Promise<CreateCheckoutResponse> {
     if (!request.creatorId) throw new ValidationError('creatorId is required')
@@ -297,20 +317,7 @@ export class Soledgic {
   }
 
   /**
-   * Record a sale with automatic revenue split
-   * 
-   * @example
-   * ```typescript
-   * const sale = await soledgic.recordSale({
-   *   referenceId: 'sale_123',
-   *   creatorId: 'author_123',
-   *   amount: 1999, // $19.99 in cents
-   *   platformFeePercent: 20
-   * })
-   * 
-   * console.log(sale.breakdown)
-   * // { total: 19.99, creatorAmount: 15.99, platformAmount: 4.00 }
-   * ```
+   * Record a sale with automatic revenue split.
    */
   async recordSale(request: RecordSaleRequest): Promise<RecordSaleResponse> {
     if (!request.referenceId) throw new ValidationError('referenceId is required')
@@ -326,80 +333,7 @@ export class Soledgic {
   }
 
   /**
-   * Get balance for a single creator
-   * 
-   * @example
-   * ```typescript
-   * const balance = await soledgic.getCreatorBalance('author_123')
-   * console.log(`Available: $${balance.available}`)
-   * ```
-   */
-  async getCreatorBalance(creatorId: string): Promise<GetBalanceResponse> {
-    if (!creatorId) throw new ValidationError('creatorId is required')
-
-    const response = await this.request<Record<string, unknown>>('get-balance', {
-      params: { creator_id: creatorId },
-    })
-
-    return this.toCamelCase<GetBalanceResponse>(response)
-  }
-
-  /**
-   * Get balances for all creators
-   * 
-   * @example
-   * ```typescript
-   * const { balances, platformSummary } = await soledgic.getAllBalances({ includePlatform: true })
-   * ```
-   */
-  async getAllBalances(options?: { includePlatform?: boolean }): Promise<GetBalanceResponse> {
-    const params: Record<string, string | number | boolean | undefined> = {}
-    if (options?.includePlatform !== undefined) {
-      params.include_platform = options.includePlatform
-    }
-    const response = await this.request<Record<string, unknown>>('get-balance', {
-      params,
-    })
-
-    return this.toCamelCase<GetBalanceResponse>(response)
-  }
-
-  /**
-   * Process a payout to a creator
-   * 
-   * @example
-   * ```typescript
-   * const payout = await soledgic.processPayout({
-   *   creatorId: 'author_123',
-   *   referenceId: 'payout_123',
-   *   amount: 5000,
-   *   payoutMethod: 'card',
-   * })
-   * ```
-   */
-  async processPayout(request: ProcessPayoutRequest): Promise<ProcessPayoutResponse> {
-    if (!request.creatorId) throw new ValidationError('creatorId is required')
-    if (!request.referenceId) throw new ValidationError('referenceId is required')
-
-    const response = await this.request<Record<string, unknown>>('process-payout', {
-      method: 'POST',
-      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
-    })
-
-    return this.toCamelCase<ProcessPayoutResponse>(response)
-  }
-
-  /**
-   * Record a refund for a sale
-   * 
-   * @example
-   * ```typescript
-   * const refund = await soledgic.recordRefund({
-   *   originalSaleReference: 'sale_123',
-   *   reason: 'Customer requested refund',
-   *   refundFrom: 'both' // Split refund proportionally
-   * })
-   * ```
+   * Record a refund for a sale.
    */
   async recordRefund(request: RecordRefundRequest): Promise<RecordRefundResponse> {
     if (!request.originalSaleReference) throw new ValidationError('originalSaleReference is required')
@@ -414,15 +348,7 @@ export class Soledgic {
   }
 
   /**
-   * Reverse a transaction (immutable ledger pattern)
-   * 
-   * @example
-   * ```typescript
-   * const reversal = await soledgic.reverseTransaction({
-   *   transactionId: 'uuid-xxx',
-   *   reason: 'Duplicate entry correction'
-   * })
-   * ```
+   * Reverse a transaction (immutable ledger pattern — creates offsetting entries).
    */
   async reverseTransaction(request: ReverseTransactionRequest): Promise<ReverseTransactionResponse> {
     if (!request.transactionId) throw new ValidationError('transactionId is required')
@@ -436,23 +362,131 @@ export class Soledgic {
     return this.toCamelCase<ReverseTransactionResponse>(response)
   }
 
+  // ============================================================================
+  // Payouts (two-step: process → execute)
+  // ============================================================================
+
   /**
-   * Get transaction history with filtering
-   * 
-   * @example
-   * ```typescript
-   * const { transactions, pagination } = await soledgic.getTransactions({
-   *   creatorId: 'author_123',
-   *   type: 'sale',
-   *   startDate: '2025-01-01',
-   *   page: 1,
-   *   perPage: 50
-   * })
-   * ```
+   * Step 1: Record a payout in the ledger (bookkeeping).
+   * Returns a transactionId to pass to executePayout().
+   */
+  async processPayout(request: ProcessPayoutRequest): Promise<ProcessPayoutResponse> {
+    if (!request.creatorId) throw new ValidationError('creatorId is required')
+    if (!request.referenceId) throw new ValidationError('referenceId is required')
+
+    const response = await this.request<Record<string, unknown>>('process-payout', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<ProcessPayoutResponse>(response)
+  }
+
+  /**
+   * Step 2: Execute a recorded payout (money movement via payment rail).
+   * Requires the transactionId from processPayout().
+   */
+  async executePayout(request: ExecutePayoutRequest): Promise<ExecutePayoutResponse> {
+    if (!request.payoutId) throw new ValidationError('payoutId is required')
+
+    const response = await this.request<Record<string, unknown>>('execute-payout', {
+      method: 'POST',
+      body: {
+        action: 'execute',
+        payout_id: request.payoutId,
+        ...(request.rail ? { rail: request.rail } : {}),
+        ...(request.railConfig ? { rail_config: request.railConfig } : {}),
+      },
+    })
+
+    return this.toCamelCase<ExecutePayoutResponse>(response)
+  }
+
+  /**
+   * Execute multiple payouts in a single batch.
+   */
+  async batchExecutePayout(request: BatchExecutePayoutRequest): Promise<BatchExecutePayoutResponse> {
+    if (!request.payoutIds?.length) throw new ValidationError('payoutIds must not be empty')
+
+    const response = await this.request<Record<string, unknown>>('execute-payout', {
+      method: 'POST',
+      body: {
+        action: 'batch_execute',
+        payout_ids: request.payoutIds,
+        ...(request.rail ? { rail: request.rail } : {}),
+      },
+    })
+
+    return this.toCamelCase<BatchExecutePayoutResponse>(response)
+  }
+
+  /**
+   * Get the current status of a payout execution.
+   */
+  async getPayoutStatus(payoutId: string): Promise<PayoutStatusResponse> {
+    if (!payoutId) throw new ValidationError('payoutId is required')
+
+    const response = await this.request<Record<string, unknown>>('execute-payout', {
+      method: 'POST',
+      body: { action: 'get_status', payout_id: payoutId },
+    })
+
+    return this.toCamelCase<PayoutStatusResponse>(response)
+  }
+
+  /**
+   * Check whether a creator is eligible for payout (balance, holds, etc.).
+   */
+  async checkPayoutEligibility(creatorId: string): Promise<CheckPayoutEligibilityResponse> {
+    if (!creatorId) throw new ValidationError('creatorId is required')
+
+    const response = await this.request<Record<string, unknown>>('check-payout-eligibility', {
+      params: { creator_id: creatorId },
+    })
+
+    return this.toCamelCase<CheckPayoutEligibilityResponse>(response)
+  }
+
+  // ============================================================================
+  // Balances
+  // ============================================================================
+
+  /**
+   * Get balance for a single creator.
+   */
+  async getCreatorBalance(creatorId: string): Promise<GetBalanceResponse> {
+    if (!creatorId) throw new ValidationError('creatorId is required')
+
+    const response = await this.request<Record<string, unknown>>('get-balance', {
+      params: { creator_id: creatorId },
+    })
+
+    return this.toCamelCase<GetBalanceResponse>(response)
+  }
+
+  /**
+   * Get balances for all creators, optionally including platform summary.
+   */
+  async getAllBalances(options?: { includePlatform?: boolean }): Promise<GetBalanceResponse> {
+    const params: Record<string, string | number | boolean | undefined> = {}
+    if (options?.includePlatform !== undefined) {
+      params.include_platform = options.includePlatform
+    }
+    const response = await this.request<Record<string, unknown>>('get-balance', { params })
+
+    return this.toCamelCase<GetBalanceResponse>(response)
+  }
+
+  // ============================================================================
+  // Transactions
+  // ============================================================================
+
+  /**
+   * Get transaction history with filtering and pagination.
    */
   async getTransactions(request?: GetTransactionsRequest): Promise<GetTransactionsResponse> {
     const params: Record<string, string | number | boolean | undefined> = {}
-    
+
     if (request) {
       if (request.creatorId) params.creator_id = request.creatorId
       if (request.type) params.type = request.type
@@ -467,5 +501,420 @@ export class Soledgic {
     const response = await this.request<Record<string, unknown>>('get-transactions', { params })
 
     return this.toCamelCase<GetTransactionsResponse>(response)
+  }
+
+  // ============================================================================
+  // Creators
+  // ============================================================================
+
+  /**
+   * Pre-register a creator with optional tax info and payout preferences.
+   */
+  async createCreator(request: CreateCreatorRequest): Promise<CreateCreatorResponse> {
+    if (!request.creatorId) throw new ValidationError('creatorId is required')
+
+    const response = await this.request<Record<string, unknown>>('create-creator', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<CreateCreatorResponse>(response)
+  }
+
+  /**
+   * Soft-delete a creator (only if they have zero ledger entries).
+   */
+  async deleteCreator(creatorId: string): Promise<DeleteCreatorResponse> {
+    if (!creatorId) throw new ValidationError('creatorId is required')
+
+    const response = await this.request<Record<string, unknown>>('delete-creator', {
+      method: 'POST',
+      body: { creator_id: creatorId },
+    })
+
+    return this.toCamelCase<DeleteCreatorResponse>(response)
+  }
+
+  // ============================================================================
+  // Revenue Splits
+  // ============================================================================
+
+  /**
+   * Get the effective revenue split for the ledger.
+   */
+  async getSplitConfig(): Promise<ManageSplitsResponse> {
+    const response = await this.request<Record<string, unknown>>('manage-splits', {
+      method: 'POST',
+      body: { action: 'get' },
+    })
+
+    return this.toCamelCase<ManageSplitsResponse>(response)
+  }
+
+  /**
+   * Set the default revenue split for all creators.
+   */
+  async setDefaultSplit(creatorPercent: number): Promise<ManageSplitsResponse> {
+    const response = await this.request<Record<string, unknown>>('manage-splits', {
+      method: 'POST',
+      body: { action: 'set_default', creator_percent: creatorPercent },
+    })
+
+    return this.toCamelCase<ManageSplitsResponse>(response)
+  }
+
+  /**
+   * Set a custom revenue split for a specific creator.
+   */
+  async setCreatorSplit(creatorId: string, creatorPercent: number): Promise<ManageSplitsResponse> {
+    if (!creatorId) throw new ValidationError('creatorId is required')
+
+    const response = await this.request<Record<string, unknown>>('manage-splits', {
+      method: 'POST',
+      body: { action: 'set_creator', creator_id: creatorId, creator_percent: creatorPercent },
+    })
+
+    return this.toCamelCase<ManageSplitsResponse>(response)
+  }
+
+  /**
+   * Set a custom revenue split for a specific product.
+   */
+  async setProductSplit(productId: string, creatorPercent: number): Promise<ManageSplitsResponse> {
+    if (!productId) throw new ValidationError('productId is required')
+
+    const response = await this.request<Record<string, unknown>>('manage-splits', {
+      method: 'POST',
+      body: { action: 'set_product', product_id: productId, creator_percent: creatorPercent },
+    })
+
+    return this.toCamelCase<ManageSplitsResponse>(response)
+  }
+
+  /**
+   * Configure tiered revenue splits (different rates at different volume levels).
+   */
+  async setTieredSplits(tiers: ManageSplitsRequest['tiers']): Promise<ManageSplitsResponse> {
+    if (!tiers?.length) throw new ValidationError('tiers must not be empty')
+
+    const response = await this.request<Record<string, unknown>>('manage-splits', {
+      method: 'POST',
+      body: {
+        action: 'set_tiers',
+        tiers: tiers!.map(t => this.toSnakeCase(t as unknown as Record<string, unknown>)),
+      },
+    })
+
+    return this.toCamelCase<ManageSplitsResponse>(response)
+  }
+
+  // ============================================================================
+  // Reports
+  // ============================================================================
+
+  /**
+   * Export a report as CSV or JSON.
+   */
+  async exportReport(request: ExportReportRequest): Promise<ExportReportJsonResponse | ExportReportCsvResponse> {
+    if (!request.reportType) throw new ValidationError('reportType is required')
+    if (!request.format) throw new ValidationError('format is required')
+
+    const response = await this.request<Record<string, unknown>>('export-report', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<ExportReportJsonResponse | ExportReportCsvResponse>(response)
+  }
+
+  /**
+   * Generate a financial report (profit/loss, trial balance, general ledger, 1099).
+   */
+  async generateReport(request: GenerateReportRequest): Promise<GenerateReportResponse> {
+    if (!request.reportType) throw new ValidationError('reportType is required')
+
+    const response = await this.request<Record<string, unknown>>('generate-report', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<GenerateReportResponse>(response)
+  }
+
+  /**
+   * Generate a PDF report.
+   */
+  async generatePdf(request: GeneratePdfRequest): Promise<GeneratePdfResponse> {
+    if (!request.reportType) throw new ValidationError('reportType is required')
+
+    const response = await this.request<Record<string, unknown>>('generate-pdf', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<GeneratePdfResponse>(response)
+  }
+
+  /**
+   * Get balance sheet as of a given date.
+   */
+  async getBalanceSheet(options?: { asOfDate?: string }): Promise<BalanceSheetResponse> {
+    const response = await this.request<Record<string, unknown>>('balance-sheet', {
+      params: options?.asOfDate ? { as_of_date: options.asOfDate } : {},
+    })
+
+    return this.toCamelCase<BalanceSheetResponse>(response)
+  }
+
+  /**
+   * Get profit & loss statement.
+   */
+  async getProfitLoss(options?: { startDate?: string; endDate?: string }): Promise<ProfitLossResponse> {
+    const params: Record<string, string | number | boolean | undefined> = {}
+    if (options?.startDate) params.start_date = options.startDate
+    if (options?.endDate) params.end_date = options.endDate
+
+    const response = await this.request<Record<string, unknown>>('profit-loss', { params })
+
+    return this.toCamelCase<ProfitLossResponse>(response)
+  }
+
+  /**
+   * Get trial balance (debits must equal credits — ledger integrity check).
+   */
+  async getTrialBalance(): Promise<TrialBalanceResponse> {
+    const response = await this.request<Record<string, unknown>>('trial-balance')
+
+    return this.toCamelCase<TrialBalanceResponse>(response)
+  }
+
+  /**
+   * Get accounts payable aging report.
+   */
+  async getApAging(): Promise<ApAgingResponse> {
+    const response = await this.request<Record<string, unknown>>('ap-aging')
+
+    return this.toCamelCase<ApAgingResponse>(response)
+  }
+
+  /**
+   * Get accounts receivable aging report.
+   */
+  async getArAging(): Promise<ArAgingResponse> {
+    const response = await this.request<Record<string, unknown>>('ar-aging')
+
+    return this.toCamelCase<ArAgingResponse>(response)
+  }
+
+  /**
+   * Get cash runway projection and financial health score.
+   */
+  async getRunway(): Promise<GetRunwayResponse> {
+    const response = await this.request<Record<string, unknown>>('get-runway')
+
+    return this.toCamelCase<GetRunwayResponse>(response)
+  }
+
+  // ============================================================================
+  // Tax
+  // ============================================================================
+
+  /**
+   * Generate year-end 1099 tax summaries (amounts only — no PII).
+   */
+  async generateTaxSummary(request: GenerateTaxSummaryRequest): Promise<GenerateTaxSummaryResponse> {
+    if (!request.taxYear) throw new ValidationError('taxYear is required')
+
+    const response = await this.request<Record<string, unknown>>('generate-tax-summary', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<GenerateTaxSummaryResponse>(response)
+  }
+
+  // ============================================================================
+  // Risk Evaluation
+  // ============================================================================
+
+  /**
+   * Evaluate risk for a proposed transaction before execution.
+   */
+  async evaluateRisk(request: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
+    if (!request.idempotencyKey) throw new ValidationError('idempotencyKey is required')
+    if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
+
+    const response = await this.request<Record<string, unknown>>('risk-evaluation', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<RiskEvaluationResponse>(response)
+  }
+
+  // ============================================================================
+  // Webhooks
+  // ============================================================================
+
+  /**
+   * Register a webhook endpoint to receive events.
+   */
+  async createWebhookEndpoint(request: CreateWebhookEndpointRequest): Promise<WebhookEndpointResponse> {
+    if (!request.url) throw new ValidationError('url is required')
+    if (!request.events?.length) throw new ValidationError('events must not be empty')
+
+    const response = await this.request<Record<string, unknown>>('webhooks', {
+      method: 'POST',
+      body: { action: 'create', ...this.toSnakeCase(request as unknown as Record<string, unknown>) },
+    })
+
+    return this.toCamelCase<WebhookEndpointResponse>(response)
+  }
+
+  /**
+   * List all registered webhook endpoints.
+   */
+  async listWebhookEndpoints(): Promise<ListWebhookEndpointsResponse> {
+    const response = await this.request<Record<string, unknown>>('webhooks', {
+      method: 'POST',
+      body: { action: 'list' },
+    })
+
+    return this.toCamelCase<ListWebhookEndpointsResponse>(response)
+  }
+
+  /**
+   * Delete a webhook endpoint.
+   */
+  async deleteWebhookEndpoint(endpointId: string): Promise<WebhookEndpointResponse> {
+    if (!endpointId) throw new ValidationError('endpointId is required')
+
+    const response = await this.request<Record<string, unknown>>('webhooks', {
+      method: 'POST',
+      body: { action: 'delete', endpoint_id: endpointId },
+    })
+
+    return this.toCamelCase<WebhookEndpointResponse>(response)
+  }
+
+  /**
+   * Send a test event to a webhook endpoint to verify connectivity.
+   */
+  async testWebhookEndpoint(endpointId: string): Promise<WebhookEndpointResponse> {
+    if (!endpointId) throw new ValidationError('endpointId is required')
+
+    const response = await this.request<Record<string, unknown>>('webhooks', {
+      method: 'POST',
+      body: { action: 'test', endpoint_id: endpointId },
+    })
+
+    return this.toCamelCase<WebhookEndpointResponse>(response)
+  }
+
+  /**
+   * Rotate the signing secret for a webhook endpoint.
+   */
+  async rotateWebhookSecret(endpointId: string): Promise<WebhookEndpointResponse> {
+    if (!endpointId) throw new ValidationError('endpointId is required')
+
+    const response = await this.request<Record<string, unknown>>('webhooks', {
+      method: 'POST',
+      body: { action: 'rotate_secret', endpoint_id: endpointId },
+    })
+
+    return this.toCamelCase<WebhookEndpointResponse>(response)
+  }
+
+  // ============================================================================
+  // Invoices
+  // ============================================================================
+
+  /**
+   * Create a new invoice.
+   */
+  async createInvoice(request: CreateInvoiceRequest): Promise<InvoiceResponse> {
+    if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
+
+    const response = await this.request<Record<string, unknown>>('invoices', {
+      method: 'POST',
+      body: {
+        action: 'create',
+        ...this.toSnakeCase(request as unknown as Record<string, unknown>),
+      },
+    })
+
+    return this.toCamelCase<InvoiceResponse>(response)
+  }
+
+  /**
+   * List invoices with optional status filter.
+   */
+  async listInvoices(options?: { status?: string }): Promise<ListInvoicesResponse> {
+    const response = await this.request<Record<string, unknown>>('invoices', {
+      method: 'POST',
+      body: { action: 'list', ...(options?.status ? { status: options.status } : {}) },
+    })
+
+    return this.toCamelCase<ListInvoicesResponse>(response)
+  }
+
+  /**
+   * Get a single invoice by ID.
+   */
+  async getInvoice(invoiceId: string): Promise<InvoiceResponse> {
+    if (!invoiceId) throw new ValidationError('invoiceId is required')
+
+    const response = await this.request<Record<string, unknown>>('invoices', {
+      method: 'POST',
+      body: { action: 'get', id: invoiceId },
+    })
+
+    return this.toCamelCase<InvoiceResponse>(response)
+  }
+
+  /**
+   * Send an invoice to the customer via email.
+   */
+  async sendInvoice(invoiceId: string): Promise<InvoiceResponse> {
+    if (!invoiceId) throw new ValidationError('invoiceId is required')
+
+    const response = await this.request<Record<string, unknown>>('invoices', {
+      method: 'POST',
+      body: { action: 'send', id: invoiceId },
+    })
+
+    return this.toCamelCase<InvoiceResponse>(response)
+  }
+
+  /**
+   * Record a payment received against an invoice.
+   */
+  async receivePayment(request: ReceivePaymentRequest): Promise<ReceivePaymentResponse> {
+    if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
+
+    const response = await this.request<Record<string, unknown>>('receive-payment', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<ReceivePaymentResponse>(response)
+  }
+
+  // ============================================================================
+  // Receipts
+  // ============================================================================
+
+  /**
+   * Upload a receipt and optionally link it to a transaction.
+   */
+  async uploadReceipt(request: UploadReceiptRequest): Promise<UploadReceiptResponse> {
+    if (!request.fileUrl) throw new ValidationError('fileUrl is required')
+
+    const response = await this.request<Record<string, unknown>>('upload-receipt', {
+      method: 'POST',
+      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    })
+
+    return this.toCamelCase<UploadReceiptResponse>(response)
   }
 }

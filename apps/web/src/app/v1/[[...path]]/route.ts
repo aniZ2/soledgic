@@ -40,12 +40,16 @@ async function proxyToSupabase(req: NextRequest, { params }: { params: Promise<{
     body,
   })
 
-  // Forward the response back
-  const responseHeaders = new Headers(upstream.headers)
-  // Remove transfer-encoding to avoid issues with Next.js
-  responseHeaders.delete('transfer-encoding')
+  // Read the full response body — streaming a ReadableStream directly into
+  // NextResponse can silently drop the body in some Next.js runtimes.
+  const responseBody = await upstream.arrayBuffer()
 
-  return new NextResponse(upstream.body, {
+  const responseHeaders = new Headers(upstream.headers)
+  responseHeaders.delete('transfer-encoding')
+  // Ensure content-length matches the actual body we're forwarding
+  responseHeaders.set('content-length', String(responseBody.byteLength))
+
+  return new NextResponse(responseBody, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: responseHeaders,
