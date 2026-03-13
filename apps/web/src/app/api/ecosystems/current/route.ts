@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import {
   getCurrentEcosystemForUser,
   moveCurrentOrganizationToEcosystem,
@@ -41,7 +42,8 @@ export const GET = createApiHandler(
 )
 
 export const PATCH = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const { data: body, error: parseError } = await parseJsonBody<PatchPayload>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid JSON body' }, { status: 400 })
@@ -51,6 +53,11 @@ export const PATCH = createApiHandler(
 
     try {
       if (body.action === 'join_existing') {
+        const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'move a platform to another ecosystem')
+        if (sensitiveAuthFailure) {
+          return sensitiveAuthFailure
+        }
+
         const transferToSlug = typeof body.transfer_to_slug === 'string' ? body.transfer_to_slug.trim() : ''
         if (!transferToSlug) {
           return NextResponse.json({ error: 'transfer_to_slug is required' }, { status: 400 })
@@ -58,6 +65,11 @@ export const PATCH = createApiHandler(
 
         const ecosystem = await moveCurrentOrganizationToEcosystem(supabase, user!.id, transferToSlug)
         return NextResponse.json({ success: true, ecosystem })
+      }
+
+      const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'update ecosystem settings')
+      if (sensitiveAuthFailure) {
+        return sensitiveAuthFailure
       }
 
       const ecosystem = await updateCurrentEcosystemDetails(supabase, user!.id, {

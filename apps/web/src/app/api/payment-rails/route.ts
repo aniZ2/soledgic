@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { createClient } from '@/lib/supabase/server'
 
 interface PaymentRailsRequest {
@@ -89,7 +90,8 @@ function normalizeDefaultMethod(value: string | null | undefined): 'card' | 'man
 }
 
 export const POST = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const { data: body, error: parseError } = await parseJsonBody<PaymentRailsRequest>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid request body' }, { status: 400 })
@@ -149,6 +151,11 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'save_payout_settings') {
+      const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'change payout settings')
+      if (sensitiveAuthFailure) {
+        return sensitiveAuthFailure
+      }
+
       const defaultMethod = body.default_payout_method || 'card'
       if (!['card', 'manual'].includes(defaultMethod)) {
         return NextResponse.json(

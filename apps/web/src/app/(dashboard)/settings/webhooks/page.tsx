@@ -21,8 +21,10 @@ import {
 } from 'lucide-react'
 
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { useToast } from '@/components/notifications/toast-provider'
 import { useActiveLedgerGroupId, useLivemode } from '@/components/livemode-provider'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { createClient } from '@/lib/supabase/client'
@@ -274,6 +276,8 @@ export default function WebhooksPage() {
   const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null)
   const [rotatingEndpointId, setRotatingEndpointId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const loadData = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false
@@ -490,6 +494,9 @@ export default function WebhooksPage() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
+        if (handleProtectedResponse(res, data, () => rotateSecret(endpointId))) {
+          return
+        }
         throw new Error(data.error || 'Failed to rotate webhook secret')
       }
 
@@ -925,6 +932,12 @@ const isValid = await soledgic.webhooks.verifySignature(
         message="Delete this webhook endpoint? It will stop receiving events immediately."
         confirmLabel="Delete"
         variant="danger"
+      />
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
       />
     </div>
   )

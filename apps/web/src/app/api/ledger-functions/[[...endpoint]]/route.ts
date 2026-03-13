@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import type { ApiContext } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { createClient } from '@/lib/supabase/server'
 
 const DEFAULT_SOLEDGIC_API_VERSION =
@@ -93,9 +95,10 @@ async function assertLedgerAccess(userId: string, ledgerId: string) {
 
 async function proxyLedgerFunction(
   request: Request,
-  userId: string,
+  context: ApiContext,
   method: string
 ): Promise<NextResponse> {
+  const userId = context.user?.id
   const endpoint = getEndpointFromRequest(request)
   const endpointRoot = endpoint ? getEndpointRoot(endpoint) : null
   if (!endpoint || !endpointRoot || !ALLOWED_ENDPOINT_ROOTS.has(endpointRoot)) {
@@ -140,6 +143,17 @@ async function proxyLedgerFunction(
 
   if (!ledgerId) {
     return NextResponse.json({ error: 'ledger_id is required' }, { status: 400 })
+  }
+
+  if (endpointRoot === 'webhooks' && bodyData?.action === 'rotate_secret') {
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'rotate webhook secrets')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
+    }
+  }
+
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const access = await assertLedgerAccess(userId, ledgerId)
@@ -219,7 +233,7 @@ async function proxyLedgerFunction(
 }
 
 export const GET = createApiHandler(
-  async (request, { user }) => proxyLedgerFunction(request, user!.id, 'GET'),
+  async (request, context) => proxyLedgerFunction(request, context, 'GET'),
   {
     requireAuth: true,
     rateLimit: true,
@@ -229,7 +243,7 @@ export const GET = createApiHandler(
 )
 
 export const POST = createApiHandler(
-  async (request, { user }) => proxyLedgerFunction(request, user!.id, 'POST'),
+  async (request, context) => proxyLedgerFunction(request, context, 'POST'),
   {
     requireAuth: true,
     rateLimit: true,
@@ -239,7 +253,7 @@ export const POST = createApiHandler(
 )
 
 export const PUT = createApiHandler(
-  async (request, { user }) => proxyLedgerFunction(request, user!.id, 'PUT'),
+  async (request, context) => proxyLedgerFunction(request, context, 'PUT'),
   {
     requireAuth: true,
     rateLimit: true,
@@ -249,7 +263,7 @@ export const PUT = createApiHandler(
 )
 
 export const PATCH = createApiHandler(
-  async (request, { user }) => proxyLedgerFunction(request, user!.id, 'PATCH'),
+  async (request, context) => proxyLedgerFunction(request, context, 'PATCH'),
   {
     requireAuth: true,
     rateLimit: true,
@@ -259,7 +273,7 @@ export const PATCH = createApiHandler(
 )
 
 export const DELETE = createApiHandler(
-  async (request, { user }) => proxyLedgerFunction(request, user!.id, 'DELETE'),
+  async (request, context) => proxyLedgerFunction(request, context, 'DELETE'),
   {
     requireAuth: true,
     rateLimit: true,

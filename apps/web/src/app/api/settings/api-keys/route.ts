@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { createClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -142,7 +143,8 @@ export const GET = createApiHandler(
 )
 
 export const POST = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const { data: body, error: parseError } = await parseJsonBody<ApiKeysRequest>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid request body' }, { status: 400 })
@@ -185,6 +187,11 @@ export const POST = createApiHandler(
         { error: 'API keys are hidden by design. Rotate to generate a new key.' },
         { status: 410 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'rotate API keys')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     const nextKey = makeApiKey(Boolean(ledger.livemode))

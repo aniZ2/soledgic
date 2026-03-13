@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { Key, Copy, RefreshCw } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 
 interface Ledger {
   id: string
@@ -24,6 +26,8 @@ export default function ApiKeysPage() {
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({})
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [rotatingLedgerId, setRotatingLedgerId] = useState<string | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   useEffect(() => {
     loadLedgers()
@@ -61,6 +65,9 @@ export default function ApiKeysPage() {
 
       const data = await response.json()
       if (!response.ok) {
+        if (handleProtectedResponse(response, data, () => rotateKey(ledgerId))) {
+          return
+        }
         throw new Error(data.error || 'Failed to rotate key')
       }
 
@@ -250,6 +257,12 @@ export default function ApiKeysPage() {
           </a>
         </div>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

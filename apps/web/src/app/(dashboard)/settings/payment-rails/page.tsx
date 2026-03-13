@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 import {
   Building,
@@ -67,6 +69,8 @@ export default function PaymentRailsPage() {
   const [minPayoutAmount, setMinPayoutAmount] = useState<number>(25)
   const [savingPayoutSettings, setSavingPayoutSettings] = useState(false)
   const [platformManaged, setPlatformManaged] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const loadPaymentRails = async () => {
     setLoading(true)
@@ -228,6 +232,9 @@ export default function PaymentRailsPage() {
       })
       const result = await res.json()
       if (!res.ok || !result.success) {
+        if (handleProtectedResponse(res, result, handleSavePayoutSettings)) {
+          return
+        }
         throw new Error(result.error || 'Failed to save payout settings')
       }
 
@@ -416,6 +423,12 @@ export default function PaymentRailsPage() {
           View payout API documentation
         </a>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

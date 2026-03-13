@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Building2, Loader2, Network, Save, Waypoints } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 import type { CurrentEcosystemSummary } from '@/lib/ecosystems'
 
@@ -20,6 +22,8 @@ export default function EcosystemSettingsPage() {
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [targetSlug, setTargetSlug] = useState('')
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   async function loadEcosystem() {
     setLoading(true)
@@ -68,6 +72,9 @@ export default function EcosystemSettingsPage() {
       })
       const data = await res.json()
       if (!res.ok) {
+        if (handleProtectedResponse(res, data, handleSave)) {
+          return
+        }
         throw new Error(data.error || 'Failed to save ecosystem settings')
       }
 
@@ -98,6 +105,9 @@ export default function EcosystemSettingsPage() {
       })
       const data = await res.json()
       if (!res.ok) {
+        if (handleProtectedResponse(res, data, handleJoinExisting)) {
+          return
+        }
         throw new Error(data.error || 'Failed to join ecosystem')
       }
 
@@ -295,6 +305,12 @@ export default function EcosystemSettingsPage() {
           </button>
         </div>
       </section>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

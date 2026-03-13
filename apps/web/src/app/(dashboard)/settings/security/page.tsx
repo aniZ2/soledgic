@@ -245,7 +245,7 @@ export default function SecuritySettingsPage() {
           Two-Factor Authentication
         </h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Add an extra layer of security by requiring a code from your authenticator app.
+          Add an extra layer of security by requiring a code from your authenticator app. Sensitive control-plane actions use this to approve changes in-app without forcing a full re-login.
         </p>
 
         {mfaEnabled ? (

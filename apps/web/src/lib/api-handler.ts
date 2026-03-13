@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import type { User } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { validateCsrf } from './csrf'
@@ -107,6 +108,8 @@ function getErrorDetails(error: unknown): { name: string; message: string } {
 
 export interface ApiContext {
   user: { id: string; email?: string } | null
+  authUser: User | null
+  accessToken: string | null
   requestId: string
   startTime: number
 }
@@ -197,6 +200,8 @@ export function createApiHandler(
     const requestId = generateRequestId()
     const clientIp = getClientIp(request)
     let user: { id: string; email?: string } | null = null
+    let authUser: User | null = null
+    let accessToken: string | null = null
 
     try {
       // 1. CSRF Protection (for mutations)
@@ -250,7 +255,7 @@ export function createApiHandler(
           }
         )
         const { data: { user: cookieAuthUser }, error: authError } = await supabase.auth.getUser()
-        let authUser = cookieAuthUser
+        authUser = cookieAuthUser
         let bearerErrorMessage: string | null = null
 
         // 2b. Bearer token fallback — if cookie auth fails, try the
@@ -312,6 +317,7 @@ export function createApiHandler(
         }
 
         user = { id: authUser.id, email: authUser.email }
+        accessToken = bearerToken
       }
       
       // 3. Rate Limiting
@@ -378,7 +384,13 @@ export function createApiHandler(
       }
 
       // 5. Execute Handler
-      const response = await handler(request, { user, requestId, startTime })
+      const response = await handler(request, {
+        user,
+        authUser,
+        accessToken,
+        requestId,
+        startTime,
+      })
 
       // 6. Merge any auth cookies from Supabase token refresh
       for (const { name, value, options } of pendingAuthCookies) {
