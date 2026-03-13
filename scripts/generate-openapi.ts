@@ -1126,20 +1126,31 @@ const SCHEMAS: Record<string, object> = {
       {
         type: 'object',
         properties: {
+          warning: { type: ['string', 'null'] },
+          warning_code: { type: ['string', 'null'] },
           refund: {
             type: 'object',
             properties: {
-              id: { type: 'string', format: 'uuid' },
-              transaction_id: { type: 'string', format: 'uuid' },
+              id: { type: 'string' },
+              transaction_id: { type: ['string', 'null'] },
+              reference_id: { type: ['string', 'null'] },
+              sale_reference: { type: ['string', 'null'] },
               refunded_amount: { type: 'number' },
+              currency: { type: ['string', 'null'] },
+              status: { type: ['string', 'null'] },
+              reason: { type: ['string', 'null'] },
+              refund_from: { type: ['string', 'null'] },
+              external_refund_id: { type: ['string', 'null'] },
+              created_at: { type: ['string', 'null'], format: 'date-time' },
               breakdown: {
-                type: 'object',
+                type: ['object', 'null'],
                 properties: {
                   from_creator: { type: 'number' },
                   from_platform: { type: 'number' },
                 },
               },
               is_full_refund: { type: ['boolean', 'null'] },
+              repair_pending: { type: ['boolean', 'null'] },
             },
           },
         },
@@ -1159,8 +1170,8 @@ const SCHEMAS: Record<string, object> = {
             items: {
               type: 'object',
               properties: {
-                id: { type: 'string', format: 'uuid' },
-                transaction_id: { type: 'string', format: 'uuid' },
+                id: { type: 'string' },
+                transaction_id: { type: ['string', 'null'] },
                 reference_id: { type: ['string', 'null'] },
                 sale_reference: { type: ['string', 'null'] },
                 refunded_amount: { type: 'number' },
@@ -1177,6 +1188,8 @@ const SCHEMAS: Record<string, object> = {
                     from_platform: { type: 'number' },
                   },
                 },
+                repair_pending: { type: ['boolean', 'null'] },
+                last_error: { type: ['string', 'null'] },
               },
             },
           },
@@ -1609,9 +1622,14 @@ function catalogParamsToSchema(params: ApiParameter[]): object | null {
 }
 
 /** Build query/path parameters from catalog. */
-function catalogOperationParams(params: ApiParameter[]): object[] {
+function catalogOperationParams(
+  params: ApiParameter[],
+  options: { includeQuery?: boolean; includePath?: boolean } = {},
+): object[] {
+  const includeQuery = options.includeQuery ?? true
+  const includePath = options.includePath ?? true
   return params
-    .filter((p) => p.in === 'query' || p.in === 'path')
+    .filter((p) => (includeQuery && p.in === 'query') || (includePath && p.in === 'path'))
     .map((p) => ({
       name: p.name,
       in: p.in,
@@ -1696,8 +1714,8 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
       tags: [tag],
     }
 
-    // Query parameters (always from catalog for GET, also for POST endpoints that have query params)
-    const qp = catalogOperationParams(ep.parameters)
+    // Query parameters come from catalog for GET; non-GET operations keep only path params here.
+    const qp = catalogOperationParams(ep.parameters, { includeQuery: true, includePath: true })
     if (m === 'get') {
       // GET: use catalog query params + any mapped request schema fields as additional query params
       const allParams = [...qp]
@@ -1719,9 +1737,10 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
         operation.parameters = allParams
       }
     } else {
-      // POST/PUT/PATCH: query params go to parameters, body params go to requestBody
-      if (qp.length > 0) {
-        operation.parameters = qp
+      // POST/PUT/PATCH: keep path params on the operation and body params in requestBody.
+      const pathParams = catalogOperationParams(ep.parameters, { includeQuery: false, includePath: true })
+      if (pathParams.length > 0) {
+        operation.parameters = pathParams
       }
 
       let bodySchema: object | null = null

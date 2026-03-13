@@ -348,13 +348,20 @@ export interface RecordRefundRequest {
 
 export interface RecordRefundResponse {
   success: boolean
-  transactionId: string
-  refundedAmount: number
+  transactionId: string | null
+  referenceId: string | null
+  saleReference: string | null
+  refundedAmount: number | null
+  currency: string | null
+  status: string | null
   breakdown: {
     fromCreator: number
     fromPlatform: number
-  }
-  isFullRefund: boolean
+  } | null
+  isFullRefund: boolean | null
+  repairPending?: boolean | null
+  warning?: string | null
+  warningCode?: string | null
 }
 
 export interface ListRefundsRequest {
@@ -364,7 +371,7 @@ export interface ListRefundsRequest {
 
 export interface RefundSummary {
   id: string
-  transactionId: string
+  transactionId: string | null
   referenceId: string | null
   saleReference: string | null
   refundedAmount: number
@@ -378,6 +385,8 @@ export interface RefundSummary {
     fromCreator: number
     fromPlatform: number
   } | null
+  repairPending?: boolean | null
+  lastError?: string | null
 }
 
 export interface ListRefundsResponse {
@@ -1036,14 +1045,21 @@ export interface RefundResourceResponse {
   success: boolean
   refund: {
     id: string
-    transactionId: string
-    refundedAmount: number
+    transactionId: string | null
+    referenceId: string | null
+    saleReference: string | null
+    refundedAmount: number | null
+    currency: string | null
+    status: string | null
     breakdown: {
       fromCreator: number
       fromPlatform: number
     } | null
     isFullRefund: boolean | null
+    repairPending?: boolean | null
   }
+  warning?: string | null
+  warningCode?: string | null
 }
 
 function isArrayBufferView(value: unknown): value is ArrayBufferView {
@@ -1511,13 +1527,22 @@ export class Soledgic {
     const refund = response.refund || response
     return {
       success: response.success,
-      transactionId: refund.transaction_id,
-      refundedAmount: refund.refunded_amount,
-      breakdown: {
-        fromCreator: refund.breakdown?.from_creator,
-        fromPlatform: refund.breakdown?.from_platform,
-      },
-      isFullRefund: refund.is_full_refund,
+      transactionId: refund.transaction_id ?? null,
+      referenceId: refund.reference_id ?? null,
+      saleReference: refund.sale_reference ?? req.originalSaleReference ?? null,
+      refundedAmount: refund.refunded_amount ?? null,
+      currency: refund.currency ?? null,
+      status: refund.status ?? null,
+      breakdown: refund.breakdown
+        ? {
+            fromCreator: refund.breakdown?.from_creator,
+            fromPlatform: refund.breakdown?.from_platform,
+          }
+        : null,
+      isFullRefund: refund.is_full_refund ?? null,
+      repairPending: refund.repair_pending ?? null,
+      warning: response.warning ?? null,
+      warningCode: response.warning_code ?? null,
     }
   }
 
@@ -3028,10 +3053,16 @@ export class Soledgic {
     })
     return {
       success: response.success,
+      warning: response.warning ?? null,
+      warningCode: response.warningCode ?? null,
       refund: {
-        id: response.transactionId,
+        id: response.referenceId ?? response.transactionId ?? '',
         transactionId: response.transactionId,
+        referenceId: response.referenceId ?? null,
+        saleReference: response.saleReference ?? null,
         refundedAmount: response.refundedAmount,
+        currency: response.currency ?? null,
+        status: response.status ?? null,
         breakdown: response.breakdown
           ? {
               fromCreator: response.breakdown.fromCreator,
@@ -3039,6 +3070,7 @@ export class Soledgic {
             }
           : null,
         isFullRefund: response.isFullRefund ?? null,
+        repairPending: response.repairPending ?? null,
       },
     }
   }
@@ -3054,7 +3086,7 @@ export class Soledgic {
       count: response.count ?? (response.refunds || []).length,
       refunds: (response.refunds || []).map((refund: any) => ({
         id: refund.id,
-        transactionId: refund.transaction_id,
+        transactionId: refund.transaction_id ?? null,
         referenceId: refund.reference_id ?? null,
         saleReference: refund.sale_reference ?? null,
         refundedAmount: refund.refunded_amount,
@@ -3070,6 +3102,8 @@ export class Soledgic {
               fromPlatform: refund.breakdown.from_platform,
             }
           : null,
+        repairPending: refund.repair_pending ?? null,
+        lastError: refund.last_error ?? null,
       })),
     }
   }

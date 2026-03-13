@@ -41,6 +41,19 @@ interface AtomicRefundResult {
   out_status: 'created' | 'duplicate'
 }
 
+interface PendingProcessorRefundRow {
+  id: string
+  reference_id: string
+  original_transaction_id: string
+  refund_amount: number
+  reason: string | null
+  refund_from: string | null
+  external_refund_id: string | null
+  status: string
+  error_message: string | null
+  created_at: string | null
+}
+
 function centsFromMajor(amount: unknown): number {
   const numeric = Number(amount)
   if (!Number.isFinite(numeric)) return 0
@@ -93,6 +106,30 @@ function mapRefundRow(row: any) {
   }
 }
 
+function mapPendingRefundRow(
+  row: PendingProcessorRefundRow,
+  originalSale: { reference_id?: string | null; currency?: string | null } | null,
+) {
+  return {
+    id: String(row.reference_id || row.id),
+    transaction_id: null,
+    reference_id: row.reference_id ? String(row.reference_id) : null,
+    sale_reference: originalSale?.reference_id ? String(originalSale.reference_id) : null,
+    refunded_amount: Number(row.refund_amount || 0) / 100,
+    currency: originalSale?.currency ? String(originalSale.currency) : 'USD',
+    status: row.status === 'pending'
+      ? 'pending_repair'
+      : row.status,
+    reason: row.reason ? String(row.reason) : null,
+    refund_from: row.refund_from ? String(row.refund_from) : null,
+    external_refund_id: row.external_refund_id ? String(row.external_refund_id) : null,
+    created_at: row.created_at ? String(row.created_at) : null,
+    breakdown: null,
+    repair_pending: true,
+    last_error: row.error_message ? String(row.error_message) : null,
+  }
+}
+
 export async function listRefundsResponse(
   _req: Request,
   supabase: SupabaseClient,
@@ -109,6 +146,24 @@ export async function listRefundsResponse(
   const limit = Number(rawLimit)
   if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
     return resourceError('limit must be an integer between 1 and 100', 400, {}, 'invalid_limit')
+  }
+
+  let saleTransactionId: string | null = null
+  if (saleReference) {
+    const { data: originalSaleLookup, error: originalSaleLookupError } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('ledger_id', ledger.id)
+      .eq('reference_id', saleReference)
+      .eq('transaction_type', 'sale')
+      .maybeSingle()
+
+    if (originalSaleLookupError) {
+      console.error('Failed to look up original sale for refund filter:', originalSaleLookupError)
+      return resourceError('Failed to list refunds', 500, {}, 'refund_list_failed')
+    }
+
+    saleTransactionId = originalSaleLookup?.id ? String(originalSaleLookup.id) : null
   }
 
   let query = supabase
@@ -130,7 +185,63 @@ export async function listRefundsResponse(
     return resourceError('Failed to list refunds', 500, {}, 'refund_list_failed')
   }
 
-  const mappedRefunds = (refunds || []).map(mapRefundRow)
+  let pendingRefundRows: PendingProcessorRefundRow[] = []
+  if (!saleReference || saleTransactionId) {
+    let pendingQuery = supabase
+      .from('pending_processor_refunds')
+      .select('id, reference_id, original_transaction_id, refund_amount, reason, refund_from, external_refund_id, status, error_message, created_at')
+      .eq('ledger_id', ledger.id)
+      .in('status', ['pending', 'repair_failed'])
+
+    if (saleTransactionId) {
+      pendingQuery = pendingQuery.eq('original_transaction_id', saleTransactionId)
+    }
+
+    const { data, error: pendingRefundError } = await pendingQuery
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (pendingRefundError) {
+      console.error('Failed to list pending processor refunds:', pendingRefundError)
+      return resourceError('Failed to list refunds', 500, {}, 'refund_list_failed')
+    }
+
+    pendingRefundRows = (data || []) as PendingProcessorRefundRow[]
+  }
+
+  const originalTransactionIds = Array.from(new Set(pendingRefundRows.map((row) => row?.original_transaction_id).filter(Boolean)))
+
+  let originalSalesById = new Map<string, { reference_id?: string | null; currency?: string | null }>()
+  if (originalTransactionIds.length > 0) {
+    const { data: originalSales, error: originalSalesError } = await supabase
+      .from('transactions')
+      .select('id, reference_id, currency')
+      .in('id', originalTransactionIds)
+
+    if (originalSalesError) {
+      console.error('Failed to load original sale references for pending refunds:', originalSalesError)
+      return resourceError('Failed to list refunds', 500, {}, 'refund_list_failed')
+    }
+
+    originalSalesById = new Map(
+      (originalSales || []).map((row) => [
+        String(row.id),
+        {
+          reference_id: row.reference_id ? String(row.reference_id) : null,
+          currency: row.currency ? String(row.currency) : null,
+        },
+      ]),
+    )
+  }
+
+  const mappedRefunds = [
+    ...(refunds || []).map(mapRefundRow),
+    ...pendingRefundRows.map((row) =>
+      mapPendingRefundRow(row, originalSalesById.get(String(row.original_transaction_id)) || null)
+    ),
+  ]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, limit)
 
   return resourceOk({
     success: true,
@@ -394,12 +505,27 @@ export async function recordRefundResponse(
         risk_score: 80,
       }, requestId)
 
-      return resourceError(
-        'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
-        202,
-        {},
-        'processor_refund_pending_repair',
-      )
+      return resourceOk({
+        success: true,
+        warning: 'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
+        warning_code: 'processor_refund_pending_repair',
+        refund: {
+          id: refundRefId,
+          transaction_id: null,
+          reference_id: refundRefId,
+          sale_reference: originalRef,
+          refunded_amount: effectiveRefundCents / 100,
+          currency: originalSale.currency ? String(originalSale.currency) : 'USD',
+          status: 'pending_repair',
+          reason,
+          refund_from: refundFrom,
+          external_refund_id: externalRefundId,
+          created_at: new Date().toISOString(),
+          breakdown: null,
+          is_full_refund: null,
+          repair_pending: true,
+        },
+      }, 202)
     }
 
     return resourceError('Failed to create refund transaction', 500, {}, 'refund_create_failed')

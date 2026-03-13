@@ -254,6 +254,45 @@ describe('Soledgic SDK', () => {
     expect(result.isFullRefund).toBe(true)
   })
 
+  it('recordRefund surfaces pending repair refunds without dropping the refund object', async () => {
+    const fn = mockFetch({
+      success: true,
+      warning: 'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
+      warning_code: 'processor_refund_pending_repair',
+      refund: {
+        id: 'refund_pending_1',
+        transaction_id: null,
+        reference_id: 'refund_pending_1',
+        sale_reference: 'order_1',
+        refunded_amount: 30,
+        currency: 'USD',
+        status: 'pending_repair',
+        reason: 'Returned',
+        refund_from: 'both',
+        external_refund_id: 'rf_ext_1',
+        created_at: '2026-03-13T12:00:00Z',
+        breakdown: null,
+        is_full_refund: null,
+        repair_pending: true,
+      },
+    }, 202)
+    const sdk = createClient(fn)
+    const result = await sdk.recordRefund({
+      originalSaleReference: 'order_1',
+      amount: 3000,
+      reason: 'Returned',
+      mode: 'processor_refund',
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.transactionId).toBeNull()
+    expect(result.referenceId).toBe('refund_pending_1')
+    expect(result.saleReference).toBe('order_1')
+    expect(result.status).toBe('pending_repair')
+    expect(result.repairPending).toBe(true)
+    expect(result.warningCode).toBe('processor_refund_pending_repair')
+  })
+
   it('listRefunds uses GET with sale_reference query params and maps response', async () => {
     const fn = mockFetch({
       success: true,
@@ -286,6 +325,38 @@ describe('Soledgic SDK', () => {
     expect(result.count).toBe(1)
     expect(result.refunds[0].saleReference).toBe('order_1')
     expect(result.refunds[0].breakdown?.fromPlatform).toBe(1000)
+  })
+
+  it('listRefunds preserves pending repair metadata', async () => {
+    const fn = mockFetch({
+      success: true,
+      count: 1,
+      refunds: [
+        {
+          id: 'refund_pending_1',
+          transaction_id: null,
+          reference_id: 'refund_pending_1',
+          sale_reference: 'order_1',
+          refunded_amount: 30,
+          currency: 'USD',
+          status: 'pending_repair',
+          reason: 'Returned',
+          refund_from: 'both',
+          external_refund_id: 'rf_ext_1',
+          created_at: '2026-03-13T12:00:00Z',
+          breakdown: null,
+          repair_pending: true,
+          last_error: 'temporary ledger error',
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listRefunds({ saleReference: 'order_1' })
+
+    expect(result.refunds[0].transactionId).toBeNull()
+    expect(result.refunds[0].status).toBe('pending_repair')
+    expect(result.refunds[0].repairPending).toBe(true)
+    expect(result.refunds[0].lastError).toBe('temporary ledger error')
   })
 
   // === PAYOUT ===

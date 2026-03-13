@@ -15,6 +15,20 @@ import {
 } from '../_shared/utils.ts'
 import { buildWebhookHeaders } from '../_shared/webhook-signing.ts'
 
+async function resolveWebhookLedgerId(supabase: any, webhook: { delivery_id: string; ledger_id?: string | null }): Promise<string | null> {
+  if (webhook.ledger_id) {
+    return String(webhook.ledger_id)
+  }
+
+  const { data } = await supabase
+    .from('webhook_deliveries')
+    .select('ledger_id')
+    .eq('id', webhook.delivery_id)
+    .maybeSingle()
+
+  return data?.ledger_id ? String(data.ledger_id) : null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405, req)
@@ -48,13 +62,15 @@ Deno.serve(async (req) => {
       results.processed++
       
       try {
+        const webhookLedgerId = await resolveWebhookLedgerId(supabase, webhook)
+
         // ================================================================
         // SSRF PROTECTION: Validate URL before fetching
         // ================================================================
         const urlError = validateWebhookUrl(webhook.endpoint_url)
         if (urlError) {
           console.warn(`SSRF blocked: ${webhook.endpoint_url} - ${urlError}`)
-          await logSecurityEvent(supabase, webhook.ledger_id, 'ssrf_attempt', {
+          await logSecurityEvent(supabase, webhookLedgerId, 'ssrf_attempt', {
             endpoint_url: webhook.endpoint_url,
             delivery_id: webhook.delivery_id,
             reason: urlError,
@@ -83,7 +99,7 @@ Deno.serve(async (req) => {
             for (const addr of addresses) {
               if (!isPrivateIP(addr)) continue
               console.warn(`SSRF DNS rebinding blocked: ${url.hostname} -> ${addr}`)
-              await logSecurityEvent(supabase, webhook.ledger_id, 'ssrf_attempt', {
+              await logSecurityEvent(supabase, webhookLedgerId, 'ssrf_attempt', {
                 endpoint_url: webhook.endpoint_url,
                 delivery_id: webhook.delivery_id,
                 reason: `DNS resolves to private IP: ${addr}`,
@@ -112,7 +128,7 @@ Deno.serve(async (req) => {
         // Fail-closed if we could not validate any DNS answer.
         if (!dnsLookupSucceeded) {
           console.warn(`SSRF DNS validation blocked: could not resolve ${url.hostname}`)
-          await logSecurityEvent(supabase, webhook.ledger_id, 'ssrf_attempt', {
+          await logSecurityEvent(supabase, webhookLedgerId, 'ssrf_attempt', {
             endpoint_url: webhook.endpoint_url,
             delivery_id: webhook.delivery_id,
             reason: 'DNS validation failed: no A/AAAA answer',

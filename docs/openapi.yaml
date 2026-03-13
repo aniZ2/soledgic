@@ -580,17 +580,6 @@ paths:
       summary: "List refunds or create a refund against a recorded sale."
       tags:
         - "Payments"
-      parameters:
-        - name: "sale_reference"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "limit"
-          in: "query"
-          required: false
-          schema:
-            type: "number"
       requestBody:
         required: true
         content:
@@ -1509,27 +1498,6 @@ paths:
       summary: "Invoice Management"
       tags:
         - "Invoicing"
-      parameters:
-        - name: "status"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "customer_id"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "limit"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "offset"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
       requestBody:
         required: true
         content:
@@ -1875,12 +1843,6 @@ paths:
       summary: "Manage Recurring Expenses"
       tags:
         - "Accounting"
-      parameters:
-        - name: "days"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
       requestBody:
         required: true
         content:
@@ -2154,37 +2116,6 @@ paths:
       summary: "Profit & Loss Report"
       tags:
         - "Reports"
-      parameters:
-        - name: "year"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "month"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "quarter"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "breakdown"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "start_date"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "end_date"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
       responses:
         "200":
           description: "Success"
@@ -2906,17 +2837,6 @@ paths:
       summary: "Trial Balance"
       tags:
         - "Reports"
-      parameters:
-        - name: "snapshot"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "as_of"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
       responses:
         "200":
           description: "Success"
@@ -4603,25 +4523,72 @@ components:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: "object"
           properties:
+            warning:
+              type:
+                - "string"
+                - "null"
+            warning_code:
+              type:
+                - "string"
+                - "null"
             refund:
               type: "object"
               properties:
                 id:
                   type: "string"
-                  format: "uuid"
                 transaction_id:
-                  type: "string"
-                  format: "uuid"
+                  type:
+                    - "string"
+                    - "null"
+                reference_id:
+                  type:
+                    - "string"
+                    - "null"
+                sale_reference:
+                  type:
+                    - "string"
+                    - "null"
                 refunded_amount:
                   type: "number"
+                currency:
+                  type:
+                    - "string"
+                    - "null"
+                status:
+                  type:
+                    - "string"
+                    - "null"
+                reason:
+                  type:
+                    - "string"
+                    - "null"
+                refund_from:
+                  type:
+                    - "string"
+                    - "null"
+                external_refund_id:
+                  type:
+                    - "string"
+                    - "null"
+                created_at:
+                  type:
+                    - "string"
+                    - "null"
+                  format: "date-time"
                 breakdown:
-                  type: "object"
+                  type:
+                    - "object"
+                    - "null"
                   properties:
                     from_creator:
                       type: "number"
                     from_platform:
                       type: "number"
                 is_full_refund:
+                  type:
+                    - "boolean"
+                    - "null"
+                repair_pending:
                   type:
                     - "boolean"
                     - "null"
@@ -4639,10 +4606,10 @@ components:
                 properties:
                   id:
                     type: "string"
-                    format: "uuid"
                   transaction_id:
-                    type: "string"
-                    format: "uuid"
+                    type:
+                      - "string"
+                      - "null"
                   reference_id:
                     type:
                       - "string"
@@ -4683,6 +4650,14 @@ components:
                         type: "number"
                       from_platform:
                         type: "number"
+                  repair_pending:
+                    type:
+                      - "boolean"
+                      - "null"
+                  last_error:
+                    type:
+                      - "string"
+                      - "null"
   responses:
     BadRequest:
       description: "Validation error"
