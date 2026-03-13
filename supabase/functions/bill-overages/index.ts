@@ -137,6 +137,26 @@ type ExistingChargeRow = {
   last_attempt_at: string | null
 }
 
+function resolveBillingMode(settings: unknown): 'self_serve' | 'custom' | 'internal' {
+  const settingsRecord =
+    settings && typeof settings === 'object' && !Array.isArray(settings)
+      ? settings as Record<string, unknown>
+      : null
+  const billingValue = settingsRecord?.billing
+  const billingSettings =
+    billingValue && typeof billingValue === 'object' && !Array.isArray(billingValue)
+      ? billingValue as Record<string, unknown>
+      : {}
+
+  if (billingSettings.pricing_mode === 'internal' || billingSettings.billing_bypass === true) {
+    return 'internal'
+  }
+  if (billingSettings.pricing_mode === 'custom') {
+    return 'custom'
+  }
+  return 'self_serve'
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: getCorsHeaders(req) })
@@ -200,6 +220,18 @@ Deno.serve(async (req: Request) => {
   let failed = 0
 
   for (const org of (orgs || []) as OrgRow[]) {
+    const billingMode = resolveBillingMode(org.settings)
+    if (billingMode !== 'self_serve') {
+      skipped++
+      results.push({
+        organization_id: org.id,
+        status: dryRun ? 'dry_run' : 'skipped',
+        reason: billingMode === 'internal' ? 'internal_billing_bypass' : 'operator_managed_billing',
+        pricing_mode: billingMode,
+      })
+      continue
+    }
+
     const orgStatus = String(org.status || '').toLowerCase()
     if (orgStatus === 'canceled' || orgStatus === 'suspended') {
       skipped++

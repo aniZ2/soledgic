@@ -25,6 +25,7 @@ interface BillingOverageSummary {
   overage_transaction_price: number
   max_transactions_per_month: number
   estimated_monthly_cents: number
+  billable_monthly_cents: number
 }
 
 interface BillingOrganizationSummary {
@@ -52,6 +53,12 @@ interface BillingSummaryResponse {
     method_configured: boolean
     method_label?: string | null
     processor_connected: boolean
+    policy: {
+      pricing_mode: 'self_serve' | 'custom' | 'internal'
+      bypass_enabled: boolean
+      auto_charge_enabled: boolean
+      can_manage_modes: boolean
+    }
     last_charge: {
       period_start: string
       period_end: string
@@ -104,6 +111,8 @@ export default function BillingPage() {
   const [info, setInfo] = useState<string | null>(null)
   const [handledCallback, setHandledCallback] = useState(false)
   const [connectingBillingMethod, setConnectingBillingMethod] = useState(false)
+  const [savingBillingPolicy, setSavingBillingPolicy] = useState(false)
+  const [pricingMode, setPricingMode] = useState<'self_serve' | 'custom' | 'internal'>('self_serve')
 
   const loadBilling = async () => {
     setLoading(true)
@@ -117,6 +126,7 @@ export default function BillingPage() {
 
       if (subData?.success) {
         setSummary(subData.data as BillingSummaryResponse)
+        setPricingMode((subData.data as BillingSummaryResponse).billing.policy.pricing_mode)
       } else {
         setError(subData?.error || 'Failed to load billing summary')
       }
@@ -208,6 +218,33 @@ export default function BillingPage() {
     }
   }
 
+  const handleSaveBillingPolicy = async () => {
+    setError(null)
+    setInfo(null)
+    setSavingBillingPolicy(true)
+
+    try {
+      const res = await fetchWithCsrf('/api/billing', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'update_billing_policy',
+          pricing_mode: pricingMode,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update billing policy')
+      }
+
+      setInfo('Billing policy updated.')
+      await loadBilling()
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to update billing policy'))
+    } finally {
+      setSavingBillingPolicy(false)
+    }
+  }
+
   const formatCurrency = (cents: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
 
@@ -256,6 +293,12 @@ export default function BillingPage() {
         </p>
       </div>
 
+      {billing.policy.bypass_enabled ? (
+        <div className="mb-6 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-800">
+          Internal platform billing bypass is enabled for this organization. Usage is still measured, but automatic charges are waived.
+        </div>
+      ) : null}
+
       {(isPastDue || isCanceled) && (
         <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
@@ -299,7 +342,7 @@ export default function BillingPage() {
                   {currentPlan?.name || 'Free'}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {formatCurrency(0)} / month
+                  {formatCurrency(currentPlan?.price_monthly || 0)} / month
                 </p>
               </div>
               <Link
@@ -376,6 +419,56 @@ export default function BillingPage() {
 
         <div className="space-y-6">
           <div className="rounded-lg border border-border bg-card p-6">
+            <h2 className="text-lg font-semibold text-foreground">Billing Policy</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Controls whether this organization is billed normally or treated as an internal platform.
+            </p>
+
+            <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Current mode</span>
+                <span className="text-sm font-medium capitalize text-foreground">
+                  {billing.policy.pricing_mode.replace('_', ' ')}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Automatic charging</span>
+                <span className="text-sm font-medium text-foreground">
+                  {billing.policy.auto_charge_enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+            </div>
+
+            {summary.is_owner && billing.policy.can_manage_modes ? (
+              <div className="mt-4 space-y-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-muted-foreground">Mode</span>
+                  <select
+                    value={pricingMode}
+                    onChange={(event) => setPricingMode(event.target.value as 'self_serve' | 'custom' | 'internal')}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                  >
+                    <option value="self_serve">Self Serve</option>
+                    <option value="internal">Internal</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </label>
+                <button
+                  onClick={handleSaveBillingPolicy}
+                  disabled={savingBillingPolicy}
+                  className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {savingBillingPolicy ? 'Saving…' : 'Save Billing Policy'}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-4 text-xs text-muted-foreground">
+                Operator-managed billing modes are restricted to internal platform operators.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-6">
             <h2 className="text-lg font-semibold text-foreground">Estimated Overage</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Based on current usage for this billing period.
@@ -398,6 +491,12 @@ export default function BillingPage() {
                 <span className="text-foreground font-medium">Estimated monthly total</span>
                 <span className="text-foreground font-semibold">
                   {formatCurrency(overage.estimated_monthly_cents)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Currently billable</span>
+                <span className="text-foreground font-semibold">
+                  {formatCurrency(overage.billable_monthly_cents)}
                 </span>
               </div>
             </div>

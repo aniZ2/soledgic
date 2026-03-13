@@ -33,6 +33,21 @@ interface BillingRequest {
   organization_id?: string
 }
 
+function resolveBillingMode(settings: unknown): 'self_serve' | 'custom' | 'internal' {
+  const billingSettings =
+    settings && typeof settings === 'object' && !Array.isArray(settings) && (settings as Record<string, unknown>).billing && typeof (settings as Record<string, unknown>).billing === 'object'
+      ? ((settings as Record<string, unknown>).billing as Record<string, unknown>)
+      : {}
+
+  if (billingSettings.pricing_mode === 'internal' || billingSettings.billing_bypass === true) {
+    return 'internal'
+  }
+  if (billingSettings.pricing_mode === 'custom') {
+    return 'custom'
+  }
+  return 'self_serve'
+}
+
 function currentBillingPeriodUtc(now: Date) {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0))
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0))
@@ -159,6 +174,9 @@ const handler = createHandler(
 
         const settingsObj = org?.settings && typeof org.settings === 'object' ? org.settings : {}
         const billingSettings = (settingsObj.billing || {}) as Record<string, any>
+        const pricingMode = resolveBillingMode(settingsObj)
+        const autoChargeEnabled = pricingMode === 'self_serve'
+        const bypassEnabled = pricingMode === 'internal'
 
         const billingMethodIdRaw =
           typeof billingSettings?.payment_method_id === 'string' ? billingSettings.payment_method_id.trim() : ''
@@ -237,12 +255,18 @@ const handler = createHandler(
               overage_transaction_price: overageTransactionPrice,
               max_transactions_per_month: maxTransactions,
               estimated_monthly_cents: estimatedMonthlyOverageCents,
+              billable_monthly_cents: autoChargeEnabled ? estimatedMonthlyOverageCents : 0,
             },
             billing: {
               method_configured: billingMethodConfigured,
               method_label: billingMethodLabel,
               processor_connected: processorConnected,
               last_charge: lastCharge,
+              policy: {
+                pricing_mode: pricingMode,
+                bypass_enabled: bypassEnabled,
+                auto_charge_enabled: autoChargeEnabled,
+              },
             },
             is_owner: isOwner,
           },

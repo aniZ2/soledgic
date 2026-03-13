@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
 import { PLANS } from '@/lib/plans'
+import { type BillingPricingMode, isAutoChargeEnabled, isBillingBypassed, parseBillingSettings, resolveBillingMode } from '@/lib/billing-policy'
+import { isPlatformOperatorUser } from '@/lib/internal-platforms'
 
 const DUNNING_RETRY_SCHEDULE_DAYS = [0, 3, 7] as const
 const MAX_DUNNING_ATTEMPTS = DUNNING_RETRY_SCHEDULE_DAYS.length
@@ -13,11 +15,13 @@ interface BillingRequest {
     | 'get_invoices'
     | 'get_payment_methods'
     | 'activate_free_plan'
+    | 'update_billing_policy'
     | 'create_checkout_session'
     | 'create_portal_session'
     | 'cancel_subscription'
     | 'resume_subscription'
   plan_id?: string
+  pricing_mode?: BillingPricingMode
 }
 
 type JsonRecord = Record<string, unknown>
@@ -118,6 +122,21 @@ function disabledSubscriptionBilling() {
   )
 }
 
+async function mergeOrgSettingsKey(orgId: string, key: string, patch: Record<string, unknown>) {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('merge_organization_settings_key', {
+    p_organization_id: orgId,
+    p_settings_key: key,
+    p_patch: patch,
+  })
+
+  if (error) {
+    throw new Error(error.message || 'Failed updating organization settings')
+  }
+
+  return (data || {}) as Record<string, unknown>
+}
+
 function currentBillingPeriodUtc() {
   const now = new Date()
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0))
@@ -162,6 +181,7 @@ function retriesRemainingAfterAttempt(attemptNumber: number): number {
 
 export const POST = createApiHandler(
   async (request, { user }) => {
+    const supabase = await createClient()
     const { data: body, error: parseError } = await parseJsonBody<BillingRequest>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid request body' }, { status: 400 })
@@ -172,6 +192,8 @@ export const POST = createApiHandler(
       return NextResponse.json({ error: 'No organization found' }, { status: 404 })
     }
 
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const canManageOperatorModes = isPlatformOperatorUser(authUser)
     const { organization: org, isOwner } = membership
 
     const ownerActions = [
@@ -182,6 +204,7 @@ export const POST = createApiHandler(
       'get_invoices',
       'get_payment_methods',
       'activate_free_plan',
+      'update_billing_policy',
     ]
     if (ownerActions.includes(body.action) && !isOwner) {
       return NextResponse.json(
@@ -192,7 +215,7 @@ export const POST = createApiHandler(
 
     switch (body.action) {
       case 'get_subscription': {
-        return handleGetSubscription(org, isOwner)
+        return handleGetSubscription(org, isOwner, canManageOperatorModes)
       }
       case 'get_plans': {
         return handleGetPlans()
@@ -205,6 +228,9 @@ export const POST = createApiHandler(
       }
       case 'activate_free_plan': {
         return handleActivateFreePlan(org, body.plan_id)
+      }
+      case 'update_billing_policy': {
+        return handleUpdateBillingPolicy(org, body.pricing_mode, user!, canManageOperatorModes)
       }
       case 'create_checkout_session':
       case 'create_portal_session':
@@ -225,7 +251,7 @@ export const POST = createApiHandler(
   }
 )
 
-async function handleGetSubscription(org: OrganizationRecord, isOwner: boolean) {
+async function handleGetSubscriptionCore(org: OrganizationRecord, isOwner: boolean) {
   const supabase = await createClient()
 
   const { start, end } = currentBillingPeriodUtc()
@@ -290,9 +316,13 @@ async function handleGetSubscription(org: OrganizationRecord, isOwner: boolean) 
 
   const settingsObj = org.settings || {}
   const billingSettings = isJsonRecord(settingsObj.billing) ? settingsObj.billing : {}
+  const parsedBillingSettings = parseBillingSettings(billingSettings)
+  const pricingMode = resolveBillingMode(parsedBillingSettings)
+  const autoChargeEnabled = isAutoChargeEnabled(parsedBillingSettings)
+  const bypassEnabled = isBillingBypassed(parsedBillingSettings)
 
   const billingMethodIdRaw =
-    typeof billingSettings?.payment_method_id === 'string' ? billingSettings.payment_method_id.trim() : ''
+    typeof parsedBillingSettings.payment_method_id === 'string' ? parsedBillingSettings.payment_method_id.trim() : ''
   const billingMethodConfigured = billingMethodIdRaw.length > 0
   const billingMethodLabel =
     typeof billingSettings?.payment_method_label === 'string' && billingSettings.payment_method_label.trim().length > 0
@@ -403,16 +433,46 @@ async function handleGetSubscription(org: OrganizationRecord, isOwner: boolean) 
         overage_transaction_price: transactionOveragePrice,
         max_transactions_per_month: maxTransactions,
         estimated_monthly_cents: totalEstimatedOverageCents,
+        billable_monthly_cents: autoChargeEnabled ? totalEstimatedOverageCents : 0,
       },
       billing: {
         method_configured: billingMethodConfigured,
         method_label: billingMethodLabel,
         processor_connected: processorConnected,
         last_charge: lastCharge,
+        policy: {
+          pricing_mode: pricingMode,
+          bypass_enabled: bypassEnabled,
+          auto_charge_enabled: autoChargeEnabled,
+          can_manage_modes: false,
+        },
       },
       is_owner: isOwner,
     },
   })
+}
+
+async function handleGetSubscription(
+  org: OrganizationRecord,
+  isOwner: boolean,
+  canManageOperatorModes: boolean,
+) {
+  const response = await handleGetSubscriptionCore(org, isOwner)
+  const payload = await response.json() as { success?: boolean; data?: Record<string, unknown> }
+
+  if (payload.success && payload.data && isJsonRecord(payload.data.billing)) {
+    const billingRecord = payload.data.billing as JsonRecord
+    const existingPolicy = isJsonRecord(billingRecord.policy) ? billingRecord.policy : {}
+    payload.data.billing = {
+      ...billingRecord,
+      policy: {
+        ...existingPolicy,
+        can_manage_modes: isOwner && canManageOperatorModes,
+      },
+    }
+  }
+
+  return NextResponse.json(payload, { status: response.status })
 }
 
 async function handleGetPlans() {
@@ -432,6 +492,62 @@ async function handleGetPlans() {
   }))
 
   return NextResponse.json({ success: true, data: plansList })
+}
+
+async function handleUpdateBillingPolicy(
+  org: OrganizationRecord,
+  pricingMode: BillingPricingMode | undefined,
+  user: { id: string; email?: string },
+  canManageOperatorModes: boolean,
+) {
+  if (!pricingMode || !['self_serve', 'custom', 'internal'].includes(pricingMode)) {
+    return NextResponse.json({ error: 'pricing_mode must be self_serve, custom, or internal' }, { status: 400 })
+  }
+
+  if (pricingMode !== 'self_serve' && !canManageOperatorModes) {
+    return NextResponse.json(
+      { error: 'Only platform operators can enable internal or custom billing modes' },
+      { status: 403 },
+    )
+  }
+
+  const now = new Date().toISOString()
+  const patch: Record<string, unknown> = {
+    pricing_mode: pricingMode,
+    billing_bypass: pricingMode === 'internal',
+    bypass_reason: pricingMode === 'internal' ? 'internal_platform' : null,
+    bypass_enabled_at: pricingMode === 'internal' ? now : null,
+    bypass_enabled_by: pricingMode === 'internal' ? (user.email || user.id) : null,
+    last_updated_at: now,
+  }
+
+  try {
+    await mergeOrgSettingsKey(org.id, 'billing', patch)
+
+    if (pricingMode === 'internal' && org.status !== 'active') {
+      const supabase = await createClient()
+      await supabase
+        .from('organizations')
+        .update({ status: 'active' })
+        .eq('id', org.id)
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        policy: {
+          pricing_mode: pricingMode,
+          bypass_enabled: pricingMode === 'internal',
+          auto_charge_enabled: pricingMode === 'self_serve',
+        },
+      },
+    })
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to update billing policy' },
+      { status: 500 },
+    )
+  }
 }
 
 async function handleActivateFreePlan(org: OrganizationRecord, planId?: string) {

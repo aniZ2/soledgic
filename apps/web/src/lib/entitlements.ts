@@ -6,6 +6,8 @@
  * consistent and new features only need to add one function.
  */
 
+import { isAutoChargeEnabled, isBillingBypassed, parseBillingSettings } from '@/lib/billing-policy'
+
 export type OrgBillingStatus = 'active' | 'trialing' | 'past_due' | 'canceled'
 
 /** Minimal org shape required by entitlement checks. */
@@ -42,7 +44,8 @@ export interface TeamEntitlementOrg {
 function hasBillingMethod(
   settings: { billing?: { payment_method_id?: string | null } } | null | undefined
 ): boolean {
-  const id = settings?.billing?.payment_method_id
+  const billingSettings = parseBillingSettings(settings?.billing)
+  const id = billingSettings.payment_method_id
   return typeof id === 'string' && id.trim().length > 0
 }
 
@@ -60,6 +63,11 @@ function hasBillingMethod(
  * Test ledgers are not gated here (separate spam cap in the route).
  */
 export function canCreateLiveLedger(org: EntitlementOrg): EntitlementResult {
+  const billingSettings = parseBillingSettings(org.settings?.billing)
+  if (isBillingBypassed(billingSettings)) {
+    return { allowed: true }
+  }
+
   if (org.status === 'past_due') {
     return {
       allowed: false,
@@ -78,6 +86,10 @@ export function canCreateLiveLedger(org: EntitlementOrg): EntitlementResult {
       message:
         'Your billing account is inactive. Update billing on the Billing page to continue creating ledgers.',
     }
+  }
+
+  if (!isAutoChargeEnabled(billingSettings)) {
+    return { allowed: true }
   }
 
   // Require billing method before exceeding the included ledger limit
@@ -115,6 +127,11 @@ export function isOverLedgerLimit(org: EntitlementOrg): boolean {
  * Team-member overages are allowed and billed at $20/month per additional member.
  */
 export function canAddTeamMember(org: TeamEntitlementOrg): EntitlementResult {
+  const billingSettings = parseBillingSettings(org.settings?.billing)
+  if (isBillingBypassed(billingSettings)) {
+    return { allowed: true }
+  }
+
   if (org.status === 'past_due') {
     return {
       allowed: false,
@@ -133,6 +150,10 @@ export function canAddTeamMember(org: TeamEntitlementOrg): EntitlementResult {
       message:
         'Your billing account is inactive. Update billing on the Billing page before inviting team members.',
     }
+  }
+
+  if (!isAutoChargeEnabled(billingSettings)) {
+    return { allowed: true }
   }
 
   // Require billing method before exceeding the included team member limit

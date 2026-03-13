@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { buildDefaultBillingSettingsForOwner } from '@/lib/internal-platforms'
 
 export type ProvisionLedgerMode = 'standard' | 'marketplace'
 
@@ -150,6 +151,9 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
         owner_id: input.userId,
         current_member_count: 0,
         current_ledger_count: 0,
+        settings: {
+          billing: buildDefaultBillingSettingsForOwner(input.userEmail),
+        },
       })
       .select('id')
       .single()
