@@ -1,6 +1,6 @@
 # Soledgic Architecture Overview
 
-> Migration note (March 12, 2026): the public treasury surface is resource-first. Use `/v1/participants`, `/v1/wallets`, `/v1/transfers`, `/v1/holds`, `/v1/checkout-sessions`, `/v1/payouts`, and `/v1/refunds` for new integrations. Older command-style endpoints in this document are legacy references. Shared identity and ecosystems are operator control-plane features documented in `docs/OPERATOR_CONTROL_PLANE.md`.
+> Updated March 13, 2026: the public integration surface is the resource-first `/v1` API. Shared identity and ecosystems exist, but they are operator control-plane features documented in `docs/OPERATOR_CONTROL_PLANE.md`, not public API-key endpoints.
 
 ## What Soledgic Is
 
@@ -53,77 +53,111 @@ If money moves through your platform, Soledgic can:
 ## Database Schema (Core Tables)
 
 ```
-ledgers                    # One per business/slug
-├── id, business_name, mode, settings
+organizations              # Platform/operator container
+├── id, name, slug, owner_id, ecosystem_id
 │
-├── accounts              # Chart of accounts per ledger
-│   ├── id, account_type, entity_id (for creators)
-│   └── Types: cash, bank, revenue, platform_revenue, creator_balance, processing_fees
+├── ledgers                # Ledger boundary for one platform context
+│   ├── id, business_name, ledger_mode, settings
+│   └── API key hash + accounting configuration
 │
-├── transactions          # Every money movement
-│   ├── id, transaction_type, amount, status
+├── accounts               # Chart of accounts per ledger
+│   ├── id, account_type, entity_id
+│   └── Types: cash, platform_revenue, creator_balance, user_wallet, processing_fees
+│
+├── transactions           # Every money movement
+│   ├── id, transaction_type, amount, status, reference_id
 │   └── Types: sale, refund, payout, expense, adjustment
 │
-├── entries               # Double-entry line items
-│   ├── transaction_id, account_id, entry_type (debit/credit), amount
+├── entries                # Double-entry line items
+│   ├── transaction_id, account_id, entry_type, amount
 │   └── Sum(debits) always equals Sum(credits)
 │
-├── processor_events         # Raw Payment Processor webhooks
-│   └── processor_event_id, event_type, raw_data, status
+├── checkout_sessions      # Hosted + direct checkout orchestration
+│   ├── participant_id, amount, status, payment_id, reference_id
+│   └── Includes `charged_pending_ledger` recovery state
 │
-├── processor_transactions   # Processed Payment Processor activity
-│   └── processor_id, processor_type, amount, match_status, bank_transaction_id
+├── held_funds             # Holds, reserves, dispute buffers
+│   └── held_amount, released_amount, status
 │
-├── bank_feed_transactions    # Bank feed transactions
-│   └── amount, date, description, match_status, processor_payout_id
+├── webhook_endpoints      # Outbound webhook subscriptions
+├── webhook_deliveries     # Delivery attempts, retries, replay state
 │
-├── payouts               # Creator payouts
-│   └── creator_id, amount, status, payout_method
+├── participant_identity_links  # Shared user identity above ledger-scoped actors
+├── shared_tax_profiles         # Shared W-9 style profile data (limited fields)
+├── shared_payout_profiles      # Shared payout preferences
 │
-├── tax_documents         # 1099 forms
-│   └── recipient_id, gross_amount, tax_year, status
+├── ecosystems             # Multi-platform grouping layer above organizations
+├── ecosystem_memberships  # Ecosystem access and ownership
 │
-└── health_check_results  # Daily integrity checks
-    └── status, checks (jsonb), passed/warnings/failed counts
+├── reconciliation_snapshots    # Frozen reconciliation state
+├── processor_transactions      # Processor-side state for reconciliation
+├── bank_feed_transactions      # Bank-side state for reconciliation
+│
+└── tax_documents          # Tax document generation/export state
 ```
 
 ---
 
-## API Endpoints (Edge Functions)
+## Public API Surface
 
-| Endpoint | Purpose |
+| Resource | Purpose |
 |----------|---------|
-| `/record-sale` | Record a sale with optional creator split |
-| `/record-expense` | Record a business expense |
-| `/refunds` | Process a refund |
-| `/create-payout` | Initiate creator payout |
-| `/processor-webhook` | Process Payment Processor events (money movement) |
-| `/billing-webhook` | Process billing events (subscriptions) |
-| `/processor` | Payment Processor transaction management |
-| `/import-transactions` | Bank CSV/OFX import |
-| `/bank-feed-*` | Bank Feed bank connection management |
-| `/generate-pdf` | PDF report generation |
-| `/tax-documents` | 1099 generation and management |
-| `/health-check` | Ledger integrity verification |
-| `/billing` | Subscription management |
+| `/v1/participants` | Ledger-scoped sellers/creators/participants |
+| `/v1/wallets` | Scoped wallet objects (`consumer_credit`, `creator_earnings`, etc.) |
+| `/v1/transfers` | Wallet-to-wallet transfers inside a ledger |
+| `/v1/holds` | Hold creation, inspection, and release |
+| `/v1/checkout-sessions` | Checkout orchestration |
+| `/v1/payouts` | Payout creation for payout-eligible balances |
+| `/v1/refunds` | Refund creation and refund feed reads |
+| `/v1/reconciliations` | Unmatched items, matches, snapshots, auto-match |
+| `/v1/fraud` | Fraud evaluation and policy management |
+| `/v1/compliance` | Monitoring and access/compliance summaries |
+| `/v1/tax` | Tax calculations and document lifecycle |
+
+Operator-only routes such as `/api/identity/*` and `/api/ecosystems/*` are intentionally excluded from the public API contract.
 
 ---
 
 ## Key Design Decisions
 
-### 1. Webhook Separation
+### 1. Resource-First Public Contract
 
-Two Payment Processor webhook endpoints:
-- **`/processor-webhook`** - Money movement (charges, payouts, disputes)
-  - Creates ledger entries
-  - Touches `transactions`, `entries`, `accounts`
-- **`/billing-webhook`** - Billing (subscriptions, invoices)
-  - Syncs state only
-  - Never touches ledger
+External developers integrate against resource nouns, not ledger commands:
 
-Why: Billing events (subscription updated) are not accounting events. Mixing them causes confusion.
+```text
+/v1/participants
+/v1/wallets
+/v1/checkout-sessions
+/v1/payouts
+/v1/refunds
+```
 
-### 2. Deduplication via Hashing
+The ledger and RPC layer stays underneath that product surface.
+
+### 2. Hosted Checkout, Processor-Hosted Card Collection
+
+Checkout sessions are public Soledgic objects, but the hosted card collection step currently redirects the buyer to the processor's hosted onboarding/payment form. See `apps/web/src/app/api/checkout/[id]/setup/route.ts`.
+
+Why this matters:
+- launch-friendly and low integration effort
+- less customizable than a fully Soledgic-owned card form
+- acceptable for first-customer rollout, but a product limitation worth stating plainly
+
+### 3. Charge Captured, Ledger Write Failed Recovery
+
+If a processor charge succeeds but the ledger write fails, the checkout session moves to `charged_pending_ledger` instead of being silently lost.
+
+Recovery path:
+- capture succeeds
+- `record_sale_atomic` fails
+- session is marked `charged_pending_ledger`
+- `reconcile-checkout-ledger` retries booking
+- duplicate booking is treated as already-reconciled
+- webhook is queued only after the session is atomically claimed and completed
+
+This is one of the most important operational failure paths in the system.
+
+### 4. Deduplication via Hashing
 
 Every imported bank transaction gets:
 ```
@@ -132,20 +166,20 @@ SHA-256(date + amount + description + reference + row_index)
 
 Same transaction imported twice → automatically skipped.
 
-### 3. Period Locking
+### 5. Period Locking
 
 Once a month is closed:
 - Trial balance snapshot is frozen
 - Hash of all transactions is computed
 - No edits allowed without reversing entries
 
-### 4. Payment Processor Payout ↔ Bank Matching
+### 6. Payment Processor Payout ↔ Bank Matching
 
 Problem: Payment Processor payout and bank deposit are the same money, but appear as two records.
 
 Solution: Auto-match by amount + date + description. Bank transaction marked `is_processor_payout = true`. No duplicate ledger entry.
 
-### 5. Multi-Tenant by Ledger
+### 7. Multi-Tenant by Ledger, Multi-Platform by Ecosystem
 
 Each `ledger_id` is completely isolated:
 - Own accounts
@@ -153,7 +187,7 @@ Each `ledger_id` is completely isolated:
 - Own creators
 - Own API key
 
-One Soledgic instance can serve many businesses.
+Above that, ecosystems group multiple organizations/platforms for shared identity and operator visibility without merging balances.
 
 ---
 
@@ -163,9 +197,9 @@ One Soledgic instance can serve many businesses.
 |-------|-----------|
 | API Access | API key per ledger |
 | Row-Level Security | Postgres RLS by ledger_id |
-| Webhook Verification | Payment Processor signature validation |
+| Webhook Verification | HMAC signature validation or token auth fallback |
 | Audit Trail | All changes logged to audit_log |
-| TIN Storage | Should be encrypted (flag for production) |
+| Shared Tax Profile Storage | Limited W-9 style profile data only (for example legal name, tax ID type, tax ID last4, address); no full TIN storage in the current shared profile model |
 
 ---
 
@@ -212,11 +246,20 @@ supabase functions deploy health-check --no-verify-jwt
 # Supabase
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_ANON_KEY=
+ENVIRONMENT=production
 
 # Payment Processor
-PROCESSOR_SECRET_KEY=
-PROCESSOR_WEBHOOK_SECRET=         # For /processor-webhook
-PROCESSOR_BILLING_WEBHOOK_SECRET= # For /billing-webhook
+PROCESSOR_BASE_URL=
+PROCESSOR_USERNAME=
+PROCESSOR_PASSWORD=
+PROCESSOR_MERCHANT_ID=
+PROCESSOR_API_VERSION=
+PROCESSOR_VERSION_HEADER=
+PROCESSOR_ONBOARDING_FORM_ID=
+PROCESSOR_CHECKOUT_ONBOARDING_FORM_ID=
+PROCESSOR_WEBHOOK_SIGNING_KEY=    # Preferred inbound verification
+PROCESSOR_WEBHOOK_TOKEN=          # Fallback inbound verification
 
 # Bank Feed (optional)
 BANK_FEED_CLIENT_ID=
@@ -244,24 +287,31 @@ import Soledgic from '@soledgic/sdk'
 
 const soledgic = new Soledgic({
   apiKey: 'sk_live_...',
-  baseUrl: 'https://your-project.supabase.co/functions/v1'
+  baseUrl: 'https://api.soledgic.com/v1',
+  apiVersion: '2026-03-01',
 })
 
-// Record a sale
-await soledgic.recordSale({
+// Create a hosted checkout session
+await soledgic.createCheckoutSession({
   amount: 2999,
-  creatorId: 'creator_123',
-  description: 'Premium ebook'
+  participantId: 'creator_123',
+  productName: 'Premium ebook',
+  successUrl: 'https://example.com/success',
+  cancelUrl: 'https://example.com/cancel',
 })
 ```
 
 ---
 
-## Status: Production Ready
+## Status: Feature-Complete For A First Customer
 
 | Feature | Status |
 |---------|--------|
 | Core Ledger Engine | ✅ |
+| Public `/v1` Resource API | ✅ |
+| Hosted Checkout Sessions | ✅ |
+| Charge → Ledger Reconciliation Recovery | ✅ |
+| Shared Identity + Ecosystem Layer | ✅ |
 | Payment Processor Integration | ✅ |
 | Bank Reconciliation | ✅ |
 | Payout ↔ Bank Matching | ✅ |
@@ -271,4 +321,7 @@ await soledgic.recordSale({
 | Billing System | ✅ |
 | Dashboard UI | ✅ |
 
-**Soledgic is feature-complete for launch.**
+**Soledgic is feature-complete for a first customer.**
+
+Important launch caveat:
+- hosted checkout currently delegates card collection to the processor-hosted form rather than a fully Soledgic-owned card UI
