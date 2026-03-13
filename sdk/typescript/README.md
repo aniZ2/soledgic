@@ -89,7 +89,7 @@ console.log({
 | `getWalletHistory(participantId, opts?)` | List wallet entries |
 | `createTransfer(req)` | Move funds between participant wallets |
 | `listHolds(opts?)` | List held funds |
-| `getHoldsSummary()` | Get aggregate held-funds totals |
+| `getHoldSummary()` | Get aggregate held-funds totals |
 | `releaseHold(req)` | Release a hold and optionally execute the transfer |
 
 ### Checkout, Payouts, and Refunds
