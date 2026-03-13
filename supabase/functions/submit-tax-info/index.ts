@@ -5,7 +5,6 @@
 import {
   createHandler,
   jsonResponse,
-  errorResponse,
   validateId,
   validateString,
   LedgerContext,
@@ -13,6 +12,14 @@ import {
   sanitizeForAudit
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+function taxInfoError(req: Request, requestId: string, error: string, status: number, errorCode: string) {
+  return jsonResponse({
+    success: false,
+    error,
+    error_code: errorCode,
+  }, status, req, requestId)
+}
 
 const VALID_TAX_ID_TYPES = ['ssn', 'ein', 'itin'] as const
 const VALID_BUSINESS_TYPES = ['individual', 'sole_proprietor', 'llc', 'corporation', 'partnership'] as const
@@ -39,42 +46,48 @@ const handler = createHandler(
   { endpoint: 'submit-tax-info', requireAuth: true, rateLimit: true },
   async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, body: SubmitTaxInfoRequest, { requestId }) => {
     if (!ledger) {
-      return errorResponse('Ledger not found', 401, req, requestId)
+      return taxInfoError(req, requestId, 'Ledger not found', 401, 'ledger_not_found')
     }
 
     if (req.method !== 'POST') {
-      return errorResponse('Method not allowed', 405, req, requestId)
+      return taxInfoError(req, requestId, 'Method not allowed', 405, 'method_not_allowed')
     }
 
     const participantId = validateId(body.participant_id ?? body.creator_id, 100)
     if (!participantId) {
-      return errorResponse('Invalid participant_id', 400, req, requestId)
+      return taxInfoError(req, requestId, 'Invalid participant_id', 400, 'invalid_participant_id')
     }
 
     // Validate legal_name
     const legalName = validateString(body.legal_name, 255)
     if (!legalName) {
-      return errorResponse('legal_name is required (max 255 characters)', 400, req, requestId)
+      return taxInfoError(req, requestId, 'legal_name is required (max 255 characters)', 400, 'invalid_legal_name')
     }
 
     // Validate tax_id_type
     if (!VALID_TAX_ID_TYPES.includes(body.tax_id_type as any)) {
-      return errorResponse('tax_id_type must be one of: ssn, ein, itin', 400, req, requestId)
+      return taxInfoError(req, requestId, 'tax_id_type must be one of: ssn, ein, itin', 400, 'invalid_tax_id_type')
     }
 
     // Validate tax_id_last4
     if (!body.tax_id_last4 || !/^\d{4}$/.test(body.tax_id_last4)) {
-      return errorResponse('tax_id_last4 must be exactly 4 digits', 400, req, requestId)
+      return taxInfoError(req, requestId, 'tax_id_last4 must be exactly 4 digits', 400, 'invalid_tax_id_last4')
     }
 
     // Validate business_type
     if (!VALID_BUSINESS_TYPES.includes(body.business_type as any)) {
-      return errorResponse('business_type must be one of: individual, sole_proprietor, llc, corporation, partnership', 400, req, requestId)
+      return taxInfoError(
+        req,
+        requestId,
+        'business_type must be one of: individual, sole_proprietor, llc, corporation, partnership',
+        400,
+        'invalid_business_type',
+      )
     }
 
     // Require certification
     if (body.certify !== true) {
-      return errorResponse('Certification is required (certify must be true)', 400, req, requestId)
+      return taxInfoError(req, requestId, 'Certification is required (certify must be true)', 400, 'missing_certification')
     }
 
     // Verify creator exists
@@ -88,7 +101,7 @@ const handler = createHandler(
       .single()
 
     if (accountError || !account) {
-      return errorResponse('Creator not found', 404, req, requestId)
+      return taxInfoError(req, requestId, 'Participant not found', 404, 'participant_not_found')
     }
 
     // Validate address fields if provided
@@ -134,7 +147,7 @@ const handler = createHandler(
 
     if (insertError) {
       console.error('Failed to submit tax info:', insertError)
-      return errorResponse('Failed to submit tax info', 500, req, requestId)
+      return taxInfoError(req, requestId, 'Failed to submit tax info', 500, 'tax_info_submission_failed')
     }
 
     // Audit log
