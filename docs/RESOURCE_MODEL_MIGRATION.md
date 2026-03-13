@@ -7,10 +7,12 @@ Use these endpoints for new integrations:
 - `POST /v1/participants`
 - `GET /v1/participants/{participant_id}`
 - `GET /v1/participants/{participant_id}/payout-eligibility`
-- `GET /v1/wallets/{participant_id}`
-- `GET /v1/wallets/{participant_id}/entries`
-- `POST /v1/wallets/{participant_id}/deposits`
-- `POST /v1/wallets/{participant_id}/withdrawals`
+- `GET /v1/wallets`
+- `POST /v1/wallets`
+- `GET /v1/wallets/{wallet_id}`
+- `GET /v1/wallets/{wallet_id}/entries`
+- `POST /v1/wallets/{wallet_id}/topups`
+- `POST /v1/wallets/{wallet_id}/withdrawals`
 - `POST /v1/transfers`
 - `GET /v1/holds`
 - `GET /v1/holds/summary`
@@ -26,8 +28,8 @@ These older command-style endpoints are deprecated for new integrations:
 | Legacy endpoint | Use instead |
 |---|---|
 | `POST /v1/create-creator` | `POST /v1/participants` |
-| `GET|POST /v1/get-balance` | `GET /v1/participants/{participant_id}` and `GET /v1/wallets/{participant_id}` |
-| `GET|POST /v1/get-balances` | `GET /v1/participants` and `GET /v1/wallets/{participant_id}` |
+| `GET|POST /v1/get-balance` | `GET /v1/participants/{participant_id}` and `GET /v1/wallets?owner_id={participant_id}` |
+| `GET|POST /v1/get-balances` | `GET /v1/participants` and `GET /v1/wallets` |
 | `POST /v1/create-checkout` | `POST /v1/checkout-sessions` |
 | `POST /v1/process-payout` | `POST /v1/payouts` |
 | `GET|POST /v1/check-payout-eligibility` | `GET /v1/participants/{participant_id}/payout-eligibility` |

@@ -350,9 +350,24 @@ const SCHEMAS: Record<string, object> = {
     required: ['amount', 'reference_id'],
   },
 
+  WalletCreateRequest: {
+    type: 'object',
+    properties: {
+      owner_id: { type: 'string' },
+      participant_id: { type: 'string' },
+      owner_type: { type: 'string' },
+      wallet_type: { type: 'string', enum: ['consumer_credit', 'creator_earnings'] },
+      name: { type: 'string' },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['wallet_type'],
+  },
+
   TransferFundsRequest: {
     type: 'object',
     properties: {
+      from_wallet_id: { type: 'string', format: 'uuid' },
+      to_wallet_id: { type: 'string', format: 'uuid' },
       from_participant_id: { type: 'string' },
       to_participant_id: { type: 'string' },
       amount: { type: 'integer', description: 'Amount in cents' },
@@ -393,6 +408,7 @@ const SCHEMAS: Record<string, object> = {
   TreasuryPayoutRequest: {
     type: 'object',
     properties: {
+      wallet_id: { type: 'string', format: 'uuid' },
       participant_id: { type: 'string' },
       amount: { type: 'integer', description: 'Amount in cents' },
       reference_id: { type: 'string' },
@@ -906,30 +922,87 @@ const SCHEMAS: Record<string, object> = {
     ],
   },
 
+  WalletObject: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      object: { type: 'string', enum: ['wallet'] },
+      wallet_type: { type: 'string', enum: ['consumer_credit', 'creator_earnings'] },
+      scope_type: { type: 'string', enum: ['customer', 'participant'] },
+      owner_id: { type: ['string', 'null'] },
+      owner_type: { type: ['string', 'null'] },
+      participant_id: { type: ['string', 'null'] },
+      account_type: { type: 'string' },
+      name: { type: ['string', 'null'] },
+      currency: { type: 'string' },
+      status: { type: 'string' },
+      balance: { type: 'number' },
+      held_amount: { type: 'number' },
+      available_balance: { type: 'number' },
+      redeemable: { type: 'boolean' },
+      transferable: { type: 'boolean' },
+      topup_supported: { type: 'boolean' },
+      payout_supported: { type: 'boolean' },
+      created_at: { type: ['string', 'null'], format: 'date-time' },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: [
+      'id',
+      'object',
+      'wallet_type',
+      'scope_type',
+      'account_type',
+      'currency',
+      'status',
+      'balance',
+      'held_amount',
+      'available_balance',
+      'redeemable',
+      'transferable',
+      'topup_supported',
+      'payout_supported',
+      'metadata',
+    ],
+  },
+
+  WalletListResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          wallets: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/WalletObject' },
+          },
+          total: { type: 'integer' },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+        },
+      },
+    ],
+  },
+
+  WalletCreateResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          created: { type: 'boolean' },
+          wallet: { $ref: '#/components/schemas/WalletObject' },
+        },
+      },
+    ],
+  },
+
   WalletDetailResponse: {
     allOf: [
       { $ref: '#/components/schemas/SuccessEnvelope' },
       {
         type: 'object',
         properties: {
-          wallet: {
-            type: 'object',
-            properties: {
-              participant_id: { type: 'string' },
-              balance: { type: 'number' },
-              wallet_exists: { type: 'boolean' },
-              account: {
-                type: ['object', 'null'],
-                properties: {
-                  id: { type: 'string', format: 'uuid' },
-                  participant_id: { type: 'string' },
-                  name: { type: ['string', 'null'] },
-                  is_active: { type: 'boolean' },
-                  created_at: { type: 'string', format: 'date-time' },
-                },
-              },
-            },
-          },
+          wallet: { $ref: '#/components/schemas/WalletObject' },
         },
       },
     ],
@@ -941,6 +1014,12 @@ const SCHEMAS: Record<string, object> = {
       {
         type: 'object',
         properties: {
+          wallet: {
+            anyOf: [
+              { $ref: '#/components/schemas/WalletObject' },
+              { type: 'null' },
+            ],
+          },
           entries: {
             type: 'array',
             items: {
@@ -973,10 +1052,11 @@ const SCHEMAS: Record<string, object> = {
       {
         type: 'object',
         properties: {
-          deposit: {
+          topup: {
             type: 'object',
             properties: {
-              participant_id: { type: 'string' },
+              wallet_id: { type: ['string', 'null'], format: 'uuid' },
+              owner_id: { type: ['string', 'null'] },
               transaction_id: { type: 'string', format: 'uuid' },
               balance: { type: 'number' },
             },
@@ -1239,6 +1319,10 @@ const ENDPOINT_SCHEMA_MAP: Record<string, SchemaBinding> = {
   },
   'participant-detail': { response: 'ParticipantDetailResponse' },
   'participant-payout-eligibility': { response: 'ParticipantEligibilityResponse' },
+  'wallets': {
+    get: { response: 'WalletListResponse' },
+    post: { request: 'WalletCreateRequest', response: 'WalletCreateResponse' },
+  },
   'wallet-detail': { response: 'WalletDetailResponse' },
   'wallet-entries': { response: 'WalletEntriesResponse' },
   'wallet-deposit': { request: 'WalletMutationRequest', response: 'WalletDepositResponse' },
@@ -1816,6 +1900,7 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   Invoicing: 'Invoice management and PDF generation',
   Webhooks: 'Webhook endpoint management',
   Banking: 'Bank account management and statement import',
+  Other: 'Additional public endpoints that do not fall under a primary product tag',
 }
 
 const usedTags = new Set<string>()

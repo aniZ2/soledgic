@@ -1,4 +1,4 @@
-// Soledgic SDK - Double-Entry Accounting for Creator Platforms
+// Soledgic legacy compatibility client
 // https://soledgic.com
 
 export { Soledgic } from './client'

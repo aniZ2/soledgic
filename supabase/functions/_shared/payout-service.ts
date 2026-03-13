@@ -7,6 +7,7 @@ import {
   validateAmount,
   validateId,
   validateString,
+  validateUUID,
 } from './utils.ts'
 import {
   ResourceResult,
@@ -15,6 +16,7 @@ import {
 } from './treasury-resource.ts'
 
 export interface PayoutRequest {
+  wallet_id?: string
   participant_id: string
   amount: number
   reference_id: string
@@ -33,9 +35,33 @@ export async function processPayoutResponse(
   body: PayoutRequest,
   requestId: string,
 ): Promise<ResourceResult> {
-  const participantId = validateId(body.participant_id, 100)
+  let participantId = validateId(body.participant_id, 100)
   const referenceId = validateId(body.reference_id, 255)
   const amount = validateAmount(body.amount)
+
+  if (body.wallet_id) {
+    const walletId = validateUUID(body.wallet_id)
+    if (!walletId) {
+      return resourceError('wallet_id must be a UUID', 400, {}, 'invalid_wallet_id')
+    }
+
+    const { data: walletAccount } = await supabase
+      .from('accounts')
+      .select('id, account_type, entity_id')
+      .eq('ledger_id', ledger.id)
+      .eq('id', walletId)
+      .maybeSingle()
+
+    if (!walletAccount) {
+      return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+    }
+
+    if (walletAccount.account_type !== 'creator_balance' || !walletAccount.entity_id) {
+      return resourceError('Only creator_earnings wallets can be paid out', 400, {}, 'wallet_not_payout_eligible')
+    }
+
+    participantId = String(walletAccount.entity_id)
+  }
 
   if (!participantId) {
     return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')

@@ -416,6 +416,205 @@ describe('Soledgic SDK', () => {
     expect(opts.method).toBe('GET')
   })
 
+  // === WALLET OBJECTS ===
+
+  it('listWallets uses GET query params and maps wallet objects', async () => {
+    const fn = mockFetch({
+      success: true,
+      wallets: [
+        {
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          object: 'wallet',
+          wallet_type: 'consumer_credit',
+          scope_type: 'customer',
+          owner_id: 'reader_1',
+          owner_type: 'customer',
+          participant_id: null,
+          account_type: 'user_wallet',
+          name: 'Reader Credits',
+          currency: 'USD',
+          status: 'active',
+          balance: 2500,
+          held_amount: 0,
+          available_balance: 2500,
+          redeemable: false,
+          transferable: false,
+          topup_supported: true,
+          payout_supported: false,
+          created_at: '2026-03-13T12:00:00Z',
+          metadata: { wallet_type: 'consumer_credit' },
+        },
+      ],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listWallets({ ownerId: 'reader_1', walletType: 'consumer_credit', limit: 10 })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/wallets')
+    expect(String(url)).toContain('owner_id=reader_1')
+    expect(String(url)).toContain('wallet_type=consumer_credit')
+    expect(result.wallets[0].walletType).toBe('consumer_credit')
+    expect(result.wallets[0].ownerId).toBe('reader_1')
+  })
+
+  it('createWallet maps camelCase request to wallet resource response', async () => {
+    const fn = mockFetch({
+      success: true,
+      created: true,
+      wallet: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        object: 'wallet',
+        wallet_type: 'consumer_credit',
+        scope_type: 'customer',
+        owner_id: 'reader_1',
+        owner_type: 'customer',
+        participant_id: null,
+        account_type: 'user_wallet',
+        name: 'Reader Credits',
+        currency: 'USD',
+        status: 'active',
+        balance: 0,
+        held_amount: 0,
+        available_balance: 0,
+        redeemable: false,
+        transferable: false,
+        topup_supported: true,
+        payout_supported: false,
+        created_at: '2026-03-13T12:00:00Z',
+        metadata: { wallet_type: 'consumer_credit' },
+      },
+    }, 201)
+    const sdk = createClient(fn)
+    const result = await sdk.createWallet({
+      ownerId: 'reader_1',
+      walletType: 'consumer_credit',
+      name: 'Reader Credits',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.owner_id).toBe('reader_1')
+    expect(body.wallet_type).toBe('consumer_credit')
+    expect(result.created).toBe(true)
+    expect(result.wallet.walletType).toBe('consumer_credit')
+  })
+
+  it('getWalletEntries uses wallet ids and maps entry responses', async () => {
+    const fn = mockFetch({
+      success: true,
+      wallet: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        object: 'wallet',
+        wallet_type: 'consumer_credit',
+        scope_type: 'customer',
+        owner_id: 'reader_1',
+        owner_type: 'customer',
+        participant_id: null,
+        account_type: 'user_wallet',
+        name: 'Reader Credits',
+        currency: 'USD',
+        status: 'active',
+        balance: 2500,
+        held_amount: 0,
+        available_balance: 2500,
+        redeemable: false,
+        transferable: false,
+        topup_supported: true,
+        payout_supported: false,
+        created_at: '2026-03-13T12:00:00Z',
+        metadata: {},
+      },
+      entries: [
+        {
+          entry_id: 'entry_1',
+          entry_type: 'credit',
+          amount: 2500,
+          transaction_id: 'txn_1',
+          reference_id: 'topup_1',
+          transaction_type: 'deposit',
+          description: 'Initial topup',
+          status: 'completed',
+          metadata: {},
+          created_at: '2026-03-13T12:00:00Z',
+        },
+      ],
+      total: 1,
+      limit: 25,
+      offset: 0,
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.getWalletEntries('550e8400-e29b-41d4-a716-446655440000')
+
+    expect(String(fn.mock.calls[0][0])).toContain('/wallets/550e8400-e29b-41d4-a716-446655440000/entries')
+    expect(result.wallet?.id).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(result.entries[0].referenceId).toBe('topup_1')
+  })
+
+  it('topUpWallet uses the wallet topups endpoint', async () => {
+    const fn = mockFetch({
+      success: true,
+      topup: {
+        wallet_id: '550e8400-e29b-41d4-a716-446655440000',
+        owner_id: 'reader_1',
+        transaction_id: 'txn_topup_1',
+        balance: 5000,
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.topUpWallet({
+      walletId: '550e8400-e29b-41d4-a716-446655440000',
+      amount: 5000,
+      referenceId: 'topup_1',
+    })
+
+    expect(String(fn.mock.calls[0][0])).toContain('/wallets/550e8400-e29b-41d4-a716-446655440000/topups')
+    expect(result.walletId).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(result.transactionId).toBe('txn_topup_1')
+  })
+
+  it('processPayout forwards wallet_id when provided', async () => {
+    const fn = mockFetch({
+      success: true,
+      payout: {
+        id: 'payout_1',
+        transaction_id: 'txn_p1',
+        gross_amount: 5000,
+        fees: 0,
+        net_amount: 5000,
+        new_balance: 1000,
+      },
+    })
+    const sdk = createClient(fn)
+    await sdk.processPayout({
+      walletId: '550e8400-e29b-41d4-a716-446655440000',
+      referenceId: 'payout_1',
+      amount: 5000,
+      feesPaidBy: 'platform',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.wallet_id).toBe('550e8400-e29b-41d4-a716-446655440000')
+  })
+
+  it('walletTransfer forwards wallet ids when provided', async () => {
+    const fn = mockFetch({ success: true, transfer: { transaction_id: 'txn_t1', from_balance: 100, to_balance: 200 } })
+    const sdk = createClient(fn)
+    await sdk.walletTransfer({
+      fromWalletId: '550e8400-e29b-41d4-a716-446655440000',
+      toWalletId: '550e8400-e29b-41d4-a716-446655440001',
+      amount: 2000,
+      referenceId: 'transfer_1',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.from_wallet_id).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(body.to_wallet_id).toBe('550e8400-e29b-41d4-a716-446655440001')
+    expect(body.from_participant_id).toBeUndefined()
+  })
+
   // === TRANSFER ===
 
   it('recordTransfer maps to snake_case', async () => {

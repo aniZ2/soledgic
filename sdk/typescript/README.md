@@ -53,7 +53,10 @@ const checkout = await soledgic.createCheckoutSession({
   cancelUrl: 'https://example.com/cancel',
 })
 
-const wallet = await soledgic.getParticipantWallet(participant.participant.id)
+const wallets = await soledgic.listWallets({
+  ownerId: participant.participant.id,
+  walletType: 'creator_earnings',
+})
 
 const payout = await soledgic.createPayout({
   participantId: participant.participant.id,
@@ -65,10 +68,14 @@ const payout = await soledgic.createPayout({
 console.log({
   checkoutUrl: checkout.checkoutSession.checkoutUrl,
   linkedUserId: participant.participant.linkedUserId,
-  availableBalance: wallet.wallet.availableBalance,
+  availableBalance: wallets.wallets[0]?.availableBalance,
   payoutStatus: payout.payout.status,
 })
 ```
+
+The wallet API is uniform across integrations, but balances remain scoped.
+Every wallet object belongs to one ledger, one owner, and one wallet type.
+Soledgic does not expose a shared universal wallet balance.
 
 ## Public Treasury Methods
 
@@ -87,14 +94,27 @@ console.log({
 
 | Method | Description |
 | --- | --- |
+| `listWallets(filters?)` | List wallet objects by owner or wallet type |
+| `createWallet(req)` | Create a consumer credit wallet |
+| `getWallet(walletId)` | Fetch a wallet object by wallet id |
+| `getWalletEntries(walletId, opts?)` | List entries for a wallet object |
+| `topUpWallet(req)` | Top up a wallet object |
 | `getParticipantWallet(participantId)` | Get wallet balance and available balance |
-| `walletDeposit(req)` | Deposit funds into a participant wallet |
-| `walletWithdraw(req)` | Withdraw funds from a participant wallet |
-| `getWalletHistory(participantId, opts?)` | List wallet entries |
-| `createTransfer(req)` | Move funds between participant wallets |
+| `walletDeposit(req)` | Legacy participant-bound wallet deposit helper |
+| `walletWithdraw(req)` | Legacy participant-bound wallet withdrawal helper |
+| `getWalletHistory(participantId, opts?)` | Legacy participant-bound wallet history helper |
+| `createTransfer(req)` | Move funds between wallets when transfer is permitted |
 | `listHolds(opts?)` | List held funds |
 | `getHoldSummary()` | Get aggregate held-funds totals |
 | `releaseHold(req)` | Release a hold and optionally execute the transfer |
+
+Supported wallet types:
+
+- `consumer_credit`: closed-loop platform credits
+- `creator_earnings`: payout-eligible seller or creator proceeds
+
+`createWallet` currently provisions scoped consumer-credit wallets. Creator
+earnings wallets are provisioned through participant and treasury flows.
 
 ### Checkout, Payouts, and Refunds
 

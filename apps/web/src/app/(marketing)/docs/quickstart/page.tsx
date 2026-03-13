@@ -122,12 +122,12 @@ export default function QuickstartPage() {
           <h2 className="text-2xl font-semibold text-foreground">Inspect Wallet and Holds</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          Once payment settles, inspect the participant wallet and any active hold state separately.
+          Once payment settles, inspect the wallet objects for that owner and any active hold state separately.
         </p>
         <div className="space-y-4">
           <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
             <pre className="text-sm text-slate-300">
-{`curl -X GET "${API_BASE_URL}/v1/wallets/creator_456" \\
+{`curl -X GET "${API_BASE_URL}/v1/wallets?owner_id=creator_456&wallet_type=creator_earnings" \\
   -H "x-api-key: sk_test_YOUR_API_KEY"`}
             </pre>
           </div>

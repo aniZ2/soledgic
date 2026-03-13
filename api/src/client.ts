@@ -97,7 +97,10 @@ function createSecureKeyHolder(key: string): () => string {
 }
 
 /**
- * Soledgic SDK Client
+ * Legacy Soledgic compatibility client.
+ *
+ * New public integrations should prefer `@soledgic/sdk`, which targets the
+ * supported resource-first `/v1/*` surface including wallet objects.
  *
  * SECURITY NOTES:
  * - API key is stored securely in a closure, not as a class property

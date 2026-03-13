@@ -355,7 +355,8 @@ export interface PreflightResult {
 
 export interface ProcessPayoutRequest {
   referenceId: string
-  creatorId: string
+  creatorId?: string
+  walletId?: string
   amount: number
   referenceType?: string
   description?: string
@@ -1106,6 +1107,90 @@ export interface SendBreachAlertResponse {
 
 // === WALLET TYPES ===
 
+export interface WalletObject {
+  id: string
+  object: 'wallet'
+  walletType: 'consumer_credit' | 'creator_earnings'
+  scopeType: 'customer' | 'participant'
+  ownerId: string | null
+  ownerType: string | null
+  participantId: string | null
+  accountType: string
+  name: string | null
+  currency: string
+  status: string
+  balance: number
+  heldAmount: number
+  availableBalance: number
+  redeemable: boolean
+  transferable: boolean
+  topupSupported: boolean
+  payoutSupported: boolean
+  createdAt: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface ListWalletsRequest {
+  ownerId?: string
+  ownerType?: string
+  walletType?: WalletObject['walletType']
+  limit?: number
+  offset?: number
+}
+
+export interface ListWalletsResponse {
+  success: boolean
+  wallets: WalletObject[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CreateWalletRequest {
+  ownerId?: string
+  participantId?: string
+  ownerType?: string
+  walletType: WalletObject['walletType']
+  name?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface CreateWalletResponse {
+  success: boolean
+  created: boolean
+  wallet: WalletObject
+}
+
+export interface GetWalletResponse {
+  success: boolean
+  wallet: WalletObject
+}
+
+export interface WalletEntriesResponse {
+  success: boolean
+  wallet: WalletObject | null
+  entries: WalletHistoryEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface WalletTopupRequest {
+  walletId: string
+  amount: number
+  referenceId: string
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface WalletTopupResponse {
+  success: boolean
+  walletId: string | null
+  ownerId: string | null
+  transactionId: string | null
+  balance: number | null
+}
+
 export interface WalletBalanceResponse {
   success: boolean
   balance: number
@@ -1148,8 +1233,10 @@ export interface WalletWithdrawRequest {
 }
 
 export interface WalletTransferRequest {
-  fromUserId: string
-  toUserId: string
+  fromUserId?: string
+  toUserId?: string
+  fromWalletId?: string
+  toWalletId?: string
   /** Amount in cents */
   amount: number
   referenceId: string
@@ -1858,6 +1945,7 @@ export class Soledgic {
   async processPayout(req: ProcessPayoutRequest) {
     const response = await this.request<any>('payouts', {
       reference_id: req.referenceId,
+      wallet_id: req.walletId,
       participant_id: req.creatorId,
       amount: req.amount,
       reference_type: req.referenceType,
@@ -3465,6 +3553,119 @@ export class Soledgic {
 
   // === WALLETS ===
 
+  private mapWalletObject(wallet: any): WalletObject {
+    return {
+      id: wallet.id,
+      object: 'wallet',
+      walletType: wallet.wallet_type,
+      scopeType: wallet.scope_type,
+      ownerId: wallet.owner_id ?? null,
+      ownerType: wallet.owner_type ?? null,
+      participantId: wallet.participant_id ?? null,
+      accountType: wallet.account_type,
+      name: wallet.name ?? null,
+      currency: wallet.currency,
+      status: wallet.status,
+      balance: wallet.balance,
+      heldAmount: wallet.held_amount ?? 0,
+      availableBalance: wallet.available_balance ?? wallet.balance,
+      redeemable: wallet.redeemable === true,
+      transferable: wallet.transferable === true,
+      topupSupported: wallet.topup_supported === true,
+      payoutSupported: wallet.payout_supported === true,
+      createdAt: wallet.created_at ?? null,
+      metadata: wallet.metadata || {},
+    }
+  }
+
+  async listWallets(filters: ListWalletsRequest = {}): Promise<ListWalletsResponse> {
+    const response = await this.requestGet<any>('wallets', {
+      owner_id: filters.ownerId,
+      owner_type: filters.ownerType,
+      wallet_type: filters.walletType,
+      limit: filters.limit,
+      offset: filters.offset,
+    })
+
+    return {
+      success: response.success,
+      wallets: (response.wallets || []).map((wallet: any) => this.mapWalletObject(wallet)),
+      total: response.total,
+      limit: response.limit,
+      offset: response.offset,
+    }
+  }
+
+  async createWallet(req: CreateWalletRequest): Promise<CreateWalletResponse> {
+    const response = await this.request<any>('wallets', {
+      owner_id: req.ownerId,
+      participant_id: req.participantId,
+      owner_type: req.ownerType,
+      wallet_type: req.walletType,
+      name: req.name,
+      metadata: req.metadata,
+    })
+
+    return {
+      success: response.success,
+      created: response.created === true,
+      wallet: this.mapWalletObject(response.wallet),
+    }
+  }
+
+  async getWallet(walletId: string): Promise<GetWalletResponse> {
+    const response = await this.requestGet<any>(`wallets/${walletId}`)
+    return {
+      success: response.success,
+      wallet: this.mapWalletObject(response.wallet),
+    }
+  }
+
+  async getWalletEntries(walletId: string, options?: { limit?: number; offset?: number }): Promise<WalletEntriesResponse> {
+    const response = await this.requestGet<any>(`wallets/${walletId}/entries`, {
+      limit: options?.limit,
+      offset: options?.offset,
+    })
+
+    return {
+      success: response.success,
+      wallet: response.wallet ? this.mapWalletObject(response.wallet) : null,
+      entries: (response.entries || []).map((t: any) => ({
+        entryId: t.entry_id,
+        entryType: t.entry_type,
+        amount: t.amount,
+        transactionId: t.transaction_id,
+        referenceId: t.reference_id,
+        transactionType: t.transaction_type,
+        description: t.description,
+        status: t.status,
+        metadata: t.metadata,
+        createdAt: t.created_at,
+      })),
+      total: response.total,
+      limit: response.limit,
+      offset: response.offset,
+    }
+  }
+
+  async topUpWallet(req: WalletTopupRequest): Promise<WalletTopupResponse> {
+    const response = await this.request<any>(`wallets/${req.walletId}/topups`, {
+      amount: req.amount,
+      reference_id: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+
+    const topup = response.topup || response.deposit || response
+    return {
+      success: response.success,
+      walletId: topup.wallet_id ?? null,
+      ownerId: topup.owner_id ?? null,
+      transactionId: topup.transaction_id ?? null,
+      balance: topup.balance ?? null,
+    }
+  }
+
   async getWalletBalance(userId: string): Promise<WalletBalanceResponse> {
     const response = await this.requestGet<any>(`wallets/${userId}`)
     const wallet = response.wallet || {}
@@ -3515,14 +3716,22 @@ export class Soledgic {
   }
 
   async walletTransfer(req: WalletTransferRequest): Promise<WalletTransferResponse> {
-    const response = await this.request<any>('transfers', {
-      from_participant_id: req.fromUserId,
-      to_participant_id: req.toUserId,
+    const payload: Record<string, unknown> = {
       amount: req.amount,
       reference_id: req.referenceId,
       description: req.description,
       metadata: req.metadata,
-    })
+    }
+
+    if (req.fromWalletId || req.toWalletId) {
+      payload.from_wallet_id = req.fromWalletId
+      payload.to_wallet_id = req.toWalletId
+    } else {
+      payload.from_participant_id = req.fromUserId
+      payload.to_participant_id = req.toUserId
+    }
+
+    const response = await this.request<any>('transfers', payload)
     const transfer = response.transfer || response
     return {
       success: response.success,

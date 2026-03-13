@@ -6,6 +6,8 @@ import {
   validateAmount,
   validateId,
   validateInteger,
+  validateString,
+  validateUUID,
 } from './utils.ts'
 import {
   ResourceResult,
@@ -13,16 +15,735 @@ import {
   resourceOk,
 } from './treasury-resource.ts'
 
+export type WalletType = 'consumer_credit' | 'creator_earnings'
+export type WalletScopeType = 'customer' | 'participant'
+
+type WalletAccountRow = {
+  id: string
+  account_type: 'user_wallet' | 'creator_balance' | string
+  entity_id: string | null
+  entity_type: string | null
+  name: string
+  balance: number | string | null
+  currency: string | null
+  metadata: Record<string, unknown> | null
+  is_active: boolean | null
+  created_at: string | null
+}
+
 export interface WalletMutationRequest {
+  wallet_id?: string
+  from_wallet_id?: string
+  to_wallet_id?: string
   participant_id?: string
   from_participant_id?: string
   to_participant_id?: string
+  owner_id?: string
+  owner_type?: string
+  wallet_type?: WalletType | string
+  name?: string
   amount?: number
   reference_id?: string
   description?: string
   metadata?: Record<string, unknown>
   limit?: number
   offset?: number
+}
+
+const SUPPORTED_WALLET_ACCOUNT_TYPES = ['user_wallet', 'creator_balance']
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  return value as Record<string, unknown>
+}
+
+function normalizeWalletType(account: WalletAccountRow): WalletType {
+  if (account.account_type === 'creator_balance') {
+    return 'creator_earnings'
+  }
+
+  const metadata = asObject(account.metadata)
+  return metadata.wallet_type === 'creator_earnings' ? 'creator_earnings' : 'consumer_credit'
+}
+
+function normalizeOwnerType(account: WalletAccountRow, walletType: WalletType): string {
+  const metadata = asObject(account.metadata)
+  const ownerType = typeof metadata.owner_type === 'string'
+    ? metadata.owner_type
+    : typeof account.entity_type === 'string' && account.entity_type.length > 0
+      ? account.entity_type
+      : walletType === 'creator_earnings'
+        ? 'participant'
+        : 'customer'
+
+  return ownerType
+}
+
+function normalizeScopeType(account: WalletAccountRow, walletType: WalletType): WalletScopeType {
+  const metadata = asObject(account.metadata)
+  const scopeType = typeof metadata.scope_type === 'string' ? metadata.scope_type : null
+
+  if (scopeType === 'participant' || scopeType === 'customer') {
+    return scopeType
+  }
+
+  return walletType === 'creator_earnings' ? 'participant' : 'customer'
+}
+
+function normalizeWalletFlags(
+  account: WalletAccountRow,
+  walletType: WalletType,
+): { redeemable: boolean; transferable: boolean; topupSupported: boolean; payoutSupported: boolean } {
+  const metadata = asObject(account.metadata)
+
+  if (walletType === 'creator_earnings') {
+    return {
+      redeemable: true,
+      transferable: false,
+      topupSupported: false,
+      payoutSupported: true,
+    }
+  }
+
+  return {
+    redeemable: metadata.redeemable === true,
+    transferable: metadata.transferable === true,
+    topupSupported: metadata.topup_supported !== false,
+    payoutSupported: metadata.payout_supported === true,
+  }
+}
+
+function buildWalletResource(
+  account: WalletAccountRow,
+  heldAmount = 0,
+): Record<string, unknown> {
+  const walletType = normalizeWalletType(account)
+  const ownerType = normalizeOwnerType(account, walletType)
+  const scopeType = normalizeScopeType(account, walletType)
+  const flags = normalizeWalletFlags(account, walletType)
+  const balance = Number(account.balance ?? 0)
+  const normalizedHeldAmount = walletType === 'creator_earnings' ? heldAmount : 0
+  const availableBalance = balance - normalizedHeldAmount
+  const metadata = asObject(account.metadata)
+
+  return {
+    id: account.id,
+    object: 'wallet',
+    wallet_type: walletType,
+    scope_type: scopeType,
+    owner_id: account.entity_id,
+    owner_type: ownerType,
+    participant_id: ownerType === 'participant' ? account.entity_id : null,
+    account_type: account.account_type,
+    name: account.name,
+    currency: account.currency || 'USD',
+    status: account.is_active === false ? 'inactive' : 'active',
+    balance,
+    held_amount: normalizedHeldAmount,
+    available_balance: availableBalance,
+    redeemable: flags.redeemable,
+    transferable: flags.transferable,
+    topup_supported: flags.topupSupported,
+    payout_supported: flags.payoutSupported,
+    created_at: account.created_at,
+    metadata,
+  }
+}
+
+async function getHeldAmountsByParticipantId(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  participantIds: string[],
+): Promise<Map<string, number>> {
+  if (participantIds.length === 0) {
+    return new Map()
+  }
+
+  const { data, error } = await supabase
+    .from('held_funds')
+    .select('creator_id, held_amount, released_amount, status')
+    .eq('ledger_id', ledgerId)
+    .in('creator_id', participantIds)
+    .in('status', ['held', 'partial'])
+
+  if (error) {
+    console.error('Failed to fetch held funds for wallet resources:', error)
+    return new Map()
+  }
+
+  const totals = new Map<string, number>()
+  for (const row of data || []) {
+    const creatorId = String((row as any).creator_id || '')
+    if (!creatorId) continue
+    const currentlyHeld = Number((row as any).held_amount ?? 0) - Number((row as any).released_amount ?? 0)
+    totals.set(creatorId, (totals.get(creatorId) || 0) + currentlyHeld)
+  }
+
+  return totals
+}
+
+async function getWalletAccountById(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  walletId: string,
+): Promise<WalletAccountRow | null> {
+  const { data } = await supabase
+    .from('accounts')
+    .select('id, account_type, entity_id, entity_type, name, balance, currency, metadata, is_active, created_at')
+    .eq('ledger_id', ledgerId)
+    .eq('id', walletId)
+    .in('account_type', SUPPORTED_WALLET_ACCOUNT_TYPES)
+    .maybeSingle()
+
+  return (data as WalletAccountRow | null) || null
+}
+
+async function getLegacyWalletAccountByOwnerId(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  ownerId: string,
+): Promise<WalletAccountRow | null> {
+  const { data } = await supabase
+    .from('accounts')
+    .select('id, account_type, entity_id, entity_type, name, balance, currency, metadata, is_active, created_at')
+    .eq('ledger_id', ledgerId)
+    .eq('account_type', 'user_wallet')
+    .eq('entity_id', ownerId)
+    .maybeSingle()
+
+  return (data as WalletAccountRow | null) || null
+}
+
+async function getWalletResourceById(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  walletId: string,
+): Promise<Record<string, unknown> | null> {
+  const account = await getWalletAccountById(supabase, ledgerId, walletId)
+  if (!account) {
+    return null
+  }
+
+  let heldAmount = 0
+  if (account.account_type === 'creator_balance' && account.entity_id) {
+    const heldMap = await getHeldAmountsByParticipantId(supabase, ledgerId, [account.entity_id])
+    heldAmount = heldMap.get(account.entity_id) || 0
+  }
+
+  return buildWalletResource(account, heldAmount)
+}
+
+function validateWalletType(value: unknown): WalletType | null {
+  if (value === 'consumer_credit' || value === 'creator_earnings') {
+    return value
+  }
+
+  return null
+}
+
+function getOwnerId(body: WalletMutationRequest): string | null {
+  const ownerId = body.owner_id || body.participant_id
+  return validateId(ownerId, 100)
+}
+
+export async function listWalletsResponse(
+  _req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: WalletMutationRequest,
+  _requestId: string,
+): Promise<ResourceResult> {
+  const ownerId = body.owner_id || body.participant_id
+  if (ownerId && !validateId(ownerId, 100)) {
+    return resourceError('Invalid owner_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_owner_id')
+  }
+
+  const ownerType = body.owner_type ? validateId(body.owner_type, 50) : null
+  if (body.owner_type && !ownerType) {
+    return resourceError('Invalid owner_type', 400, {}, 'invalid_owner_type')
+  }
+
+  const walletType = body.wallet_type ? validateWalletType(body.wallet_type) : null
+  if (body.wallet_type && !walletType) {
+    return resourceError('Invalid wallet_type', 400, {}, 'invalid_wallet_type')
+  }
+
+  const limit = validateInteger(body.limit, 1, 100) ?? 25
+  const offset = validateInteger(body.offset, 0, 100000) ?? 0
+
+  let query = supabase
+    .from('accounts')
+    .select('id, account_type, entity_id, entity_type, name, balance, currency, metadata, is_active, created_at', {
+      count: 'exact',
+    })
+    .eq('ledger_id', ledger.id)
+    .in('account_type', SUPPORTED_WALLET_ACCOUNT_TYPES)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (ownerId) {
+    query = query.eq('entity_id', ownerId)
+  }
+
+  if (ownerType) {
+    query = query.eq('entity_type', ownerType)
+  }
+
+  if (walletType === 'consumer_credit') {
+    query = query.eq('account_type', 'user_wallet')
+  } else if (walletType === 'creator_earnings') {
+    query = query.eq('account_type', 'creator_balance')
+  }
+
+  const { data, error, count } = await query
+  if (error) {
+    console.error('Failed to list wallets:', error)
+    return resourceError('Failed to list wallets', 500, {}, 'wallet_list_failed')
+  }
+
+  const rows = (data || []) as WalletAccountRow[]
+  const creatorIds = rows
+    .filter((row) => row.account_type === 'creator_balance' && row.entity_id)
+    .map((row) => String(row.entity_id))
+  const heldMap = await getHeldAmountsByParticipantId(supabase, ledger.id, creatorIds)
+
+  const wallets = rows.map((row) => buildWalletResource(row, heldMap.get(String(row.entity_id || '')) || 0))
+
+  return resourceOk({
+    success: true,
+    wallets,
+    total: count ?? wallets.length,
+    limit,
+    offset,
+  })
+}
+
+export async function createWalletResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: WalletMutationRequest,
+  requestId: string,
+): Promise<ResourceResult> {
+  const walletType = validateWalletType(body.wallet_type)
+  if (!walletType) {
+    return resourceError('wallet_type must be consumer_credit or creator_earnings', 400, {}, 'invalid_wallet_type')
+  }
+
+  const ownerId = getOwnerId(body)
+  if (!ownerId) {
+    return resourceError('owner_id is required and must be 1-100 alphanumeric characters', 400, {}, 'invalid_owner_id')
+  }
+
+  const ownerType = body.owner_type
+    ? validateId(body.owner_type, 50)
+    : walletType === 'creator_earnings'
+      ? 'participant'
+      : 'customer'
+
+  if (!ownerType) {
+    return resourceError('Invalid owner_type', 400, {}, 'invalid_owner_type')
+  }
+
+  if (walletType === 'creator_earnings') {
+    const { data: existingParticipantWallet } = await supabase
+      .from('accounts')
+      .select('id, account_type, entity_id, entity_type, name, balance, currency, metadata, is_active, created_at')
+      .eq('ledger_id', ledger.id)
+      .eq('account_type', 'creator_balance')
+      .eq('entity_id', ownerId)
+      .maybeSingle()
+
+    if (!existingParticipantWallet) {
+      return resourceError(
+        'creator_earnings wallets are provisioned through participants. Create the participant first.',
+        409,
+        {},
+        'creator_earnings_requires_participant',
+      )
+    }
+
+    const heldMap = await getHeldAmountsByParticipantId(supabase, ledger.id, [ownerId])
+    return resourceOk({
+      success: true,
+      created: false,
+      wallet: buildWalletResource(existingParticipantWallet as WalletAccountRow, heldMap.get(ownerId) || 0),
+    })
+  }
+
+  const existingWallet = await getLegacyWalletAccountByOwnerId(supabase, ledger.id, ownerId)
+  if (existingWallet) {
+    return resourceOk({
+      success: true,
+      created: false,
+      wallet: buildWalletResource(existingWallet),
+    })
+  }
+
+  const name = validateString(body.name, 120) || `Wallet ${ownerId}`
+  const metadata = {
+    wallet_type: 'consumer_credit',
+    scope_type: ownerType === 'participant' ? 'participant' : 'customer',
+    owner_type: ownerType,
+    redeemable: false,
+    transferable: false,
+    topup_supported: true,
+    payout_supported: false,
+    ...(body.metadata || {}),
+  }
+
+  const { data: createdWallet, error } = await supabase
+    .from('accounts')
+    .insert({
+      ledger_id: ledger.id,
+      account_type: 'user_wallet',
+      entity_id: ownerId,
+      entity_type: ownerType,
+      name,
+      currency: 'USD',
+      metadata,
+    })
+    .select('id, account_type, entity_id, entity_type, name, balance, currency, metadata, is_active, created_at')
+    .single()
+
+  if (error) {
+    console.error('Failed to create wallet:', error)
+    return resourceError('Failed to create wallet', 500, {}, 'wallet_create_failed')
+  }
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'wallet_created',
+    entity_type: 'account',
+    entity_id: createdWallet.id,
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      owner_id: ownerId,
+      owner_type: ownerType,
+      wallet_type: 'consumer_credit',
+    }),
+    response_status: 201,
+    risk_score: 10,
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    created: true,
+    wallet: buildWalletResource(createdWallet as WalletAccountRow),
+  }, 201)
+}
+
+export async function getWalletByIdResponse(
+  _req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  walletId: string,
+  _requestId: string,
+): Promise<ResourceResult> {
+  const walletUuid = validateUUID(walletId)
+  if (!walletUuid) {
+    return resourceError('wallet_id must be a UUID', 400, {}, 'invalid_wallet_id')
+  }
+
+  const wallet = await getWalletResourceById(supabase, ledger.id, walletUuid)
+  if (!wallet) {
+    return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+  }
+
+  return resourceOk({ success: true, wallet })
+}
+
+export async function listWalletEntriesByIdResponse(
+  _req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  walletId: string,
+  body: WalletMutationRequest,
+  _requestId: string,
+): Promise<ResourceResult> {
+  const walletUuid = validateUUID(walletId)
+  if (!walletUuid) {
+    return resourceError('wallet_id must be a UUID', 400, {}, 'invalid_wallet_id')
+  }
+
+  const limit = validateInteger(body.limit, 1, 100) ?? 25
+  const offset = validateInteger(body.offset, 0, 100000) ?? 0
+  const account = await getWalletAccountById(supabase, ledger.id, walletUuid)
+
+  if (!account) {
+    return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+  }
+
+  const { data: entries, error: entriesError } = await supabase
+    .from('entries')
+    .select(`
+      id,
+      entry_type,
+      amount,
+      created_at,
+      transaction:transactions!inner(
+        id,
+        reference_id,
+        transaction_type,
+        description,
+        status,
+        metadata,
+        created_at
+      )
+    `)
+    .eq('account_id', walletUuid)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (entriesError) {
+    console.error('Failed to fetch wallet history:', entriesError)
+    return resourceError('Failed to fetch wallet history', 500, {}, 'wallet_history_fetch_failed')
+  }
+
+  const { count } = await supabase
+    .from('entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', walletUuid)
+
+  const wallet = await getWalletResourceById(supabase, ledger.id, walletUuid)
+  const transactions = (entries || []).map((entry: any) => {
+    const tx = entry.transaction
+    return {
+      entry_id: entry.id,
+      entry_type: entry.entry_type,
+      amount: Number(entry.amount),
+      transaction_id: tx.id,
+      reference_id: tx.reference_id,
+      transaction_type: tx.transaction_type,
+      description: tx.description,
+      status: tx.status,
+      metadata: tx.metadata,
+      created_at: tx.created_at,
+    }
+  })
+
+  return resourceOk({
+    success: true,
+    wallet,
+    entries: transactions,
+    total: count ?? 0,
+    limit,
+    offset,
+  })
+}
+
+async function depositToUserWalletAccountResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  ownerId: string,
+  body: WalletMutationRequest,
+  requestId: string,
+): Promise<ResourceResult> {
+  const amount = validateAmount(body.amount)
+  if (amount === null || amount <= 0) {
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
+  }
+
+  const referenceId = validateId(body.reference_id, 255)
+  if (!referenceId) {
+    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
+  }
+
+  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
+  if (duplicate) {
+    return resourceOk(
+      {
+        success: false,
+        idempotent: true,
+        error: 'Duplicate reference_id',
+        error_code: 'duplicate_reference_id',
+        transaction_id: duplicate.id,
+      },
+      409,
+    )
+  }
+
+  const { data: result, error: rpcError } = await supabase.rpc('wallet_deposit_atomic', {
+    p_ledger_id: ledger.id,
+    p_user_id: ownerId,
+    p_amount: amount,
+    p_reference_id: referenceId,
+    p_description: body.description || null,
+    p_metadata: body.metadata || {},
+  })
+
+  if (rpcError) {
+    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
+  }
+
+  const row = Array.isArray(result) ? result[0] : result
+  const transactionId = row?.out_transaction_id
+  const balance = Number(row?.out_wallet_balance ?? 0)
+  const walletId = row?.out_wallet_account_id
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'wallet_deposit',
+    entity_type: 'transaction',
+    entity_id: transactionId,
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      owner_id: ownerId,
+      amount_cents: amount,
+      reference_id: referenceId,
+    }),
+    response_status: 200,
+    risk_score: 20,
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    topup: {
+      wallet_id: walletId,
+      owner_id: ownerId,
+      transaction_id: transactionId,
+      balance,
+    },
+    deposit: {
+      participant_id: ownerId,
+      transaction_id: transactionId,
+      balance,
+    },
+  })
+}
+
+async function withdrawFromUserWalletAccountResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  ownerId: string,
+  body: WalletMutationRequest,
+  requestId: string,
+): Promise<ResourceResult> {
+  const amount = validateAmount(body.amount)
+  if (amount === null || amount <= 0) {
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
+  }
+
+  const referenceId = validateId(body.reference_id, 255)
+  if (!referenceId) {
+    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
+  }
+
+  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
+  if (duplicate) {
+    return resourceOk(
+      {
+        success: false,
+        idempotent: true,
+        error: 'Duplicate reference_id',
+        error_code: 'duplicate_reference_id',
+        transaction_id: duplicate.id,
+      },
+      409,
+    )
+  }
+
+  const { data: result, error: rpcError } = await supabase.rpc('wallet_withdraw_atomic', {
+    p_ledger_id: ledger.id,
+    p_user_id: ownerId,
+    p_amount: amount,
+    p_reference_id: referenceId,
+    p_description: body.description || null,
+    p_metadata: body.metadata || {},
+  })
+
+  if (rpcError) {
+    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
+  }
+
+  const row = Array.isArray(result) ? result[0] : result
+  const transactionId = row?.out_transaction_id
+  const balance = Number(row?.out_wallet_balance ?? 0)
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'wallet_withdraw',
+    entity_type: 'transaction',
+    entity_id: transactionId,
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      owner_id: ownerId,
+      amount_cents: amount,
+      reference_id: referenceId,
+    }),
+    response_status: 200,
+    risk_score: 30,
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    withdrawal: {
+      participant_id: ownerId,
+      transaction_id: transactionId,
+      balance,
+    },
+  })
+}
+
+export async function topUpWalletByIdResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  walletId: string,
+  body: WalletMutationRequest,
+  requestId: string,
+): Promise<ResourceResult> {
+  const walletUuid = validateUUID(walletId)
+  if (!walletUuid) {
+    return resourceError('wallet_id must be a UUID', 400, {}, 'invalid_wallet_id')
+  }
+
+  const account = await getWalletAccountById(supabase, ledger.id, walletUuid)
+  if (!account) {
+    return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+  }
+
+  const wallet = buildWalletResource(account)
+  if (wallet.wallet_type !== 'consumer_credit' || wallet.topup_supported !== true || !account.entity_id) {
+    return resourceError('Only consumer_credit wallets support topups', 400, {}, 'wallet_not_topupable')
+  }
+
+  return depositToUserWalletAccountResponse(req, supabase, ledger, account.entity_id, body, requestId)
+}
+
+export async function withdrawFromWalletByIdResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  walletId: string,
+  body: WalletMutationRequest,
+  requestId: string,
+): Promise<ResourceResult> {
+  const walletUuid = validateUUID(walletId)
+  if (!walletUuid) {
+    return resourceError('wallet_id must be a UUID', 400, {}, 'invalid_wallet_id')
+  }
+
+  const account = await getWalletAccountById(supabase, ledger.id, walletUuid)
+  if (!account) {
+    return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+  }
+
+  const wallet = buildWalletResource(account)
+  if (wallet.redeemable !== true || !account.entity_id) {
+    return resourceError('This wallet is not redeemable. Use payouts for creator earnings wallets.', 400, {}, 'wallet_not_redeemable')
+  }
+
+  if (wallet.wallet_type !== 'consumer_credit') {
+    return resourceError('Wallet withdrawals are not supported for this wallet type', 400, {}, 'wallet_withdrawal_not_supported')
+  }
+
+  return withdrawFromUserWalletAccountResponse(req, supabase, ledger, account.entity_id, body, requestId)
 }
 
 export async function getWalletBalanceResponse(
@@ -37,13 +758,7 @@ export async function getWalletBalanceResponse(
     return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
-  const { data: account } = await supabase
-    .from('accounts')
-    .select('id, balance, entity_id, name, is_active, created_at')
-    .eq('ledger_id', ledger.id)
-    .eq('account_type', 'user_wallet')
-    .eq('entity_id', participantId)
-    .maybeSingle()
+  const account = await getLegacyWalletAccountByOwnerId(supabase, ledger.id, participantId)
 
   return resourceOk({
     success: true,
@@ -76,70 +791,7 @@ export async function depositToWalletResponse(
     return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
-  const amount = validateAmount(body.amount)
-  if (amount === null || amount <= 0) {
-    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
-  }
-
-  const referenceId = validateId(body.reference_id, 255)
-  if (!referenceId) {
-    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
-  }
-
-  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
-  if (duplicate) {
-    return resourceOk(
-      {
-        success: false,
-        idempotent: true,
-        error: 'Duplicate reference_id',
-        error_code: 'duplicate_reference_id',
-        transaction_id: duplicate.id,
-      },
-      409,
-    )
-  }
-
-  const { data: result, error: rpcError } = await supabase.rpc('wallet_deposit_atomic', {
-    p_ledger_id: ledger.id,
-    p_user_id: participantId,
-    p_amount: amount,
-    p_reference_id: referenceId,
-    p_description: body.description || null,
-    p_metadata: body.metadata || {},
-  })
-
-  if (rpcError) {
-    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
-  }
-
-  const row = Array.isArray(result) ? result[0] : result
-  const transactionId = row?.out_transaction_id
-  const balance = Number(row?.out_wallet_balance ?? 0)
-
-  createAuditLogAsync(supabase, req, {
-    ledger_id: ledger.id,
-    action: 'wallet_deposit',
-    entity_type: 'transaction',
-    entity_id: transactionId,
-    actor_type: 'api',
-    request_body: sanitizeForAudit({
-      participant_id: participantId,
-      amount_cents: amount,
-      reference_id: referenceId,
-    }),
-    response_status: 200,
-    risk_score: 20,
-  }, requestId)
-
-  return resourceOk({
-    success: true,
-    deposit: {
-      participant_id: participantId,
-      transaction_id: transactionId,
-      balance,
-    },
-  })
+  return depositToUserWalletAccountResponse(req, supabase, ledger, participantId, body, requestId)
 }
 
 export async function withdrawFromWalletResponse(
@@ -154,70 +806,7 @@ export async function withdrawFromWalletResponse(
     return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
-  const amount = validateAmount(body.amount)
-  if (amount === null || amount <= 0) {
-    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
-  }
-
-  const referenceId = validateId(body.reference_id, 255)
-  if (!referenceId) {
-    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
-  }
-
-  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
-  if (duplicate) {
-    return resourceOk(
-      {
-        success: false,
-        idempotent: true,
-        error: 'Duplicate reference_id',
-        error_code: 'duplicate_reference_id',
-        transaction_id: duplicate.id,
-      },
-      409,
-    )
-  }
-
-  const { data: result, error: rpcError } = await supabase.rpc('wallet_withdraw_atomic', {
-    p_ledger_id: ledger.id,
-    p_user_id: participantId,
-    p_amount: amount,
-    p_reference_id: referenceId,
-    p_description: body.description || null,
-    p_metadata: body.metadata || {},
-  })
-
-  if (rpcError) {
-    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
-  }
-
-  const row = Array.isArray(result) ? result[0] : result
-  const transactionId = row?.out_transaction_id
-  const balance = Number(row?.out_wallet_balance ?? 0)
-
-  createAuditLogAsync(supabase, req, {
-    ledger_id: ledger.id,
-    action: 'wallet_withdraw',
-    entity_type: 'transaction',
-    entity_id: transactionId,
-    actor_type: 'api',
-    request_body: sanitizeForAudit({
-      participant_id: participantId,
-      amount_cents: amount,
-      reference_id: referenceId,
-    }),
-    response_status: 200,
-    risk_score: 30,
-  }, requestId)
-
-  return resourceOk({
-    success: true,
-    withdrawal: {
-      participant_id: participantId,
-      transaction_id: transactionId,
-      balance,
-    },
-  })
+  return withdrawFromUserWalletAccountResponse(req, supabase, ledger, participantId, body, requestId)
 }
 
 export async function transferWalletFundsResponse(
@@ -227,14 +816,47 @@ export async function transferWalletFundsResponse(
   body: WalletMutationRequest,
   requestId: string,
 ): Promise<ResourceResult> {
-  const fromParticipantId = validateId(body.from_participant_id, 100)
-  if (!fromParticipantId) {
-    return resourceError('Invalid from_participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_from_participant_id')
+  let fromParticipantId: string | null = null
+  let toParticipantId: string | null = null
+
+  const fromWalletId = body.from_wallet_id ? validateUUID(body.from_wallet_id) : null
+  const toWalletId = body.to_wallet_id ? validateUUID(body.to_wallet_id) : null
+
+  if ((body.from_wallet_id || body.to_wallet_id) && (!fromWalletId || !toWalletId)) {
+    return resourceError('from_wallet_id and to_wallet_id must both be valid UUIDs', 400, {}, 'invalid_wallet_id')
   }
 
-  const toParticipantId = validateId(body.to_participant_id, 100)
-  if (!toParticipantId) {
-    return resourceError('Invalid to_participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_to_participant_id')
+  if (fromWalletId && toWalletId) {
+    const fromWallet = await getWalletAccountById(supabase, ledger.id, fromWalletId)
+    const toWallet = await getWalletAccountById(supabase, ledger.id, toWalletId)
+
+    if (!fromWallet || !toWallet) {
+      return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+    }
+
+    const fromWalletResource = buildWalletResource(fromWallet)
+    const toWalletResource = buildWalletResource(toWallet)
+
+    if (fromWallet.account_type !== 'user_wallet' || toWallet.account_type !== 'user_wallet') {
+      return resourceError('Transfers currently support consumer_credit wallets only', 400, {}, 'wallet_transfer_not_supported')
+    }
+
+    if (fromWalletResource.transferable !== true || toWalletResource.transferable !== true) {
+      return resourceError('One or both wallets are not transferable', 400, {}, 'wallet_not_transferable')
+    }
+
+    fromParticipantId = fromWallet.entity_id
+    toParticipantId = toWallet.entity_id
+  } else {
+    fromParticipantId = validateId(body.from_participant_id, 100)
+    if (!fromParticipantId) {
+      return resourceError('Invalid from_participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_from_participant_id')
+    }
+
+    toParticipantId = validateId(body.to_participant_id, 100)
+    if (!toParticipantId) {
+      return resourceError('Invalid to_participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_to_participant_id')
+    }
   }
 
   const amount = validateAmount(body.amount)
@@ -289,6 +911,8 @@ export async function transferWalletFundsResponse(
     request_body: sanitizeForAudit({
       from_participant_id: fromParticipantId,
       to_participant_id: toParticipantId,
+      from_wallet_id: fromWalletId,
+      to_wallet_id: toWalletId,
       amount_cents: amount,
       reference_id: referenceId,
     }),
@@ -302,6 +926,8 @@ export async function transferWalletFundsResponse(
       transaction_id: transactionId,
       from_participant_id: fromParticipantId,
       to_participant_id: toParticipantId,
+      from_wallet_id: fromWalletId,
+      to_wallet_id: toWalletId,
       from_balance: fromBalance,
       to_balance: toBalance,
     },
@@ -313,82 +939,19 @@ export async function listWalletEntriesResponse(
   supabase: SupabaseClient,
   ledger: LedgerContext,
   body: WalletMutationRequest,
-  _requestId: string,
+  requestId: string,
 ): Promise<ResourceResult> {
   const participantId = validateId(body.participant_id, 100)
   if (!participantId) {
     return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
-  const limit = validateInteger(body.limit, 1, 100) ?? 25
-  const offset = validateInteger(body.offset, 0, 100000) ?? 0
-
-  const { data: account } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('ledger_id', ledger.id)
-    .eq('account_type', 'user_wallet')
-    .eq('entity_id', participantId)
-    .maybeSingle()
-
+  const account = await getLegacyWalletAccountByOwnerId(supabase, ledger.id, participantId)
   if (!account) {
-    return resourceOk({ success: true, entries: [], total: 0, limit, offset })
+    return resourceOk({ success: true, entries: [], total: 0, limit: validateInteger(body.limit, 1, 100) ?? 25, offset: validateInteger(body.offset, 0, 100000) ?? 0 })
   }
 
-  const { data: entries, error: entriesError } = await supabase
-    .from('entries')
-    .select(`
-      id,
-      entry_type,
-      amount,
-      created_at,
-      transaction:transactions!inner(
-        id,
-        reference_id,
-        transaction_type,
-        description,
-        status,
-        metadata,
-        created_at
-      )
-    `)
-    .eq('account_id', account.id)
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (entriesError) {
-    console.error('Failed to fetch wallet history:', entriesError)
-    return resourceError('Failed to fetch wallet history', 500, {}, 'wallet_history_fetch_failed')
-  }
-
-  const { count } = await supabase
-    .from('entries')
-    .select('id', { count: 'exact', head: true })
-    .eq('account_id', account.id)
-
-  const transactions = (entries || []).map((entry: any) => {
-    const tx = entry.transaction
-    return {
-      entry_id: entry.id,
-      entry_type: entry.entry_type,
-      amount: Number(entry.amount),
-      transaction_id: tx.id,
-      reference_id: tx.reference_id,
-      transaction_type: tx.transaction_type,
-      description: tx.description,
-      status: tx.status,
-      metadata: tx.metadata,
-      created_at: tx.created_at,
-    }
-  })
-
-  return resourceOk({
-    success: true,
-    entries: transactions,
-    total: count ?? 0,
-    limit,
-    offset,
-  })
+  return listWalletEntriesByIdResponse(_req, supabase, ledger, account.id, body, requestId)
 }
 
 async function mapWalletRpcError(
@@ -422,7 +985,7 @@ async function mapWalletRpcError(
     return resourceOk({ success: false, error: 'Insufficient balance', error_code: 'insufficient_balance' }, 422)
   }
 
-  if (lower.includes('wallet not found')) {
+  if (lower.includes('wallet not found') || lower.includes('sender wallet not found')) {
     return resourceOk({ success: false, error: 'Wallet not found', error_code: 'wallet_not_found' }, 404)
   }
 

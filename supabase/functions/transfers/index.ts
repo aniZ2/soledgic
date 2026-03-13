@@ -32,6 +32,8 @@ const handler = createHandler(
     }
 
     const response = await transferWalletFundsResponse(req, supabase, ledger, {
+      from_wallet_id: typeof payload.from_wallet_id === 'string' ? payload.from_wallet_id : undefined,
+      to_wallet_id: typeof payload.to_wallet_id === 'string' ? payload.to_wallet_id : undefined,
       from_participant_id: typeof payload.from_participant_id === 'string' ? payload.from_participant_id : undefined,
       to_participant_id: typeof payload.to_participant_id === 'string' ? payload.to_participant_id : undefined,
       amount: typeof payload.amount === 'number' ? payload.amount : undefined,

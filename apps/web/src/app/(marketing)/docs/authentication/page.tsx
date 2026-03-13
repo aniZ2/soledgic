@@ -143,7 +143,7 @@ import requests
 api_key = os.environ.get('SOLEDGIC_API_KEY')
 
 response = requests.get(
-    '${API_BASE_URL}/v1/wallets/creator_456',
+    '${API_BASE_URL}/v1/wallets?owner_id=creator_456&wallet_type=creator_earnings',
     headers={'x-api-key': api_key},
 )`}
               </pre>

@@ -1,300 +1,51 @@
-# @soledgic/sdk
+# @soledgic/api
 
-TypeScript SDK for Soledgic - Double-Entry Accounting for Creator Platforms.
+Legacy compatibility client for older Soledgic integrations.
 
-## Installation
+This package is not the primary public SDK anymore. New integrations should use
+[`@soledgic/sdk`](../sdk/typescript/README.md), which targets the supported
+resource-first API surface under `/v1/*`.
+
+## Status
+
+- `@soledgic/sdk`: supported public SDK
+- `@soledgic/api`: compatibility client for older command-oriented consumers
+
+If you are building against Soledgic today, use:
 
 ```bash
 npm install @soledgic/sdk
-# or
-yarn add @soledgic/sdk
-# or
-pnpm add @soledgic/sdk
 ```
 
-## Quick Start
+and point it at:
 
-```typescript
-import { Soledgic } from '@soledgic/sdk'
-
-const soledgic = new Soledgic({
-  apiKey: 'your_api_key',
-  baseUrl: 'https://your-project.supabase.co/functions/v1',
-  apiVersion: '2026-03-01',
-})
-
-// Create a hosted checkout session
-const session = await soledgic.createCheckout({
-  amount: 1999,
-  creatorId: 'author_123',
-  productName: 'Book purchase',
-  successUrl: 'https://example.com/success',
-  cancelUrl: 'https://example.com/cancel',
-})
-
-// Redirect buyer to the hosted checkout page
-console.log(session.checkoutUrl)
-
-// Record a sale with automatic 80/20 split
-const sale = await soledgic.recordSale({
-  referenceId: 'sale_123',
-  creatorId: 'author_123',
-  amount: 1999, // $19.99 in cents
-})
-
-console.log(sale.breakdown)
-// { total: 19.99, creatorAmount: 15.99, platformAmount: 4.00 }
+```text
+https://api.soledgic.com/v1
 ```
 
-## API Reference
+## Public Wallet API
 
-### Initialize Client
+The supported wallet contract is exposed through the public treasury API and the
+`@soledgic/sdk` client:
 
-```typescript
-import { Soledgic } from '@soledgic/sdk'
+- `GET /v1/wallets`
+- `POST /v1/wallets`
+- `GET /v1/wallets/{wallet_id}`
+- `GET /v1/wallets/{wallet_id}/entries`
+- `POST /v1/wallets/{wallet_id}/topups`
+- `POST /v1/wallets/{wallet_id}/withdrawals`
 
-const soledgic = new Soledgic({
-  apiKey: 'your_api_key',           // Required
-  baseUrl: 'https://...',           // Your Supabase functions URL
-  timeout: 30000,                   // Request timeout (ms)
-  apiVersion: '2026-03-01',         // Optional version pin
-})
-```
+Wallets are first-class objects, but balances remain scoped. A wallet belongs
+to one ledger, one owner, and one wallet type such as `consumer_credit` or
+`creator_earnings`. Soledgic does not currently expose a universal pooled
+wallet balance across platforms.
 
-### Create Checkout
+## Migration Guidance
 
-```typescript
-// Hosted session mode (buyer enters card on hosted page)
-const session = await soledgic.createCheckout({
-  amount: 1999,                       // Amount in cents
-  creatorId: 'author_123',            // Creator receiving the split
-  productName: 'Book purchase',       // Optional
-  successUrl: 'https://example.com/success', // Required for session mode
-  cancelUrl: 'https://example.com/cancel',   // Optional
-})
-// → { success, checkoutUrl, sessionId, mode: 'session', expiresAt }
+If you still depend on this package:
 
-// Direct charge mode (you already have the buyer's payment instrument)
-const charge = await soledgic.createCheckout({
-  amount: 1999,
-  creatorId: 'author_123',
-  paymentMethodId: 'PIxxxxxxx',       // Buyer payment instrument
-  idempotencyKey: 'order_123',        // Required for direct charges
-})
-// → { success, paymentId, provider: 'card', status }
-```
-
-### Record a Sale
-
-```typescript
-const sale = await soledgic.recordSale({
-  referenceId: 'sale_123',          // Your external sale ID
-  creatorId: 'author_123',          // Creator receiving funds
-  amount: 1999,                     // Amount in cents
-  currency: 'USD',                  // Optional, default: USD
-  platformFeePercent: 20,           // Optional, override default
-  description: 'Book purchase',     // Optional
-  metadata: { bookId: 'abc' }       // Optional
-})
-
-// Response
-{
-  success: true,
-  transactionId: 'uuid',
-  breakdown: {
-    total: 19.99,
-    creatorAmount: 15.99,
-    platformAmount: 4.00
-  }
-}
-```
-
-### Get Creator Balance
-
-```typescript
-const balance = await soledgic.getCreatorBalance('author_123')
-
-// Response
-{
-  success: true,
-  balance: {
-    creatorId: 'author_123',
-    available: 150.00,      // Can be paid out
-    pending: 25.00,         // In processing
-    totalEarned: 500.00,    // Lifetime earnings
-    totalPaidOut: 325.00,   // Lifetime payouts
-    currency: 'USD'
-  }
-}
-```
-
-### Get All Balances
-
-```typescript
-const { balances, platformSummary } = await soledgic.getAllBalances({
-  includePlatform: true
-})
-
-// Response
-{
-  success: true,
-  balances: [
-    { creatorId: '123', available: 150.00, pending: 0, currency: 'USD' },
-    { creatorId: '456', available: 75.50, pending: 0, currency: 'USD' }
-  ],
-  platformSummary: {
-    totalRevenue: 500.00,
-    totalOwedCreators: 225.50,
-    totalPaidOut: 1000.00,
-    cashBalance: 2500.00
-  }
-}
-```
-
-### Process Payout
-
-```typescript
-const payout = await soledgic.processPayout({
-  creatorId: 'author_123',
-  paymentMethod: 'card',            // 'card' | 'manual'
-  amount: 10000,                    // Optional, in cents (default: full balance)
-  paymentReference: 'payout_123',   // Your external payment ID
-})
-
-// Response
-{
-  success: true,
-  payoutId: 'uuid',
-  transactionId: 'uuid',
-  amount: 100.00,
-  status: 'pending'
-}
-```
-
-### Record Refund
-
-```typescript
-const refund = await soledgic.recordRefund({
-  originalSaleReference: 'sale_123',
-  reason: 'Customer requested refund',
-  amount: 999,                      // Optional, partial refund in cents
-  refundFrom: 'both',               // 'both' | 'platform_only' | 'creator_only'
-  externalRefundId: 'refund_123'    // Your refund ID
-})
-
-// Response
-{
-  success: true,
-  transactionId: 'uuid',
-  refundedAmount: 9.99,
-  breakdown: {
-    fromCreator: 7.99,
-    fromPlatform: 2.00
-  }
-}
-```
-
-### Reverse Transaction
-
-For corrections (immutable ledger pattern - creates offsetting entries):
-
-```typescript
-const reversal = await soledgic.reverseTransaction({
-  transactionId: 'uuid-xxx',
-  reason: 'Duplicate entry correction',
-  partialAmount: 500                // Optional, partial reversal in cents
-})
-
-// Response
-{
-  success: true,
-  reversalId: 'uuid',
-  originalTransactionId: 'uuid-xxx',
-  reversedAmount: 5.00
-}
-```
-
-### Get Transactions
-
-```typescript
-const { transactions, pagination } = await soledgic.getTransactions({
-  creatorId: 'author_123',          // Optional filter
-  type: 'sale',                     // Optional: sale, payout, refund, reversal
-  status: 'completed',              // Optional: pending, completed, failed, reversed
-  startDate: '2025-01-01',          // Optional
-  endDate: '2025-12-31',            // Optional
-  page: 1,
-  perPage: 50,
-  includeEntries: true              // Include debit/credit details
-})
-
-// Response
-{
-  success: true,
-  transactions: [{
-    id: 'uuid',
-    transactionType: 'sale',
-    referenceId: 'sale_123',
-    amount: 19.99,
-    status: 'completed',
-    createdAt: '2025-12-18T10:00:00Z',
-    entries: [
-      { entryType: 'debit', amount: 19.99, account: { name: 'Cash' } },
-      { entryType: 'credit', amount: 15.99, account: { name: 'Creator 123' } },
-      { entryType: 'credit', amount: 4.00, account: { name: 'Platform Revenue' } }
-    ]
-  }],
-  pagination: {
-    total: 150,
-    page: 1,
-    perPage: 50,
-    totalPages: 3
-  }
-}
-```
-
-## Error Handling
-
-```typescript
-import { Soledgic, SoledgicError, ValidationError, NotFoundError } from '@soledgic/sdk'
-
-try {
-  await soledgic.recordSale({ ... })
-} catch (error) {
-  if (error instanceof ValidationError) {
-    console.log('Invalid request:', error.message)
-  } else if (error instanceof NotFoundError) {
-    console.log('Not found:', error.message)
-  } else if (error instanceof SoledgicError) {
-    console.log(`Error ${error.status}:`, error.message)
-  }
-}
-```
-
-### Error Types
-
-| Error | Status | Description |
-|-------|--------|-------------|
-| `ValidationError` | 400 | Invalid request parameters |
-| `AuthenticationError` | 401 | Invalid API key |
-| `NotFoundError` | 404 | Resource not found |
-| `ConflictError` | 409 | Duplicate or already processed |
-| `SoledgicError` | * | Base error class |
-
-## TypeScript
-
-Full TypeScript support with exported types:
-
-```typescript
-import type {
-  RecordSaleRequest,
-  RecordSaleResponse,
-  CreatorBalance,
-  Transaction,
-  // ... etc
-} from '@soledgic/sdk'
-```
-
-## License
-
-MIT
+1. move new integrations to `@soledgic/sdk`
+2. migrate command-style checkout, payout, and refund flows to the resource
+   routes documented in [`docs/RESOURCE_MODEL_MIGRATION.md`](../docs/RESOURCE_MODEL_MIGRATION.md)
+3. treat this package as compatibility-only until it is either upgraded or
+   removed

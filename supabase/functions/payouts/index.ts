@@ -32,6 +32,7 @@ const handler = createHandler(
     }
 
     const response = await processPayoutResponse(req, supabase, ledger, {
+      wallet_id: typeof payload.wallet_id === 'string' ? payload.wallet_id : undefined,
       participant_id: String(payload.participant_id ?? payload.creator_id ?? ''),
       amount: typeof payload.amount === 'number' ? payload.amount : NaN,
       reference_id: String(payload.reference_id ?? ''),

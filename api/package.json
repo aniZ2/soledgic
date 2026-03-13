@@ -1,7 +1,7 @@
 {
   "name": "@soledgic/api",
   "version": "1.0.0",
-  "description": "TypeScript SDK for Soledgic - Double-Entry Accounting for Creator Platforms",
+  "description": "Legacy compatibility client for older Soledgic integrations. Use @soledgic/sdk for the supported public API.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

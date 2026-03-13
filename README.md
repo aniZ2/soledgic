@@ -94,11 +94,19 @@ const checkout = await soledgic.createCheckoutSession({
 })
 ```
 
-Inspect the participant wallet:
+Inspect creator earnings wallets:
 
 ```ts
-const wallet = await soledgic.getParticipantWallet('creator_456')
+const wallets = await soledgic.listWallets({
+  ownerId: 'creator_456',
+  walletType: 'creator_earnings',
+})
 ```
+
+Wallets are first-class public resources, but balances stay scoped. A Soledgic
+integration can use one `/v1/wallets` API surface across products while still
+keeping each wallet tied to a specific ledger, owner, and wallet type. Soledgic
+does not expose a pooled universal balance.
 
 Create a payout:
 
@@ -146,7 +154,7 @@ curl -X POST "https://api.soledgic.com/v1/checkout-sessions" \
 Fetch wallet state:
 
 ```bash
-curl -X GET "https://api.soledgic.com/v1/wallets/creator_456" \
+curl -X GET "https://api.soledgic.com/v1/wallets?owner_id=creator_456&wallet_type=creator_earnings" \
   -H "x-api-key: sk_test_YOUR_API_KEY"
 ```
 
@@ -192,6 +200,19 @@ checkout_session
   -> /v1/holds/{hold_id}/release
   -> payout or transfer
 ```
+
+## Wallet Model
+
+The wallet API is global, but wallet balances are not.
+
+- `consumer_credit` wallets are closed-loop product balances.
+- `creator_earnings` wallets hold seller or creator proceeds for payout.
+- each wallet belongs to one ledger and one owner.
+- payouts are only valid for payout-eligible wallet types.
+- cross-platform movement is not implicit wallet behavior.
+
+If a future product needs inter-ledger movement, model it as explicit settlement
+rather than as a hidden universal wallet transfer.
 
 ## Idempotency
 

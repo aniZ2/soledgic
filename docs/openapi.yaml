@@ -26,6 +26,8 @@ tags:
     description: "Create and manage creator accounts, splits, and contractor relationships"
   - name: "Invoicing"
     description: "Invoice management and PDF generation"
+  - name: "Other"
+    description: "Additional public endpoints that do not fall under a primary product tag"
   - name: "Payments"
     description: "Checkout sessions, payouts, refunds, and payment-adjacent platform flows"
   - name: "Reports"
@@ -182,14 +184,100 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/wallets/{participant_id}:
+  /v1/wallets:
+    get:
+      operationId: "wallets-get"
+      summary: "List scoped wallets or create a consumer credit wallet."
+      tags:
+        - "Other"
+      parameters:
+        - name: "owner_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "owner_type"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "wallet_type"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "consumer_credit"
+              - "creator_earnings"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+        - name: "offset"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: "wallets-post"
+      summary: "List scoped wallets or create a consumer credit wallet."
+      tags:
+        - "Other"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletCreateRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/wallets/{wallet_id}:
     get:
       operationId: "wallet-detail"
-      summary: "Get the wallet balance for a participant."
+      summary: "Get a wallet object by wallet id."
       tags:
         - "Treasury"
       parameters:
-        - name: "participant_id"
+        - name: "wallet_id"
           in: "path"
           required: true
           schema:
@@ -214,14 +302,14 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/wallets/{participant_id}/entries:
+  /v1/wallets/{wallet_id}/entries:
     get:
       operationId: "wallet-entries"
-      summary: "List wallet ledger entries for a participant."
+      summary: "List wallet ledger entries for a wallet object."
       tags:
         - "Treasury"
       parameters:
-        - name: "participant_id"
+        - name: "wallet_id"
           in: "path"
           required: true
           schema:
@@ -256,14 +344,14 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/wallets/{participant_id}/deposits:
+  /v1/wallets/{wallet_id}/topups:
     post:
       operationId: "wallet-deposit"
-      summary: "Deposit funds into a participant wallet."
+      summary: "Top up a wallet when its wallet type supports external funding."
       tags:
         - "Treasury"
       parameters:
-        - name: "participant_id"
+        - name: "wallet_id"
           in: "path"
           required: true
           schema:
@@ -294,14 +382,14 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/wallets/{participant_id}/withdrawals:
+  /v1/wallets/{wallet_id}/withdrawals:
     post:
       operationId: "wallet-withdrawal"
-      summary: "Withdraw funds from a participant wallet."
+      summary: "Withdraw or debit funds from a wallet when the wallet is redeemable."
       tags:
         - "Treasury"
       parameters:
-        - name: "participant_id"
+        - name: "wallet_id"
           in: "path"
           required: true
           schema:
@@ -335,7 +423,7 @@ paths:
   /v1/transfers:
     post:
       operationId: "transfers"
-      summary: "Move funds between participant wallets."
+      summary: "Move funds between wallets when both wallets explicitly permit transfer."
       tags:
         - "Treasury"
       requestBody:
@@ -510,7 +598,7 @@ paths:
   /v1/payouts:
     post:
       operationId: "payouts"
-      summary: "Create a payout for a participant."
+      summary: "Create a payout for a creator earnings wallet or participant."
       tags:
         - "Payments"
       requestBody:
@@ -3876,9 +3964,36 @@ components:
       required:
         - "amount"
         - "reference_id"
+    WalletCreateRequest:
+      type: "object"
+      properties:
+        owner_id:
+          type: "string"
+        participant_id:
+          type: "string"
+        owner_type:
+          type: "string"
+        wallet_type:
+          type: "string"
+          enum:
+            - "consumer_credit"
+            - "creator_earnings"
+        name:
+          type: "string"
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "wallet_type"
     TransferFundsRequest:
       type: "object"
       properties:
+        from_wallet_id:
+          type: "string"
+          format: "uuid"
+        to_wallet_id:
+          type: "string"
+          format: "uuid"
         from_participant_id:
           type: "string"
         to_participant_id:
@@ -3946,6 +4061,9 @@ components:
     TreasuryPayoutRequest:
       type: "object"
       properties:
+        wallet_id:
+          type: "string"
+          format: "uuid"
         participant_id:
           type: "string"
         amount:
@@ -4606,44 +4724,126 @@ components:
                 requirements:
                   type: "object"
                   additionalProperties: true
+    WalletObject:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        object:
+          type: "string"
+          enum:
+            - "wallet"
+        wallet_type:
+          type: "string"
+          enum:
+            - "consumer_credit"
+            - "creator_earnings"
+        scope_type:
+          type: "string"
+          enum:
+            - "customer"
+            - "participant"
+        owner_id:
+          type:
+            - "string"
+            - "null"
+        owner_type:
+          type:
+            - "string"
+            - "null"
+        participant_id:
+          type:
+            - "string"
+            - "null"
+        account_type:
+          type: "string"
+        name:
+          type:
+            - "string"
+            - "null"
+        currency:
+          type: "string"
+        status:
+          type: "string"
+        balance:
+          type: "number"
+        held_amount:
+          type: "number"
+        available_balance:
+          type: "number"
+        redeemable:
+          type: "boolean"
+        transferable:
+          type: "boolean"
+        topup_supported:
+          type: "boolean"
+        payout_supported:
+          type: "boolean"
+        created_at:
+          type:
+            - "string"
+            - "null"
+          format: "date-time"
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "id"
+        - "object"
+        - "wallet_type"
+        - "scope_type"
+        - "account_type"
+        - "currency"
+        - "status"
+        - "balance"
+        - "held_amount"
+        - "available_balance"
+        - "redeemable"
+        - "transferable"
+        - "topup_supported"
+        - "payout_supported"
+        - "metadata"
+    WalletListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            wallets:
+              type: "array"
+              items:
+                $ref: "#/components/schemas/WalletObject"
+            total:
+              type: "integer"
+            limit:
+              type: "integer"
+            offset:
+              type: "integer"
+    WalletCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            created:
+              type: "boolean"
+            wallet:
+              $ref: "#/components/schemas/WalletObject"
     WalletDetailResponse:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: "object"
           properties:
             wallet:
-              type: "object"
-              properties:
-                participant_id:
-                  type: "string"
-                balance:
-                  type: "number"
-                wallet_exists:
-                  type: "boolean"
-                account:
-                  type:
-                    - "object"
-                    - "null"
-                  properties:
-                    id:
-                      type: "string"
-                      format: "uuid"
-                    participant_id:
-                      type: "string"
-                    name:
-                      type:
-                        - "string"
-                        - "null"
-                    is_active:
-                      type: "boolean"
-                    created_at:
-                      type: "string"
-                      format: "date-time"
+              $ref: "#/components/schemas/WalletObject"
     WalletEntriesResponse:
       allOf:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: "object"
           properties:
+            wallet:
+              anyOf:
+                - $ref: "#/components/schemas/WalletObject"
+                - type: "null"
             entries:
               type: "array"
               items:
@@ -4691,11 +4891,18 @@ components:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: "object"
           properties:
-            deposit:
+            topup:
               type: "object"
               properties:
-                participant_id:
-                  type: "string"
+                wallet_id:
+                  type:
+                    - "string"
+                    - "null"
+                  format: "uuid"
+                owner_id:
+                  type:
+                    - "string"
+                    - "null"
                 transaction_id:
                   type: "string"
                   format: "uuid"
