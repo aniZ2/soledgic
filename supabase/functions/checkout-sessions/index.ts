@@ -6,8 +6,7 @@ import {
 import {
   asJsonObject,
   getResourceSegments,
-  mapCheckoutSessionResponse,
-  transformJsonResponse,
+  respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import { createCheckoutResponse } from '../_shared/checkout-service.ts'
 
@@ -34,7 +33,7 @@ const handler = createHandler(
 
     const response = await createCheckoutResponse(req, supabase, ledger, {
       amount: typeof payload.amount === 'number' ? payload.amount : NaN,
-      creator_id: String(payload.participant_id ?? payload.creator_id ?? ''),
+      participant_id: String(payload.participant_id ?? payload.creator_id ?? ''),
       currency: typeof payload.currency === 'string' ? payload.currency : undefined,
       product_id: typeof payload.product_id === 'string' ? payload.product_id : undefined,
       product_name: typeof payload.product_name === 'string' ? payload.product_name : undefined,
@@ -48,7 +47,7 @@ const handler = createHandler(
       metadata: payload.metadata as Record<string, string> | undefined,
     }, requestId)
 
-    return transformJsonResponse(req, requestId, response, mapCheckoutSessionResponse)
+    return respondWithResult(req, requestId, response)
   },
 )
 

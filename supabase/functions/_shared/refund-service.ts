@@ -1,8 +1,6 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   createAuditLogAsync,
-  errorResponse,
-  jsonResponse,
   LedgerContext,
   sanitizeForAudit,
   validateAmount,
@@ -10,6 +8,11 @@ import {
   validateString,
 } from './utils.ts'
 import { getPaymentProvider } from './payment-provider.ts'
+import {
+  ResourceResult,
+  resourceError,
+  resourceOk,
+} from './treasury-resource.ts'
 
 export interface RefundRequest {
   original_sale_reference: string
@@ -65,43 +68,43 @@ export async function recordRefundResponse(
   ledger: LedgerContext,
   body: RefundRequest,
   requestId: string,
-): Promise<Response> {
+): Promise<ResourceResult> {
   const originalRef = validateId(body.original_sale_reference, 255)
   const reason = validateString(body.reason, 500)
 
   if (!originalRef) {
-    return errorResponse('Invalid original_sale_reference', 400, req, requestId)
+    return resourceError('Invalid original_sale_reference', 400, {}, 'invalid_original_sale_reference')
   }
   if (!reason) {
-    return errorResponse('Invalid or missing reason', 400, req, requestId)
+    return resourceError('Invalid or missing reason', 400, {}, 'invalid_reason')
   }
 
   let refundAmountCents: number | null = null
   if (body.amount !== undefined) {
     refundAmountCents = validateAmount(body.amount)
     if (refundAmountCents === null || refundAmountCents <= 0) {
-      return errorResponse('Invalid amount: must be a positive integer (cents)', 400, req, requestId)
+      return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
     }
   }
 
   const validRefundFrom = ['both', 'platform_only', 'creator_only']
   const refundFrom = body.refund_from || 'both'
   if (!validRefundFrom.includes(refundFrom)) {
-    return errorResponse('Invalid refund_from: must be both, platform_only, or creator_only', 400, req, requestId)
+    return resourceError('Invalid refund_from: must be both, platform_only, or creator_only', 400, {}, 'invalid_refund_from')
   }
 
   let externalRefundId = body.external_refund_id ? validateId(body.external_refund_id, 255) : null
   if (body.external_refund_id && !externalRefundId) {
-    return errorResponse('Invalid external_refund_id', 400, req, requestId)
+    return resourceError('Invalid external_refund_id', 400, {}, 'invalid_external_refund_id')
   }
 
   const idempotencyKey = body.idempotency_key ? validateId(body.idempotency_key, 120) : null
   if (body.idempotency_key && !idempotencyKey) {
-    return errorResponse('Invalid idempotency_key', 400, req, requestId)
+    return resourceError('Invalid idempotency_key', 400, {}, 'invalid_idempotency_key')
   }
 
   if (body.mode !== undefined && body.mode !== 'ledger_only' && body.mode !== 'processor_refund') {
-    return errorResponse('Invalid mode: must be ledger_only or processor_refund', 400, req, requestId)
+    return resourceError('Invalid mode: must be ledger_only or processor_refund', 400, {}, 'invalid_mode')
   }
 
   const executeProcessorRefund = body.mode
@@ -109,7 +112,7 @@ export async function recordRefundResponse(
     : body.execute_processor_refund === true
   const processorPaymentId = body.processor_payment_id ? validateId(body.processor_payment_id, 255) : null
   if (body.processor_payment_id && !processorPaymentId) {
-    return errorResponse('Invalid processor_payment_id', 400, req, requestId)
+    return resourceError('Invalid processor_payment_id', 400, {}, 'invalid_processor_payment_id')
   }
 
   const { data: originalSale, error: saleError } = await supabase
@@ -121,20 +124,21 @@ export async function recordRefundResponse(
     .single()
 
   if (saleError || !originalSale) {
-    return errorResponse('Original sale not found', 404, req, requestId)
+    return resourceError('Original sale not found', 404, {}, 'original_sale_not_found')
   }
 
   if (originalSale.status === 'reversed') {
-    return jsonResponse({
+    return resourceOk({
       success: false,
       error: 'Sale already refunded/reversed',
+      error_code: 'sale_already_reversed',
       original_transaction_id: originalSale.id,
-    }, 409, req, requestId)
+    }, 409)
   }
 
   const originalAmountCents = centsFromMajor(originalSale.amount)
   if (originalAmountCents <= 0) {
-    return errorResponse('Original sale amount is invalid', 500, req, requestId)
+    return resourceError('Original sale amount is invalid', 500, {}, 'invalid_original_sale_amount')
   }
 
   const { data: existingRefunds, error: refundsError } = await supabase
@@ -146,7 +150,7 @@ export async function recordRefundResponse(
     .in('status', ['completed', 'reversed'])
 
   if (refundsError) {
-    return errorResponse('Failed to evaluate refundable balance', 500, req, requestId)
+    return resourceError('Failed to evaluate refundable balance', 500, {}, 'refundable_balance_evaluation_failed')
   }
 
   const alreadyRefundedCents = (existingRefunds || []).reduce((sum, row) => {
@@ -155,24 +159,25 @@ export async function recordRefundResponse(
 
   const remainingRefundableCents = Math.max(0, originalAmountCents - alreadyRefundedCents)
   if (remainingRefundableCents <= 0) {
-    return jsonResponse({
+    return resourceOk({
       success: false,
       error: 'Sale already fully refunded',
+      error_code: 'sale_already_fully_refunded',
       original_transaction_id: originalSale.id,
-    }, 409, req, requestId)
+    }, 409)
   }
 
   const effectiveRefundCents = refundAmountCents ?? remainingRefundableCents
   if (effectiveRefundCents <= 0) {
-    return errorResponse('Invalid refund amount', 400, req, requestId)
+    return resourceError('Invalid refund amount', 400, {}, 'invalid_refund_amount')
   }
 
   if (effectiveRefundCents > remainingRefundableCents) {
-    return errorResponse(
+    return resourceError(
       `Refund amount (${(effectiveRefundCents / 100).toFixed(2)}) exceeds remaining refundable amount (${(remainingRefundableCents / 100).toFixed(2)})`,
       409,
-      req,
-      requestId,
+      {},
+      'refund_amount_exceeds_remaining',
     )
   }
 
@@ -203,12 +208,12 @@ export async function recordRefundResponse(
     })
 
     if (!refundResult.success) {
-      return errorResponse(refundResult.error || 'Processor refund failed', 502, req, requestId)
+      return resourceError(refundResult.error || 'Processor refund failed', 502, {}, 'processor_refund_failed')
     }
 
     const providerRefundId = refundResult.refund_id ? validateId(refundResult.refund_id, 255) : null
     if (refundResult.refund_id && !providerRefundId) {
-      return errorResponse('Processor returned invalid refund ID', 502, req, requestId)
+      return resourceError('Processor returned invalid refund ID', 502, {}, 'invalid_processor_refund_id')
     }
     if (providerRefundId) {
       externalRefundId = providerRefundId
@@ -218,7 +223,7 @@ export async function recordRefundResponse(
 
   refundRefId = validateId(refundRefId, 255) || ''
   if (!refundRefId) {
-    return errorResponse('Could not derive a valid refund reference ID', 500, req, requestId)
+    return resourceError('Could not derive a valid refund reference ID', 500, {}, 'invalid_refund_reference_id')
   }
 
   const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
@@ -251,12 +256,13 @@ export async function recordRefundResponse(
         .eq('reference_id', refundRefId)
         .maybeSingle()
 
-      return jsonResponse({
+      return resourceOk({
         success: false,
         error: 'Duplicate refund reference',
+        error_code: 'duplicate_refund_reference',
         transaction_id: existingTx?.id || null,
         idempotent: true,
-      }, 409, req, requestId)
+      }, 409)
     }
 
     const txMessage = String(txError.message || '')
@@ -265,11 +271,11 @@ export async function recordRefundResponse(
       txMessage.includes('exceeds remaining refundable amount') ||
       txMessage.includes('already reversed')
     ) {
-      return errorResponse(txMessage, 409, req, requestId)
+      return resourceError(txMessage, 409, {}, 'refund_conflict')
     }
 
     if (txMessage.includes('Invalid refund_from') || txMessage.includes('must be positive')) {
-      return errorResponse(txMessage, 400, req, requestId)
+      return resourceError(txMessage, 400, {}, 'invalid_refund_request')
     }
 
     console.error(`[${requestId}] Failed to create refund transaction:`, txError)
@@ -311,29 +317,30 @@ export async function recordRefundResponse(
         risk_score: 80,
       }, requestId)
 
-      return errorResponse(
+      return resourceError(
         'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
         202,
-        req,
-        requestId,
+        {},
+        'processor_refund_pending_repair',
       )
     }
 
-    return errorResponse('Failed to create refund transaction', 500, req, requestId)
+    return resourceError('Failed to create refund transaction', 500, {}, 'refund_create_failed')
   }
 
   const refundRow = (Array.isArray(atomicResult) ? atomicResult[0] : atomicResult) as AtomicRefundResult | null
   if (!refundRow?.out_transaction_id) {
-    return errorResponse('Refund transaction result is invalid', 500, req, requestId)
+    return resourceError('Refund transaction result is invalid', 500, {}, 'invalid_refund_result')
   }
 
   if (refundRow.out_status === 'duplicate') {
-    return jsonResponse({
+    return resourceOk({
       success: false,
       error: 'Duplicate refund reference',
+      error_code: 'duplicate_refund_reference',
       transaction_id: refundRow.out_transaction_id,
       idempotent: true,
-    }, 409, req, requestId)
+    }, 409)
   }
 
   const fromCreatorCents = Number(refundRow.out_from_creator_cents || 0)
@@ -380,14 +387,17 @@ export async function recordRefundResponse(
     }
   })
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    transaction_id: refundRow.out_transaction_id,
-    refunded_amount: refundedCents / 100,
-    breakdown: {
-      from_creator: fromCreatorCents / 100,
-      from_platform: fromPlatformCents / 100,
+    refund: {
+      id: refundRow.out_transaction_id,
+      transaction_id: refundRow.out_transaction_id,
+      refunded_amount: refundedCents / 100,
+      breakdown: {
+        from_creator: fromCreatorCents / 100,
+        from_platform: fromPlatformCents / 100,
+      },
+      is_full_refund: Boolean(refundRow.out_is_full_refund),
     },
-    is_full_refund: Boolean(refundRow.out_is_full_refund),
-  }, 200, req, requestId)
+  })
 }

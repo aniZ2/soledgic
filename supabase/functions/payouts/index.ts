@@ -6,8 +6,7 @@ import {
 import {
   asJsonObject,
   getResourceSegments,
-  mapPayoutResponse,
-  transformJsonResponse,
+  respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import { processPayoutResponse } from '../_shared/payout-service.ts'
 
@@ -33,7 +32,7 @@ const handler = createHandler(
     }
 
     const response = await processPayoutResponse(req, supabase, ledger, {
-      creator_id: String(payload.participant_id ?? payload.creator_id ?? ''),
+      participant_id: String(payload.participant_id ?? payload.creator_id ?? ''),
       amount: typeof payload.amount === 'number' ? payload.amount : NaN,
       reference_id: String(payload.reference_id ?? ''),
       reference_type: typeof payload.reference_type === 'string' ? payload.reference_type : undefined,
@@ -44,7 +43,7 @@ const handler = createHandler(
       metadata: payload.metadata as Record<string, any> | undefined,
     }, requestId)
 
-    return transformJsonResponse(req, requestId, response, mapPayoutResponse)
+    return respondWithResult(req, requestId, response)
   },
 )
 

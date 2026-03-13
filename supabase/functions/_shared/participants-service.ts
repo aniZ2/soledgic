@@ -1,16 +1,19 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   createAuditLogAsync,
-  errorResponse,
-  jsonResponse,
   LedgerContext,
   sanitizeForAudit,
   validateId,
   validateString,
 } from './utils.ts'
+import {
+  ResourceResult,
+  resourceError,
+  resourceOk,
+} from './treasury-resource.ts'
 
 export interface CreateParticipantRequest {
-  creator_id: string
+  participant_id: string
   display_name?: string
   email?: string
   default_split_percent?: number
@@ -60,17 +63,17 @@ export async function createParticipantResponse(
   ledger: LedgerContext,
   body: CreateParticipantRequest,
   requestId: string,
-): Promise<Response> {
-  const creatorId = validateId(body.creator_id, 100)
-  if (!creatorId) {
-    return errorResponse('Invalid creator_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+): Promise<ResourceResult> {
+  const participantId = validateId(body.participant_id, 100)
+  if (!participantId) {
+    return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
   const displayName = body.display_name ? validateString(body.display_name, 255) : null
   const email = body.email ? validateString(body.email, 255) : null
 
   if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-    return errorResponse('Invalid email format', 400, req, requestId)
+    return resourceError('Invalid email format', 400, {}, 'invalid_email')
   }
 
   let splitPercent = 80
@@ -80,7 +83,7 @@ export async function createParticipantResponse(
       body.default_split_percent < 0 ||
       body.default_split_percent > 100
     ) {
-      return errorResponse('default_split_percent must be 0-100', 400, req, requestId)
+      return resourceError('default_split_percent must be 0-100', 400, {}, 'invalid_default_split_percent')
     }
     splitPercent = body.default_split_percent
   }
@@ -90,11 +93,11 @@ export async function createParticipantResponse(
     .select('id')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
-    .eq('entity_id', creatorId)
+    .eq('entity_id', participantId)
     .single()
 
   if (existingAccount) {
-    return errorResponse('Creator already exists', 409, req, requestId)
+    return resourceError('Participant already exists', 409, {}, 'participant_already_exists')
   }
 
   const payoutPreferences = (body.payout_preferences || { schedule: 'manual' }) as any
@@ -105,8 +108,8 @@ export async function createParticipantResponse(
       ledger_id: ledger.id,
       account_type: 'creator_balance',
       entity_type: 'creator',
-      entity_id: creatorId,
-      name: displayName || `Creator ${creatorId}`,
+      entity_id: participantId,
+      name: displayName || `Participant ${participantId}`,
       metadata: {
         email,
         display_name: displayName,
@@ -120,8 +123,8 @@ export async function createParticipantResponse(
     .single()
 
   if (accountError) {
-    console.error('Failed to create creator account:', accountError)
-    return errorResponse('Failed to create creator', 500, req, requestId)
+    console.error('Failed to create participant account:', accountError)
+    return resourceError('Failed to create participant', 500, {}, 'participant_create_failed')
   }
 
   createAuditLogAsync(supabase, req, {
@@ -131,7 +134,7 @@ export async function createParticipantResponse(
     entity_id: account.id,
     actor_type: 'api',
     request_body: sanitizeForAudit({
-      creator_id: creatorId,
+      participant_id: participantId,
       display_name: displayName,
       email: email ? `${email.substring(0, 3)}***` : null,
       split_percent: splitPercent,
@@ -139,12 +142,12 @@ export async function createParticipantResponse(
     }),
     response_status: 201,
     risk_score: 15,
-  })
+  }, requestId)
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    creator: {
-      id: creatorId,
+    participant: {
+      id: participantId,
       account_id: account.id,
       display_name: displayName,
       email,
@@ -152,15 +155,15 @@ export async function createParticipantResponse(
       payout_preferences: body.payout_preferences || { schedule: 'manual' },
       created_at: account.created_at,
     },
-  }, 201, req, requestId)
+  }, 201)
 }
 
 export async function listParticipantBalancesResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  requestId: string,
-): Promise<Response> {
+  _requestId: string,
+): Promise<ResourceResult> {
   const { data: creators } = await supabase
     .from('accounts')
     .select('id, name, entity_id, metadata')
@@ -168,7 +171,7 @@ export async function listParticipantBalancesResponse(
     .eq('account_type', 'creator_balance')
     .eq('is_active', true)
 
-  const balances = []
+  const participants = []
   for (const creator of creators || []) {
     const entries = await getActiveEntries(supabase, creator.id)
     const ledgerBalance = calculateBalance(entries)
@@ -185,8 +188,8 @@ export async function listParticipantBalancesResponse(
       totalHeld += Number(heldFund.held_amount) - Number(heldFund.released_amount)
     }
 
-    balances.push({
-      creator_id: creator.entity_id,
+    participants.push({
+      id: creator.entity_id,
       name: creator.name,
       tier: creator.metadata?.tier_name || 'starter',
       ledger_balance: ledgerBalance,
@@ -195,19 +198,22 @@ export async function listParticipantBalancesResponse(
     })
   }
 
-  return jsonResponse({ success: true, data: balances }, 200, req, requestId)
+  return resourceOk({
+    success: true,
+    participants,
+  })
 }
 
 export async function getParticipantBalanceResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  creatorIdInput: string,
-  requestId: string,
-): Promise<Response> {
-  const creatorId = validateId(creatorIdInput, 100)
-  if (!creatorId) {
-    return errorResponse('Invalid or missing creator_id', 400, req, requestId)
+  participantIdInput: string,
+  _requestId: string,
+): Promise<ResourceResult> {
+  const participantId = validateId(participantIdInput, 100)
+  if (!participantId) {
+    return resourceError('Invalid or missing participant_id', 400, {}, 'invalid_participant_id')
   }
 
   const { data: creator } = await supabase
@@ -215,11 +221,11 @@ export async function getParticipantBalanceResponse(
     .select('id, name, entity_id, metadata')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
-    .eq('entity_id', creatorId)
+    .eq('entity_id', participantId)
     .single()
 
   if (!creator) {
-    return errorResponse('Creator not found', 404, req, requestId)
+    return resourceError('Participant not found', 404, {}, 'participant_not_found')
   }
 
   const entries = await getActiveEntries(supabase, creator.id)
@@ -229,7 +235,7 @@ export async function getParticipantBalanceResponse(
     .from('held_funds')
     .select('held_amount, released_amount, hold_reason, release_eligible_at, status')
     .eq('ledger_id', ledger.id)
-    .eq('creator_id', creatorId)
+    .eq('creator_id', participantId)
 
   let totalHeld = 0
   const holds = []
@@ -246,31 +252,31 @@ export async function getParticipantBalanceResponse(
     }
   }
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    data: {
-      creator_id: creatorId,
+    participant: {
+      id: participantId,
       name: creator.name,
       tier: creator.metadata?.tier_name || 'starter',
-      custom_split: creator.metadata?.custom_split_percent,
+      custom_split_percent: creator.metadata?.custom_split_percent,
       ledger_balance: ledgerBalance,
       held_amount: Math.round(totalHeld * 100) / 100,
       available_balance: Math.round((ledgerBalance - totalHeld) * 100) / 100,
       holds,
     },
-  }, 200, req, requestId)
+  })
 }
 
 export async function getParticipantPayoutEligibilityResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  creatorIdInput: string,
-  requestId: string,
-): Promise<Response> {
-  const creatorId = validateId(creatorIdInput, 100)
-  if (!creatorId) {
-    return errorResponse('Invalid or missing creator_id', 400, req, requestId)
+  participantIdInput: string,
+  _requestId: string,
+): Promise<ResourceResult> {
+  const participantId = validateId(participantIdInput, 100)
+  if (!participantId) {
+    return resourceError('Invalid or missing participant_id', 400, {}, 'invalid_participant_id')
   }
 
   const { data: account, error: accountError } = await supabase
@@ -278,11 +284,11 @@ export async function getParticipantPayoutEligibilityResponse(
     .select('id, balance, currency')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
-    .eq('entity_id', creatorId)
+    .eq('entity_id', participantId)
     .single()
 
   if (accountError || !account) {
-    return errorResponse('Creator not found', 404, req, requestId)
+    return resourceError('Participant not found', 404, {}, 'participant_not_found')
   }
 
   const settings = ledger.settings as any
@@ -290,21 +296,23 @@ export async function getParticipantPayoutEligibilityResponse(
 
   const rawBalance = Number(account.balance)
   if (!Number.isFinite(rawBalance)) {
-    return errorResponse('Invalid account balance state', 500, req, requestId)
+    return resourceError('Invalid account balance state', 500, {}, 'invalid_account_balance_state')
   }
 
   if (rawBalance < 0) {
-    return jsonResponse({
+    return resourceOk({
       success: true,
-      creator_id: creatorId,
-      eligible: false,
-      available_balance: 0,
-      issues: ['Account has negative balance - contact support'],
-      requirements: {
-        balance_error: true,
-        note: 'Account balance is in deficit state',
+      eligibility: {
+        participant_id: participantId,
+        eligible: false,
+        available_balance: 0,
+        issues: ['Account has negative balance - contact support'],
+        requirements: {
+          balance_error: true,
+          note: 'Account balance is in deficit state',
+        },
       },
-    }, 200, req, requestId)
+    })
   }
 
   const availableBalance = rawBalance
@@ -315,7 +323,7 @@ export async function getParticipantPayoutEligibilityResponse(
     .from('tax_year_summaries')
     .select('net_earnings')
     .eq('ledger_id', ledger.id)
-    .eq('entity_id', creatorId)
+    .eq('entity_id', participantId)
     .eq('tax_year', currentYear)
     .single()
 
@@ -351,20 +359,22 @@ export async function getParticipantPayoutEligibilityResponse(
     issues.push(`Payout of $${pendingAmount.toFixed(2)} already in progress`)
   }
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    creator_id: creatorId,
-    eligible: issues.length === 0,
-    available_balance: availableBalance - pendingAmount,
-    issues: issues.length > 0 ? issues : undefined,
-    requirements: {
-      ytd_earnings: ytdEarnings,
-      reaches_1099_threshold: reachesThreshold,
-      has_active_holds: (activeHolds?.length || 0) > 0,
-      hold_reasons: holdReasons,
-      meets_minimum: meetsMinimum,
-      minimum_amount: minPayoutAmount,
-      note: reachesThreshold ? 'Platform should verify tax info before payout' : undefined,
+    eligibility: {
+      participant_id: participantId,
+      eligible: issues.length === 0,
+      available_balance: availableBalance - pendingAmount,
+      issues: issues.length > 0 ? issues : undefined,
+      requirements: {
+        ytd_earnings: ytdEarnings,
+        reaches_1099_threshold: reachesThreshold,
+        has_active_holds: (activeHolds?.length || 0) > 0,
+        hold_reasons: holdReasons,
+        meets_minimum: meetsMinimum,
+        minimum_amount: minPayoutAmount,
+        note: reachesThreshold ? 'Platform should verify tax info before payout' : undefined,
+      },
     },
-  }, 200, req, requestId)
+  })
 }

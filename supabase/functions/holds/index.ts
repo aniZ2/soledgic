@@ -8,10 +8,7 @@ import {
   getBooleanParam,
   getNumberParam,
   getResourceSegments,
-  mapHoldListResponse,
-  mapHoldReleaseResponse,
-  mapHoldSummaryResponse,
-  transformJsonResponse,
+  respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import {
   getHeldFundsSummaryResponse,
@@ -41,13 +38,13 @@ const handler = createHandler(
       const limit = getNumberParam(url, 'limit')
 
       const response = await listHeldFundsResponse(req, supabase, ledger, {
-        ...(participantId ? { creator_id: participantId } : {}),
+        ...(participantId ? { participant_id: participantId } : {}),
         ...(ventureId ? { venture_id: ventureId } : {}),
         ...(readyOnly !== undefined ? { ready_only: readyOnly } : {}),
         ...(limit !== undefined ? { limit } : {}),
       }, requestId)
 
-      return transformJsonResponse(req, requestId, response, mapHoldListResponse)
+      return respondWithResult(req, requestId, response)
     }
 
     if (segments.length === 1 && segments[0] === 'summary') {
@@ -56,7 +53,7 @@ const handler = createHandler(
       }
 
       const response = await getHeldFundsSummaryResponse(req, supabase, ledger, requestId)
-      return transformJsonResponse(req, requestId, response, mapHoldSummaryResponse)
+      return respondWithResult(req, requestId, response)
     }
 
     if (segments.length === 2 && segments[1] === 'release') {
@@ -74,7 +71,7 @@ const handler = createHandler(
         execute_transfer: payload.execute_transfer !== false,
       }, requestId)
 
-      return transformJsonResponse(req, requestId, response, mapHoldReleaseResponse)
+      return respondWithResult(req, requestId, response)
     }
 
     return errorResponse('Not found', 404, req, requestId)

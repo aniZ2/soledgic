@@ -1,13 +1,16 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   createAuditLogAsync,
-  errorResponse,
-  jsonResponse,
   LedgerContext,
   sanitizeForAudit,
   validateId,
 } from './utils.ts'
 import { getPaymentProvider } from './payment-provider.ts'
+import {
+  ResourceResult,
+  resourceError,
+  resourceOk,
+} from './treasury-resource.ts'
 
 type RpcCandidate = {
   name: string
@@ -19,7 +22,7 @@ type ReleaseQueueSchema = 'escrow_releases' | 'release_queue'
 export interface HoldsQueryRequest {
   entry_id?: string
   venture_id?: string
-  creator_id?: string
+  participant_id?: string
   ready_only?: boolean
   limit?: number
   execute_transfer?: boolean
@@ -658,20 +661,20 @@ function normalizeLimit(raw: unknown, defaultValue = 100, max = 500): number {
 }
 
 export async function listHeldFundsResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
   body: HoldsQueryRequest,
   requestId: string,
-): Promise<Response> {
+): Promise<ResourceResult> {
   const ventureId = body.venture_id ? validateId(body.venture_id, 100) : null
   if (body.venture_id && !ventureId) {
-    return errorResponse('Invalid venture_id', 400, req, requestId)
+    return resourceError('Invalid venture_id', 400, {}, 'invalid_venture_id')
   }
 
-  const creatorId = body.creator_id ? validateId(body.creator_id, 100) : null
-  if (body.creator_id && !creatorId) {
-    return errorResponse('Invalid creator_id', 400, req, requestId)
+  const participantId = body.participant_id ? validateId(body.participant_id, 100) : null
+  if (body.participant_id && !participantId) {
+    return resourceError('Invalid participant_id', 400, {}, 'invalid_participant_id')
   }
 
   try {
@@ -679,36 +682,52 @@ export async function listHeldFundsResponse(
     const limit = normalizeLimit(body.limit, 100, 1000)
     const { rows, source } = await fetchHeldFunds(supabase, ledger.id, {
       ventureId,
-      creatorId,
+      creatorId: participantId,
       readyOnly,
       limit,
     })
 
-    return jsonResponse({
+    return resourceOk({
       success: true,
       source,
-      data: rows,
+      holds: rows.map((row) => ({
+        id: row.entry_id,
+        participant_id: row.recipient_id,
+        participant_name: row.recipient_name,
+        amount: row.amount,
+        currency: row.currency,
+        held_since: row.held_since,
+        days_held: row.days_held,
+        hold_reason: row.hold_reason,
+        hold_until: row.hold_until,
+        ready_for_release: row.ready_for_release,
+        release_status: row.release_status,
+        transaction_reference: row.transaction_ref,
+        product_name: row.product_name,
+        venture_id: row.venture_id,
+        connected_account_ready: row.has_connected_account,
+      })),
       count: rows.length,
-    }, 200, req, requestId)
+    })
   } catch (error: any) {
     console.error(`[${requestId}] holds list error:`, error)
-    return errorResponse('Failed to fetch held funds', 500, req, requestId)
+    return resourceError('Failed to fetch held funds', 500, {}, 'holds_fetch_failed')
   }
 }
 
 export async function getHeldFundsSummaryResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
   requestId: string,
-): Promise<Response> {
+): Promise<ResourceResult> {
   try {
     const { rows, source } = await fetchSummary(supabase, ledger.id)
     const totalHeld = rows.reduce((sum, row) => sum + asNumber(row.total_held), 0)
     const totalReady = rows.reduce((sum, row) => sum + asNumber(row.total_ready), 0)
     const totalPending = rows.reduce((sum, row) => sum + asNumber(row.total_pending_release), 0)
 
-    return jsonResponse({
+    return resourceOk({
       success: true,
       source,
       summary: {
@@ -725,10 +744,10 @@ export async function getHeldFundsSummaryResponse(
           entry_count: Math.trunc(asNumber(row.entry_count)),
         })),
       },
-    }, 200, req, requestId)
+    })
   } catch (error: any) {
     console.error(`[${requestId}] holds summary error:`, error)
-    return errorResponse('Failed to fetch held funds summary', 500, req, requestId)
+    return resourceError('Failed to fetch held funds summary', 500, {}, 'holds_summary_fetch_failed')
   }
 }
 
@@ -738,10 +757,10 @@ export async function releaseHeldFundsResponse(
   ledger: LedgerContext,
   body: HoldsQueryRequest,
   requestId: string,
-): Promise<Response> {
+): Promise<ResourceResult> {
   const entryId = body.entry_id ? validateId(body.entry_id, 120) : null
   if (!entryId || !isUuidLike(entryId)) {
-    return errorResponse('entry_id is required and must be a valid UUID', 400, req, requestId)
+    return resourceError('entry_id is required and must be a valid UUID', 400, {}, 'invalid_hold_id')
   }
 
   try {
@@ -752,7 +771,7 @@ export async function releaseHeldFundsResponse(
     if (executeTransfer) {
       transferResult = await executeReleaseTransfer(supabase, ledger, queued.releaseId)
       if (!transferResult.success) {
-        return errorResponse(transferResult.error || 'Failed to execute release transfer', 502, req, requestId)
+        return resourceError(transferResult.error || 'Failed to execute release transfer', 502, {}, 'release_transfer_failed')
       }
     }
 
@@ -773,18 +792,20 @@ export async function releaseHeldFundsResponse(
       risk_score: 45,
     }, requestId)
 
-    return jsonResponse({
+    return resourceOk({
       success: true,
-      release_id: queued.releaseId,
-      entry_id: entryId,
-      queued_with: queued.rpcUsed,
-      executed: executeTransfer,
-      transfer_id: transferResult?.transferId || null,
-      transfer_status: transferResult?.providerStatus || null,
-      completion_rpc: transferResult?.completionRpc || null,
-      amount: transferResult?.amountMajor || null,
-      currency: transferResult?.currency || null,
-    }, 200, req, requestId)
+      release: {
+        id: queued.releaseId,
+        hold_id: entryId,
+        queued_with: queued.rpcUsed,
+        executed: executeTransfer,
+        transfer_id: transferResult?.transferId || null,
+        transfer_status: transferResult?.providerStatus || null,
+        completion_rpc: transferResult?.completionRpc || null,
+        amount: transferResult?.amountMajor || null,
+        currency: transferResult?.currency || null,
+      },
+    })
   } catch (error: any) {
     const message = String(error?.message || error || 'Unknown error')
     const normalized = message.toLowerCase()
@@ -796,14 +817,14 @@ export async function releaseHeldFundsResponse(
       normalized.includes('not held') ||
       normalized.includes('already')
     ) {
-      return errorResponse(message, 409, req, requestId)
+      return resourceError(message, 409, {}, 'hold_release_conflict')
     }
 
     if (normalized.includes('invalid') || normalized.includes('must be')) {
-      return errorResponse(message, 400, req, requestId)
+      return resourceError(message, 400, {}, 'invalid_hold_release_request')
     }
 
     console.error(`[${requestId}] holds release error:`, error)
-    return errorResponse('Failed to process release request', 500, req, requestId)
+    return resourceError('Failed to process release request', 500, {}, 'hold_release_failed')
   }
 }

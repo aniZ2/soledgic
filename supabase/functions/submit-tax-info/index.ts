@@ -18,7 +18,8 @@ const VALID_TAX_ID_TYPES = ['ssn', 'ein', 'itin'] as const
 const VALID_BUSINESS_TYPES = ['individual', 'sole_proprietor', 'llc', 'corporation', 'partnership'] as const
 
 interface SubmitTaxInfoRequest {
-  creator_id: string
+  participant_id?: string
+  creator_id?: string
   legal_name: string
   tax_id_type: typeof VALID_TAX_ID_TYPES[number]
   tax_id_last4: string
@@ -45,10 +46,9 @@ const handler = createHandler(
       return errorResponse('Method not allowed', 405, req, requestId)
     }
 
-    // Validate creator_id
-    const creatorId = validateId(body.creator_id, 100)
-    if (!creatorId) {
-      return errorResponse('Invalid creator_id', 400, req, requestId)
+    const participantId = validateId(body.participant_id ?? body.creator_id, 100)
+    if (!participantId) {
+      return errorResponse('Invalid participant_id', 400, req, requestId)
     }
 
     // Validate legal_name
@@ -83,7 +83,7 @@ const handler = createHandler(
       .select('id')
       .eq('ledger_id', ledger.id)
       .eq('account_type', 'creator_balance')
-      .eq('entity_id', creatorId)
+      .eq('entity_id', participantId)
       .eq('is_active', true)
       .single()
 
@@ -105,7 +105,7 @@ const handler = createHandler(
       .from('tax_info_submissions')
       .update({ status: 'superseded', updated_at: new Date().toISOString() })
       .eq('ledger_id', ledger.id)
-      .eq('entity_id', creatorId)
+      .eq('entity_id', participantId)
       .eq('status', 'active')
 
     // Insert new submission
@@ -114,7 +114,7 @@ const handler = createHandler(
       .from('tax_info_submissions')
       .insert({
         ledger_id: ledger.id,
-        entity_id: creatorId,
+        entity_id: participantId,
         status: 'active',
         legal_name: legalName,
         tax_id_type: body.tax_id_type,
@@ -127,7 +127,7 @@ const handler = createHandler(
         address_postal_code: addressPostalCode,
         address_country: addressCountry,
         certified_at: now,
-        certified_by: creatorId,
+        certified_by: participantId,
       })
       .select('id, entity_id, legal_name, tax_id_type, tax_id_last4, business_type, certified_at')
       .single()
@@ -145,7 +145,7 @@ const handler = createHandler(
       entity_id: submission.id,
       actor_type: 'api',
       request_body: sanitizeForAudit({
-        creator_id: creatorId,
+        participant_id: participantId,
         tax_id_type: body.tax_id_type,
         tax_id_last4: body.tax_id_last4,
         business_type: body.business_type,

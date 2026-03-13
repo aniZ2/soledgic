@@ -1,8 +1,6 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   createAuditLogAsync,
-  errorResponse,
-  jsonResponse,
   LedgerContext,
   sanitizeForAudit,
   validateAmount,
@@ -11,14 +9,16 @@ import {
   validateString,
   validateUrl,
 } from './utils.ts'
+import { getPaymentProvider } from './payment-provider.ts'
 import {
-  getPaymentProvider,
-  type PaymentProviderName,
-} from './payment-provider.ts'
+  ResourceResult,
+  resourceError,
+  resourceOk,
+} from './treasury-resource.ts'
 
 export interface CreateCheckoutRequest {
   amount: number
-  creator_id: string
+  participant_id: string
   currency?: string
   product_id?: string
   product_name?: string
@@ -32,29 +32,10 @@ export interface CreateCheckoutRequest {
   metadata?: Record<string, string>
 }
 
-interface CreateCheckoutResponse {
-  success: boolean
-  provider: PaymentProviderName
-  payment_id: string
-  payment_intent_id: string
-  client_secret?: string | null
-  checkout_url?: string | null
-  status?: string | null
-  requires_action?: boolean
-  amount: number
-  currency: string
-  breakdown?: {
-    gross_amount: number
-    creator_amount: number
-    platform_amount: number
-    creator_percent: number
-  }
-}
-
-async function getCreatorSplit(
+async function getParticipantSplit(
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  creatorId: string,
+  participantId: string,
   productId?: string | null,
 ): Promise<number> {
   if (productId) {
@@ -70,24 +51,24 @@ async function getCreatorSplit(
     }
   }
 
-  const { data: creatorAccount } = await supabase
+  const { data: participantAccount } = await supabase
     .from('accounts')
     .select('metadata')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
-    .eq('entity_id', creatorId)
+    .eq('entity_id', participantId)
     .eq('is_active', true)
     .single()
 
-  if (creatorAccount?.metadata?.custom_split_percent !== undefined) {
-    return creatorAccount.metadata.custom_split_percent
+  if (participantAccount?.metadata?.custom_split_percent !== undefined) {
+    return participantAccount.metadata.custom_split_percent
   }
 
-  if (creatorAccount?.metadata?.tier_id) {
+  if (participantAccount?.metadata?.tier_id) {
     const { data: tier } = await supabase
       .from('creator_tiers')
       .select('creator_percent')
-      .eq('id', creatorAccount.metadata.tier_id)
+      .eq('id', participantAccount.metadata.tier_id)
       .single()
 
     if (tier?.creator_percent !== undefined) {
@@ -114,37 +95,37 @@ export async function createCheckoutResponse(
   ledger: LedgerContext,
   body: CreateCheckoutRequest,
   requestId: string,
-): Promise<Response> {
+): Promise<ResourceResult> {
   const amount = validateAmount(body.amount)
   if (amount === null || amount <= 0) {
-    return errorResponse('Invalid amount: must be a positive integer (cents)', 400, req, requestId)
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
   if (amount < 50) {
-    return errorResponse('Amount must be at least 50 cents', 400, req, requestId)
+    return resourceError('Amount must be at least 50 cents', 400, {}, 'amount_below_minimum')
   }
 
-  const creatorId = validateId(body.creator_id, 100)
-  if (!creatorId) {
-    return errorResponse('Invalid creator_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+  const participantId = validateId(body.participant_id, 100)
+  if (!participantId) {
+    return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
-  const { data: creatorCheck } = await supabase
+  const { data: participantCheck } = await supabase
     .from('accounts')
     .select('id, is_active')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'creator_balance')
-    .eq('entity_id', creatorId)
+    .eq('entity_id', participantId)
     .maybeSingle()
 
-  if (creatorCheck && creatorCheck.is_active === false) {
-    return errorResponse('Creator has been deleted', 410, req, requestId)
+  if (participantCheck && participantCheck.is_active === false) {
+    return resourceError('Participant has been deleted', 410, {}, 'participant_deleted')
   }
 
   const currency = body.currency?.toUpperCase() || 'USD'
   const validCurrencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'NGN']
   if (!validCurrencies.includes(currency)) {
-    return errorResponse(`Invalid currency: must be one of ${validCurrencies.join(', ')}`, 400, req, requestId)
+    return resourceError(`Invalid currency: must be one of ${validCurrencies.join(', ')}`, 400, {}, 'invalid_currency')
   }
 
   const productId = body.product_id ? validateId(body.product_id, 100) : null
@@ -156,19 +137,19 @@ export async function createCheckoutResponse(
 
   const idempotencyKey = body.idempotency_key ? validateId(body.idempotency_key, 120) : null
   if (body.idempotency_key && !idempotencyKey) {
-    return errorResponse('Invalid idempotency_key', 400, req, requestId)
+    return resourceError('Invalid idempotency_key', 400, {}, 'invalid_idempotency_key')
   }
+
+  const participantPercent = await getParticipantSplit(supabase, ledger, participantId, productId)
+  const participantAmount = Math.floor(amount * (participantPercent / 100))
+  const platformAmount = amount - participantAmount
 
   if (!paymentMethodId) {
     const successUrl = body.success_url ? validateUrl(body.success_url) : null
     if (!successUrl) {
-      return errorResponse('success_url is required and must be a valid URL when payment_method_id is omitted', 400, req, requestId)
+      return resourceError('success_url is required and must be a valid URL when payment_method_id is omitted', 400, {}, 'invalid_success_url')
     }
     const cancelUrl = body.cancel_url ? validateUrl(body.cancel_url) : null
-
-    const creatorPercent = await getCreatorSplit(supabase, ledger, creatorId, productId)
-    const creatorAmount = Math.floor(amount * (creatorPercent / 100))
-    const platformAmount = amount - creatorAmount
     const sessionExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
 
     const { data: session, error: sessionError } = await supabase
@@ -177,7 +158,7 @@ export async function createCheckoutResponse(
         ledger_id: ledger.id,
         amount,
         currency,
-        creator_id: creatorId,
+        creator_id: participantId,
         product_id: productId,
         product_name: productName,
         customer_email: customerEmail,
@@ -185,8 +166,8 @@ export async function createCheckoutResponse(
         metadata: body.metadata || {},
         success_url: successUrl,
         cancel_url: cancelUrl,
-        creator_percent: creatorPercent,
-        creator_amount: creatorAmount,
+        creator_percent: participantPercent,
+        creator_amount: participantAmount,
         platform_amount: platformAmount,
         expires_at: sessionExpiresAt,
       })
@@ -195,7 +176,7 @@ export async function createCheckoutResponse(
 
     if (sessionError || !session) {
       console.error(`[${requestId}] Failed to create checkout session:`, sessionError)
-      return errorResponse('Failed to create checkout session', 500, req, requestId)
+      return resourceError('Failed to create checkout session', 500, {}, 'checkout_session_create_failed')
     }
 
     const appUrl = (Deno.env.get('APP_URL') || Deno.env.get('NEXT_PUBLIC_APP_URL') || 'https://soledgic.com').replace(/\/+$/, '')
@@ -209,45 +190,53 @@ export async function createCheckoutResponse(
       request_body: sanitizeForAudit({
         amount,
         currency,
-        creator_id: creatorId,
+        participant_id: participantId,
         product_id: productId,
-        creator_percent: creatorPercent,
+        participant_percent: participantPercent,
       }),
       response_status: 200,
       risk_score: 10,
     }, requestId)
 
-    return jsonResponse({
+    return resourceOk({
       success: true,
-      mode: 'session',
-      session_id: session.id,
-      checkout_url: `${appUrl}/pay/${session.id}`,
-      expires_at: session.expires_at,
-      breakdown: {
-        gross_amount: amount / 100,
-        creator_amount: creatorAmount / 100,
-        platform_amount: platformAmount / 100,
-        creator_percent: creatorPercent,
+      checkout_session: {
+        id: session.id,
+        mode: 'session',
+        provider: null,
+        client_secret: null,
+        checkout_url: `${appUrl}/pay/${session.id}`,
+        payment_id: null,
+        payment_intent_id: null,
+        status: null,
+        requires_action: false,
+        amount,
+        currency,
+        expires_at: session.expires_at,
+        breakdown: {
+          gross_amount: amount / 100,
+          creator_amount: participantAmount / 100,
+          platform_amount: platformAmount / 100,
+          creator_percent: participantPercent,
+        },
       },
-    }, 200, req, requestId)
+    })
   }
 
   const merchantOverride = typeof (body as any)?.merchant_id === 'string' ? String((body as any).merchant_id).trim() : ''
   if (merchantOverride.length > 0) {
-    return errorResponse('merchant_id is not allowed', 400, req, requestId)
+    return resourceError('merchant_id is not allowed', 400, {}, 'merchant_override_not_allowed')
   }
 
   const provider = getPaymentProvider('card')
-  const creatorPercent = await getCreatorSplit(supabase, ledger, creatorId, productId)
-  const creatorAmount = Math.floor(amount * (creatorPercent / 100))
-  const platformAmount = amount - creatorAmount
   const description = productName
     ? `${productName}`
     : `Purchase from ${(ledger.settings as any)?.platform_name || ledger.business_name}`
 
   const checkoutMetadata: Record<string, string> = {
     ledger_id: ledger.id,
-    creator_id: creatorId,
+    creator_id: participantId,
+    participant_id: participantId,
     soledgic_request_id: requestId,
     checkout_provider: 'card',
   }
@@ -266,7 +255,7 @@ export async function createCheckoutResponse(
   }
 
   if (!idempotencyKey) {
-    return errorResponse('idempotency_key is required for direct charges', 400, req, requestId)
+    return resourceError('idempotency_key is required for direct charges', 400, {}, 'missing_idempotency_key')
   }
 
   const checkoutResult = await provider.createPaymentIntent({
@@ -292,11 +281,11 @@ export async function createCheckoutResponse(
       normalizedError.includes('configured') ||
       normalizedError.includes('disabled')
 
-    return errorResponse(
+    return resourceError(
       checkoutResult.error || 'Failed to create payment',
       isProviderConfigError ? 400 : 500,
-      req,
-      requestId,
+      {},
+      isProviderConfigError ? 'payment_provider_configuration_error' : 'payment_provider_error',
     )
   }
 
@@ -320,9 +309,9 @@ export async function createCheckoutResponse(
       const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
         p_ledger_id: ledger.id,
         p_reference_id: directChargeReferenceId,
-        p_creator_id: creatorId,
+        p_creator_id: participantId,
         p_gross_amount: amount,
-        p_creator_amount: creatorAmount,
+        p_creator_amount: participantAmount,
         p_platform_amount: platformAmount,
         p_processing_fee: 0,
         p_product_id: productId || null,
@@ -362,7 +351,7 @@ export async function createCheckoutResponse(
             transaction_id: saleTransactionId,
             amount: amount / 100,
             currency,
-            creator_id: creatorId,
+            participant_id: participantId,
             product_id: productId,
             direct_charge: true,
             created_at: new Date().toISOString(),
@@ -383,9 +372,9 @@ export async function createCheckoutResponse(
     request_body: sanitizeForAudit({
       amount,
       currency,
-      creator_id: creatorId,
+      participant_id: participantId,
       product_id: productId,
-      creator_percent: creatorPercent,
+      participant_percent: participantPercent,
       provider: 'card',
       sale_booked: saleBooked,
     }),
@@ -393,24 +382,27 @@ export async function createCheckoutResponse(
     risk_score: 10,
   }, requestId)
 
-  const response: CreateCheckoutResponse = {
+  return resourceOk({
     success: true,
-    provider: 'card',
-    payment_id: checkoutPayment.id,
-    payment_intent_id: checkoutPayment.id,
-    client_secret: checkoutPayment.client_secret,
-    checkout_url: checkoutPayment.checkout_url,
-    status: checkoutPayment.status,
-    requires_action: checkoutPayment.requires_action,
-    amount,
-    currency,
-    breakdown: {
-      gross_amount: amount / 100,
-      creator_amount: creatorAmount / 100,
-      platform_amount: platformAmount / 100,
-      creator_percent: creatorPercent,
+    checkout_session: {
+      id: checkoutPayment.id,
+      mode: 'direct',
+      provider: 'card',
+      client_secret: checkoutPayment.client_secret,
+      checkout_url: checkoutPayment.checkout_url,
+      payment_id: checkoutPayment.id,
+      payment_intent_id: checkoutPayment.id,
+      status: checkoutPayment.status,
+      requires_action: checkoutPayment.requires_action,
+      amount,
+      currency,
+      expires_at: null,
+      breakdown: {
+        gross_amount: amount / 100,
+        creator_amount: participantAmount / 100,
+        platform_amount: platformAmount / 100,
+        creator_percent: participantPercent,
+      },
     },
-  }
-
-  return jsonResponse(response, 200, req, requestId)
+  })
 }

@@ -7,10 +7,7 @@ import {
   asJsonObject,
   getNumberParam,
   getResourceSegments,
-  mapWalletEntriesResponse,
-  mapWalletMutationResponse,
-  mapWalletResponse,
-  transformJsonResponse,
+  respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import {
   depositToWalletResponse,
@@ -39,8 +36,8 @@ const handler = createHandler(
         return errorResponse('Method not allowed', 405, req, requestId)
       }
 
-      const response = await getWalletBalanceResponse(req, supabase, ledger, { user_id: participantId }, requestId)
-      return transformJsonResponse(req, requestId, response, (source) => mapWalletResponse(source, participantId))
+      const response = await getWalletBalanceResponse(req, supabase, ledger, { participant_id: participantId }, requestId)
+      return respondWithResult(req, requestId, response)
     }
 
     if (segments.length === 2 && segments[1] === 'entries') {
@@ -53,11 +50,11 @@ const handler = createHandler(
       const offset = getNumberParam(url, 'offset')
 
       const response = await listWalletEntriesResponse(req, supabase, ledger, {
-        user_id: participantId,
+        participant_id: participantId,
         ...(limit !== undefined ? { limit } : {}),
         ...(offset !== undefined ? { offset } : {}),
       }, requestId)
-      return transformJsonResponse(req, requestId, response, mapWalletEntriesResponse)
+      return respondWithResult(req, requestId, response)
     }
 
     if (segments.length === 2 && segments[1] === 'deposits') {
@@ -71,15 +68,13 @@ const handler = createHandler(
       }
 
       const response = await depositToWalletResponse(req, supabase, ledger, {
-        user_id: participantId,
+        participant_id: participantId,
         amount: typeof payload.amount === 'number' ? payload.amount : undefined,
         reference_id: typeof payload.reference_id === 'string' ? payload.reference_id : undefined,
         description: typeof payload.description === 'string' ? payload.description : undefined,
         metadata: payload.metadata as Record<string, unknown> | undefined,
       }, requestId)
-      return transformJsonResponse(req, requestId, response, (source) =>
-        mapWalletMutationResponse(source, participantId, 'deposit'),
-      )
+      return respondWithResult(req, requestId, response)
     }
 
     if (segments.length === 2 && segments[1] === 'withdrawals') {
@@ -93,15 +88,13 @@ const handler = createHandler(
       }
 
       const response = await withdrawFromWalletResponse(req, supabase, ledger, {
-        user_id: participantId,
+        participant_id: participantId,
         amount: typeof payload.amount === 'number' ? payload.amount : undefined,
         reference_id: typeof payload.reference_id === 'string' ? payload.reference_id : undefined,
         description: typeof payload.description === 'string' ? payload.description : undefined,
         metadata: payload.metadata as Record<string, unknown> | undefined,
       }, requestId)
-      return transformJsonResponse(req, requestId, response, (source) =>
-        mapWalletMutationResponse(source, participantId, 'withdrawal'),
-      )
+      return respondWithResult(req, requestId, response)
     }
 
     return errorResponse('Not found', 404, req, requestId)

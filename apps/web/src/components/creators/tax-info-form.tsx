@@ -61,7 +61,7 @@ export function TaxInfoForm({ ledgerId, creatorId, onSuccess }: TaxInfoFormProps
       const response = await callLedgerFunction('submit-tax-info', {
         ledgerId,
         body: {
-          creator_id: creatorId,
+          participant_id: creatorId,
           legal_name: legalName.trim(),
           tax_id_type: taxIdType,
           tax_id_last4: taxIdLast4,

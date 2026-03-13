@@ -6,8 +6,7 @@ import {
 import {
   asJsonObject,
   getResourceSegments,
-  mapRefundResponse,
-  transformJsonResponse,
+  respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import { recordRefundResponse } from '../_shared/refund-service.ts'
 
@@ -44,7 +43,7 @@ const handler = createHandler(
       metadata: payload.metadata as Record<string, any> | undefined,
     }, requestId)
 
-    return transformJsonResponse(req, requestId, response, mapRefundResponse)
+    return respondWithResult(req, requestId, response)
   },
 )
 

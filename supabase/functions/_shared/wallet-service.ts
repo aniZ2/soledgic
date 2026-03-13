@@ -1,19 +1,22 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   createAuditLogAsync,
-  errorResponse,
-  jsonResponse,
   LedgerContext,
   sanitizeForAudit,
   validateAmount,
   validateId,
   validateInteger,
 } from './utils.ts'
+import {
+  ResourceResult,
+  resourceError,
+  resourceOk,
+} from './treasury-resource.ts'
 
 export interface WalletMutationRequest {
-  user_id?: string
-  from_user_id?: string
-  to_user_id?: string
+  participant_id?: string
+  from_participant_id?: string
+  to_participant_id?: string
   amount?: number
   reference_id?: string
   description?: string
@@ -23,15 +26,15 @@ export interface WalletMutationRequest {
 }
 
 export async function getWalletBalanceResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
   body: WalletMutationRequest,
-  requestId: string,
-): Promise<Response> {
-  const userId = validateId(body.user_id, 100)
-  if (!userId) {
-    return errorResponse('Invalid user_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+  _requestId: string,
+): Promise<ResourceResult> {
+  const participantId = validateId(body.participant_id, 100)
+  if (!participantId) {
+    return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
   const { data: account } = await supabase
@@ -39,23 +42,26 @@ export async function getWalletBalanceResponse(
     .select('id, balance, entity_id, name, is_active, created_at')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'user_wallet')
-    .eq('entity_id', userId)
+    .eq('entity_id', participantId)
     .maybeSingle()
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    balance: account ? Number(account.balance) : 0,
-    wallet_exists: !!account,
-    account: account
-      ? {
-          id: account.id,
-          entity_id: account.entity_id,
-          name: account.name,
-          is_active: account.is_active,
-          created_at: account.created_at,
-        }
-      : null,
-  }, 200, req, requestId)
+    wallet: {
+      participant_id: participantId,
+      balance: account ? Number(account.balance) : 0,
+      wallet_exists: !!account,
+      account: account
+        ? {
+            id: account.id,
+            participant_id: account.entity_id,
+            name: account.name,
+            is_active: account.is_active,
+            created_at: account.created_at,
+          }
+        : null,
+    },
+  })
 }
 
 export async function depositToWalletResponse(
@@ -64,35 +70,39 @@ export async function depositToWalletResponse(
   ledger: LedgerContext,
   body: WalletMutationRequest,
   requestId: string,
-): Promise<Response> {
-  const userId = validateId(body.user_id, 100)
-  if (!userId) {
-    return errorResponse('Invalid user_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+): Promise<ResourceResult> {
+  const participantId = validateId(body.participant_id, 100)
+  if (!participantId) {
+    return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
   const amount = validateAmount(body.amount)
   if (amount === null || amount <= 0) {
-    return errorResponse('Invalid amount: must be a positive integer (cents)', 400, req, requestId)
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
   const referenceId = validateId(body.reference_id, 255)
   if (!referenceId) {
-    return errorResponse('Invalid reference_id: must be 1-255 alphanumeric characters', 400, req, requestId)
+    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
   }
 
   const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
   if (duplicate) {
-    return jsonResponse(
-      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: duplicate.id },
+    return resourceOk(
+      {
+        success: false,
+        idempotent: true,
+        error: 'Duplicate reference_id',
+        error_code: 'duplicate_reference_id',
+        transaction_id: duplicate.id,
+      },
       409,
-      req,
-      requestId,
     )
   }
 
   const { data: result, error: rpcError } = await supabase.rpc('wallet_deposit_atomic', {
     p_ledger_id: ledger.id,
-    p_user_id: userId,
+    p_user_id: participantId,
     p_amount: amount,
     p_reference_id: referenceId,
     p_description: body.description || null,
@@ -100,7 +110,7 @@ export async function depositToWalletResponse(
   })
 
   if (rpcError) {
-    return mapWalletRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
+    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
   }
 
   const row = Array.isArray(result) ? result[0] : result
@@ -114,7 +124,7 @@ export async function depositToWalletResponse(
     entity_id: transactionId,
     actor_type: 'api',
     request_body: sanitizeForAudit({
-      user_id: userId,
+      participant_id: participantId,
       amount_cents: amount,
       reference_id: referenceId,
     }),
@@ -122,11 +132,14 @@ export async function depositToWalletResponse(
     risk_score: 20,
   }, requestId)
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    transaction_id: transactionId,
-    balance,
-  }, 200, req, requestId)
+    deposit: {
+      participant_id: participantId,
+      transaction_id: transactionId,
+      balance,
+    },
+  })
 }
 
 export async function withdrawFromWalletResponse(
@@ -135,35 +148,39 @@ export async function withdrawFromWalletResponse(
   ledger: LedgerContext,
   body: WalletMutationRequest,
   requestId: string,
-): Promise<Response> {
-  const userId = validateId(body.user_id, 100)
-  if (!userId) {
-    return errorResponse('Invalid user_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+): Promise<ResourceResult> {
+  const participantId = validateId(body.participant_id, 100)
+  if (!participantId) {
+    return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
   const amount = validateAmount(body.amount)
   if (amount === null || amount <= 0) {
-    return errorResponse('Invalid amount: must be a positive integer (cents)', 400, req, requestId)
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
   const referenceId = validateId(body.reference_id, 255)
   if (!referenceId) {
-    return errorResponse('Invalid reference_id: must be 1-255 alphanumeric characters', 400, req, requestId)
+    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
   }
 
   const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
   if (duplicate) {
-    return jsonResponse(
-      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: duplicate.id },
+    return resourceOk(
+      {
+        success: false,
+        idempotent: true,
+        error: 'Duplicate reference_id',
+        error_code: 'duplicate_reference_id',
+        transaction_id: duplicate.id,
+      },
       409,
-      req,
-      requestId,
     )
   }
 
   const { data: result, error: rpcError } = await supabase.rpc('wallet_withdraw_atomic', {
     p_ledger_id: ledger.id,
-    p_user_id: userId,
+    p_user_id: participantId,
     p_amount: amount,
     p_reference_id: referenceId,
     p_description: body.description || null,
@@ -171,7 +188,7 @@ export async function withdrawFromWalletResponse(
   })
 
   if (rpcError) {
-    return mapWalletRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
+    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
   }
 
   const row = Array.isArray(result) ? result[0] : result
@@ -185,7 +202,7 @@ export async function withdrawFromWalletResponse(
     entity_id: transactionId,
     actor_type: 'api',
     request_body: sanitizeForAudit({
-      user_id: userId,
+      participant_id: participantId,
       amount_cents: amount,
       reference_id: referenceId,
     }),
@@ -193,11 +210,14 @@ export async function withdrawFromWalletResponse(
     risk_score: 30,
   }, requestId)
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    transaction_id: transactionId,
-    balance,
-  }, 200, req, requestId)
+    withdrawal: {
+      participant_id: participantId,
+      transaction_id: transactionId,
+      balance,
+    },
+  })
 }
 
 export async function transferWalletFundsResponse(
@@ -206,41 +226,45 @@ export async function transferWalletFundsResponse(
   ledger: LedgerContext,
   body: WalletMutationRequest,
   requestId: string,
-): Promise<Response> {
-  const fromUserId = validateId(body.from_user_id, 100)
-  if (!fromUserId) {
-    return errorResponse('Invalid from_user_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+): Promise<ResourceResult> {
+  const fromParticipantId = validateId(body.from_participant_id, 100)
+  if (!fromParticipantId) {
+    return resourceError('Invalid from_participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_from_participant_id')
   }
 
-  const toUserId = validateId(body.to_user_id, 100)
-  if (!toUserId) {
-    return errorResponse('Invalid to_user_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+  const toParticipantId = validateId(body.to_participant_id, 100)
+  if (!toParticipantId) {
+    return resourceError('Invalid to_participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_to_participant_id')
   }
 
   const amount = validateAmount(body.amount)
   if (amount === null || amount <= 0) {
-    return errorResponse('Invalid amount: must be a positive integer (cents)', 400, req, requestId)
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
   const referenceId = validateId(body.reference_id, 255)
   if (!referenceId) {
-    return errorResponse('Invalid reference_id: must be 1-255 alphanumeric characters', 400, req, requestId)
+    return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
   }
 
   const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
   if (duplicate) {
-    return jsonResponse(
-      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: duplicate.id },
+    return resourceOk(
+      {
+        success: false,
+        idempotent: true,
+        error: 'Duplicate reference_id',
+        error_code: 'duplicate_reference_id',
+        transaction_id: duplicate.id,
+      },
       409,
-      req,
-      requestId,
     )
   }
 
   const { data: result, error: rpcError } = await supabase.rpc('wallet_transfer_atomic', {
     p_ledger_id: ledger.id,
-    p_from_user_id: fromUserId,
-    p_to_user_id: toUserId,
+    p_from_user_id: fromParticipantId,
+    p_to_user_id: toParticipantId,
     p_amount: amount,
     p_reference_id: referenceId,
     p_description: body.description || null,
@@ -248,7 +272,7 @@ export async function transferWalletFundsResponse(
   })
 
   if (rpcError) {
-    return mapWalletRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
+    return mapWalletRpcError(rpcError, ledger.id, referenceId, supabase)
   }
 
   const row = Array.isArray(result) ? result[0] : result
@@ -263,8 +287,8 @@ export async function transferWalletFundsResponse(
     entity_id: transactionId,
     actor_type: 'api',
     request_body: sanitizeForAudit({
-      from_user_id: fromUserId,
-      to_user_id: toUserId,
+      from_participant_id: fromParticipantId,
+      to_participant_id: toParticipantId,
       amount_cents: amount,
       reference_id: referenceId,
     }),
@@ -272,24 +296,28 @@ export async function transferWalletFundsResponse(
     risk_score: 30,
   }, requestId)
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    transaction_id: transactionId,
-    from_balance: fromBalance,
-    to_balance: toBalance,
-  }, 200, req, requestId)
+    transfer: {
+      transaction_id: transactionId,
+      from_participant_id: fromParticipantId,
+      to_participant_id: toParticipantId,
+      from_balance: fromBalance,
+      to_balance: toBalance,
+    },
+  })
 }
 
 export async function listWalletEntriesResponse(
-  req: Request,
+  _req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
   body: WalletMutationRequest,
-  requestId: string,
-): Promise<Response> {
-  const userId = validateId(body.user_id, 100)
-  if (!userId) {
-    return errorResponse('Invalid user_id: must be 1-100 alphanumeric characters', 400, req, requestId)
+  _requestId: string,
+): Promise<ResourceResult> {
+  const participantId = validateId(body.participant_id, 100)
+  if (!participantId) {
+    return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
 
   const limit = validateInteger(body.limit, 1, 100) ?? 25
@@ -300,11 +328,11 @@ export async function listWalletEntriesResponse(
     .select('id')
     .eq('ledger_id', ledger.id)
     .eq('account_type', 'user_wallet')
-    .eq('entity_id', userId)
+    .eq('entity_id', participantId)
     .maybeSingle()
 
   if (!account) {
-    return jsonResponse({ success: true, transactions: [], total: 0 }, 200, req, requestId)
+    return resourceOk({ success: true, entries: [], total: 0, limit, offset })
   }
 
   const { data: entries, error: entriesError } = await supabase
@@ -330,7 +358,7 @@ export async function listWalletEntriesResponse(
 
   if (entriesError) {
     console.error('Failed to fetch wallet history:', entriesError)
-    return errorResponse('Failed to fetch wallet history', 500, req, requestId)
+    return resourceError('Failed to fetch wallet history', 500, {}, 'wallet_history_fetch_failed')
   }
 
   const { count } = await supabase
@@ -354,23 +382,21 @@ export async function listWalletEntriesResponse(
     }
   })
 
-  return jsonResponse({
+  return resourceOk({
     success: true,
-    transactions,
+    entries: transactions,
     total: count ?? 0,
     limit,
     offset,
-  }, 200, req, requestId)
+  })
 }
 
 async function mapWalletRpcError(
   rpcError: any,
-  req: Request,
-  requestId: string,
   ledgerId: string,
   referenceId: string,
   supabase: SupabaseClient,
-): Promise<Response> {
+): Promise<ResourceResult> {
   const message = String(rpcError.message || '')
   const lower = message.toLowerCase()
   const code = rpcError.code || ''
@@ -383,36 +409,37 @@ async function mapWalletRpcError(
       .eq('reference_id', referenceId)
       .single()
 
-    return jsonResponse({
+    return resourceOk({
       success: false,
       idempotent: true,
       error: 'Duplicate reference_id',
+      error_code: 'duplicate_reference_id',
       transaction_id: existingTx?.id,
-    }, 409, req, requestId)
+    }, 409)
   }
 
   if (lower.includes('insufficient wallet balance')) {
-    return jsonResponse({ success: false, error: 'Insufficient balance' }, 422, req, requestId)
+    return resourceOk({ success: false, error: 'Insufficient balance', error_code: 'insufficient_balance' }, 422)
   }
 
   if (lower.includes('wallet not found')) {
-    return jsonResponse({ success: false, error: 'Wallet not found' }, 404, req, requestId)
+    return resourceOk({ success: false, error: 'Wallet not found', error_code: 'wallet_not_found' }, 404)
   }
 
   if (lower.includes('must be positive')) {
-    return errorResponse('Amount must be a positive integer (cents)', 400, req, requestId)
+    return resourceError('Amount must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
   if (lower.includes('cannot transfer to self')) {
-    return errorResponse('Cannot transfer to self', 400, req, requestId)
+    return resourceError('Cannot transfer to self', 400, {}, 'transfer_to_self')
   }
 
   if (lower.includes('wallet balance cannot be negative')) {
-    return jsonResponse({ success: false, error: 'Insufficient balance' }, 422, req, requestId)
+    return resourceOk({ success: false, error: 'Insufficient balance', error_code: 'insufficient_balance' }, 422)
   }
 
   console.error('Wallet RPC error:', rpcError)
-  return errorResponse('Wallet operation failed', 500, req, requestId)
+  return resourceError('Wallet operation failed', 500, {}, 'wallet_operation_failed')
 }
 
 async function checkDuplicateReference(

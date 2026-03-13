@@ -6,8 +6,7 @@ import {
 import {
   asJsonObject,
   getResourceSegments,
-  mapTransferResponse,
-  transformJsonResponse,
+  respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import { transferWalletFundsResponse } from '../_shared/wallet-service.ts'
 
@@ -33,17 +32,15 @@ const handler = createHandler(
     }
 
     const response = await transferWalletFundsResponse(req, supabase, ledger, {
-      from_user_id: typeof payload.from_participant_id === 'string' ? payload.from_participant_id : undefined,
-      to_user_id: typeof payload.to_participant_id === 'string' ? payload.to_participant_id : undefined,
+      from_participant_id: typeof payload.from_participant_id === 'string' ? payload.from_participant_id : undefined,
+      to_participant_id: typeof payload.to_participant_id === 'string' ? payload.to_participant_id : undefined,
       amount: typeof payload.amount === 'number' ? payload.amount : undefined,
       reference_id: typeof payload.reference_id === 'string' ? payload.reference_id : undefined,
       description: typeof payload.description === 'string' ? payload.description : undefined,
       metadata: payload.metadata as Record<string, unknown> | undefined,
     }, requestId)
 
-    return transformJsonResponse(req, requestId, response, (source) =>
-      mapTransferResponse(source, payload),
-    )
+    return respondWithResult(req, requestId, response)
   },
 )
 
