@@ -369,13 +369,11 @@ soledgic/
 │       ├── refunds/              # Refund resources
 │       ├── reverse-transaction/  # Immutable reversals
 │       └── export-report/        # CSV/JSON exports
-├── api/                          # TypeScript SDK
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── client.ts
-│   │   └── types.ts
-│   └── examples/
-│       └── client-integration.ts
+├── sdk/
+│   └── typescript/               # Public TypeScript SDK
+│       ├── src/
+│       │   └── index.ts
+│       └── README.md
 ├── docs/
 │   ├── API.md                    # API reference
 │   └── ARCHITECTURE_PRINCIPLES.md  # ⚠️ The rules
