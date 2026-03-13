@@ -22,7 +22,7 @@ cp api-keys.env.example api-keys.env
 
 # Or run individual tests
 source api-keys.env
-curl -X GET "$SOLEDGIC_API_URL/get-balance" -H "x-api-key: $SOLEDGIC_API_KEY"
+curl -X GET "$SOLEDGIC_API_URL/participants" -H "x-api-key: $SOLEDGIC_API_KEY"
 ```
 
 ## Test Ledger

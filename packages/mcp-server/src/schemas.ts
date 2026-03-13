@@ -3,24 +3,10 @@ import { z } from 'zod'
 // ─── Read-only tools ─────────────────────────────────────────────
 
 export const GetBalanceSchema = z.object({
-  creator_id: z.string().optional().describe('Filter to a specific creator'),
-  include_platform: z
-    .boolean()
-    .optional()
-    .describe('Include platform summary in response'),
+  creator_id: z.string().optional().describe('Filter to a specific participant'),
 })
 
-export const GetAllBalancesSchema = z.object({
-  action: z
-    .enum(['list', 'chart_of_accounts', 'account_detail'])
-    .describe('Balance query action'),
-  account_id: z.string().uuid().optional().describe('Filter by account ID'),
-  creator_id: z.string().optional().describe('Filter by creator ID'),
-  as_of_date: z
-    .string()
-    .optional()
-    .describe('Balance as-of date (YYYY-MM-DD)'),
-})
+export const GetAllBalancesSchema = z.object({})
 
 export const GetTransactionsSchema = z.object({
   creator_id: z.string().optional().describe('Filter by creator ID'),

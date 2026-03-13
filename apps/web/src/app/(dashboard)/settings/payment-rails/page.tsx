@@ -409,7 +409,7 @@ export default function PaymentRailsPage() {
 
       <div className="mt-6 text-sm text-muted-foreground">
         <a
-          href="/docs/api#process-payout"
+          href="/docs/api"
           className="inline-flex items-center gap-1 text-primary hover:underline"
         >
           <ExternalLink className="w-4 h-4" />

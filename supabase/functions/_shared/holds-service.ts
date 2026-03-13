@@ -1,21 +1,13 @@
-// Soledgic Edge Function: Release Funds
-// POST /release-funds
-// Manage escrow/held-funds release lifecycle.
-
-import {
-  createHandler,
-  jsonResponse,
-  errorResponse,
-  validateId,
-  validateString,
-  LedgerContext,
-  createAuditLogAsync,
-  sanitizeForAudit,
-} from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { getPaymentProvider } from '../_shared/payment-provider.ts'
-
-type Action = 'get_summary' | 'get_held' | 'release' | 'batch_release' | 'auto_release'
+import {
+  createAuditLogAsync,
+  errorResponse,
+  jsonResponse,
+  LedgerContext,
+  sanitizeForAudit,
+  validateId,
+} from './utils.ts'
+import { getPaymentProvider } from './payment-provider.ts'
 
 type RpcCandidate = {
   name: string
@@ -24,10 +16,8 @@ type RpcCandidate = {
 
 type ReleaseQueueSchema = 'escrow_releases' | 'release_queue'
 
-interface ReleaseFundsRequest {
-  action?: Action
+export interface HoldsQueryRequest {
   entry_id?: string
-  entry_ids?: string[]
   venture_id?: string
   creator_id?: string
   ready_only?: boolean
@@ -96,9 +86,7 @@ async function rpcWithFallback(
 
   for (const candidate of candidates) {
     const { data, error } = await supabase.rpc(candidate.name, candidate.args)
-    if (!error) {
-      return { data, error: null, used: candidate.name }
-    }
+    if (!error) return { data, error: null, used: candidate.name }
     if (isRpcMissing(error)) {
       lastMissingError = error
       continue
@@ -110,9 +98,9 @@ async function rpcWithFallback(
 }
 
 function minorUnitFactor(currency: string): number {
-  const c = (currency || 'USD').toUpperCase()
-  if (['JPY', 'KRW', 'VND'].includes(c)) return 1
-  if (['BHD', 'IQD', 'JOD', 'KWD', 'OMR', 'TND'].includes(c)) return 1000
+  const normalized = (currency || 'USD').toUpperCase()
+  if (['JPY', 'KRW', 'VND'].includes(normalized)) return 1
+  if (['BHD', 'IQD', 'JOD', 'KWD', 'OMR', 'TND'].includes(normalized)) return 1000
   return 100
 }
 
@@ -121,8 +109,8 @@ function majorToMinor(amountMajor: number, currency: string): number {
 }
 
 function asNumber(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : 0
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : 0
 }
 
 function toArray<T>(value: unknown): T[] {
@@ -134,19 +122,13 @@ function isUuidLike(value: string): boolean {
 }
 
 function summarizeEscrowRows(rows: any[]): SummaryRow[] {
-  const summaryRows: SummaryRow[] = []
-
-  for (const row of rows) {
-    summaryRows.push({
-      venture_id: row?.venture_id ? String(row.venture_id) : null,
-      total_held: asNumber(row?.total_held),
-      total_ready: asNumber(row?.total_ready),
-      total_pending_release: asNumber(row?.total_pending_release),
-      entry_count: Math.trunc(asNumber(row?.entry_count)),
-    })
-  }
-
-  return summaryRows
+  return rows.map((row) => ({
+    venture_id: row?.venture_id ? String(row.venture_id) : null,
+    total_held: asNumber(row?.total_held),
+    total_ready: asNumber(row?.total_ready),
+    total_pending_release: asNumber(row?.total_pending_release),
+    entry_count: Math.trunc(asNumber(row?.entry_count)),
+  }))
 }
 
 function summarizeHeldSummaryRows(rows: any[]): SummaryRow[] {
@@ -182,14 +164,14 @@ function summarizeHeldSummaryRows(rows: any[]): SummaryRow[] {
 async function fetchConnectedAccountMap(supabase: SupabaseClient, ledgerId: string): Promise<Map<string, string>> {
   const mapping = new Map<string, string>()
 
-  const { data: connectedRows, error: connectedErr } = await supabase
+  const { data: connectedRows, error: connectedError } = await supabase
     .from('connected_accounts')
     .select('entity_type, entity_id, processor_account_id, is_active')
     .eq('ledger_id', ledgerId)
     .eq('entity_type', 'creator')
     .eq('is_active', true)
 
-  if (!connectedErr) {
+  if (!connectedError) {
     for (const row of connectedRows || []) {
       if (row?.entity_id && row?.processor_account_id) {
         mapping.set(String(row.entity_id), String(row.processor_account_id))
@@ -198,7 +180,7 @@ async function fetchConnectedAccountMap(supabase: SupabaseClient, ledgerId: stri
     return mapping
   }
 
-  if (!isRelationMissing(connectedErr)) {
+  if (!isRelationMissing(connectedError)) {
     return mapping
   }
 
@@ -221,7 +203,7 @@ async function fetchConnectedAccountMap(supabase: SupabaseClient, ledgerId: stri
 async function fetchHeldFunds(
   supabase: SupabaseClient,
   ledgerId: string,
-  opts: {
+  options: {
     ventureId?: string | null
     creatorId?: string | null
     readyOnly: boolean
@@ -233,16 +215,16 @@ async function fetchHeldFunds(
       name: 'get_held_funds_dashboard',
       args: {
         p_ledger_id: ledgerId,
-        p_venture_id: opts.ventureId || null,
-        p_ready_only: opts.readyOnly,
-        p_limit: opts.limit,
+        p_venture_id: options.ventureId || null,
+        p_ready_only: options.readyOnly,
+        p_limit: options.limit,
       },
     },
   ])
 
   if (!rpcResult.error) {
     const rows = toArray<any>(rpcResult.data)
-      .filter((row) => !opts.creatorId || String(row?.recipient_id || '') === opts.creatorId)
+      .filter((row) => !options.creatorId || String(row?.recipient_id || '') === options.creatorId)
       .map((row): HeldFundRow => ({
         entry_id: String(row.entry_id),
         amount: asNumber(row.amount),
@@ -262,6 +244,7 @@ async function fetchHeldFunds(
         venture_id: row.venture_id ? String(row.venture_id) : null,
         release_status: 'held',
       }))
+
     return { rows, source: rpcResult.used || 'get_held_funds_dashboard' }
   }
 
@@ -269,15 +252,15 @@ async function fetchHeldFunds(
     throw rpcResult.error
   }
 
-  const { data: creatorAccounts, error: creatorErr } = await supabase
+  const { data: creatorAccounts, error: creatorError } = await supabase
     .from('accounts')
     .select('id, entity_id, name')
     .eq('ledger_id', ledgerId)
     .eq('account_type', 'creator_balance')
 
-  if (creatorErr) throw creatorErr
+  if (creatorError) throw creatorError
 
-  const creatorRows = (creatorAccounts || []).filter((row) => !opts.creatorId || String(row.entity_id) === opts.creatorId)
+  const creatorRows = (creatorAccounts || []).filter((row) => !options.creatorId || String(row.entity_id) === options.creatorId)
   if (creatorRows.length === 0) return { rows: [], source: 'entries_fallback' }
 
   const accountIds = creatorRows.map((row) => String(row.id))
@@ -291,7 +274,7 @@ async function fetchHeldFunds(
 
   const connectedByCreatorId = await fetchConnectedAccountMap(supabase, ledgerId)
 
-  const { data: entryRows, error: entryErr } = await supabase
+  const { data: entryRows, error: entryError } = await supabase
     .from('entries')
     .select(`
       id,
@@ -312,9 +295,9 @@ async function fetchHeldFunds(
     .eq('entry_type', 'credit')
     .in('release_status', ['held', 'pending_release'])
     .order('created_at', { ascending: true })
-    .limit(Math.max(opts.limit * 5, opts.limit))
+    .limit(Math.max(options.limit * 5, options.limit))
 
-  if (entryErr) throw entryErr
+  if (entryError) throw entryError
 
   const now = Date.now()
   const rows: HeldFundRow[] = []
@@ -323,26 +306,30 @@ async function fetchHeldFunds(
     const accountMeta = creatorNameByAccountId.get(String(row.account_id))
     if (!accountMeta) continue
 
-    const txStatus = String(row?.transaction?.status || '')
+    const transaction = Array.isArray((row as any).transaction)
+      ? (row as any).transaction[0]
+      : (row as any).transaction
+
+    const txStatus = String(transaction?.status || '')
     if (txStatus === 'voided' || txStatus === 'reversed') continue
 
     const holdUntil = row.hold_until ? String(row.hold_until) : null
     const holdUntilMs = holdUntil ? Date.parse(holdUntil) : NaN
     const readyForRelease = !holdUntil || (Number.isFinite(holdUntilMs) && holdUntilMs <= now)
-    if (opts.readyOnly && !readyForRelease) continue
+    if (options.readyOnly && !readyForRelease) continue
 
-    const ventureId = row?.transaction?.metadata?.venture_id
-      ? String(row.transaction.metadata.venture_id)
+    const ventureId = transaction?.metadata?.venture_id
+      ? String(transaction.metadata.venture_id)
       : null
 
-    if (opts.ventureId && ventureId !== opts.ventureId) continue
+    if (options.ventureId && ventureId !== options.ventureId) continue
 
     const releaseStatus = String(row.release_status || 'held') as 'held' | 'pending_release'
 
     rows.push({
       entry_id: String(row.id),
       amount: asNumber(row.amount),
-      currency: String(row?.transaction?.currency || 'USD').toUpperCase(),
+      currency: String(transaction?.currency || 'USD').toUpperCase(),
       held_since: String(row.created_at || new Date().toISOString()),
       days_held: Math.max(0, Math.floor((now - Date.parse(String(row.created_at))) / (1000 * 60 * 60 * 24))),
       hold_reason: row.hold_reason ? String(row.hold_reason) : null,
@@ -353,18 +340,15 @@ async function fetchHeldFunds(
       recipient_name: accountMeta.name,
       has_connected_account: connectedByCreatorId.has(accountMeta.entityId),
       processor_account_id: connectedByCreatorId.get(accountMeta.entityId) || null,
-      transaction_ref: row?.transaction?.reference_id ? String(row.transaction.reference_id) : null,
-      product_name: row?.transaction?.metadata?.product_name
-        ? String(row.transaction.metadata.product_name)
-        : null,
+      transaction_ref: transaction?.reference_id ? String(transaction.reference_id) : null,
+      product_name: transaction?.metadata?.product_name ? String(transaction.metadata.product_name) : null,
       venture_id: ventureId,
       release_status: releaseStatus,
     })
   }
 
-  rows.sort((a, b) => Date.parse(a.held_since) - Date.parse(b.held_since))
-
-  return { rows: rows.slice(0, opts.limit), source: 'entries_fallback' }
+  rows.sort((left, right) => Date.parse(left.held_since) - Date.parse(right.held_since))
+  return { rows: rows.slice(0, options.limit), source: 'entries_fallback' }
 }
 
 async function fetchSummary(
@@ -390,9 +374,7 @@ async function fetchSummary(
     { name: 'get_held_funds_summary', args: { p_ledger_id: ledgerId } },
   ])
 
-  if (heldSummary.error) {
-    throw heldSummary.error
-  }
+  if (heldSummary.error) throw heldSummary.error
 
   return {
     rows: summarizeHeldSummaryRows(toArray<any>(heldSummary.data)),
@@ -403,7 +385,6 @@ async function fetchSummary(
 async function requestRelease(
   supabase: SupabaseClient,
   entryId: string,
-  releaseType: 'manual' | 'auto',
 ): Promise<{ releaseId: string; rpcUsed: string }> {
   const response = await rpcWithFallback(supabase, [
     {
@@ -411,7 +392,7 @@ async function requestRelease(
       args: {
         p_entry_id: entryId,
         p_requested_by: null,
-        p_release_type: releaseType,
+        p_release_type: 'manual',
       },
     },
     {
@@ -419,7 +400,7 @@ async function requestRelease(
       args: {
         p_entry_id: entryId,
         p_requested_by: null,
-        p_release_type: releaseType,
+        p_release_type: 'manual',
       },
     },
   ])
@@ -581,10 +562,8 @@ async function executeReleaseTransfer(
   releaseId: string,
 ): Promise<{
   success: boolean
-  releaseId: string
   transferId: string | null
   providerStatus: string | null
-  amountMinor: number | null
   amountMajor: number | null
   currency: string | null
   error: string | null
@@ -595,10 +574,8 @@ async function executeReleaseTransfer(
   if (!releaseRecord) {
     return {
       success: false,
-      releaseId,
       transferId: null,
       providerStatus: null,
-      amountMinor: null,
       amountMajor: null,
       currency: null,
       error: 'Release record not found after queuing',
@@ -610,10 +587,8 @@ async function executeReleaseTransfer(
     await failRelease(supabase, releaseRecord, 'missing_destination', 'Missing recipient processor account')
     return {
       success: false,
-      releaseId,
       transferId: null,
       providerStatus: null,
-      amountMinor: null,
       amountMajor: releaseRecord.amount_major,
       currency: releaseRecord.currency,
       error: 'Missing recipient processor account',
@@ -625,10 +600,8 @@ async function executeReleaseTransfer(
     await failRelease(supabase, releaseRecord, 'invalid_amount', 'Release amount must be positive')
     return {
       success: false,
-      releaseId,
       transferId: null,
       providerStatus: null,
-      amountMinor: null,
       amountMajor: releaseRecord.amount_major,
       currency: releaseRecord.currency,
       error: 'Release amount must be positive',
@@ -655,13 +628,10 @@ async function executeReleaseTransfer(
   if (!transfer.success || !transfer.id) {
     const errorMessage = transfer.error || 'Transfer execution failed'
     await failRelease(supabase, releaseRecord, 'processor_transfer_failed', errorMessage)
-
     return {
       success: false,
-      releaseId,
       transferId: null,
       providerStatus: transfer.status || null,
-      amountMinor,
       amountMajor: releaseRecord.amount_major,
       currency: releaseRecord.currency,
       error: errorMessage,
@@ -670,13 +640,10 @@ async function executeReleaseTransfer(
   }
 
   const completionRpc = await completeRelease(supabase, releaseRecord.release_id, transfer.id)
-
   return {
     success: true,
-    releaseId,
     transferId: transfer.id,
     providerStatus: transfer.status || null,
-    amountMinor,
     amountMajor: releaseRecord.amount_major,
     currency: releaseRecord.currency,
     error: null,
@@ -684,371 +651,159 @@ async function executeReleaseTransfer(
   }
 }
 
-async function listPendingReleaseIds(
-  supabase: SupabaseClient,
-  ledgerId: string,
-  limit: number,
-): Promise<string[]> {
-  const { data: escrowRows, error: escrowErr } = await supabase
-    .from('escrow_releases')
-    .select('id')
-    .eq('ledger_id', ledgerId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(limit)
-
-  if (!escrowErr) {
-    return (escrowRows || []).map((row) => String(row.id)).filter((id) => isUuidLike(id))
-  }
-
-  if (!isRelationMissing(escrowErr)) {
-    throw escrowErr
-  }
-
-  const { data: legacyRows, error: legacyErr } = await supabase
-    .from('release_queue')
-    .select('id')
-    .eq('ledger_id', ledgerId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(limit)
-
-  if (legacyErr) throw legacyErr
-
-  return (legacyRows || []).map((row) => String(row.id)).filter((id) => isUuidLike(id))
-}
-
 function normalizeLimit(raw: unknown, defaultValue = 100, max = 500): number {
-  const n = Number(raw)
-  if (!Number.isFinite(n)) return defaultValue
-  return Math.max(1, Math.min(max, Math.trunc(n)))
+  const numeric = Number(raw)
+  if (!Number.isFinite(numeric)) return defaultValue
+  return Math.max(1, Math.min(max, Math.trunc(numeric)))
 }
 
-const handler = createHandler(
-  { endpoint: 'release-funds', requireAuth: true, rateLimit: true },
-  async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, body: ReleaseFundsRequest, { requestId }) => {
-    if (!ledger) {
-      return errorResponse('Ledger not found', 401, req, requestId)
+export async function listHeldFundsResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: HoldsQueryRequest,
+  requestId: string,
+): Promise<Response> {
+  const ventureId = body.venture_id ? validateId(body.venture_id, 100) : null
+  if (body.venture_id && !ventureId) {
+    return errorResponse('Invalid venture_id', 400, req, requestId)
+  }
+
+  const creatorId = body.creator_id ? validateId(body.creator_id, 100) : null
+  if (body.creator_id && !creatorId) {
+    return errorResponse('Invalid creator_id', 400, req, requestId)
+  }
+
+  try {
+    const readyOnly = body.ready_only === true
+    const limit = normalizeLimit(body.limit, 100, 1000)
+    const { rows, source } = await fetchHeldFunds(supabase, ledger.id, {
+      ventureId,
+      creatorId,
+      readyOnly,
+      limit,
+    })
+
+    return jsonResponse({
+      success: true,
+      source,
+      data: rows,
+      count: rows.length,
+    }, 200, req, requestId)
+  } catch (error: any) {
+    console.error(`[${requestId}] holds list error:`, error)
+    return errorResponse('Failed to fetch held funds', 500, req, requestId)
+  }
+}
+
+export async function getHeldFundsSummaryResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  requestId: string,
+): Promise<Response> {
+  try {
+    const { rows, source } = await fetchSummary(supabase, ledger.id)
+    const totalHeld = rows.reduce((sum, row) => sum + asNumber(row.total_held), 0)
+    const totalReady = rows.reduce((sum, row) => sum + asNumber(row.total_ready), 0)
+    const totalPending = rows.reduce((sum, row) => sum + asNumber(row.total_pending_release), 0)
+
+    return jsonResponse({
+      success: true,
+      source,
+      summary: {
+        total_held: Math.round(totalHeld * 100) / 100,
+        total_ready: Math.round(totalReady * 100) / 100,
+        total_pending_release: Math.round(totalPending * 100) / 100,
+        venture_count: rows.length,
+        ventures: rows.map((row) => ({
+          venture_id: row.venture_id,
+          venture_name: row.venture_name || row.venture_id || 'Unassigned',
+          total_held: Math.round(asNumber(row.total_held) * 100) / 100,
+          total_ready: Math.round(asNumber(row.total_ready) * 100) / 100,
+          total_pending_release: Math.round(asNumber(row.total_pending_release) * 100) / 100,
+          entry_count: Math.trunc(asNumber(row.entry_count)),
+        })),
+      },
+    }, 200, req, requestId)
+  } catch (error: any) {
+    console.error(`[${requestId}] holds summary error:`, error)
+    return errorResponse('Failed to fetch held funds summary', 500, req, requestId)
+  }
+}
+
+export async function releaseHeldFundsResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: HoldsQueryRequest,
+  requestId: string,
+): Promise<Response> {
+  const entryId = body.entry_id ? validateId(body.entry_id, 120) : null
+  if (!entryId || !isUuidLike(entryId)) {
+    return errorResponse('entry_id is required and must be a valid UUID', 400, req, requestId)
+  }
+
+  try {
+    const executeTransfer = body.execute_transfer !== false
+    const queued = await requestRelease(supabase, entryId)
+
+    let transferResult: Awaited<ReturnType<typeof executeReleaseTransfer>> | null = null
+    if (executeTransfer) {
+      transferResult = await executeReleaseTransfer(supabase, ledger, queued.releaseId)
+      if (!transferResult.success) {
+        return errorResponse(transferResult.error || 'Failed to execute release transfer', 502, req, requestId)
+      }
     }
 
-    const action = body?.action || 'get_summary'
+    createAuditLogAsync(supabase, req, {
+      ledger_id: ledger.id,
+      action: executeTransfer ? 'release_funds_executed' : 'release_funds_queued',
+      entity_type: 'entry',
+      entity_id: entryId,
+      actor_type: 'api',
+      request_body: sanitizeForAudit({
+        entry_id: entryId,
+        execute_transfer: executeTransfer,
+        request_release_rpc: queued.rpcUsed,
+        release_id: queued.releaseId,
+        transfer_id: transferResult?.transferId || null,
+      }),
+      response_status: 200,
+      risk_score: 45,
+    }, requestId)
 
-    try {
-      switch (action) {
-        case 'get_summary': {
-          const { rows, source } = await fetchSummary(supabase, ledger.id)
+    return jsonResponse({
+      success: true,
+      release_id: queued.releaseId,
+      entry_id: entryId,
+      queued_with: queued.rpcUsed,
+      executed: executeTransfer,
+      transfer_id: transferResult?.transferId || null,
+      transfer_status: transferResult?.providerStatus || null,
+      completion_rpc: transferResult?.completionRpc || null,
+      amount: transferResult?.amountMajor || null,
+      currency: transferResult?.currency || null,
+    }, 200, req, requestId)
+  } catch (error: any) {
+    const message = String(error?.message || error || 'Unknown error')
+    const normalized = message.toLowerCase()
 
-          const totalHeld = rows.reduce((sum, row) => sum + asNumber(row.total_held), 0)
-          const totalReady = rows.reduce((sum, row) => sum + asNumber(row.total_ready), 0)
-          const totalPending = rows.reduce((sum, row) => sum + asNumber(row.total_pending_release), 0)
-
-          return jsonResponse(
-            {
-              success: true,
-              source,
-              summary: {
-                total_held: Math.round(totalHeld * 100) / 100,
-                total_ready: Math.round(totalReady * 100) / 100,
-                total_pending_release: Math.round(totalPending * 100) / 100,
-                venture_count: rows.length,
-                ventures: rows.map((row) => ({
-                  venture_id: row.venture_id,
-                  venture_name: row.venture_name || row.venture_id || 'Unassigned',
-                  total_held: Math.round(asNumber(row.total_held) * 100) / 100,
-                  total_ready: Math.round(asNumber(row.total_ready) * 100) / 100,
-                  total_pending_release: Math.round(asNumber(row.total_pending_release) * 100) / 100,
-                  entry_count: Math.trunc(asNumber(row.entry_count)),
-                })),
-              },
-            },
-            200,
-            req,
-            requestId,
-          )
-        }
-
-        case 'get_held': {
-          const ventureId = body.venture_id ? validateId(body.venture_id, 100) : null
-          if (body.venture_id && !ventureId) {
-            return errorResponse('Invalid venture_id', 400, req, requestId)
-          }
-
-          const creatorId = body.creator_id ? validateId(body.creator_id, 100) : null
-          if (body.creator_id && !creatorId) {
-            return errorResponse('Invalid creator_id', 400, req, requestId)
-          }
-
-          const readyOnly = body.ready_only === true
-          const limit = normalizeLimit(body.limit, 100, 1000)
-
-          const { rows, source } = await fetchHeldFunds(supabase, ledger.id, {
-            ventureId,
-            creatorId,
-            readyOnly,
-            limit,
-          })
-
-          return jsonResponse(
-            {
-              success: true,
-              source,
-              data: rows,
-              count: rows.length,
-            },
-            200,
-            req,
-            requestId,
-          )
-        }
-
-        case 'release': {
-          const entryId = body.entry_id ? validateId(body.entry_id, 120) : null
-          if (!entryId || !isUuidLike(entryId)) {
-            return errorResponse('entry_id is required and must be a valid UUID', 400, req, requestId)
-          }
-
-          const executeTransfer = body.execute_transfer !== false
-
-          const queued = await requestRelease(supabase, entryId, 'manual')
-
-          let transferResult: Awaited<ReturnType<typeof executeReleaseTransfer>> | null = null
-          if (executeTransfer) {
-            transferResult = await executeReleaseTransfer(supabase, ledger, queued.releaseId)
-            if (!transferResult.success) {
-              return errorResponse(transferResult.error || 'Failed to execute release transfer', 502, req, requestId)
-            }
-          }
-
-          createAuditLogAsync(
-            supabase,
-            req,
-            {
-              ledger_id: ledger.id,
-              action: executeTransfer ? 'release_funds_executed' : 'release_funds_queued',
-              entity_type: 'entry',
-              entity_id: entryId,
-              actor_type: 'api',
-              request_body: sanitizeForAudit({
-                action,
-                entry_id: entryId,
-                execute_transfer: executeTransfer,
-                request_release_rpc: queued.rpcUsed,
-                release_id: queued.releaseId,
-                transfer_id: transferResult?.transferId || null,
-              }),
-              response_status: 200,
-              risk_score: 45,
-            },
-            requestId,
-          )
-
-          return jsonResponse(
-            {
-              success: true,
-              release_id: queued.releaseId,
-              entry_id: entryId,
-              queued_with: queued.rpcUsed,
-              executed: executeTransfer,
-              transfer_id: transferResult?.transferId || null,
-              transfer_status: transferResult?.providerStatus || null,
-              completion_rpc: transferResult?.completionRpc || null,
-              amount: transferResult?.amountMajor || null,
-              currency: transferResult?.currency || null,
-            },
-            200,
-            req,
-            requestId,
-          )
-        }
-
-        case 'batch_release': {
-          const rawEntryIds = Array.isArray(body.entry_ids) ? body.entry_ids : []
-          const executeTransfer = body.execute_transfer !== false
-
-          const uniqueEntryIds = Array.from(new Set(rawEntryIds.map((id) => String(id))))
-          const entryIds = uniqueEntryIds
-            .map((id) => validateId(id, 120))
-            .filter((id): id is string => Boolean(id && isUuidLike(id)))
-
-          if (entryIds.length === 0) {
-            return errorResponse('entry_ids must contain at least one valid UUID', 400, req, requestId)
-          }
-
-          if (entryIds.length > 100) {
-            return errorResponse('batch_release supports up to 100 entries per request', 400, req, requestId)
-          }
-
-          const results: Array<{
-            entry_id: string
-            success: boolean
-            release_id?: string
-            transfer_id?: string | null
-            error?: string
-          }> = []
-
-          for (const entryId of entryIds) {
-            try {
-              const queued = await requestRelease(supabase, entryId, 'manual')
-
-              let transferId: string | null = null
-              if (executeTransfer) {
-                const transferResult = await executeReleaseTransfer(supabase, ledger, queued.releaseId)
-                if (!transferResult.success) {
-                  results.push({
-                    entry_id: entryId,
-                    success: false,
-                    release_id: queued.releaseId,
-                    error: transferResult.error || 'Transfer execution failed',
-                  })
-                  continue
-                }
-                transferId = transferResult.transferId
-              }
-
-              results.push({
-                entry_id: entryId,
-                success: true,
-                release_id: queued.releaseId,
-                transfer_id: transferId,
-              })
-            } catch (error: any) {
-              results.push({
-                entry_id: entryId,
-                success: false,
-                error: String(error?.message || error || 'Failed to release entry'),
-              })
-            }
-          }
-
-          const successCount = results.filter((r) => r.success).length
-          const failureCount = results.length - successCount
-
-          createAuditLogAsync(
-            supabase,
-            req,
-            {
-              ledger_id: ledger.id,
-              action: executeTransfer ? 'batch_release_funds_executed' : 'batch_release_funds_queued',
-              entity_type: 'ledger',
-              entity_id: ledger.id,
-              actor_type: 'api',
-              request_body: sanitizeForAudit({
-                action,
-                execute_transfer: executeTransfer,
-                requested_count: entryIds.length,
-                success_count: successCount,
-                failure_count: failureCount,
-              }),
-              response_status: failureCount > 0 ? 207 : 200,
-              risk_score: 55,
-            },
-            requestId,
-          )
-
-          return jsonResponse(
-            {
-              success: failureCount === 0,
-              requested: entryIds.length,
-              success_count: successCount,
-              failure_count: failureCount,
-              executed: executeTransfer,
-              results,
-            },
-            failureCount > 0 ? 207 : 200,
-            req,
-            requestId,
-          )
-        }
-
-        case 'auto_release': {
-          const executeTransfer = body.execute_transfer === true
-          const limit = normalizeLimit(body.limit, 100, 1000)
-
-          const queueResult = await rpcWithFallback(supabase, [
-            { name: 'queue_auto_releases', args: { p_ledger_id: ledger.id } },
-            { name: 'auto_release_ready_funds', args: { p_ledger_id: ledger.id } },
-          ])
-
-          if (queueResult.error) {
-            throw queueResult.error
-          }
-
-          const queuedCount = Math.trunc(asNumber(queueResult.data))
-          const queuedWith = queueResult.used || 'queue_auto_releases'
-
-          const executions: Array<{
-            release_id: string
-            success: boolean
-            transfer_id?: string | null
-            error?: string
-          }> = []
-
-          if (executeTransfer && queuedCount > 0) {
-            const releaseIds = await listPendingReleaseIds(supabase, ledger.id, Math.max(limit, queuedCount))
-            for (const releaseId of releaseIds) {
-              const transfer = await executeReleaseTransfer(supabase, ledger, releaseId)
-              if (transfer.success) {
-                executions.push({
-                  release_id: releaseId,
-                  success: true,
-                  transfer_id: transfer.transferId,
-                })
-              } else {
-                executions.push({
-                  release_id: releaseId,
-                  success: false,
-                  error: transfer.error || 'Transfer execution failed',
-                })
-              }
-            }
-          }
-
-          const executedCount = executions.filter((r) => r.success).length
-          const executeFailures = executions.length - executedCount
-
-          return jsonResponse(
-            {
-              success: executeFailures === 0,
-              queued_count: queuedCount,
-              queued_with: queuedWith,
-              executed: executeTransfer,
-              executed_count: executedCount,
-              execution_failures: executeFailures,
-              executions,
-            },
-            executeFailures > 0 ? 207 : 200,
-            req,
-            requestId,
-          )
-        }
-
-        default: {
-          const safeAction = body?.action ? validateString(String(body.action), 50) : null
-          return errorResponse(`Unknown action: ${safeAction || 'undefined'}`, 400, req, requestId)
-        }
-      }
-    } catch (error: any) {
-      const message = String(error?.message || error || 'Unknown error')
-      const normalized = message.toLowerCase()
-
-      if (
-        normalized.includes('not found') ||
-        normalized.includes('no active connected account') ||
-        normalized.includes('cannot receive transfers') ||
-        normalized.includes('not held') ||
-        normalized.includes('already')
-      ) {
-        return errorResponse(message, 409, req, requestId)
-      }
-
-      if (normalized.includes('invalid') || normalized.includes('must be')) {
-        return errorResponse(message, 400, req, requestId)
-      }
-
-      console.error(`[${requestId}] release-funds error:`, error)
-      return errorResponse('Failed to process release-funds request', 500, req, requestId)
+    if (
+      normalized.includes('not found') ||
+      normalized.includes('no active connected account') ||
+      normalized.includes('cannot receive transfers') ||
+      normalized.includes('not held') ||
+      normalized.includes('already')
+    ) {
+      return errorResponse(message, 409, req, requestId)
     }
-  },
-)
 
-Deno.serve(handler)
+    if (normalized.includes('invalid') || normalized.includes('must be')) {
+      return errorResponse(message, 400, req, requestId)
+    }
+
+    console.error(`[${requestId}] holds release error:`, error)
+    return errorResponse('Failed to process release request', 500, req, requestId)
+  }
+}

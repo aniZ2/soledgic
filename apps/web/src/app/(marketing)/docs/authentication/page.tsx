@@ -6,30 +6,30 @@ export default function AuthenticationPage() {
     <div className="max-w-3xl">
       <h1 className="text-4xl font-bold text-foreground mb-4">Authentication</h1>
       <p className="text-xl text-muted-foreground mb-8">
-        Learn how to authenticate your API requests securely.
+        Authenticate Soledgic resource requests with API keys.
       </p>
 
-      {/* API Keys */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">API Keys</h2>
         <p className="text-muted-foreground mb-4">
-          Every request to the Soledgic API must include your API key in the <code className="bg-muted px-1.5 py-0.5 rounded text-sm">x-api-key</code> header.
+          Every request to the treasury API must include your key in the{' '}
+          <code className="bg-muted px-1.5 py-0.5 rounded text-sm">x-api-key</code> header.
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-6">
           <pre className="text-sm text-slate-300">
-{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/participants \\
   -H "x-api-key: sk_test_abc123..." \\
   -H "Content-Type: application/json" \\
-  -d '{"creator_id": "123", "amount": 1999}'`}
+  -d '{"participant_id": "creator_456"}'`}
           </pre>
         </div>
       </section>
 
-      {/* Test vs Live */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Test vs Live Keys</h2>
         <p className="text-muted-foreground mb-4">
-          Soledgic provides two separate environments with their own API keys:
+          Test and live mode are isolated. Participants, wallets, holds, and payouts created with a
+          test key never touch your live environment.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -39,9 +39,9 @@ export default function AuthenticationPage() {
               Keys start with <code className="bg-amber-500/20 px-1 rounded">sk_test_</code>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Sandbox data, no real transactions</li>
-              <li>• Safe for development and testing</li>
-              <li>• No billing impact</li>
+              <li>• Sandbox ledger state</li>
+              <li>• Safe for integration and retry testing</li>
+              <li>• No live payout or billing impact</li>
             </ul>
           </div>
           <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
@@ -50,64 +50,56 @@ export default function AuthenticationPage() {
               Keys start with <code className="bg-green-500/20 px-1 rounded">sk_live_</code>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Real transactions and data</li>
-              <li>• Counts toward your plan limits</li>
-              <li>• Use in production only</li>
+              <li>• Production treasury state</li>
+              <li>• Real participant balances and payouts</li>
+              <li>• Use only from secure server-side environments</li>
             </ul>
           </div>
         </div>
-
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-          <p className="text-sm text-amber-600">
-            <strong>Important:</strong> Test and live data are completely isolated. Creators, transactions, and balances in test mode do not affect your live ledger.
-          </p>
-        </div>
       </section>
 
-      {/* Security */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Keeping Keys Secure</h2>
         <p className="text-muted-foreground mb-4">
-          API keys provide full access to your ledger. Follow these best practices:
+          API keys authorize money movement and treasury state changes. Treat them like production secrets.
         </p>
 
         <div className="space-y-4">
           <div className="flex gap-3">
             <span className="text-green-500">✓</span>
             <div>
-              <p className="font-medium text-foreground">Use environment variables</p>
-              <p className="text-sm text-muted-foreground">Never hardcode keys in your source code</p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <span className="text-green-500">✓</span>
-            <div>
               <p className="font-medium text-foreground">Keep keys server-side</p>
-              <p className="text-sm text-muted-foreground">Never expose keys in frontend JavaScript or mobile apps</p>
+              <p className="text-sm text-muted-foreground">Never expose live keys in browser code or mobile bundles</p>
             </div>
           </div>
           <div className="flex gap-3">
             <span className="text-green-500">✓</span>
             <div>
-              <p className="font-medium text-foreground">Rotate keys if compromised</p>
-              <p className="text-sm text-muted-foreground">Generate new keys immediately if you suspect exposure</p>
+              <p className="font-medium text-foreground">Store keys in environment variables</p>
+              <p className="text-sm text-muted-foreground">Use your host secret manager or deployment environment settings</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <span className="text-green-500">✓</span>
+            <div>
+              <p className="font-medium text-foreground">Rotate keys on suspicion of exposure</p>
+              <p className="text-sm text-muted-foreground">Treat compromised keys as an incident, not a cleanup task</p>
             </div>
           </div>
           <div className="flex gap-3">
             <span className="text-red-500">✗</span>
             <div>
-              <p className="font-medium text-foreground">Don&apos;t commit to version control</p>
-              <p className="text-sm text-muted-foreground">Add your .env files to .gitignore</p>
+              <p className="font-medium text-foreground">Do not commit keys to git</p>
+              <p className="text-sm text-muted-foreground">Add env files to .gitignore and protect CI logs</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Environment Variables */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Using Environment Variables</h2>
         <p className="text-muted-foreground mb-4">
-          Store your API key in an environment variable:
+          Keep the API key outside your source tree and inject it at runtime.
         </p>
 
         <div className="space-y-4">
@@ -124,13 +116,18 @@ export default function AuthenticationPage() {
               <pre className="text-sm text-slate-300">
 {`const apiKey = process.env.SOLEDGIC_API_KEY;
 
-fetch('${API_BASE_URL}/v1/record-sale', {
+fetch('${API_BASE_URL}/v1/checkout-sessions', {
   method: 'POST',
   headers: {
     'x-api-key': apiKey,
     'Content-Type': 'application/json',
   },
-  body: JSON.stringify({ ... }),
+  body: JSON.stringify({
+    participant_id: 'creator_456',
+    amount: 2999,
+    currency: 'USD',
+    success_url: 'https://example.com/success',
+  }),
 });`}
               </pre>
             </div>
@@ -145,10 +142,9 @@ import requests
 
 api_key = os.environ.get('SOLEDGIC_API_KEY')
 
-response = requests.post(
-    '${API_BASE_URL}/v1/record-sale',
+response = requests.get(
+    '${API_BASE_URL}/v1/wallets/creator_456',
     headers={'x-api-key': api_key},
-    json={'creator_id': '123', 'amount': 1999}
 )`}
               </pre>
             </div>
@@ -156,11 +152,10 @@ response = requests.post(
         </div>
       </section>
 
-      {/* Error responses */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Authentication Errors</h2>
         <p className="text-muted-foreground mb-4">
-          If authentication fails, you&apos;ll receive one of these errors:
+          Authentication failures return a consistent envelope.
         </p>
 
         <div className="overflow-x-auto">
@@ -176,58 +171,60 @@ response = requests.post(
               <tr className="border-b border-border">
                 <td className="py-3 px-4"><code className="bg-muted px-1.5 py-0.5 rounded">401</code></td>
                 <td className="py-3 px-4 text-muted-foreground">Missing API key</td>
-                <td className="py-3 px-4 text-muted-foreground">No x-api-key header provided</td>
+                <td className="py-3 px-4 text-muted-foreground">No x-api-key header was provided</td>
               </tr>
               <tr className="border-b border-border">
                 <td className="py-3 px-4"><code className="bg-muted px-1.5 py-0.5 rounded">401</code></td>
                 <td className="py-3 px-4 text-muted-foreground">Invalid API key</td>
-                <td className="py-3 px-4 text-muted-foreground">Key doesn&apos;t exist or was revoked</td>
+                <td className="py-3 px-4 text-muted-foreground">Key is unknown, revoked, or for a different environment</td>
               </tr>
               <tr className="border-b border-border">
                 <td className="py-3 px-4"><code className="bg-muted px-1.5 py-0.5 rounded">403</code></td>
                 <td className="py-3 px-4 text-muted-foreground">Ledger suspended</td>
-                <td className="py-3 px-4 text-muted-foreground">Account is suspended or canceled</td>
+                <td className="py-3 px-4 text-muted-foreground">The owning account is suspended or inactive</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      {/* Rate limits */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Rate Limits</h2>
         <p className="text-muted-foreground mb-4">
-          API requests are rate-limited to ensure fair usage:
+          Different classes of endpoints have different pressure profiles.
         </p>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 font-medium text-foreground">Endpoint</th>
-                <th className="text-left py-3 px-4 font-medium text-foreground">Limit</th>
+                <th className="text-left py-3 px-4 font-medium text-foreground">Endpoint class</th>
+                <th className="text-left py-3 px-4 font-medium text-foreground">Typical limit</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b border-border">
-                <td className="py-3 px-4 text-muted-foreground">All endpoints</td>
+                <td className="py-3 px-4 text-muted-foreground">Read endpoints</td>
                 <td className="py-3 px-4 text-muted-foreground">1,000 requests/minute</td>
               </tr>
               <tr className="border-b border-border">
-                <td className="py-3 px-4 text-muted-foreground">record-sale</td>
-                <td className="py-3 px-4 text-muted-foreground">100 requests/second</td>
+                <td className="py-3 px-4 text-muted-foreground">Treasury writes: checkout, payout, refund, hold release</td>
+                <td className="py-3 px-4 text-muted-foreground">Lower burst ceilings with stricter replay protection</td>
+              </tr>
+              <tr>
+                <td className="py-3 px-4 text-muted-foreground">Internal or webhook-driven operations</td>
+                <td className="py-3 px-4 text-muted-foreground">Policy-specific</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <p className="text-sm text-muted-foreground mt-4">
-          When rate limited, you&apos;ll receive a <code className="bg-muted px-1.5 py-0.5 rounded">429 Too Many Requests</code> response.
-          The <code className="bg-muted px-1.5 py-0.5 rounded">Retry-After</code> header indicates when you can retry.
+          When rate limited, the API returns <code className="bg-muted px-1.5 py-0.5 rounded">429 Too Many Requests</code>
+          and includes retry headers.
         </p>
       </section>
 
-      {/* Next steps */}
       <section className="border-t border-border pt-8">
         <h2 className="text-xl font-semibold text-foreground mb-4">Next Steps</h2>
         <div className="flex gap-4">

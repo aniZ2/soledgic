@@ -160,7 +160,7 @@ export default async function CreatorDetailPage({
   // Get tax info status
   const { data: taxInfo } = await supabase
     .from('tax_info_submissions')
-    .select('id, certified_at')
+    .select('id, legal_name, tax_id_type, tax_id_last4, business_type, certified_at, address_line1, address_city, address_state, address_postal_code')
     .eq('ledger_id', ledger.id)
     .eq('entity_id', creatorId)
     .eq('status', 'active')
@@ -188,6 +188,7 @@ export default async function CreatorDetailPage({
       transactions={transactions}
       heldFunds={heldFunds}
       hasTaxInfo={!!taxInfo}
+      taxInfo={taxInfo}
       hasTransactions={transactions.length > 0}
     />
   )

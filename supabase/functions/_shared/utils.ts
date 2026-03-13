@@ -62,16 +62,19 @@ const ENDPOINT_BODY_SIZE_LIMITS: Record<string, number> = {
   'record-sale': 64 * 1024,                  // 64KB - single transaction
   'record-expense': 64 * 1024,               // 64KB - single transaction
   'record-income': 64 * 1024,                // 64KB - single transaction
-  'record-refund': 64 * 1024,                // 64KB - single transaction
+  'refunds': 64 * 1024,                      // 64KB - single transaction
   'execute-payout': 256 * 1024,              // 256KB - batch payouts
-  'process-payout': 64 * 1024,               // 64KB - single payout
+  'payouts': 64 * 1024,                      // 64KB - single payout
   'webhooks': 64 * 1024,                     // 64KB - webhook config
   'invoices': 128 * 1024,                    // 128KB - invoice with line items
   'record-bill': 64 * 1024,                  // 64KB - single bill
   'pay-bill': 64 * 1024,                     // 64KB - bill payment
   'receive-payment': 64 * 1024,              // 64KB - payment received
-  'create-checkout': 64 * 1024,              // 64KB - checkout creation
-  'release-funds': 64 * 1024,                // 64KB - fund release requests
+  'participants': 64 * 1024,                 // 64KB - participant onboarding
+  'wallets': 64 * 1024,                      // 64KB - wallet reads/writes
+  'transfers': 64 * 1024,                    // 64KB - wallet transfers
+  'holds': 64 * 1024,                        // 64KB - hold queries/releases
+  'checkout-sessions': 64 * 1024,            // 64KB - checkout creation
   'default': 512 * 1024,                     // 512KB - default
 }
 
@@ -86,15 +89,15 @@ export function getEndpointBodySizeLimit(endpoint: string): number {
 // These endpoints BLOCK requests if Redis is unavailable (security-critical)
 const FAIL_CLOSED_ENDPOINTS = [
   'execute-payout',
-  'process-payout', 
+  'payouts',
   'record-sale',
-  'record-refund',
+  'refunds',
   'create-ledger',      // Prevent resource exhaustion attacks
   'send-statements',    // Prevent email spam
   'import-transactions', // Prevent data flooding
   'import-bank-statement',
-  'create-checkout',    // Prevent checkout spam / processor rate-limit exhaustion
-  'release-funds',      // Critical: Prevent unauthorized fund releases
+  'checkout-sessions',  // Prevent checkout spam / processor rate-limit exhaustion
+  'holds',              // Critical: Prevent unauthorized fund releases
 ]
 
 // ============================================================================
@@ -505,15 +508,15 @@ export async function validateApiKey(
 //   Attackers who try to exploit a Redis outage hit a brick wall.
 //
 // FAIL-CLOSED endpoints (block if ALL rate limiting fails):
-//   - execute-payout, process-payout: Prevents double payouts
-//   - record-sale, record-refund: Prevents transaction flooding
+//   - execute-payout, payouts: Prevents double payouts
+//   - record-sale, refunds: Prevents transaction flooding
 //   - create-ledger: Prevents resource exhaustion
 //   - send-statements: Prevents email spam
 //   - import-transactions, import-bank-statement: Prevents data flooding
 //
 // FAIL-OPEN endpoints (allow if rate limiting unavailable):
 //   - generate-pdf, generate-report: Better UX, lower risk
-//   - get-balance, get-transactions: Read-only operations
+//   - participants, get-transactions: Read-only operations
 //   - webhooks, health-check: System operations
 //
 // ============================================================================
@@ -552,21 +555,24 @@ const RATE_LIMITS: Record<string, { requests: number; windowSeconds: number }> =
   'record-sale': { requests: 200, windowSeconds: 60 },
   'record-expense': { requests: 200, windowSeconds: 60 },
   'record-income': { requests: 200, windowSeconds: 60 },
-  'record-refund': { requests: 100, windowSeconds: 60 },
+  'refunds': { requests: 100, windowSeconds: 60 },
   'generate-pdf': { requests: 20, windowSeconds: 60 },
   'generate-report': { requests: 30, windowSeconds: 60 },
   'export-report': { requests: 20, windowSeconds: 60 },
   'import-transactions': { requests: 10, windowSeconds: 60 },
   'import-bank-statement': { requests: 10, windowSeconds: 60 },
   'execute-payout': { requests: 50, windowSeconds: 60 },
-  'process-payout': { requests: 50, windowSeconds: 60 },
+  'payouts': { requests: 50, windowSeconds: 60 },
   'health-check': { requests: 5, windowSeconds: 60 },  // SECURITY FIX H2: Reduced from 10 to 5
   'webhooks': { requests: 100, windowSeconds: 60 },
   'send-statements': { requests: 20, windowSeconds: 60 },
   'create-ledger': { requests: 10, windowSeconds: 3600 },  // Per hour
   'upload-receipt': { requests: 50, windowSeconds: 60 },
-  'create-checkout': { requests: 100, windowSeconds: 60 },  // Checkout creation (processor-safe baseline)
-  'release-funds': { requests: 50, windowSeconds: 60 },    // Fund releases (sensitive financial operation)
+  'participants': { requests: 100, windowSeconds: 60 },
+  'wallets': { requests: 100, windowSeconds: 60 },
+  'transfers': { requests: 100, windowSeconds: 60 },
+  'holds': { requests: 50, windowSeconds: 60 },            // Fund releases (sensitive financial operation)
+  'checkout-sessions': { requests: 100, windowSeconds: 60 }, // Checkout creation (processor-safe baseline)
   'default': { requests: 100, windowSeconds: 60 },
 }
 

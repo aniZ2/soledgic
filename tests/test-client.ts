@@ -194,21 +194,46 @@ export class SoledgicTestClient {
     amount?: number
     description?: string
   }) {
-    return this.request('process-payout', {
-      creator_id: params.creatorId,
+    const response = await this.request('payouts', {
+      participant_id: params.creatorId,
       reference_id: params.referenceId,
       amount: params.amount,
       description: params.description,
     })
+    return {
+      success: response.success,
+      transaction_id: response.payout?.transaction_id,
+      breakdown: response.payout
+        ? {
+            gross_payout: response.payout.gross_amount,
+            fees: response.payout.fees,
+            net_to_creator: response.payout.net_amount,
+          }
+        : undefined,
+      new_balance: response.payout?.new_balance,
+    }
   }
 
   // Balances - get-balances doesn't require action
   async getBalances() {
-    return this.request('get-balances', {})
+    return this.requestGet('participants')
   }
 
   async getCreatorBalance(creatorId: string) {
-    return this.request('get-balances', { creator_id: creatorId })
+    const response = await this.requestGet(`participants/${creatorId}`)
+    return {
+      success: response.success,
+      data: {
+        creator_id: response.participant?.id,
+        name: response.participant?.name,
+        tier: response.participant?.tier,
+        custom_split: response.participant?.custom_split_percent,
+        ledger_balance: response.participant?.ledger_balance,
+        held_amount: response.participant?.held_amount,
+        available_balance: response.participant?.available_balance,
+        holds: response.participant?.holds ?? [],
+      },
+    }
   }
 
   // Reports
@@ -392,8 +417,8 @@ export class SoledgicTestClient {
     idempotencyKey?: string
     metadata?: Record<string, any>
   }) {
-    return this.request('record-refund', {
-      original_sale_reference: params.originalSaleReference,
+    const response = await this.request('refunds', {
+      sale_reference: params.originalSaleReference,
       amount: params.amount,
       reason: params.reason,
       refund_from: params.refundFrom,
@@ -403,6 +428,13 @@ export class SoledgicTestClient {
       idempotency_key: params.idempotencyKey,
       metadata: params.metadata,
     })
+    return {
+      success: response.success,
+      transaction_id: response.refund?.transaction_id,
+      refunded_amount: response.refund?.refunded_amount,
+      breakdown: response.refund?.breakdown,
+      is_full_refund: response.refund?.is_full_refund,
+    }
   }
 
   // ============================================================================
@@ -461,8 +493,8 @@ export class SoledgicTestClient {
     email?: string
     defaultSplitPercent?: number
   }) {
-    return this.request('create-creator', {
-      creator_id: params.creatorId,
+    return this.request('participants', {
+      participant_id: params.creatorId,
       display_name: params.displayName,
       email: params.email,
       default_split_percent: params.defaultSplitPercent,

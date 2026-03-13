@@ -98,11 +98,11 @@ export function RecordRefundModal({
     setError(null)
 
     try {
-      const response = await callLedgerFunction('record-refund', {
+      const response = await callLedgerFunction('refunds', {
         ledgerId,
         method: 'POST',
         body: {
-          original_sale_reference: saleReference.trim(),
+          sale_reference: saleReference.trim(),
           amount: amountCents,
           reason: reason.trim(),
           refund_from: refundFrom,

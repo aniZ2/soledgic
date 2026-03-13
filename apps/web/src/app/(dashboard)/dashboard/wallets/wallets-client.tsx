@@ -73,6 +73,10 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
 
   const handleSubmit = async () => {
     if (!selectedWallet || !modalType) return
+    if (!selectedWallet.entity_id) {
+      setError('Wallet is missing a participant ID')
+      return
+    }
 
     const dollars = parseFloat(amount)
     if (isNaN(dollars) || dollars <= 0) {
@@ -92,11 +96,15 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
 
     try {
       const referenceId = `${modalType}-${crypto.randomUUID()}`
-      const res = await callLedgerFunction('manage-wallet', {
+      const operationPath =
+        modalType === 'deposit'
+          ? `wallets/${selectedWallet.entity_id}/deposits`
+          : `wallets/${selectedWallet.entity_id}/withdrawals`
+
+      const res = await callLedgerFunction(operationPath, {
         ledgerId: ledger.id,
+        method: 'POST',
         body: {
-          action: modalType,
-          user_id: selectedWallet.entity_id,
           amount: cents,
           reference_id: referenceId,
           description: description || undefined,

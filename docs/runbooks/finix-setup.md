@@ -89,7 +89,7 @@ Customer Payment → Soledgic checkout → Finix POST /transfers
 ### Payout (CREDIT) Flow
 
 ```
-Creator Payout → process-payout (ledger) → execute-payout → Finix POST /transfers
+Creator Payout → payouts (ledger resource) → execute-payout → Finix POST /transfers
   destination: creator payment instrument (PI...)
   operation_key: PUSH_TO_ACH
   processor: PROCESSOR_NAME
@@ -100,7 +100,7 @@ Creator Payout → process-payout (ledger) → execute-payout → Finix POST /tr
 ### Refund Flow
 
 ```
-Record Refund → record-refund (ledger) → refund.created webhook
+Record Refund → refunds (ledger resource) → refund.created webhook
   If mode=processor_refund:
     → Finix POST /transfers/{id}/reversals
     → Reversal created → Finix webhook → processor_webhook_inbox

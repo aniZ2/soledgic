@@ -1,5 +1,5 @@
 export type ApiParameter = {
-  in: 'query' | 'body'
+  in: 'query' | 'body' | 'path'
   name: string
   type: string
   required: boolean
@@ -18,7 +18,258 @@ export type ApiEndpointDoc = {
   parameters: ApiParameter[]
 }
 
-export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
+const TREASURY_RESOURCE_ENDPOINTS: ApiEndpointDoc[] = [
+  {
+    endpoint: 'participants',
+    title: 'Participants',
+    path: '/v1/participants',
+    methods: ['GET', 'POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'List treasury participants or create a new participant-backed account.',
+    source: 'supabase/functions/participants/index.ts',
+    parameters: [
+      { in: 'body', name: 'participant_id', type: 'string', required: true },
+      { in: 'body', name: 'display_name', type: 'string', required: false },
+      { in: 'body', name: 'email', type: 'string', required: false },
+      { in: 'body', name: 'default_split_percent', type: 'number', required: false },
+      { in: 'body', name: 'tax_info', type: '{', required: false },
+      { in: 'body', name: 'payout_preferences', type: '{', required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, unknown>', required: false },
+    ],
+  },
+  {
+    endpoint: 'participant-detail',
+    title: 'Participant Detail',
+    path: '/v1/participants/{participant_id}',
+    methods: ['GET'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Get a participant balance snapshot, including active holds.',
+    source: 'supabase/functions/participants/index.ts',
+    parameters: [
+      { in: 'path', name: 'participant_id', type: 'string', required: true },
+    ],
+  },
+  {
+    endpoint: 'participant-payout-eligibility',
+    title: 'Participant Payout Eligibility',
+    path: '/v1/participants/{participant_id}/payout-eligibility',
+    methods: ['GET'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Check whether a participant is currently eligible for payout.',
+    source: 'supabase/functions/participants/index.ts',
+    parameters: [
+      { in: 'path', name: 'participant_id', type: 'string', required: true },
+    ],
+  },
+  {
+    endpoint: 'wallet-detail',
+    title: 'Wallet Detail',
+    path: '/v1/wallets/{participant_id}',
+    methods: ['GET'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Get the wallet balance for a participant.',
+    source: 'supabase/functions/wallets/index.ts',
+    parameters: [
+      { in: 'path', name: 'participant_id', type: 'string', required: true },
+    ],
+  },
+  {
+    endpoint: 'wallet-entries',
+    title: 'Wallet Entries',
+    path: '/v1/wallets/{participant_id}/entries',
+    methods: ['GET'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'List wallet ledger entries for a participant.',
+    source: 'supabase/functions/wallets/index.ts',
+    parameters: [
+      { in: 'path', name: 'participant_id', type: 'string', required: true },
+      { in: 'query', name: 'limit', type: 'number', required: false },
+      { in: 'query', name: 'offset', type: 'number', required: false },
+    ],
+  },
+  {
+    endpoint: 'wallet-deposit',
+    title: 'Wallet Deposit',
+    path: '/v1/wallets/{participant_id}/deposits',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Deposit funds into a participant wallet.',
+    source: 'supabase/functions/wallets/index.ts',
+    parameters: [
+      { in: 'path', name: 'participant_id', type: 'string', required: true },
+      { in: 'body', name: 'amount', type: 'number', required: true },
+      { in: 'body', name: 'reference_id', type: 'string', required: true },
+      { in: 'body', name: 'description', type: 'string', required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, unknown>', required: false },
+    ],
+  },
+  {
+    endpoint: 'wallet-withdrawal',
+    title: 'Wallet Withdrawal',
+    path: '/v1/wallets/{participant_id}/withdrawals',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Withdraw funds from a participant wallet.',
+    source: 'supabase/functions/wallets/index.ts',
+    parameters: [
+      { in: 'path', name: 'participant_id', type: 'string', required: true },
+      { in: 'body', name: 'amount', type: 'number', required: true },
+      { in: 'body', name: 'reference_id', type: 'string', required: true },
+      { in: 'body', name: 'description', type: 'string', required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, unknown>', required: false },
+    ],
+  },
+  {
+    endpoint: 'transfers',
+    title: 'Transfers',
+    path: '/v1/transfers',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Move funds between participant wallets.',
+    source: 'supabase/functions/transfers/index.ts',
+    parameters: [
+      { in: 'body', name: 'from_participant_id', type: 'string', required: true },
+      { in: 'body', name: 'to_participant_id', type: 'string', required: true },
+      { in: 'body', name: 'amount', type: 'number', required: true },
+      { in: 'body', name: 'reference_id', type: 'string', required: true },
+      { in: 'body', name: 'description', type: 'string', required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, unknown>', required: false },
+    ],
+  },
+  {
+    endpoint: 'holds',
+    title: 'Holds',
+    path: '/v1/holds',
+    methods: ['GET'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'List held funds across participants, with optional readiness filtering.',
+    source: 'supabase/functions/holds/index.ts',
+    parameters: [
+      { in: 'query', name: 'participant_id', type: 'string', required: false },
+      { in: 'query', name: 'venture_id', type: 'string', required: false },
+      { in: 'query', name: 'ready_only', type: 'boolean', required: false },
+      { in: 'query', name: 'limit', type: 'number', required: false },
+    ],
+  },
+  {
+    endpoint: 'holds-summary',
+    title: 'Holds Summary',
+    path: '/v1/holds/summary',
+    methods: ['GET'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Get an aggregate summary of held and releasable funds.',
+    source: 'supabase/functions/holds/index.ts',
+    parameters: [],
+  },
+  {
+    endpoint: 'hold-release',
+    title: 'Release Hold',
+    path: '/v1/holds/{hold_id}/release',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Release a held-funds entry and optionally execute the transfer.',
+    source: 'supabase/functions/holds/index.ts',
+    parameters: [
+      { in: 'path', name: 'hold_id', type: 'string', required: true },
+      { in: 'body', name: 'execute_transfer', type: 'boolean', required: false },
+    ],
+  },
+  {
+    endpoint: 'checkout-sessions',
+    title: 'Checkout Sessions',
+    path: '/v1/checkout-sessions',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Create a hosted or direct checkout session for a participant sale.',
+    source: 'supabase/functions/checkout-sessions/index.ts',
+    parameters: [
+      { in: 'body', name: 'participant_id', type: 'string', required: true },
+      { in: 'body', name: 'amount', type: 'number', required: true },
+      { in: 'body', name: 'currency', type: 'string', required: false },
+      { in: 'body', name: 'product_id', type: 'string', required: false },
+      { in: 'body', name: 'product_name', type: 'string', required: false },
+      { in: 'body', name: 'customer_email', type: 'string', required: false },
+      { in: 'body', name: 'customer_id', type: 'string', required: false },
+      { in: 'body', name: 'payment_method_id', type: 'string', required: false },
+      { in: 'body', name: 'source_id', type: 'string', required: false },
+      { in: 'body', name: 'success_url', type: 'string', required: false },
+      { in: 'body', name: 'cancel_url', type: 'string', required: false },
+      { in: 'body', name: 'idempotency_key', type: 'string', required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, string>', required: false },
+    ],
+  },
+  {
+    endpoint: 'payouts',
+    title: 'Payouts',
+    path: '/v1/payouts',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Create a payout for a participant.',
+    source: 'supabase/functions/payouts/index.ts',
+    parameters: [
+      { in: 'body', name: 'participant_id', type: 'string', required: true },
+      { in: 'body', name: 'amount', type: 'number', required: true },
+      { in: 'body', name: 'reference_id', type: 'string', required: true },
+      { in: 'body', name: 'reference_type', type: 'string', required: false },
+      { in: 'body', name: 'description', type: 'string', required: false },
+      { in: 'body', name: 'payout_method', type: 'string', required: false },
+      { in: 'body', name: 'fees', type: 'number', required: false },
+      { in: 'body', name: 'fees_paid_by', type: "'platform' | 'creator'", required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, unknown>', required: false },
+    ],
+  },
+  {
+    endpoint: 'refunds',
+    title: 'Refunds',
+    path: '/v1/refunds',
+    methods: ['POST'],
+    auth: 'API key',
+    internal: false,
+    deprecated: false,
+    description: 'Create a refund against a recorded sale.',
+    source: 'supabase/functions/refunds/index.ts',
+    parameters: [
+      { in: 'body', name: 'sale_reference', type: 'string', required: true },
+      { in: 'body', name: 'reason', type: 'string', required: true },
+      { in: 'body', name: 'amount', type: 'number', required: false },
+      { in: 'body', name: 'refund_from', type: "'both' | 'platform_only' | 'creator_only'", required: false },
+      { in: 'body', name: 'external_refund_id', type: 'string', required: false },
+      { in: 'body', name: 'idempotency_key', type: 'string', required: false },
+      { in: 'body', name: 'mode', type: "'ledger_only' | 'processor_refund'", required: false },
+      { in: 'body', name: 'processor_payment_id', type: 'string', required: false },
+      { in: 'body', name: 'metadata', type: 'Record<string, unknown>', required: false },
+    ],
+  },
+]
+
+const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
+  ...TREASURY_RESOURCE_ENDPOINTS,
   {
     "endpoint": "ap-aging",
     "title": "Ap Aging",
@@ -104,28 +355,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "organization_id",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "endpoint": "check-payout-eligibility",
-    "title": "Check Payout Eligibility",
-    "path": "/v1/check-payout-eligibility",
-    "methods": [
-      "GET",
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Check Payout Eligibility",
-    "source": "supabase/functions/check-payout-eligibility/index.ts",
-    "parameters": [
-      {
-        "in": "query",
-        "name": "creator_id",
         "type": "string",
         "required": false
       }
@@ -309,222 +538,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "create-checkout",
-    "title": "Create Checkout",
-    "path": "/v1/create-checkout",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Create Checkout",
-    "source": "supabase/functions/create-checkout/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "amount",
-        "type": "number",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "currency",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "product_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "product_name",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "customer_email",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "customer_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "payment_method_id",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "source_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "metadata",
-        "type": "Record<string, string>",
-        "required": false
-      }
-    ]
-  },
-  {
-    "endpoint": "create-creator",
-    "title": "Create Creator",
-    "path": "/v1/create-creator",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Create Creator",
-    "source": "supabase/functions/create-creator/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "display_name",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "email",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "default_split_percent",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "tax_info",
-        "type": "{",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "tax_id_type",
-        "type": "'ssn' | 'ein' | 'itin'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "tax_id_last4",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "legal_name",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "business_type",
-        "type": "'individual' | 'sole_proprietor' | 'llc' | 'corporation' | 'partnership'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "address",
-        "type": "{",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "line1",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "line2",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "city",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "state",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "postal_code",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "country",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "payout_preferences",
-        "type": "{",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "schedule",
-        "type": "'manual' | 'weekly' | 'biweekly' | 'monthly'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "minimum_amount",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "method",
-        "type": "'card' | 'manual'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "metadata",
-        "type": "Record<string, any>",
-        "required": false
-      }
-    ]
-  },
-  {
     "endpoint": "create-ledger",
     "title": "Create Ledger",
     "path": "/v1/create-ledger",
@@ -547,12 +560,12 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "in": "body",
         "name": "owner_email",
         "type": "string",
-        "required": true
+        "required": false
       },
       {
         "in": "body",
         "name": "ledger_mode",
-        "type": "'standard' | 'platform'",
+        "type": "'standard' | 'marketplace' | 'platform'",
         "required": false
       },
       {
@@ -885,73 +898,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "creator_id",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "endpoint": "get-balance",
-    "title": "Get Balance",
-    "path": "/v1/get-balance",
-    "methods": [
-      "GET"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Get Balance",
-    "source": "supabase/functions/get-balance/index.ts",
-    "parameters": [
-      {
-        "in": "query",
-        "name": "creator_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "query",
-        "name": "include_platform",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
-    "endpoint": "get-balances",
-    "title": "Get Balances",
-    "path": "/v1/get-balances",
-    "methods": [
-      "GET",
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Get Balances",
-    "source": "supabase/functions/get-balances/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "Action",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "account_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "as_of_date",
         "type": "string",
         "required": false
       }
@@ -1681,75 +1627,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "process-payout",
-    "title": "Process Payout",
-    "path": "/v1/process-payout",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Process Payout",
-    "source": "supabase/functions/process-payout/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "amount",
-        "type": "number",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "reference_id",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "reference_type",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "description",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "payout_method",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "fees",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "fees_paid_by",
-        "type": "'platform' | 'creator'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "metadata",
-        "type": "Record<string, any>",
-        "required": false
-      }
-    ]
-  },
-  {
     "endpoint": "process-webhooks",
     "title": "Process Webhooks",
     "path": "/v1/process-webhooks",
@@ -2290,75 +2167,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "record-refund",
-    "title": "Record Refund",
-    "path": "/v1/record-refund",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Record Refund",
-    "source": "supabase/functions/record-refund/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "original_sale_reference",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "amount",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "reason",
-        "type": "string",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "refund_from",
-        "type": "'both' | 'platform_only' | 'creator_only'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "external_refund_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "mode",
-        "type": "'ledger_only' | 'processor_refund'",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "idempotency_key",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "processor_payment_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "metadata",
-        "type": "Record<string, any>",
-        "required": false
-      }
-    ]
-  },
-  {
     "endpoint": "record-sale",
     "title": "Record Sale",
     "path": "/v1/record-sale",
@@ -2508,69 +2316,6 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "name": "extracted_terms",
         "type": "ExtractedTerms",
         "required": true
-      }
-    ]
-  },
-  {
-    "endpoint": "release-funds",
-    "title": "Release Funds",
-    "path": "/v1/release-funds",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": false,
-    "description": "Release Funds",
-    "source": "supabase/functions/release-funds/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "'get_summary' | 'get_held' | 'release' | 'batch_release' | 'auto_release'",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "entry_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "entry_ids",
-        "type": "string[]",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "venture_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "ready_only",
-        "type": "boolean",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "limit",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "execute_transfer",
-        "type": "boolean",
-        "required": false
       }
     ]
   },
@@ -3109,3 +2854,5 @@ export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   }
 ]
+
+export const API_ENDPOINT_CATALOG: ApiEndpointDoc[] = RAW_API_ENDPOINT_CATALOG

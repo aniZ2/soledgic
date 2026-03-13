@@ -1,0 +1,25 @@
+{
+  "version": "5",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.98.0",
+    "https://esm.sh/@upstash/ratelimit@2": "https://esm.sh/@upstash/ratelimit@2.0.8",
+    "https://esm.sh/@upstash/redis@1": "https://esm.sh/@upstash/redis@1.36.3"
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.98.0": "7c91584aa8d7c3b272be04122a907e00a7028a20d0eaf5e40b2eb1eed10f06b3",
+    "https://esm.sh/@upstash/ratelimit@2.0.8": "70d829a2a8ce8308a9f4bd61e8b2ee86b9b02043652c3d538efce750b9dc4bbf",
+    "https://esm.sh/@upstash/redis@1.36.3": "408766bd68ae043e9e10e74474df6d4f9d450be1a36c01353dc7a202cd1604a9"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@supabase/supabase-js@^2.98.0",
+        "npm:@vitest/coverage-v8@^4.0.18",
+        "npm:dotenv@^17.3.1",
+        "npm:tsx@^4.21.0",
+        "npm:vitest@^4.0.16",
+        "npm:yaml@^2.8.2"
+      ]
+    }
+  }
+}

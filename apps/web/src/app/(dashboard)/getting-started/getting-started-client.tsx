@@ -387,23 +387,23 @@ export function GettingStartedClient({
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
-{`curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\
+{`curl -X POST '${supabaseUrl}/functions/v1/participants' \\
   -H 'Content-Type: application/json' \\
   -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
-    "creator_id": "creator_123",
+    "participant_id": "creator_123",
     "display_name": "John Smith",
     "email": "john@example.com"
   }'`}
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${supabaseUrl}/functions/v1/create-creator' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "display_name": "John Smith", "email": "john@example.com"}'`,
-                  'create-creator'
+                  `curl -X POST '${supabaseUrl}/functions/v1/participants' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"participant_id": "creator_123", "display_name": "John Smith", "email": "john@example.com"}'`,
+                  'participants'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
               >
-                {copied === 'create-creator' ? (
+                {copied === 'participants' ? (
                   <Check className="w-4 h-4 text-green-500" />
                 ) : (
                   <Copy className="w-4 h-4 text-muted-foreground" />
@@ -454,23 +454,24 @@ export function GettingStartedClient({
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
-{`curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\
+{`curl -X POST '${supabaseUrl}/functions/v1/payouts' \\
   -H 'Content-Type: application/json' \\
   -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
-    "creator_id": "creator_123",
+    "participant_id": "creator_123",
     "amount": 4000,
+    "reference_id": "payout_weekly_001",
     "description": "Weekly payout"
   }'`}
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${supabaseUrl}/functions/v1/process-payout' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"creator_id": "creator_123", "amount": 4000, "description": "Weekly payout"}'`,
-                  'process-payout'
+                  `curl -X POST '${supabaseUrl}/functions/v1/payouts' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"participant_id": "creator_123", "amount": 4000, "reference_id": "payout_weekly_001", "description": "Weekly payout"}'`,
+                  'payouts'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
               >
-                {copied === 'process-payout' ? (
+                {copied === 'payouts' ? (
                   <Check className="w-4 h-4 text-green-500" />
                 ) : (
                   <Copy className="w-4 h-4 text-muted-foreground" />

@@ -34,8 +34,8 @@ The `FOR UPDATE` lock is the key. Any concurrent request targeting the same row 
 | Edge Function | Calls RPC | Fallback on unique_violation |
 |---|---|---|
 | `record-sale/index.ts` | `record_sale_atomic` | Returns existing transaction (idempotent) |
-| `process-payout/index.ts` | `process_payout_atomic` | Returns existing transaction (idempotent) |
-| `record-refund/index.ts` | `process_refund_atomic` | Returns existing transaction (idempotent) |
+| `payouts/index.ts` | `process_payout_atomic` | Returns existing transaction (idempotent) |
+| `refunds/index.ts` | `record_refund_atomic_v2` | Returns existing transaction (idempotent) |
 
 ## Defense Layers (Refund Example)
 

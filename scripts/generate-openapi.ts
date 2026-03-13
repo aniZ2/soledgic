@@ -323,6 +323,103 @@ const SCHEMAS: Record<string, object> = {
     required: ['amount'],
   },
 
+  ParticipantCreateRequest: {
+    type: 'object',
+    properties: {
+      participant_id: { type: 'string' },
+      display_name: { type: 'string' },
+      email: { type: 'string', format: 'email' },
+      default_split_percent: { type: 'number', minimum: 0, maximum: 100 },
+      tax_info: { type: 'object', additionalProperties: true },
+      payout_preferences: { type: 'object', additionalProperties: true },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['participant_id'],
+  },
+
+  WalletMutationRequest: {
+    type: 'object',
+    properties: {
+      amount: { type: 'integer', description: 'Amount in cents' },
+      reference_id: { type: 'string' },
+      description: { type: 'string' },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['amount', 'reference_id'],
+  },
+
+  TransferFundsRequest: {
+    type: 'object',
+    properties: {
+      from_participant_id: { type: 'string' },
+      to_participant_id: { type: 'string' },
+      amount: { type: 'integer', description: 'Amount in cents' },
+      reference_id: { type: 'string' },
+      description: { type: 'string' },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['from_participant_id', 'to_participant_id', 'amount', 'reference_id'],
+  },
+
+  HoldReleaseRequest: {
+    type: 'object',
+    properties: {
+      execute_transfer: { type: 'boolean', default: true },
+    },
+  },
+
+  TreasuryCheckoutSessionRequest: {
+    type: 'object',
+    properties: {
+      participant_id: { type: 'string' },
+      amount: { type: 'integer', description: 'Amount in cents' },
+      currency: { type: 'string', default: 'USD' },
+      product_id: { type: 'string' },
+      product_name: { type: 'string' },
+      customer_email: { type: 'string', format: 'email' },
+      customer_id: { type: 'string' },
+      payment_method_id: { type: 'string' },
+      source_id: { type: 'string' },
+      success_url: { type: 'string', format: 'uri' },
+      cancel_url: { type: 'string', format: 'uri' },
+      idempotency_key: { type: 'string' },
+      metadata: { type: 'object', additionalProperties: { type: 'string' } },
+    },
+    required: ['participant_id', 'amount'],
+  },
+
+  TreasuryPayoutRequest: {
+    type: 'object',
+    properties: {
+      participant_id: { type: 'string' },
+      amount: { type: 'integer', description: 'Amount in cents' },
+      reference_id: { type: 'string' },
+      reference_type: { type: 'string' },
+      description: { type: 'string' },
+      payout_method: { type: 'string' },
+      fees: { type: 'integer' },
+      fees_paid_by: { type: 'string', enum: ['platform', 'creator'] },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['participant_id', 'amount', 'reference_id'],
+  },
+
+  TreasuryRefundRequest: {
+    type: 'object',
+    properties: {
+      sale_reference: { type: 'string' },
+      reason: { type: 'string' },
+      amount: { type: 'integer', description: 'Amount in cents' },
+      refund_from: { type: 'string', enum: ['both', 'platform_only', 'creator_only'] },
+      external_refund_id: { type: 'string' },
+      idempotency_key: { type: 'string' },
+      mode: { type: 'string', enum: ['ledger_only', 'processor_refund'] },
+      processor_payment_id: { type: 'string' },
+      metadata: { type: 'object', additionalProperties: true },
+    },
+    required: ['sale_reference', 'reason'],
+  },
+
   // ── Response types ────────────────────────────────────────────────────
   SaleBreakdown: {
     type: 'object',
@@ -668,21 +765,403 @@ const SCHEMAS: Record<string, object> = {
       },
     ],
   },
+
+  ParticipantSummary: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      name: { type: ['string', 'null'] },
+      tier: { type: ['string', 'null'] },
+      ledger_balance: { type: 'number' },
+      held_amount: { type: 'number' },
+      available_balance: { type: 'number' },
+    },
+  },
+
+  Hold: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      participant_id: { type: ['string', 'null'] },
+      participant_name: { type: ['string', 'null'] },
+      amount: { type: 'number' },
+      currency: { type: 'string' },
+      held_since: { type: 'string', format: 'date-time' },
+      days_held: { type: 'integer' },
+      hold_reason: { type: ['string', 'null'] },
+      hold_until: { type: ['string', 'null'], format: 'date-time' },
+      ready_for_release: { type: 'boolean' },
+      release_status: { type: 'string' },
+      transaction_reference: { type: ['string', 'null'] },
+      product_name: { type: ['string', 'null'] },
+      venture_id: { type: ['string', 'null'] },
+      connected_account_ready: { type: 'boolean' },
+    },
+  },
+
+  ParticipantsListResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          participants: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ParticipantSummary' },
+          },
+        },
+      },
+    ],
+  },
+
+  ParticipantDetailResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          participant: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: ['string', 'null'] },
+              tier: { type: ['string', 'null'] },
+              custom_split_percent: { type: ['number', 'null'] },
+              ledger_balance: { type: 'number' },
+              held_amount: { type: 'number' },
+              available_balance: { type: 'number' },
+              holds: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    amount: { type: 'number' },
+                    reason: { type: ['string', 'null'] },
+                    release_date: { type: ['string', 'null'], format: 'date-time' },
+                    status: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  ParticipantCreateResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          participant: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              account_id: { type: 'string', format: 'uuid' },
+              display_name: { type: ['string', 'null'] },
+              email: { type: ['string', 'null'] },
+              default_split_percent: { type: 'number' },
+              payout_preferences: { type: 'object', additionalProperties: true },
+              created_at: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  ParticipantEligibilityResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          eligibility: {
+            type: 'object',
+            properties: {
+              participant_id: { type: 'string' },
+              eligible: { type: 'boolean' },
+              available_balance: { type: 'number' },
+              issues: { type: 'array', items: { type: 'string' } },
+              requirements: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  WalletDetailResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          wallet: {
+            type: 'object',
+            properties: {
+              participant_id: { type: 'string' },
+              balance: { type: 'number' },
+              wallet_exists: { type: 'boolean' },
+              account: {
+                type: ['object', 'null'],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  participant_id: { type: 'string' },
+                  name: { type: ['string', 'null'] },
+                  is_active: { type: 'boolean' },
+                  created_at: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  WalletEntriesResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          entries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                entry_id: { type: 'string', format: 'uuid' },
+                entry_type: { type: 'string', enum: ['debit', 'credit'] },
+                amount: { type: 'number' },
+                transaction_id: { type: 'string', format: 'uuid' },
+                reference_id: { type: ['string', 'null'] },
+                transaction_type: { type: 'string' },
+                description: { type: ['string', 'null'] },
+                status: { type: 'string' },
+                metadata: { type: 'object', additionalProperties: true },
+                created_at: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
+          total: { type: 'integer' },
+          limit: { type: 'integer' },
+          offset: { type: 'integer' },
+        },
+      },
+    ],
+  },
+
+  WalletDepositResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          deposit: {
+            type: 'object',
+            properties: {
+              participant_id: { type: 'string' },
+              transaction_id: { type: 'string', format: 'uuid' },
+              balance: { type: 'number' },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  WalletWithdrawalResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          withdrawal: {
+            type: 'object',
+            properties: {
+              participant_id: { type: 'string' },
+              transaction_id: { type: 'string', format: 'uuid' },
+              balance: { type: 'number' },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  TransferFundsResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          transfer: {
+            type: 'object',
+            properties: {
+              transaction_id: { type: 'string', format: 'uuid' },
+              from_participant_id: { type: ['string', 'null'] },
+              to_participant_id: { type: ['string', 'null'] },
+              from_balance: { type: 'number' },
+              to_balance: { type: 'number' },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  HoldsListResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          holds: { type: 'array', items: { $ref: '#/components/schemas/Hold' } },
+          count: { type: 'integer' },
+        },
+      },
+    ],
+  },
+
+  HoldsSummaryResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          summary: { type: 'object', additionalProperties: true },
+        },
+      },
+    ],
+  },
+
+  HoldReleaseResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          release: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              hold_id: { type: 'string' },
+              executed: { type: 'boolean' },
+              transfer_id: { type: ['string', 'null'] },
+              transfer_status: { type: ['string', 'null'] },
+              amount: { type: ['number', 'null'] },
+              currency: { type: ['string', 'null'] },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  CheckoutSessionResourceResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          checkout_session: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              mode: { type: 'string', enum: ['direct', 'session'] },
+              checkout_url: { type: ['string', 'null'] },
+              payment_id: { type: ['string', 'null'] },
+              payment_intent_id: { type: ['string', 'null'] },
+              status: { type: ['string', 'null'] },
+              requires_action: { type: 'boolean' },
+              amount: { type: 'integer' },
+              currency: { type: 'string' },
+              expires_at: { type: ['string', 'null'], format: 'date-time' },
+              breakdown: { $ref: '#/components/schemas/CheckoutBreakdown' },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  PayoutResourceResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          payout: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              transaction_id: { type: 'string', format: 'uuid' },
+              gross_amount: { type: ['number', 'null'] },
+              fees: { type: ['number', 'null'] },
+              net_amount: { type: ['number', 'null'] },
+              previous_balance: { type: ['number', 'null'] },
+              new_balance: { type: ['number', 'null'] },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  RefundResourceResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          refund: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              transaction_id: { type: 'string', format: 'uuid' },
+              refunded_amount: { type: 'number' },
+              breakdown: {
+                type: 'object',
+                properties: {
+                  from_creator: { type: 'number' },
+                  from_platform: { type: 'number' },
+                },
+              },
+              is_full_refund: { type: ['boolean', 'null'] },
+            },
+          },
+        },
+      },
+    ],
+  },
 }
 
 // ---------------------------------------------------------------------------
 // 3. Endpoint → schema mapping
 // ---------------------------------------------------------------------------
 
-const ENDPOINT_SCHEMA_MAP: Record<string, { request?: string; response?: string }> = {
+type SchemaBinding = {
+  request?: string
+  response?: string
+  get?: { request?: string; response?: string }
+  post?: { request?: string; response?: string }
+  put?: { request?: string; response?: string }
+  patch?: { request?: string; response?: string }
+  delete?: { request?: string; response?: string }
+}
+
+type MethodSchemaBinding = {
+  request?: string
+  response?: string
+}
+
+const ENDPOINT_SCHEMA_MAP: Record<string, SchemaBinding> = {
   'record-sale': { request: 'RecordSaleRequest', response: 'RecordSaleResponse' },
-  'create-checkout': { request: 'CreateCheckoutRequest', response: 'CreateCheckoutResponse' },
-  'process-payout': { request: 'ProcessPayoutRequest', response: 'ProcessPayoutResponse' },
-  'record-refund': { request: 'RecordRefundRequest', response: 'RecordRefundResponse' },
   'reverse-transaction': { request: 'ReverseTransactionRequest', response: 'ReverseTransactionResponse' },
   'get-transactions': { request: 'GetTransactionsRequest', response: 'GetTransactionsResponse' },
-  'create-creator': { request: 'CreateCreatorRequest', response: 'CreateCreatorResponse' },
-  'get-balance': { response: 'GetBalanceResponse' },
   'record-adjustment': { request: 'RecordAdjustmentRequest', response: 'RecordAdjustmentResponse' },
   'record-opening-balance': { request: 'RecordOpeningBalanceRequest', response: 'RecordOpeningBalanceResponse' },
   'record-transfer': { request: 'RecordTransferRequest', response: 'RecordTransferResponse' },
@@ -690,6 +1169,23 @@ const ENDPOINT_SCHEMA_MAP: Record<string, { request?: string; response?: string 
   'export-report': { request: 'ExportReportRequest' },
   'upload-receipt': { request: 'UploadReceiptRequest', response: 'UploadReceiptResponse' },
   'receive-payment': { request: 'ReceivePaymentRequest', response: 'ReceivePaymentResponse' },
+  'participants': {
+    get: { response: 'ParticipantsListResponse' },
+    post: { request: 'ParticipantCreateRequest', response: 'ParticipantCreateResponse' },
+  },
+  'participant-detail': { response: 'ParticipantDetailResponse' },
+  'participant-payout-eligibility': { response: 'ParticipantEligibilityResponse' },
+  'wallet-detail': { response: 'WalletDetailResponse' },
+  'wallet-entries': { response: 'WalletEntriesResponse' },
+  'wallet-deposit': { request: 'WalletMutationRequest', response: 'WalletDepositResponse' },
+  'wallet-withdrawal': { request: 'WalletMutationRequest', response: 'WalletWithdrawalResponse' },
+  'transfers': { request: 'TransferFundsRequest', response: 'TransferFundsResponse' },
+  'holds': { response: 'HoldsListResponse' },
+  'holds-summary': { response: 'HoldsSummaryResponse' },
+  'hold-release': { request: 'HoldReleaseRequest', response: 'HoldReleaseResponse' },
+  'checkout-sessions': { request: 'TreasuryCheckoutSessionRequest', response: 'CheckoutSessionResourceResponse' },
+  'payouts': { request: 'TreasuryPayoutRequest', response: 'PayoutResourceResponse' },
+  'refunds': { request: 'TreasuryRefundRequest', response: 'RefundResourceResponse' },
 }
 
 // ---------------------------------------------------------------------------
@@ -764,16 +1260,6 @@ const BODY_SCHEMA_OVERRIDES: Record<string, object> = {
     },
     required: ['action'],
   },
-  'get-balances': {
-    type: 'object',
-    properties: {
-      action: { type: 'string', enum: ['list', 'chart_of_accounts', 'account_detail'] },
-      account_id: { type: 'string', format: 'uuid' },
-      creator_id: { type: 'string' },
-      as_of_date: { type: 'string', format: 'date' },
-    },
-    required: ['action'],
-  },
   'import-transactions': {
     type: 'object',
     properties: {
@@ -808,20 +1294,6 @@ const BODY_SCHEMA_OVERRIDES: Record<string, object> = {
       auto_match: { type: 'boolean' },
     },
     required: ['bank_account_id', 'lines'],
-  },
-  'release-funds': {
-    type: 'object',
-    properties: {
-      action: { type: 'string', enum: ['get_summary', 'get_held', 'release', 'batch_release', 'auto_release'] },
-      entry_id: { type: 'string', format: 'uuid' },
-      entry_ids: { type: 'array', items: { type: 'string', format: 'uuid' } },
-      venture_id: { type: 'string' },
-      creator_id: { type: 'string' },
-      ready_only: { type: 'boolean' },
-      limit: { type: 'integer' },
-      execute_transfer: { type: 'boolean' },
-    },
-    required: ['action'],
   },
   'register-instrument': {
     type: 'object',
@@ -951,22 +1423,29 @@ const BODY_SCHEMA_OVERRIDES: Record<string, object> = {
 const TAG_MAP: Record<string, string> = {
   // Payments
   'record-sale': 'Payments',
-  'create-checkout': 'Payments',
-  'process-payout': 'Payments',
   'execute-payout': 'Payments',
-  'record-refund': 'Payments',
   'reverse-transaction': 'Payments',
-  'release-funds': 'Payments',
   'receive-payment': 'Payments',
-  'check-payout-eligibility': 'Payments',
+  'checkout-sessions': 'Payments',
+  'payouts': 'Payments',
+  'refunds': 'Payments',
+  // Treasury
+  'participants': 'Treasury',
+  'participant-detail': 'Treasury',
+  'participant-payout-eligibility': 'Treasury',
+  'wallet-detail': 'Treasury',
+  'wallet-entries': 'Treasury',
+  'wallet-deposit': 'Treasury',
+  'wallet-withdrawal': 'Treasury',
+  'transfers': 'Treasury',
+  'holds': 'Treasury',
+  'holds-summary': 'Treasury',
+  'hold-release': 'Treasury',
   // Creators
-  'create-creator': 'Creators',
   'delete-creator': 'Creators',
   'manage-splits': 'Creators',
   'manage-contractors': 'Creators',
   // Balances
-  'get-balance': 'Balances',
-  'get-balances': 'Balances',
   'get-runway': 'Balances',
   // Transactions
   'get-transactions': 'Transactions',
@@ -1079,13 +1558,13 @@ function catalogParamsToSchema(params: ApiParameter[]): object | null {
   return schema
 }
 
-/** Build query parameters from catalog. */
-function catalogQueryParams(params: ApiParameter[]): object[] {
+/** Build query/path parameters from catalog. */
+function catalogOperationParams(params: ApiParameter[]): object[] {
   return params
-    .filter((p) => p.in === 'query')
+    .filter((p) => p.in === 'query' || p.in === 'path')
     .map((p) => ({
       name: p.name,
-      in: 'query',
+      in: p.in,
       required: p.required,
       schema: catalogTypeToJsonSchema(p.type),
     }))
@@ -1155,6 +1634,10 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
 
   for (const method of ep.methods) {
     const m = method.toLowerCase()
+    const methodMapping: MethodSchemaBinding =
+      mapping && (mapping.get || mapping.post || mapping.put || mapping.patch || mapping.delete)
+        ? mapping[m as 'get' | 'post' | 'put' | 'patch' | 'delete'] || {}
+        : mapping || {}
     // Use distinct operationIds for multi-method endpoints
     const operationId = hasMultipleMethods ? `${ep.endpoint}-${m}` : ep.endpoint
     const operation: Record<string, unknown> = {
@@ -1164,12 +1647,12 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
     }
 
     // Query parameters (always from catalog for GET, also for POST endpoints that have query params)
-    const qp = catalogQueryParams(ep.parameters)
+    const qp = catalogOperationParams(ep.parameters)
     if (m === 'get') {
       // GET: use catalog query params + any mapped request schema fields as additional query params
       const allParams = [...qp]
-      if (mapping?.request && SCHEMAS[mapping.request]) {
-        const reqSchema = SCHEMAS[mapping.request] as Record<string, unknown>
+      if (methodMapping.request && SCHEMAS[methodMapping.request]) {
+        const reqSchema = SCHEMAS[methodMapping.request] as Record<string, unknown>
         const props = (reqSchema.properties ?? {}) as Record<string, object>
         const existingNames = new Set(qp.map((p) => (p as { name: string }).name))
         const extraParams = Object.entries(props)
@@ -1192,8 +1675,8 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
       }
 
       let bodySchema: object | null = null
-      if (mapping?.request) {
-        bodySchema = { $ref: `#/components/schemas/${mapping.request}` }
+      if (methodMapping.request) {
+        bodySchema = { $ref: `#/components/schemas/${methodMapping.request}` }
       } else if (BODY_SCHEMA_OVERRIDES[ep.endpoint]) {
         bodySchema = BODY_SCHEMA_OVERRIDES[ep.endpoint]
       } else {
@@ -1209,7 +1692,7 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
     }
 
     // Responses
-    operation.responses = buildResponses(ep.endpoint, mapping?.response)
+    operation.responses = buildResponses(ep.endpoint, methodMapping.response)
 
     pathItem[m] = operation
   }
@@ -1222,7 +1705,8 @@ function generatePathItem(ep: typeof publicEndpoints[number]): Record<string, ob
 // ---------------------------------------------------------------------------
 
 const TAG_DESCRIPTIONS: Record<string, string> = {
-  Payments: 'Record sales, process payouts, refunds, reversals, and fund releases',
+  Payments: 'Checkout sessions, payouts, refunds, and payment-adjacent platform flows',
+  Treasury: 'Platform treasury resources for participants, wallets, holds, and internal transfers',
   Creators: 'Create and manage creator accounts, splits, and contractor relationships',
   Balances: 'Query creator balances, platform summary, and cash runway',
   Transactions: 'List and import transactions',

@@ -187,7 +187,7 @@ Deno.serve(async (req: Request) => {
         try {
           const amountCents = balanceCents
 
-          const recordResponse = await fetch(`${supabaseUrl}/functions/v1/process-payout`, {
+          const recordResponse = await fetch(`${supabaseUrl}/functions/v1/payouts`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -195,7 +195,7 @@ Deno.serve(async (req: Request) => {
               'x-ledger-id': ledger.id,
             },
             body: JSON.stringify({
-              creator_id: account.entity_id,
+              participant_id: account.entity_id,
               amount: amountCents,
               reference_id: referenceId,
               reference_type: 'scheduled',

@@ -80,11 +80,11 @@ export default function NewCreatorPage() {
       // Generate creator ID if not provided
       const finalCreatorId = creatorId.trim() || `creator_${Date.now()}`
 
-      const response = await callLedgerFunction('create-creator', {
+      const response = await callLedgerFunction('participants', {
         ledgerId: ledger.id,
         method: 'POST',
         body: {
-          creator_id: finalCreatorId,
+          participant_id: finalCreatorId,
           display_name: displayName.trim() || undefined,
           email: email.trim() || undefined,
           default_split_percent: parseFloat(splitPercent) || 80,

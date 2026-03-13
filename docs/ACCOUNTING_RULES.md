@@ -1,5 +1,7 @@
 # Soledgic Accounting Rules
 
+> Migration note (March 12, 2026): the accounting rules in this document still apply, but new public integrations should target the resource-first treasury surface described in `docs/RESOURCE_MODEL_MIGRATION.md`.
+
 These rules are explicit and enforced. They protect the integrity of the ledger.
 
 ---

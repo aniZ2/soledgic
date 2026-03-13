@@ -1,23 +1,16 @@
-// Soledgic Edge Function: Manage Wallet
-// POST /manage-wallet
-// Action-based routing for wallet operations:
-//   get_balance, deposit, withdraw, transfer, history
-
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  createHandler,
-  jsonResponse,
+  createAuditLogAsync,
   errorResponse,
+  jsonResponse,
+  LedgerContext,
+  sanitizeForAudit,
   validateAmount,
   validateId,
   validateInteger,
-  LedgerContext,
-  createAuditLogAsync,
-  sanitizeForAudit,
-} from '../_shared/utils.ts'
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+} from './utils.ts'
 
-interface WalletRequest {
-  action: string
+export interface WalletMutationRequest {
   user_id?: string
   from_user_id?: string
   to_user_id?: string
@@ -29,57 +22,11 @@ interface WalletRequest {
   offset?: number
 }
 
-const handler = createHandler(
-  { endpoint: 'manage-wallet', requireAuth: true, rateLimit: true },
-  async (
-    req: Request,
-    supabase: SupabaseClient,
-    ledger: LedgerContext | null,
-    body: WalletRequest,
-    { requestId },
-  ) => {
-    if (!ledger) {
-      return errorResponse('Ledger not found', 401, req, requestId)
-    }
-
-    const { action } = body
-    if (!action || typeof action !== 'string') {
-      return errorResponse('Missing or invalid action', 400, req, requestId)
-    }
-
-    switch (action) {
-      case 'get_balance':
-        return handleGetBalance(req, supabase, ledger, body, requestId)
-      case 'deposit':
-        return handleDeposit(req, supabase, ledger, body, requestId)
-      case 'withdraw':
-        return handleWithdraw(req, supabase, ledger, body, requestId)
-      case 'transfer':
-        return handleTransfer(req, supabase, ledger, body, requestId)
-      case 'history':
-        return handleHistory(req, supabase, ledger, body, requestId)
-      default:
-        return errorResponse(
-          `Unknown action: ${action}. Valid actions: get_balance, deposit, withdraw, transfer, history`,
-          400,
-          req,
-          requestId,
-        )
-    }
-  },
-)
-
-Deno.serve(handler)
-
-// ============================================================================
-// ACTION HANDLERS
-// ============================================================================
-
-async function handleGetBalance(
+export async function getWalletBalanceResponse(
   req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  body: WalletRequest,
+  body: WalletMutationRequest,
   requestId: string,
 ): Promise<Response> {
   const userId = validateId(body.user_id, 100)
@@ -95,32 +42,27 @@ async function handleGetBalance(
     .eq('entity_id', userId)
     .maybeSingle()
 
-  return jsonResponse(
-    {
-      success: true,
-      balance: account ? Number(account.balance) : 0,
-      wallet_exists: !!account,
-      account: account
-        ? {
-            id: account.id,
-            entity_id: account.entity_id,
-            name: account.name,
-            is_active: account.is_active,
-            created_at: account.created_at,
-          }
-        : null,
-    },
-    200,
-    req,
-    requestId,
-  )
+  return jsonResponse({
+    success: true,
+    balance: account ? Number(account.balance) : 0,
+    wallet_exists: !!account,
+    account: account
+      ? {
+          id: account.id,
+          entity_id: account.entity_id,
+          name: account.name,
+          is_active: account.is_active,
+          created_at: account.created_at,
+        }
+      : null,
+  }, 200, req, requestId)
 }
 
-async function handleDeposit(
+export async function depositToWalletResponse(
   req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  body: WalletRequest,
+  body: WalletMutationRequest,
   requestId: string,
 ): Promise<Response> {
   const userId = validateId(body.user_id, 100)
@@ -138,14 +80,13 @@ async function handleDeposit(
     return errorResponse('Invalid reference_id: must be 1-255 alphanumeric characters', 400, req, requestId)
   }
 
-  // Pre-check: if reference_id already exists, return 409 immediately.
-  // The RPCs catch unique_violation internally and return normally, so we
-  // can't rely on mapRpcError for idempotency detection.
-  const dup = await checkDuplicateReference(supabase, ledger.id, referenceId)
-  if (dup) {
+  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
+  if (duplicate) {
     return jsonResponse(
-      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: dup.id },
-      409, req, requestId,
+      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: duplicate.id },
+      409,
+      req,
+      requestId,
     )
   }
 
@@ -159,7 +100,7 @@ async function handleDeposit(
   })
 
   if (rpcError) {
-    return mapRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
+    return mapWalletRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
   }
 
   const row = Array.isArray(result) ? result[0] : result
@@ -181,23 +122,18 @@ async function handleDeposit(
     risk_score: 20,
   }, requestId)
 
-  return jsonResponse(
-    {
-      success: true,
-      transaction_id: transactionId,
-      balance,
-    },
-    200,
-    req,
-    requestId,
-  )
+  return jsonResponse({
+    success: true,
+    transaction_id: transactionId,
+    balance,
+  }, 200, req, requestId)
 }
 
-async function handleWithdraw(
+export async function withdrawFromWalletResponse(
   req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  body: WalletRequest,
+  body: WalletMutationRequest,
   requestId: string,
 ): Promise<Response> {
   const userId = validateId(body.user_id, 100)
@@ -215,11 +151,13 @@ async function handleWithdraw(
     return errorResponse('Invalid reference_id: must be 1-255 alphanumeric characters', 400, req, requestId)
   }
 
-  const dup = await checkDuplicateReference(supabase, ledger.id, referenceId)
-  if (dup) {
+  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
+  if (duplicate) {
     return jsonResponse(
-      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: dup.id },
-      409, req, requestId,
+      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: duplicate.id },
+      409,
+      req,
+      requestId,
     )
   }
 
@@ -233,7 +171,7 @@ async function handleWithdraw(
   })
 
   if (rpcError) {
-    return mapRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
+    return mapWalletRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
   }
 
   const row = Array.isArray(result) ? result[0] : result
@@ -255,23 +193,18 @@ async function handleWithdraw(
     risk_score: 30,
   }, requestId)
 
-  return jsonResponse(
-    {
-      success: true,
-      transaction_id: transactionId,
-      balance,
-    },
-    200,
-    req,
-    requestId,
-  )
+  return jsonResponse({
+    success: true,
+    transaction_id: transactionId,
+    balance,
+  }, 200, req, requestId)
 }
 
-async function handleTransfer(
+export async function transferWalletFundsResponse(
   req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  body: WalletRequest,
+  body: WalletMutationRequest,
   requestId: string,
 ): Promise<Response> {
   const fromUserId = validateId(body.from_user_id, 100)
@@ -294,11 +227,13 @@ async function handleTransfer(
     return errorResponse('Invalid reference_id: must be 1-255 alphanumeric characters', 400, req, requestId)
   }
 
-  const dup = await checkDuplicateReference(supabase, ledger.id, referenceId)
-  if (dup) {
+  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
+  if (duplicate) {
     return jsonResponse(
-      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: dup.id },
-      409, req, requestId,
+      { success: false, idempotent: true, error: 'Duplicate reference_id', transaction_id: duplicate.id },
+      409,
+      req,
+      requestId,
     )
   }
 
@@ -313,7 +248,7 @@ async function handleTransfer(
   })
 
   if (rpcError) {
-    return mapRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
+    return mapWalletRpcError(rpcError, req, requestId, ledger.id, referenceId, supabase)
   }
 
   const row = Array.isArray(result) ? result[0] : result
@@ -337,24 +272,19 @@ async function handleTransfer(
     risk_score: 30,
   }, requestId)
 
-  return jsonResponse(
-    {
-      success: true,
-      transaction_id: transactionId,
-      from_balance: fromBalance,
-      to_balance: toBalance,
-    },
-    200,
-    req,
-    requestId,
-  )
+  return jsonResponse({
+    success: true,
+    transaction_id: transactionId,
+    from_balance: fromBalance,
+    to_balance: toBalance,
+  }, 200, req, requestId)
 }
 
-async function handleHistory(
+export async function listWalletEntriesResponse(
   req: Request,
   supabase: SupabaseClient,
   ledger: LedgerContext,
-  body: WalletRequest,
+  body: WalletMutationRequest,
   requestId: string,
 ): Promise<Response> {
   const userId = validateId(body.user_id, 100)
@@ -365,7 +295,6 @@ async function handleHistory(
   const limit = validateInteger(body.limit, 1, 100) ?? 25
   const offset = validateInteger(body.offset, 0, 100000) ?? 0
 
-  // Get wallet account
   const { data: account } = await supabase
     .from('accounts')
     .select('id')
@@ -375,15 +304,9 @@ async function handleHistory(
     .maybeSingle()
 
   if (!account) {
-    return jsonResponse(
-      { success: true, transactions: [], total: 0 },
-      200,
-      req,
-      requestId,
-    )
+    return jsonResponse({ success: true, transactions: [], total: 0 }, 200, req, requestId)
   }
 
-  // Get entries for this wallet, joined with transactions
   const { data: entries, error: entriesError } = await supabase
     .from('entries')
     .select(`
@@ -410,7 +333,6 @@ async function handleHistory(
     return errorResponse('Failed to fetch wallet history', 500, req, requestId)
   }
 
-  // Get total count for pagination
   const { count } = await supabase
     .from('entries')
     .select('id', { count: 'exact', head: true })
@@ -432,25 +354,16 @@ async function handleHistory(
     }
   })
 
-  return jsonResponse(
-    {
-      success: true,
-      transactions,
-      total: count ?? 0,
-      limit,
-      offset,
-    },
-    200,
-    req,
-    requestId,
-  )
+  return jsonResponse({
+    success: true,
+    transactions,
+    total: count ?? 0,
+    limit,
+    offset,
+  }, 200, req, requestId)
 }
 
-// ============================================================================
-// ERROR MAPPING
-// ============================================================================
-
-async function mapRpcError(
+async function mapWalletRpcError(
   rpcError: any,
   req: Request,
   requestId: string,
@@ -458,12 +371,11 @@ async function mapRpcError(
   referenceId: string,
   supabase: SupabaseClient,
 ): Promise<Response> {
-  const msg = rpcError.message || ''
-  const msgLower = msg.toLowerCase()
+  const message = String(rpcError.message || '')
+  const lower = message.toLowerCase()
   const code = rpcError.code || ''
 
-  // Idempotent duplicate — fallback if pre-check race allows through
-  if (code === '23505' || msgLower.includes('unique') || msgLower.includes('duplicate')) {
+  if (code === '23505' || lower.includes('unique') || lower.includes('duplicate')) {
     const { data: existingTx } = await supabase
       .from('transactions')
       .select('id')
@@ -471,73 +383,38 @@ async function mapRpcError(
       .eq('reference_id', referenceId)
       .single()
 
-    return jsonResponse(
-      {
-        success: false,
-        idempotent: true,
-        error: 'Duplicate reference_id',
-        transaction_id: existingTx?.id,
-      },
-      409,
-      req,
-      requestId,
-    )
+    return jsonResponse({
+      success: false,
+      idempotent: true,
+      error: 'Duplicate reference_id',
+      transaction_id: existingTx?.id,
+    }, 409, req, requestId)
   }
 
-  // Insufficient balance
-  if (msgLower.includes('insufficient wallet balance')) {
-    return jsonResponse(
-      { success: false, error: 'Insufficient balance' },
-      422,
-      req,
-      requestId,
-    )
+  if (lower.includes('insufficient wallet balance')) {
+    return jsonResponse({ success: false, error: 'Insufficient balance' }, 422, req, requestId)
   }
 
-  // Wallet not found — covers both "Wallet not found" (withdraw) and
-  // "Sender wallet not found" / "recipient wallet" (transfer)
-  if (msgLower.includes('wallet not found')) {
-    return jsonResponse(
-      { success: false, error: 'Wallet not found' },
-      404,
-      req,
-      requestId,
-    )
+  if (lower.includes('wallet not found')) {
+    return jsonResponse({ success: false, error: 'Wallet not found' }, 404, req, requestId)
   }
 
-  // Amount validation
-  if (msgLower.includes('must be positive')) {
+  if (lower.includes('must be positive')) {
     return errorResponse('Amount must be a positive integer (cents)', 400, req, requestId)
   }
 
-  // Self-transfer
-  if (msgLower.includes('cannot transfer to self')) {
+  if (lower.includes('cannot transfer to self')) {
     return errorResponse('Cannot transfer to self', 400, req, requestId)
   }
 
-  // Negative balance guard (trigger)
-  if (msgLower.includes('wallet balance cannot be negative')) {
-    return jsonResponse(
-      { success: false, error: 'Insufficient balance' },
-      422,
-      req,
-      requestId,
-    )
+  if (lower.includes('wallet balance cannot be negative')) {
+    return jsonResponse({ success: false, error: 'Insufficient balance' }, 422, req, requestId)
   }
 
   console.error('Wallet RPC error:', rpcError)
   return errorResponse('Wallet operation failed', 500, req, requestId)
 }
 
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-/**
- * Pre-check for duplicate reference_id before calling the RPC.
- * The wallet RPCs catch unique_violation internally and return the existing
- * transaction as a normal result, so we can't rely on rpcError for 409 detection.
- */
 async function checkDuplicateReference(
   supabase: SupabaseClient,
   ledgerId: string,

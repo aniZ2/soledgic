@@ -32,6 +32,7 @@ interface ToolDef {
   inputSchema: z.ZodType
   method: 'GET' | 'POST'
   endpoint: string
+  resolveEndpoint?: (args: Record<string, unknown>) => string
   mutating: boolean
   isMutatingCall?: (args: Record<string, unknown>) => boolean
   requireIdempotency?: boolean
@@ -188,20 +189,24 @@ const TOOLS: ToolDef[] = [
   {
     name: 'get_balance',
     description:
-      "Get a creator's balance (available, pending, total earned, total paid out). Pass creator_id for a specific creator, or omit for all.",
+      "Get a participant's balance snapshot. Pass creator_id for a specific participant, or omit for all participants.",
     inputSchema: GetBalanceSchema,
     method: 'GET',
-    endpoint: 'get-balance',
+    endpoint: 'participants',
+    resolveEndpoint: (args) =>
+      typeof args.creator_id === 'string' && args.creator_id.trim().length > 0
+        ? `participants/${encodeURIComponent(args.creator_id)}`
+        : 'participants',
     mutating: false,
     amountLimitCents: 0,
   },
   {
     name: 'get_all_balances',
     description:
-      'Get all balances, chart of accounts, or account details. Use action="list" for all creator balances.',
+      'List all participant balances.',
     inputSchema: GetAllBalancesSchema,
-    method: 'POST',
-    endpoint: 'get-balances',
+    method: 'GET',
+    endpoint: 'participants',
     mutating: false,
     amountLimitCents: 0,
   },
@@ -307,7 +312,7 @@ const TOOLS: ToolDef[] = [
       '[WRITE] Process a payout to a creator. Amount in cents. Requires confirm=true and idempotency_key.',
     inputSchema: ProcessPayoutSchema,
     method: 'POST',
-    endpoint: 'process-payout',
+    endpoint: 'payouts',
     mutating: true,
     amountLimitCents: 50_000_00, // $50,000
   },
@@ -317,7 +322,7 @@ const TOOLS: ToolDef[] = [
       '[WRITE] Refund a sale (full or partial). Requires confirm=true and idempotency_key.',
     inputSchema: RecordRefundSchema,
     method: 'POST',
-    endpoint: 'record-refund',
+    endpoint: 'refunds',
     mutating: true,
     amountLimitCents: 100_000_00, // $100,000
   },
@@ -337,7 +342,7 @@ const TOOLS: ToolDef[] = [
       '[WRITE] Create a new creator account. Requires confirm=true and idempotency_key.',
     inputSchema: CreateCreatorSchema,
     method: 'POST',
-    endpoint: 'create-creator',
+    endpoint: 'participants',
     mutating: true,
     amountLimitCents: 0,
   },
@@ -347,7 +352,7 @@ const TOOLS: ToolDef[] = [
       '[WRITE] Create checkout session or direct charge. Amount in cents. Requires confirm=true and idempotency_key.',
     inputSchema: CreateCheckoutSchema,
     method: 'POST',
-    endpoint: 'create-checkout',
+    endpoint: 'checkout-sessions',
     mutating: true,
     amountLimitCents: 100_000_00,
   },
@@ -535,6 +540,8 @@ export function registerTools(server: Server) {
       // ── Make API request ──
       let result: { data: unknown; requestId: string | null; ok: boolean }
 
+      const endpoint = tool.resolveEndpoint ? tool.resolveEndpoint(args) : tool.endpoint
+
       if (tool.method === 'GET') {
         const queryParams: Record<
           string,
@@ -545,11 +552,11 @@ export function registerTools(server: Server) {
             queryParams[k] = v as string | number | boolean
           }
         }
-        result = await apiRequest('GET', tool.endpoint, undefined, queryParams)
+        result = await apiRequest('GET', endpoint, undefined, queryParams)
       } else {
         const body = { ...args }
         delete body.confirm
-        result = await apiRequest('POST', tool.endpoint, body)
+        result = await apiRequest('POST', endpoint, body)
       }
 
       // ── Audit ──

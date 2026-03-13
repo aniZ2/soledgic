@@ -6,20 +6,19 @@ export default function SdksPage() {
     <div className="max-w-3xl">
       <h1 className="text-4xl font-bold text-foreground mb-4">SDKs & Libraries</h1>
       <p className="text-xl text-muted-foreground mb-8">
-        Official SDKs for integrating Soledgic into your application.
+        Use the TypeScript SDK or integrate against the REST API directly.
       </p>
 
-      {/* TypeScript/JavaScript */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center">
-            <span className="text-lg">📦</span>
+            <span className="text-lg">TS</span>
           </div>
           <h2 className="text-2xl font-semibold text-foreground">TypeScript / JavaScript</h2>
         </div>
 
         <p className="text-muted-foreground mb-4">
-          Our TypeScript SDK provides type-safe access to all Soledgic APIs.
+          The TypeScript SDK exposes the resource-first treasury surface directly.
         </p>
 
         <h3 className="text-lg font-semibold text-foreground mb-3">Installation</h3>
@@ -30,253 +29,158 @@ export default function SdksPage() {
         <h3 className="text-lg font-semibold text-foreground mb-3">Usage</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`import { Soledgic } from '@soledgic/sdk';
+{`import Soledgic from '@soledgic/sdk';
 
-// Initialize with your API key
-const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY);
+const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY!);
 
-// Record a sale
-const sale = await soledgic.recordSale({
-  referenceId: 'order_123',
-  creatorId: 'creator_456',
-  amount: 2999, // $29.99 in cents
-  description: 'Digital product sale'
+const participant = await soledgic.createParticipant({
+  participantId: 'creator_456',
+  displayName: 'Jane Creator',
+  email: 'jane@example.com',
+  defaultSplitPercent: 80,
 });
 
-console.log(sale.transactionId);
-// => "txn_abc123"
+const checkout = await soledgic.createCheckoutSession({
+  participantId: 'creator_456',
+  amount: 2999,
+  currency: 'USD',
+  productName: 'Premium asset pack',
+  successUrl: 'https://example.com/success',
+  cancelUrl: 'https://example.com/cancel',
+});
 
-console.log(sale.breakdown);
-// => { total: 29.99, creatorAmount: 23.99, platformAmount: 6.00 }`}
+console.log(checkout.checkoutSession.checkoutUrl);`}
           </pre>
         </div>
 
-        <h3 className="text-lg font-semibold text-foreground mb-3">More Examples</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-3">Treasury Helpers</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
-{`// Get a creator's balance
-const balance = await soledgic.getBalance('creator_456');
-console.log(\`Available: $\${balance.available}\`);
+{`const wallet = await soledgic.getParticipantWallet('creator_456');
+const holds = await soledgic.listHolds({ participantId: 'creator_456' });
+const eligibility = await soledgic.getParticipantPayoutEligibility('creator_456');
 
-// Process a payout
-const payout = await soledgic.processPayout({
-  creatorId: 'creator_456',
-  paymentMethod: 'card'
+const payout = await soledgic.createPayout({
+  participantId: 'creator_456',
+  referenceId: 'payout_2026_03_12_001',
+  amount: 1500,
+  payoutMethod: 'card',
 });
 
-// Record a refund
-const refund = await soledgic.recordRefund({
-  originalSaleReference: 'order_123',
-  reason: 'Customer requested'
-});
-
-// Get transactions
-const transactions = await soledgic.getTransactions({
-  creatorId: 'creator_456',
-  type: 'sale',
-  startDate: '2025-01-01',
-  perPage: 50
+const refund = await soledgic.createRefund({
+  saleReference: 'sale_123',
+  reason: 'Customer requested refund',
 });`}
           </pre>
         </div>
       </section>
 
-      {/* Python */}
-      <section className="mb-12">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
-            <span className="text-lg">🐍</span>
-          </div>
-          <h2 className="text-2xl font-semibold text-foreground">Python</h2>
-        </div>
-
-        <p className="text-muted-foreground mb-4">
-          Our Python SDK works with Python 3.8 and above.
-        </p>
-
-        <h3 className="text-lg font-semibold text-foreground mb-3">Installation</h3>
-        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
-          <pre className="text-sm text-slate-300">pip install soledgic</pre>
-        </div>
-
-        <h3 className="text-lg font-semibold text-foreground mb-3">Usage</h3>
-        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
-          <pre className="text-sm text-slate-300">
-{`import os
-from soledgic import Soledgic
-
-# Initialize with your API key
-client = Soledgic(api_key=os.environ['SOLEDGIC_API_KEY'])
-
-# Record a sale
-sale = client.record_sale(
-    reference_id='order_123',
-    creator_id='creator_456',
-    amount=2999,  # $29.99 in cents
-    description='Digital product sale'
-)
-
-print(f"Transaction ID: {sale.transaction_id}")
-print(f"Creator earns: \${sale.breakdown.creator_amount}")
-
-# Get a creator's balance
-balance = client.get_balance('creator_456')
-print(f"Available: \${balance.available}")
-
-# Process a payout
-payout = client.process_payout(
-    creator_id='creator_456',
-    payment_method='card'
-)`}
-          </pre>
-        </div>
-      </section>
-
-      {/* REST API */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-            <span className="text-lg">🌐</span>
+            <span className="text-lg">REST</span>
           </div>
           <h2 className="text-2xl font-semibold text-foreground">REST API</h2>
         </div>
 
         <p className="text-muted-foreground mb-4">
-          Don&apos;t see your language? Use our REST API directly with any HTTP client.
+          If you are not using the TypeScript SDK, the REST API is the canonical integration surface.
         </p>
 
-        <h3 className="text-lg font-semibold text-foreground mb-3">cURL Example</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-3">Create a Participant</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/participants \\
   -H "x-api-key: sk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "reference_id": "order_123",
-    "creator_id": "creator_456",
-    "amount": 2999,
-    "description": "Digital product sale"
+    "participant_id": "creator_456",
+    "display_name": "Jane Creator"
   }'`}
           </pre>
         </div>
 
-        <h3 className="text-lg font-semibold text-foreground mb-3">Ruby</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-3">Create a Checkout Session</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`require 'net/http'
-require 'json'
-
-uri = URI('${API_BASE_URL}/v1/record-sale')
-http = Net::HTTP.new(uri.host, uri.port)
-http.use_ssl = true
-
-request = Net::HTTP::Post.new(uri)
-request['x-api-key'] = ENV['SOLEDGIC_API_KEY']
-request['Content-Type'] = 'application/json'
-request.body = {
-  reference_id: 'order_123',
-  creator_id: 'creator_456',
-  amount: 2999
-}.to_json
-
-response = http.request(request)
-result = JSON.parse(response.body)`}
+{`curl -X POST ${API_BASE_URL}/v1/checkout-sessions \\
+  -H "x-api-key: sk_test_your_api_key" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "participant_id": "creator_456",
+    "amount": 2999,
+    "currency": "USD",
+    "success_url": "https://example.com/success"
+  }'`}
           </pre>
         </div>
 
-        <h3 className="text-lg font-semibold text-foreground mb-3">Go</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-3">Node.js fetch</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
-{`package main
+{`const response = await fetch('${API_BASE_URL}/v1/payouts', {
+  method: 'POST',
+  headers: {
+    'x-api-key': process.env.SOLEDGIC_API_KEY!,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    participant_id: 'creator_456',
+    reference_id: 'payout_2026_03_12_001',
+    amount: 1500,
+    payout_method: 'card',
+  }),
+});
 
-import (
-    "bytes"
-    "encoding/json"
-    "net/http"
-    "os"
-)
-
-func recordSale() {
-    payload := map[string]interface{}{
-        "reference_id": "order_123",
-        "creator_id":   "creator_456",
-        "amount":       2999,
-    }
-
-    body, _ := json.Marshal(payload)
-
-    req, _ := http.NewRequest("POST",
-        "${API_BASE_URL}/v1/record-sale",
-        bytes.NewBuffer(body))
-
-    req.Header.Set("x-api-key", os.Getenv("SOLEDGIC_API_KEY"))
-    req.Header.Set("Content-Type", "application/json")
-
-    client := &http.Client{}
-    resp, _ := client.Do(req)
-    defer resp.Body.Close()
-}`}
+const result = await response.json();`}
           </pre>
         </div>
       </section>
 
-      {/* Webhook SDKs */}
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Webhook Helpers</h2>
         <p className="text-muted-foreground mb-4">
-          Our SDKs include helpers for verifying webhook signatures.
+          The TypeScript SDK includes webhook helpers for signature verification and payload parsing.
         </p>
 
-        <h3 className="text-lg font-semibold text-foreground mb-3">TypeScript</h3>
-        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
+        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
-{`import { Soledgic } from '@soledgic/sdk';
+{`import Soledgic from '@soledgic/sdk';
 
-const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY);
+const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY!);
 
-// Verify webhook signature
 const isValid = soledgic.webhooks.verifySignature(
   payload,
   signature,
-  webhookSecret
+  webhookSecret,
 );
 
-// Parse webhook event
 const event = soledgic.webhooks.parseEvent(payload);
 
-if (event.type === 'checkout.completed') {
-  console.log('Checkout completed:', event.data.transaction_id);
+if (event.type === 'payout.executed') {
+  console.log('Payout completed:', event.data.payout_id);
 }`}
-          </pre>
-        </div>
-
-        <h3 className="text-lg font-semibold text-foreground mb-3">Python</h3>
-        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
-          <pre className="text-sm text-slate-300">
-{`from soledgic import Soledgic
-
-client = Soledgic(api_key=os.environ['SOLEDGIC_API_KEY'])
-
-# Verify webhook signature
-is_valid = client.webhooks.verify_signature(
-    payload=payload,
-    signature=signature,
-    secret=webhook_secret
-)
-
-# Parse webhook event
-event = client.webhooks.parse_event(payload)
-
-if event.type == 'checkout.completed':
-    print(f"Checkout completed: {event.data['transaction_id']}")`}
           </pre>
         </div>
       </section>
 
-      {/* Resources */}
       <section className="border-t border-border pt-8">
         <h2 className="text-xl font-semibold text-foreground mb-4">Resources</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Link
+            href="/docs/api"
+            className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
+          >
+            <h3 className="font-semibold text-foreground">API Reference →</h3>
+            <p className="text-sm text-muted-foreground mt-1">Generated request and response docs</p>
+          </Link>
+          <Link
+            href="/docs/webhooks"
+            className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
+          >
+            <h3 className="font-semibold text-foreground">Webhooks →</h3>
+            <p className="text-sm text-muted-foreground mt-1">Event types and signature verification</p>
+          </Link>
           <a
             href="https://github.com/soledgic/sdk-typescript"
             className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
@@ -284,30 +188,14 @@ if event.type == 'checkout.completed':
             rel="noopener noreferrer"
           >
             <h3 className="font-semibold text-foreground">TypeScript SDK →</h3>
-            <p className="text-sm text-muted-foreground mt-1">GitHub repository</p>
-          </a>
-          <a
-            href="https://github.com/soledgic/sdk-python"
-            className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h3 className="font-semibold text-foreground">Python SDK →</h3>
-            <p className="text-sm text-muted-foreground mt-1">GitHub repository</p>
+            <p className="text-sm text-muted-foreground mt-1">Repository and package source</p>
           </a>
           <Link
-            href="/docs/api"
+            href="/docs/quickstart"
             className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
           >
-            <h3 className="font-semibold text-foreground">API Reference →</h3>
-            <p className="text-sm text-muted-foreground mt-1">Complete endpoint documentation</p>
-          </Link>
-          <Link
-            href="/docs/webhooks"
-            className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
-          >
-            <h3 className="font-semibold text-foreground">Webhooks →</h3>
-            <p className="text-sm text-muted-foreground mt-1">Real-time event notifications</p>
+            <h3 className="font-semibold text-foreground">Quickstart →</h3>
+            <p className="text-sm text-muted-foreground mt-1">End-to-end platform treasury flow</p>
           </Link>
         </div>
       </section>

@@ -26,7 +26,7 @@ tags:
   - name: "Invoicing"
     description: "Invoice management and PDF generation"
   - name: "Payments"
-    description: "Record sales, process payouts, refunds, reversals, and fund releases"
+    description: "Checkout sessions, payouts, refunds, and payment-adjacent platform flows"
   - name: "Reports"
     description: "Financial reports — balance sheet, P&L, trial balance, aging, statements"
   - name: "Risk"
@@ -35,21 +35,17 @@ tags:
     description: "Tax document generation and summaries"
   - name: "Transactions"
     description: "List and import transactions"
+  - name: "Treasury"
+    description: "Platform treasury resources for participants, wallets, holds, and internal transfers"
   - name: "Webhooks"
     description: "Webhook endpoint management"
 paths:
-  /v1/ap-aging:
+  /v1/participants:
     get:
-      operationId: "ap-aging"
-      summary: "Accounts Payable Aging Report"
+      operationId: "participants-get"
+      summary: "List treasury participants or create a new participant-backed account."
       tags:
-        - "Reports"
-      parameters:
-        - name: "as_of_date"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
+        - "Treasury"
       responses:
         "200":
           description: "Success"
@@ -74,6 +70,522 @@ paths:
               description: "Unix timestamp when rate limit resets"
               schema:
                 type: "integer"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParticipantsListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: "participants-post"
+      summary: "List treasury participants or create a new participant-backed account."
+      tags:
+        - "Treasury"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParticipantCreateRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParticipantCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/participants/{participant_id}:
+    get:
+      operationId: "participant-detail"
+      summary: "Get a participant balance snapshot, including active holds."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParticipantDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/participants/{participant_id}/payout-eligibility:
+    get:
+      operationId: "participant-payout-eligibility"
+      summary: "Check whether a participant is currently eligible for payout."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParticipantEligibilityResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/wallets/{participant_id}:
+    get:
+      operationId: "wallet-detail"
+      summary: "Get the wallet balance for a participant."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/wallets/{participant_id}/entries:
+    get:
+      operationId: "wallet-entries"
+      summary: "List wallet ledger entries for a participant."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+        - name: "offset"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletEntriesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/wallets/{participant_id}/deposits:
+    post:
+      operationId: "wallet-deposit"
+      summary: "Deposit funds into a participant wallet."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletMutationRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletDepositResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/wallets/{participant_id}/withdrawals:
+    post:
+      operationId: "wallet-withdrawal"
+      summary: "Withdraw funds from a participant wallet."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletMutationRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletWithdrawalResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/transfers:
+    post:
+      operationId: "transfers"
+      summary: "Move funds between participant wallets."
+      tags:
+        - "Treasury"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferFundsRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferFundsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/holds:
+    get:
+      operationId: "holds"
+      summary: "List held funds across participants, with optional readiness filtering."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "participant_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "venture_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "ready_only"
+          in: "query"
+          required: false
+          schema:
+            type: "boolean"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HoldsListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/holds/summary:
+    get:
+      operationId: "holds-summary"
+      summary: "Get an aggregate summary of held and releasable funds."
+      tags:
+        - "Treasury"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HoldsSummaryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/holds/{hold_id}/release:
+    post:
+      operationId: "hold-release"
+      summary: "Release a held-funds entry and optionally execute the transfer."
+      tags:
+        - "Treasury"
+      parameters:
+        - name: "hold_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HoldReleaseRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HoldReleaseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/checkout-sessions:
+    post:
+      operationId: "checkout-sessions"
+      summary: "Create a hosted or direct checkout session for a participant sale."
+      tags:
+        - "Payments"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TreasuryCheckoutSessionRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSessionResourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/payouts:
+    post:
+      operationId: "payouts"
+      summary: "Create a payout for a participant."
+      tags:
+        - "Payments"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TreasuryPayoutRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayoutResourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/refunds:
+    post:
+      operationId: "refunds"
+      summary: "Create a refund against a recorded sale."
+      tags:
+        - "Payments"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TreasuryRefundRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundResourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/ap-aging:
+    get:
+      operationId: "ap-aging"
+      summary: "Accounts Payable Aging Report"
+      tags:
+        - "Reports"
+      parameters:
+        - name: "as_of_date"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
           content:
             application/json:
               schema:
@@ -130,69 +642,6 @@ paths:
         - "Reports"
       parameters:
         - name: "as_of_date"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/check-payout-eligibility:
-    get:
-      operationId: "check-payout-eligibility-get"
-      summary: "Check Payout Eligibility"
-      tags:
-        - "Payments"
-      parameters:
-        - name: "creator_id"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-    post:
-      operationId: "check-payout-eligibility-post"
-      summary: "Check Payout Eligibility"
-      tags:
-        - "Payments"
-      parameters:
-        - name: "creator_id"
           in: "query"
           required: false
           schema:
@@ -385,70 +834,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/create-checkout:
-    post:
-      operationId: "create-checkout"
-      summary: "Create Checkout"
-      tags:
-        - "Payments"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateCheckoutRequest"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CreateCheckoutResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/create-creator:
-    post:
-      operationId: "create-creator"
-      summary: "Create Creator"
-      tags:
-        - "Creators"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateCreatorRequest"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CreateCreatorResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -782,117 +1167,6 @@ paths:
                   type: "string"
               required:
                 - "tax_year"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/get-balance:
-    get:
-      operationId: "get-balance"
-      summary: "Get Balance"
-      tags:
-        - "Balances"
-      parameters:
-        - name: "creator_id"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-        - name: "include_platform"
-          in: "query"
-          required: false
-          schema:
-            type: "string"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GetBalanceResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/get-balances:
-    get:
-      operationId: "get-balances-get"
-      summary: "Get Balances"
-      tags:
-        - "Balances"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-    post:
-      operationId: "get-balances-post"
-      summary: "Get Balances"
-      tags:
-        - "Balances"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                action:
-                  type: "string"
-                  enum:
-                    - "list"
-                    - "chart_of_accounts"
-                    - "account_detail"
-                account_id:
-                  type: "string"
-                  format: "uuid"
-                creator_id:
-                  type: "string"
-                as_of_date:
-                  type: "string"
-                  format: "date"
-              required:
-                - "action"
       responses:
         "200":
           description: "Success"
@@ -1771,38 +2045,6 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/process-payout:
-    post:
-      operationId: "process-payout"
-      summary: "Process Payout"
-      tags:
-        - "Payments"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProcessPayoutRequest"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProcessPayoutResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
   /v1/profit-loss:
     get:
       operationId: "profit-loss-get"
@@ -2292,38 +2534,6 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/record-refund:
-    post:
-      operationId: "record-refund"
-      summary: "Record Refund"
-      tags:
-        - "Payments"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RecordRefundRequest"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RecordRefundResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
   /v1/record-sale:
     post:
       operationId: "record-sale"
@@ -2411,67 +2621,6 @@ paths:
               required:
                 - "external_ref"
                 - "extracted_terms"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/release-funds:
-    post:
-      operationId: "release-funds"
-      summary: "Release Funds"
-      tags:
-        - "Payments"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                action:
-                  type: "string"
-                  enum:
-                    - "get_summary"
-                    - "get_held"
-                    - "release"
-                    - "batch_release"
-                    - "auto_release"
-                entry_id:
-                  type: "string"
-                  format: "uuid"
-                entry_ids:
-                  type: "array"
-                  items:
-                    type: "string"
-                    format: "uuid"
-                venture_id:
-                  type: "string"
-                creator_id:
-                  type: "string"
-                ready_only:
-                  type: "boolean"
-                limit:
-                  type: "integer"
-                execute_transfer:
-                  type: "boolean"
-              required:
-                - "action"
       responses:
         "200":
           description: "Success"
@@ -3375,6 +3524,177 @@ components:
           additionalProperties: true
       required:
         - "amount"
+    ParticipantCreateRequest:
+      type: "object"
+      properties:
+        participant_id:
+          type: "string"
+        display_name:
+          type: "string"
+        email:
+          type: "string"
+          format: "email"
+        default_split_percent:
+          type: "number"
+          minimum: 0
+          maximum: 100
+        tax_info:
+          type: "object"
+          additionalProperties: true
+        payout_preferences:
+          type: "object"
+          additionalProperties: true
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "participant_id"
+    WalletMutationRequest:
+      type: "object"
+      properties:
+        amount:
+          type: "integer"
+          description: "Amount in cents"
+        reference_id:
+          type: "string"
+        description:
+          type: "string"
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "amount"
+        - "reference_id"
+    TransferFundsRequest:
+      type: "object"
+      properties:
+        from_participant_id:
+          type: "string"
+        to_participant_id:
+          type: "string"
+        amount:
+          type: "integer"
+          description: "Amount in cents"
+        reference_id:
+          type: "string"
+        description:
+          type: "string"
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "from_participant_id"
+        - "to_participant_id"
+        - "amount"
+        - "reference_id"
+    HoldReleaseRequest:
+      type: "object"
+      properties:
+        execute_transfer:
+          type: "boolean"
+          default: true
+    TreasuryCheckoutSessionRequest:
+      type: "object"
+      properties:
+        participant_id:
+          type: "string"
+        amount:
+          type: "integer"
+          description: "Amount in cents"
+        currency:
+          type: "string"
+          default: "USD"
+        product_id:
+          type: "string"
+        product_name:
+          type: "string"
+        customer_email:
+          type: "string"
+          format: "email"
+        customer_id:
+          type: "string"
+        payment_method_id:
+          type: "string"
+        source_id:
+          type: "string"
+        success_url:
+          type: "string"
+          format: "uri"
+        cancel_url:
+          type: "string"
+          format: "uri"
+        idempotency_key:
+          type: "string"
+        metadata:
+          type: "object"
+          additionalProperties:
+            type: "string"
+      required:
+        - "participant_id"
+        - "amount"
+    TreasuryPayoutRequest:
+      type: "object"
+      properties:
+        participant_id:
+          type: "string"
+        amount:
+          type: "integer"
+          description: "Amount in cents"
+        reference_id:
+          type: "string"
+        reference_type:
+          type: "string"
+        description:
+          type: "string"
+        payout_method:
+          type: "string"
+        fees:
+          type: "integer"
+        fees_paid_by:
+          type: "string"
+          enum:
+            - "platform"
+            - "creator"
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "participant_id"
+        - "amount"
+        - "reference_id"
+    TreasuryRefundRequest:
+      type: "object"
+      properties:
+        sale_reference:
+          type: "string"
+        reason:
+          type: "string"
+        amount:
+          type: "integer"
+          description: "Amount in cents"
+        refund_from:
+          type: "string"
+          enum:
+            - "both"
+            - "platform_only"
+            - "creator_only"
+        external_refund_id:
+          type: "string"
+        idempotency_key:
+          type: "string"
+        mode:
+          type: "string"
+          enum:
+            - "ledger_only"
+            - "processor_refund"
+        processor_payment_id:
+          type: "string"
+        metadata:
+          type: "object"
+          additionalProperties: true
+      required:
+        - "sale_reference"
+        - "reason"
     SaleBreakdown:
       type: "object"
       properties:
@@ -3787,6 +4107,466 @@ components:
               format: "uuid"
             amount:
               type: "integer"
+    ParticipantSummary:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        name:
+          type:
+            - "string"
+            - "null"
+        tier:
+          type:
+            - "string"
+            - "null"
+        ledger_balance:
+          type: "number"
+        held_amount:
+          type: "number"
+        available_balance:
+          type: "number"
+    Hold:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        participant_id:
+          type:
+            - "string"
+            - "null"
+        participant_name:
+          type:
+            - "string"
+            - "null"
+        amount:
+          type: "number"
+        currency:
+          type: "string"
+        held_since:
+          type: "string"
+          format: "date-time"
+        days_held:
+          type: "integer"
+        hold_reason:
+          type:
+            - "string"
+            - "null"
+        hold_until:
+          type:
+            - "string"
+            - "null"
+          format: "date-time"
+        ready_for_release:
+          type: "boolean"
+        release_status:
+          type: "string"
+        transaction_reference:
+          type:
+            - "string"
+            - "null"
+        product_name:
+          type:
+            - "string"
+            - "null"
+        venture_id:
+          type:
+            - "string"
+            - "null"
+        connected_account_ready:
+          type: "boolean"
+    ParticipantsListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            participants:
+              type: "array"
+              items:
+                $ref: "#/components/schemas/ParticipantSummary"
+    ParticipantDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            participant:
+              type: "object"
+              properties:
+                id:
+                  type: "string"
+                name:
+                  type:
+                    - "string"
+                    - "null"
+                tier:
+                  type:
+                    - "string"
+                    - "null"
+                custom_split_percent:
+                  type:
+                    - "number"
+                    - "null"
+                ledger_balance:
+                  type: "number"
+                held_amount:
+                  type: "number"
+                available_balance:
+                  type: "number"
+                holds:
+                  type: "array"
+                  items:
+                    type: "object"
+                    properties:
+                      amount:
+                        type: "number"
+                      reason:
+                        type:
+                          - "string"
+                          - "null"
+                      release_date:
+                        type:
+                          - "string"
+                          - "null"
+                        format: "date-time"
+                      status:
+                        type: "string"
+    ParticipantCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            participant:
+              type: "object"
+              properties:
+                id:
+                  type: "string"
+                account_id:
+                  type: "string"
+                  format: "uuid"
+                display_name:
+                  type:
+                    - "string"
+                    - "null"
+                email:
+                  type:
+                    - "string"
+                    - "null"
+                default_split_percent:
+                  type: "number"
+                payout_preferences:
+                  type: "object"
+                  additionalProperties: true
+                created_at:
+                  type: "string"
+                  format: "date-time"
+    ParticipantEligibilityResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            eligibility:
+              type: "object"
+              properties:
+                participant_id:
+                  type: "string"
+                eligible:
+                  type: "boolean"
+                available_balance:
+                  type: "number"
+                issues:
+                  type: "array"
+                  items:
+                    type: "string"
+                requirements:
+                  type: "object"
+                  additionalProperties: true
+    WalletDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            wallet:
+              type: "object"
+              properties:
+                participant_id:
+                  type: "string"
+                balance:
+                  type: "number"
+                wallet_exists:
+                  type: "boolean"
+                account:
+                  type:
+                    - "object"
+                    - "null"
+                  properties:
+                    id:
+                      type: "string"
+                      format: "uuid"
+                    participant_id:
+                      type: "string"
+                    name:
+                      type:
+                        - "string"
+                        - "null"
+                    is_active:
+                      type: "boolean"
+                    created_at:
+                      type: "string"
+                      format: "date-time"
+    WalletEntriesResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            entries:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  entry_id:
+                    type: "string"
+                    format: "uuid"
+                  entry_type:
+                    type: "string"
+                    enum:
+                      - "debit"
+                      - "credit"
+                  amount:
+                    type: "number"
+                  transaction_id:
+                    type: "string"
+                    format: "uuid"
+                  reference_id:
+                    type:
+                      - "string"
+                      - "null"
+                  transaction_type:
+                    type: "string"
+                  description:
+                    type:
+                      - "string"
+                      - "null"
+                  status:
+                    type: "string"
+                  metadata:
+                    type: "object"
+                    additionalProperties: true
+                  created_at:
+                    type: "string"
+                    format: "date-time"
+            total:
+              type: "integer"
+            limit:
+              type: "integer"
+            offset:
+              type: "integer"
+    WalletDepositResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            deposit:
+              type: "object"
+              properties:
+                participant_id:
+                  type: "string"
+                transaction_id:
+                  type: "string"
+                  format: "uuid"
+                balance:
+                  type: "number"
+    WalletWithdrawalResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            withdrawal:
+              type: "object"
+              properties:
+                participant_id:
+                  type: "string"
+                transaction_id:
+                  type: "string"
+                  format: "uuid"
+                balance:
+                  type: "number"
+    TransferFundsResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            transfer:
+              type: "object"
+              properties:
+                transaction_id:
+                  type: "string"
+                  format: "uuid"
+                from_participant_id:
+                  type:
+                    - "string"
+                    - "null"
+                to_participant_id:
+                  type:
+                    - "string"
+                    - "null"
+                from_balance:
+                  type: "number"
+                to_balance:
+                  type: "number"
+    HoldsListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            holds:
+              type: "array"
+              items:
+                $ref: "#/components/schemas/Hold"
+            count:
+              type: "integer"
+    HoldsSummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            summary:
+              type: "object"
+              additionalProperties: true
+    HoldReleaseResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            release:
+              type: "object"
+              properties:
+                id:
+                  type: "string"
+                hold_id:
+                  type: "string"
+                executed:
+                  type: "boolean"
+                transfer_id:
+                  type:
+                    - "string"
+                    - "null"
+                transfer_status:
+                  type:
+                    - "string"
+                    - "null"
+                amount:
+                  type:
+                    - "number"
+                    - "null"
+                currency:
+                  type:
+                    - "string"
+                    - "null"
+    CheckoutSessionResourceResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            checkout_session:
+              type: "object"
+              properties:
+                id:
+                  type: "string"
+                mode:
+                  type: "string"
+                  enum:
+                    - "direct"
+                    - "session"
+                checkout_url:
+                  type:
+                    - "string"
+                    - "null"
+                payment_id:
+                  type:
+                    - "string"
+                    - "null"
+                payment_intent_id:
+                  type:
+                    - "string"
+                    - "null"
+                status:
+                  type:
+                    - "string"
+                    - "null"
+                requires_action:
+                  type: "boolean"
+                amount:
+                  type: "integer"
+                currency:
+                  type: "string"
+                expires_at:
+                  type:
+                    - "string"
+                    - "null"
+                  format: "date-time"
+                breakdown:
+                  $ref: "#/components/schemas/CheckoutBreakdown"
+    PayoutResourceResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            payout:
+              type: "object"
+              properties:
+                id:
+                  type: "string"
+                  format: "uuid"
+                transaction_id:
+                  type: "string"
+                  format: "uuid"
+                gross_amount:
+                  type:
+                    - "number"
+                    - "null"
+                fees:
+                  type:
+                    - "number"
+                    - "null"
+                net_amount:
+                  type:
+                    - "number"
+                    - "null"
+                previous_balance:
+                  type:
+                    - "number"
+                    - "null"
+                new_balance:
+                  type:
+                    - "number"
+                    - "null"
+    RefundResourceResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            refund:
+              type: "object"
+              properties:
+                id:
+                  type: "string"
+                  format: "uuid"
+                transaction_id:
+                  type: "string"
+                  format: "uuid"
+                refunded_amount:
+                  type: "number"
+                breakdown:
+                  type: "object"
+                  properties:
+                    from_creator:
+                      type: "number"
+                    from_platform:
+                      type: "number"
+                is_full_refund:
+                  type:
+                    - "boolean"
+                    - "null"
   responses:
     BadRequest:
       description: "Validation error"

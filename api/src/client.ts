@@ -8,6 +8,7 @@ import {
   // Payments
   CreateCheckoutRequest,
   CreateCheckoutResponse,
+  CheckoutBreakdown,
   RecordSaleRequest,
   RecordSaleResponse,
   ProcessPayoutRequest,
@@ -20,6 +21,7 @@ import {
   CheckPayoutEligibilityResponse,
   RecordRefundRequest,
   RecordRefundResponse,
+  RefundBreakdown,
   ReverseTransactionRequest,
   ReverseTransactionResponse,
   // Balances
@@ -308,12 +310,50 @@ export class Soledgic {
     if (!request.creatorId) throw new ValidationError('creatorId is required')
     if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
 
-    const response = await this.request<Record<string, unknown>>('create-checkout', {
+    const response = await this.request<Record<string, unknown>>('checkout-sessions', {
       method: 'POST',
-      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+      body: {
+        ...this.toSnakeCase(request as unknown as Record<string, unknown>),
+        participant_id: request.creatorId,
+      },
     })
 
-    return this.toCamelCase<CreateCheckoutResponse>(response)
+    const checkout = (
+      response.checkout_session &&
+      typeof response.checkout_session === 'object' &&
+      !Array.isArray(response.checkout_session)
+    )
+      ? response.checkout_session as Record<string, unknown>
+      : response
+
+    if (checkout.mode === 'session') {
+      return {
+        success: Boolean(response.success),
+        mode: 'session',
+        sessionId: String(checkout.id ?? ''),
+        checkoutUrl: (checkout.checkout_url as string | null | undefined) ?? null,
+        expiresAt: checkout.expires_at as string | undefined,
+        breakdown: checkout.breakdown
+          ? this.toCamelCase<CheckoutBreakdown>(checkout.breakdown as Record<string, unknown>)
+          : undefined,
+      }
+    }
+
+    return {
+      success: Boolean(response.success),
+      provider: (checkout.provider as 'card' | undefined) ?? 'card',
+      paymentId: String(checkout.payment_id ?? checkout.payment_intent_id ?? ''),
+      paymentIntentId: String(checkout.payment_intent_id ?? checkout.payment_id ?? ''),
+      clientSecret: (checkout.client_secret as string | null | undefined) ?? null,
+      checkoutUrl: (checkout.checkout_url as string | null | undefined) ?? null,
+      status: (checkout.status as string | null | undefined) ?? null,
+      requiresAction: Boolean(checkout.requires_action),
+      amount: checkout.amount as number | undefined,
+      currency: checkout.currency as string | undefined,
+      breakdown: checkout.breakdown
+        ? this.toCamelCase<CheckoutBreakdown>(checkout.breakdown as Record<string, unknown>)
+        : undefined,
+    }
   }
 
   /**
@@ -339,12 +379,30 @@ export class Soledgic {
     if (!request.originalSaleReference) throw new ValidationError('originalSaleReference is required')
     if (!request.reason) throw new ValidationError('reason is required')
 
-    const response = await this.request<Record<string, unknown>>('record-refund', {
+    const response = await this.request<Record<string, unknown>>('refunds', {
       method: 'POST',
-      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+      body: {
+        ...this.toSnakeCase(request as unknown as Record<string, unknown>),
+        sale_reference: request.originalSaleReference,
+      },
     })
 
-    return this.toCamelCase<RecordRefundResponse>(response)
+    const refund = (
+      response.refund &&
+      typeof response.refund === 'object' &&
+      !Array.isArray(response.refund)
+    )
+      ? response.refund as Record<string, unknown>
+      : response
+
+    return {
+      success: Boolean(response.success),
+      transactionId: refund.transaction_id as string | undefined,
+      refundedAmount: refund.refunded_amount as number | undefined,
+      breakdown: refund.breakdown
+        ? this.toCamelCase<RefundBreakdown>(refund.breakdown as Record<string, unknown>)
+        : undefined,
+    }
   }
 
   /**
@@ -374,12 +432,29 @@ export class Soledgic {
     if (!request.creatorId) throw new ValidationError('creatorId is required')
     if (!request.referenceId) throw new ValidationError('referenceId is required')
 
-    const response = await this.request<Record<string, unknown>>('process-payout', {
+    const response = await this.request<Record<string, unknown>>('payouts', {
       method: 'POST',
-      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+      body: {
+        ...this.toSnakeCase(request as unknown as Record<string, unknown>),
+        participant_id: request.creatorId,
+      },
     })
 
-    return this.toCamelCase<ProcessPayoutResponse>(response)
+    const payout = (
+      response.payout &&
+      typeof response.payout === 'object' &&
+      !Array.isArray(response.payout)
+    )
+      ? response.payout as Record<string, unknown>
+      : response
+
+    return {
+      success: Boolean(response.success),
+      payoutId: payout.id as string | undefined,
+      transactionId: payout.transaction_id as string | undefined,
+      amount: (payout.net_amount as number | undefined) ?? request.amount,
+      status: 'created',
+    }
   }
 
   /**
@@ -440,11 +515,25 @@ export class Soledgic {
   async checkPayoutEligibility(creatorId: string): Promise<CheckPayoutEligibilityResponse> {
     if (!creatorId) throw new ValidationError('creatorId is required')
 
-    const response = await this.request<Record<string, unknown>>('check-payout-eligibility', {
-      params: { creator_id: creatorId },
-    })
+    const response = await this.request<Record<string, unknown>>(
+      `participants/${creatorId}/payout-eligibility`,
+      { params: {} },
+    )
+    const eligibility = (
+      response.eligibility &&
+      typeof response.eligibility === 'object' &&
+      !Array.isArray(response.eligibility)
+    )
+      ? response.eligibility as Record<string, unknown>
+      : {}
 
-    return this.toCamelCase<CheckPayoutEligibilityResponse>(response)
+    return {
+      success: Boolean(response.success),
+      eligible: Boolean(eligibility.eligible),
+      reason: Array.isArray(eligibility.issues) && eligibility.issues.length > 0
+        ? String(eligibility.issues[0])
+        : undefined,
+    }
   }
 
   // ============================================================================
@@ -457,24 +546,47 @@ export class Soledgic {
   async getCreatorBalance(creatorId: string): Promise<GetBalanceResponse> {
     if (!creatorId) throw new ValidationError('creatorId is required')
 
-    const response = await this.request<Record<string, unknown>>('get-balance', {
-      params: { creator_id: creatorId },
-    })
+    const response = await this.request<Record<string, unknown>>(`participants/${creatorId}`, { params: {} })
+    const participant = (
+      response.participant &&
+      typeof response.participant === 'object' &&
+      !Array.isArray(response.participant)
+    )
+      ? response.participant as Record<string, unknown>
+      : {}
 
-    return this.toCamelCase<GetBalanceResponse>(response)
+    return {
+      success: Boolean(response.success),
+      balance: {
+        creatorId,
+        available: participant.available_balance as number,
+        pending: participant.held_amount as number,
+        totalEarned: participant.ledger_balance as number,
+        totalPaidOut: 0,
+        currency: 'USD',
+      },
+    }
   }
 
   /**
    * Get balances for all creators, optionally including platform summary.
    */
   async getAllBalances(options?: { includePlatform?: boolean }): Promise<GetBalanceResponse> {
-    const params: Record<string, string | number | boolean | undefined> = {}
-    if (options?.includePlatform !== undefined) {
-      params.include_platform = options.includePlatform
-    }
-    const response = await this.request<Record<string, unknown>>('get-balance', { params })
+    void options
+    const response = await this.request<Record<string, unknown>>('participants', { params: {} })
+    const participants = Array.isArray(response.participants)
+      ? response.participants as Record<string, unknown>[]
+      : []
 
-    return this.toCamelCase<GetBalanceResponse>(response)
+    return {
+      success: Boolean(response.success),
+      balances: participants.map((participant) => ({
+        creatorId: String(participant.id ?? ''),
+        available: participant.available_balance as number,
+        pending: participant.held_amount as number,
+        currency: 'USD',
+      })),
+    }
   }
 
   // ============================================================================
@@ -513,12 +625,34 @@ export class Soledgic {
   async createCreator(request: CreateCreatorRequest): Promise<CreateCreatorResponse> {
     if (!request.creatorId) throw new ValidationError('creatorId is required')
 
-    const response = await this.request<Record<string, unknown>>('create-creator', {
+    const response = await this.request<Record<string, unknown>>('participants', {
       method: 'POST',
-      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+      body: {
+        ...this.toSnakeCase(request as unknown as Record<string, unknown>),
+        participant_id: request.creatorId,
+      },
     })
 
-    return this.toCamelCase<CreateCreatorResponse>(response)
+    const participant = (
+      response.participant &&
+      typeof response.participant === 'object' &&
+      !Array.isArray(response.participant)
+    )
+      ? response.participant as Record<string, unknown>
+      : {}
+
+    return {
+      success: Boolean(response.success),
+      creator: {
+        id: String(participant.id ?? ''),
+        accountId: String(participant.account_id ?? ''),
+        displayName: (participant.display_name as string | null | undefined) ?? null,
+        email: (participant.email as string | null | undefined) ?? null,
+        defaultSplitPercent: participant.default_split_percent as number,
+        payoutPreferences: participant.payout_preferences as Record<string, unknown> || {},
+        createdAt: String(participant.created_at ?? ''),
+      },
+    }
   }
 
   /**

@@ -2,37 +2,41 @@ import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
 
-const ALLOWED_ENDPOINTS = new Set([
+const ALLOWED_ENDPOINT_ROOTS = new Set([
   'health-check',
-  'create-creator',
   'delete-creator',
-  'release-funds',
   'record-sale',
   'record-expense',
   'record-income',
-  'record-refund',
   'record-transfer',
   'record-adjustment',
-  'process-payout',
   'webhooks',
   'import-transactions',
+  'submit-tax-info',
   'tax-documents',
   'send-statements',
   'profit-loss',
   'trial-balance',
   'generate-pdf',
   'export-report',
-  'manage-wallet',
+  'participants',
+  'wallets',
+  'transfers',
+  'holds',
+  'checkout-sessions',
+  'payouts',
+  'refunds',
   'bank-aggregator',
 ])
 
-const OWNER_ADMIN_ONLY_ENDPOINTS = new Set([
-  'process-payout',
-  'release-funds',
+const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
+  'payouts',
+  'holds',
+  'wallets',
+  'transfers',
   'import-transactions',
   'send-statements',
   'delete-creator',
-  'manage-wallet',
   'bank-aggregator',
 ])
 
@@ -41,7 +45,11 @@ function getEndpointFromRequest(request: Request): string | null {
   const parts = pathname.split('/').filter(Boolean)
   const idx = parts.indexOf('ledger-functions')
   if (idx === -1 || idx + 1 >= parts.length) return null
-  return decodeURIComponent(parts[idx + 1])
+  return parts.slice(idx + 1).map((part) => decodeURIComponent(part)).join('/')
+}
+
+function getEndpointRoot(endpoint: string): string {
+  return endpoint.split('/')[0] || endpoint
 }
 
 function getInternalFunctionToken(): string | null {
@@ -82,7 +90,8 @@ async function proxyLedgerFunction(
   method: string
 ): Promise<NextResponse> {
   const endpoint = getEndpointFromRequest(request)
-  if (!endpoint || !ALLOWED_ENDPOINTS.has(endpoint)) {
+  const endpointRoot = endpoint ? getEndpointRoot(endpoint) : null
+  if (!endpoint || !endpointRoot || !ALLOWED_ENDPOINT_ROOTS.has(endpointRoot)) {
     return NextResponse.json({ error: 'Unsupported function endpoint' }, { status: 404 })
   }
 
@@ -137,7 +146,7 @@ async function proxyLedgerFunction(
   }
 
   if (
-    OWNER_ADMIN_ONLY_ENDPOINTS.has(endpoint) &&
+    OWNER_ADMIN_ONLY_ENDPOINT_ROOTS.has(endpointRoot) &&
     access.role !== 'owner' &&
     access.role !== 'admin'
   ) {

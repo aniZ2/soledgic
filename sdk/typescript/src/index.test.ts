@@ -179,11 +179,13 @@ describe('Soledgic SDK', () => {
   it('createCheckout maps session response', async () => {
     const fn = mockFetch({
       success: true,
-      mode: 'session',
-      session_id: 'sess_1',
-      checkout_url: 'https://pay.example.com',
-      expires_at: '2026-01-01T00:00:00Z',
-      breakdown: { gross_amount: 100, creator_amount: 80, platform_amount: 20, creator_percent: 80 },
+      checkout_session: {
+        id: 'sess_1',
+        mode: 'session',
+        checkout_url: 'https://pay.example.com',
+        expires_at: '2026-01-01T00:00:00Z',
+        breakdown: { gross_amount: 100, creator_amount: 80, platform_amount: 20, creator_percent: 80 },
+      },
     })
     const sdk = createClient(fn)
     const result = await sdk.createCheckout({
@@ -226,7 +228,17 @@ describe('Soledgic SDK', () => {
   // === PAYOUT ===
 
   it('processPayout maps to snake_case', async () => {
-    const fn = mockFetch({ success: true, transaction_id: 'txn_p1', breakdown: {} })
+    const fn = mockFetch({
+      success: true,
+      payout: {
+        id: 'payout_1',
+        transaction_id: 'txn_p1',
+        gross_amount: 5000,
+        fees: 0,
+        net_amount: 5000,
+        new_balance: 1000,
+      },
+    })
     const sdk = createClient(fn)
     await sdk.processPayout({
       creatorId: 'c_1',
@@ -236,10 +248,20 @@ describe('Soledgic SDK', () => {
     })
 
     const body = JSON.parse(fn.mock.calls[0][1].body)
-    expect(body.creator_id).toBe('c_1')
+    expect(body.participant_id).toBe('c_1')
     expect(body.reference_id).toBe('payout_1')
     expect(body.fees_paid_by).toBe('platform')
-    expect(fn.mock.calls[0][0]).toContain('/process-payout')
+    expect(fn.mock.calls[0][0]).toContain('/payouts')
+  })
+
+  it('checkPayoutEligibility uses GET query parameters', async () => {
+    const fn = mockFetch({ success: true, eligible: true, creator_id: 'c_1', available_balance: 50 })
+    const sdk = createClient(fn)
+    await sdk.checkPayoutEligibility('c_1')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(String(url)).toContain('/participants/c_1/payout-eligibility')
+    expect(opts.method).toBe('GET')
   })
 
   // === TRANSFER ===
@@ -343,7 +365,7 @@ describe('Soledgic SDK', () => {
   it('createCreator maps nested snake_case correctly', async () => {
     const fn = mockFetch({
       success: true,
-      creator: {
+      participant: {
         id: 'creator_1',
         account_id: 'acc_1',
         display_name: 'Test',
@@ -362,11 +384,149 @@ describe('Soledgic SDK', () => {
     })
 
     const body = JSON.parse(fn.mock.calls[0][1].body)
-    expect(body.creator_id).toBe('creator_1')
+    expect(body.participant_id).toBe('creator_1')
     expect(body.payout_preferences.minimum_amount).toBe(5000)
 
     expect(result.creator.accountId).toBe('acc_1')
     expect(result.creator.defaultSplitPercent).toBe(80)
+  })
+
+  it('createParticipant wraps creator onboarding in participant vocabulary', async () => {
+    const fn = mockFetch({
+      success: true,
+      participant: {
+        id: 'p_1',
+        account_id: 'acct_1',
+        display_name: 'Alice',
+        email: 'alice@example.com',
+        default_split_percent: 80,
+        payout_preferences: { schedule: 'manual' },
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.createParticipant({
+      participantId: 'p_1',
+      displayName: 'Alice',
+      email: 'alice@example.com',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.participant_id).toBe('p_1')
+    expect(result.participant.accountId).toBe('acct_1')
+    expect(result.participant.displayName).toBe('Alice')
+  })
+
+  it('listParticipants maps creator balances to participant summaries', async () => {
+    const fn = mockFetch({
+      success: true,
+      participants: [
+        {
+          id: 'p_1',
+          name: 'Alice',
+          tier: 'starter',
+          ledger_balance: 120,
+          held_amount: 20,
+          available_balance: 100,
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listParticipants()
+
+    expect(result.participants[0]).toEqual({
+      id: 'p_1',
+      name: 'Alice',
+      tier: 'starter',
+      ledgerBalance: 120,
+      heldAmount: 20,
+      availableBalance: 100,
+    })
+  })
+
+  it('getParticipantWallet wraps wallet balance with participant vocabulary', async () => {
+    const fn = mockFetch({
+      success: true,
+      wallet: {
+        participant_id: 'p_1',
+        balance: 75,
+        wallet_exists: true,
+        account: {
+          id: 'acct_wallet',
+          participant_id: 'p_1',
+          name: 'Wallet p_1',
+          is_active: true,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.getParticipantWallet('p_1')
+
+    expect(result.wallet.participantId).toBe('p_1')
+    expect(result.wallet.balance).toBe(75)
+    expect(result.wallet.walletExists).toBe(true)
+  })
+
+  it('createTransfer maps participant transfer vocabulary to wallet transfer', async () => {
+    const fn = mockFetch({
+      success: true,
+      transfer: {
+        transaction_id: 'txn_transfer_1',
+        from_participant_id: 'p_1',
+        to_participant_id: 'p_2',
+        from_balance: 50,
+        to_balance: 150,
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.createTransfer({
+      fromParticipantId: 'p_1',
+      toParticipantId: 'p_2',
+      amount: 5000,
+      referenceId: 'xfer_1',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.from_participant_id).toBe('p_1')
+    expect(body.to_participant_id).toBe('p_2')
+    expect(result.transfer.transactionId).toBe('txn_transfer_1')
+    expect(result.transfer.fromBalance).toBe(50)
+  })
+
+  it('listHolds maps held-funds rows to treasury hold objects', async () => {
+    const fn = mockFetch({
+      success: true,
+      count: 1,
+      holds: [
+        {
+          id: 'hold_1',
+          participant_id: 'p_1',
+          participant_name: 'Alice',
+          amount: 25,
+          currency: 'USD',
+          held_since: '2026-01-01T00:00:00Z',
+          days_held: 5,
+          hold_reason: 'dispute',
+          hold_until: '2026-01-10T00:00:00Z',
+          ready_for_release: false,
+          release_status: 'held',
+          transaction_reference: 'order_1',
+          product_name: 'Book',
+          venture_id: 'venture_1',
+          connected_account_ready: true,
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listHolds({ participantId: 'p_1', readyOnly: false })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(String(url)).toContain('/holds?participant_id=p_1')
+    expect(opts.method).toBe('GET')
+    expect(result.holds[0].id).toBe('hold_1')
+    expect(result.holds[0].participantId).toBe('p_1')
+    expect(result.holds[0].connectedAccountReady).toBe(true)
   })
 
   // === CREATE LEDGER ===

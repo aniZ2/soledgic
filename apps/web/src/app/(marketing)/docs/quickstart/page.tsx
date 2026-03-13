@@ -6,17 +6,16 @@ export default function QuickstartPage() {
     <div className="max-w-3xl">
       <h1 className="text-4xl font-bold text-foreground mb-4">Quickstart</h1>
       <p className="text-xl text-muted-foreground mb-8">
-        Get up and running with Soledgic in under 5 minutes.
+        Get a platform treasury flow running in a few requests.
       </p>
 
-      {/* Step 1 */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">1</span>
           <h2 className="text-2xl font-semibold text-foreground">Create an Account</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          Sign up for a Soledgic account. You&apos;ll get a test API key immediately—no credit card required.
+          Sign up for Soledgic and start in test mode. Test and live ledgers are isolated from each other.
         </p>
         <Link
           href="/signup"
@@ -26,98 +25,90 @@ export default function QuickstartPage() {
         </Link>
       </section>
 
-      {/* Step 2 */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">2</span>
-          <h2 className="text-2xl font-semibold text-foreground">Get Your API Keys</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Get Your API Key</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          After creating your account, find your API keys in the{' '}
+          Grab your key from{' '}
           <Link href="/settings/api-keys" className="text-primary hover:underline">
             Settings → API Keys
-          </Link>{' '}
-          section. You&apos;ll have two keys:
+          </Link>
+          . Use <code className="bg-muted px-1.5 py-0.5 rounded text-sm">sk_test_*</code> while you are integrating.
         </p>
-        <ul className="list-disc list-inside text-muted-foreground space-y-2 mb-4">
-          <li><code className="bg-muted px-1.5 py-0.5 rounded text-sm">sk_test_*</code> — Test mode key (sandbox data)</li>
-          <li><code className="bg-muted px-1.5 py-0.5 rounded text-sm">sk_live_*</code> — Live mode key (real transactions)</li>
-        </ul>
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
-          <p className="text-sm text-amber-600">
-            <strong>Tip:</strong> Start with your test key. All test data is isolated and won&apos;t affect your live environment.
-          </p>
-        </div>
       </section>
 
-      {/* Step 3 */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">3</span>
-          <h2 className="text-2xl font-semibold text-foreground">Record Your First Sale</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Create a Participant</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          Make your first API call to record a sale. This creates the necessary accounts and entries automatically.
+          Participants are the treasury identities that receive balances, holds, transfers, and payouts.
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/participants \\
   -H "x-api-key: sk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "reference_id": "order_123",
-    "creator_id": "creator_456",
-    "amount": 2999,
-    "description": "Digital product sale"
+    "participant_id": "creator_456",
+    "display_name": "Jane Creator",
+    "email": "jane@example.com",
+    "default_split_percent": 80
   }'`}
           </pre>
         </div>
-        <p className="text-muted-foreground mb-4">
-          Response:
-        </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
 {`{
   "success": true,
-  "transaction_id": "txn_abc123",
-  "breakdown": {
-    "total": 29.99,
-    "creator_amount": 23.99,
-    "platform_amount": 6.00
+  "participant": {
+    "id": "creator_456",
+    "account_id": "0e8e3fd8-7b7c-4f41-8b62-4a95a9fd6a30",
+    "display_name": "Jane Creator",
+    "email": "jane@example.com",
+    "default_split_percent": 80
   }
 }`}
           </pre>
         </div>
       </section>
 
-      {/* Step 4 */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">4</span>
-          <h2 className="text-2xl font-semibold text-foreground">Check Creator Balance</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Create a Checkout Session</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          After recording sales, check a creator&apos;s balance to see their earnings:
+          Checkouts book the commercial flow while the ledger records the downstream treasury state.
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X GET "${API_BASE_URL}/v1/get-balance?creator_id=creator_456" \\
-  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+{`curl -X POST ${API_BASE_URL}/v1/checkout-sessions \\
+  -H "x-api-key: sk_test_YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "participant_id": "creator_456",
+    "amount": 2999,
+    "currency": "USD",
+    "product_name": "Premium asset pack",
+    "success_url": "https://example.com/success",
+    "cancel_url": "https://example.com/cancel"
+  }'`}
           </pre>
         </div>
-        <p className="text-muted-foreground mb-4">
-          Response:
-        </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
 {`{
   "success": true,
-  "balance": {
-    "creator_id": "creator_456",
-    "available": 23.99,
-    "pending": 0,
-    "total_earned": 23.99,
-    "total_paid_out": 0,
+  "checkout_session": {
+    "id": "chk_abc123",
+    "mode": "session",
+    "checkout_url": "https://checkout.example/session/chk_abc123",
+    "status": "pending",
+    "amount": 2999,
     "currency": "USD"
   }
 }`}
@@ -125,32 +116,63 @@ export default function QuickstartPage() {
         </div>
       </section>
 
-      {/* Step 5 */}
       <section className="mb-12">
         <div className="flex items-center gap-3 mb-4">
           <span className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">5</span>
-          <h2 className="text-2xl font-semibold text-foreground">Process a Payout</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Inspect Wallet and Holds</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          When a creator is ready to be paid, initiate a payout:
+          Once payment settles, inspect the participant wallet and any active hold state separately.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
+            <pre className="text-sm text-slate-300">
+{`curl -X GET "${API_BASE_URL}/v1/wallets/creator_456" \\
+  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+            </pre>
+          </div>
+          <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
+            <pre className="text-sm text-slate-300">
+{`curl -X GET "${API_BASE_URL}/v1/holds?participant_id=creator_456" \\
+  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+            </pre>
+          </div>
+        </div>
+      </section>
+
+      <section className="mb-12">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold">6</span>
+          <h2 className="text-2xl font-semibold text-foreground">Check Eligibility and Create a Payout</h2>
+        </div>
+        <p className="text-muted-foreground mb-4">
+          Payout creation is separate from hold release and balance inspection, which keeps the treasury flow explicit.
         </p>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
-{`curl -X POST ${API_BASE_URL}/v1/process-payout \\
+{`curl -X GET "${API_BASE_URL}/v1/participants/creator_456/payout-eligibility" \\
+  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+          </pre>
+        </div>
+        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
+          <pre className="text-sm text-slate-300">
+{`curl -X POST ${API_BASE_URL}/v1/payouts \\
   -H "x-api-key: sk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "creator_id": "creator_456",
-    "payment_method": "card"
+    "participant_id": "creator_456",
+    "reference_id": "payout_2026_03_12_001",
+    "amount": 1500,
+    "payout_method": "card"
   }'`}
           </pre>
         </div>
         <p className="text-muted-foreground">
-          This creates a payout record and, if you&apos;ve connected a payment rail, initiates the actual transfer.
+          Use a unique <code className="bg-muted px-1.5 py-0.5 rounded text-sm">reference_id</code> for payouts and transfers.
+          Today that is the replay-safe key for those treasury writes.
         </p>
       </section>
 
-      {/* Next steps */}
       <section className="border-t border-border pt-8">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Next Steps</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -159,28 +181,28 @@ export default function QuickstartPage() {
             className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
           >
             <h3 className="font-semibold text-foreground">Authentication →</h3>
-            <p className="text-sm text-muted-foreground mt-1">Learn about API key security</p>
+            <p className="text-sm text-muted-foreground mt-1">Secure your API key usage and environment setup</p>
           </Link>
           <Link
             href="/docs/concepts"
             className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
           >
             <h3 className="font-semibold text-foreground">Core Concepts →</h3>
-            <p className="text-sm text-muted-foreground mt-1">Understand double-entry accounting</p>
+            <p className="text-sm text-muted-foreground mt-1">Understand holds, wallets, and ledger guarantees</p>
           </Link>
           <Link
             href="/docs/api"
             className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
           >
             <h3 className="font-semibold text-foreground">API Reference →</h3>
-            <p className="text-sm text-muted-foreground mt-1">Explore all endpoints</p>
+            <p className="text-sm text-muted-foreground mt-1">See the generated request and response shapes</p>
           </Link>
           <Link
             href="/docs/webhooks"
             className="block p-4 bg-card border border-border rounded-lg hover:border-primary/50 transition-colors"
           >
             <h3 className="font-semibold text-foreground">Webhooks →</h3>
-            <p className="text-sm text-muted-foreground mt-1">Set up real-time notifications</p>
+            <p className="text-sm text-muted-foreground mt-1">Consume payout, refund, and checkout events</p>
           </Link>
         </div>
       </section>

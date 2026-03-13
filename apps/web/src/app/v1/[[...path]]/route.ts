@@ -1,4 +1,4 @@
-// API Proxy: api.soledgic.com/v1/* → Supabase Edge Functions
+// API Proxy: soledgic.com/v1/* and api.soledgic.com/v1/* → Supabase Edge Functions
 // Injects Authorization header so customers only need x-api-key
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -6,35 +6,47 @@ import { NextRequest, NextResponse } from 'next/server'
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Only proxy requests to api.soledgic.com
-function isApiHost(req: NextRequest): boolean {
-  const host = req.headers.get('host') || ''
-  return host === 'api.soledgic.com' || host.startsWith('api.soledgic.com:')
+type RouteParams = { params: Promise<{ path?: string[] }> }
+
+const PUBLIC_API_HOSTS = ['api.soledgic.com', 'soledgic.com', 'www.soledgic.com']
+
+function hostMatches(host: string, expected: string): boolean {
+  return host === expected || host.startsWith(`${expected}:`)
 }
 
-async function proxyToSupabase(req: NextRequest, { params }: { params: Promise<{ path?: string[] }> }) {
-  if (!isApiHost(req)) {
-    return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
-  }
+// Allow the public API on the main site, dedicated API host, and preview/local hosts.
+function isApiHost(req: NextRequest): boolean {
+  const host = (req.headers.get('host') || '').toLowerCase()
+  return (
+    PUBLIC_API_HOSTS.some((allowed) => hostMatches(host, allowed)) ||
+    host.endsWith('.vercel.app') ||
+    host === 'localhost' ||
+    host.startsWith('localhost:') ||
+    host === '127.0.0.1' ||
+    host.startsWith('127.0.0.1:')
+  )
+}
 
-  const { path } = await params
-  const functionPath = path?.join('/') || ''
-  const targetUrl = `${SUPABASE_URL}/functions/v1/${functionPath}`
-
-  // Forward all headers, inject Authorization if not present
-  const headers = new Headers(req.headers)
+function injectAuthorization(headers: Headers) {
   if (!headers.has('authorization') && !headers.has('apikey')) {
     headers.set('Authorization', `Bearer ${SUPABASE_ANON_KEY}`)
   }
+}
 
-  // Remove host header to avoid conflicts
+function createForwardHeaders(req: NextRequest) {
+  const headers = new Headers(req.headers)
+  injectAuthorization(headers)
   headers.delete('host')
+  return headers
+}
 
+async function proxyRawRequest(req: NextRequest, functionPath: string) {
+  const headers = createForwardHeaders(req)
   const body = req.method !== 'GET' && req.method !== 'HEAD'
     ? await req.arrayBuffer()
     : undefined
 
-  const upstream = await fetch(targetUrl, {
+  const upstream = await fetch(`${SUPABASE_URL}/functions/v1/${functionPath}`, {
     method: req.method,
     headers,
     body,
@@ -58,6 +70,21 @@ async function proxyToSupabase(req: NextRequest, { params }: { params: Promise<{
     statusText: upstream.statusText,
     headers: responseHeaders,
   })
+}
+
+async function proxyToSupabase(req: NextRequest, { params }: RouteParams) {
+  if (!isApiHost(req)) {
+    return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
+  }
+
+  const { path } = await params
+  const segments = path || []
+  if (segments.length === 0) {
+    return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
+  }
+
+  const functionPath = segments.join('/')
+  return proxyRawRequest(req, functionPath)
 }
 
 export const GET = proxyToSupabase

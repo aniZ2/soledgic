@@ -251,7 +251,9 @@ class CardPaymentProvider implements PaymentProvider {
     if (params.idempotency_id) payload.idempotency_id = params.idempotency_id
 
     try {
-      const versioning = { [versionHeader]: apiVersion }
+      const resolvedVersionHeader = versionHeader || 'Finix-Version'
+      const resolvedApiVersion = apiVersion || '2022-02-01'
+      const versioning: Record<string, string> = { [resolvedVersionHeader]: resolvedApiVersion }
       const response = await fetch(`${baseUrl}${transfersPath}`, {
         method: 'POST',
         headers: {
@@ -331,7 +333,9 @@ class CardPaymentProvider implements PaymentProvider {
     if (_params.idempotency_id) payload.idempotency_id = _params.idempotency_id
 
     try {
-      const versioning = { [versionHeader]: apiVersion }
+      const resolvedVersionHeader = versionHeader || 'Finix-Version'
+      const resolvedApiVersion = apiVersion || '2022-02-01'
+      const versioning: Record<string, string> = { [resolvedVersionHeader]: resolvedApiVersion }
       const response = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
         headers: {
@@ -378,7 +382,9 @@ class CardPaymentProvider implements PaymentProvider {
     }
 
     try {
-      const versioning = { [versionHeader]: apiVersion }
+      const resolvedVersionHeader = versionHeader || 'Finix-Version'
+      const resolvedApiVersion = apiVersion || '2022-02-01'
+      const versioning: Record<string, string> = { [resolvedVersionHeader]: resolvedApiVersion }
       const response = await fetch(`${baseUrl}${transfersPath}/${paymentIntentId}`, {
         method: 'GET',
         headers: {

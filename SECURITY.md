@@ -71,7 +71,7 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 
 Fail-closed endpoints (block if rate limiting unavailable):
 - `execute-payout`
-- `process-payout`
+- `payouts`
 - `processor-webhook`
 - `bank-feed`
 

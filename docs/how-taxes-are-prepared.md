@@ -1,5 +1,7 @@
 # How Taxes Are Prepared in Soledgic
 
+> Migration note (March 12, 2026): creator-oriented command names in older examples are legacy references. For current public integrations, use the resource-first treasury model described in `docs/RESOURCE_MODEL_MIGRATION.md`.
+
 ## What Soledgic Does
 
 Soledgic tracks **payment amounts only**. It does not store any personally identifiable information (PII).

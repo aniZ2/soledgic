@@ -89,7 +89,7 @@ describe('Delete Creator E2E', () => {
   })
 
   // ========================================================================
-  // 410: create-checkout blocked for deleted creator
+  // 410: checkout-sessions blocked for deleted creator
   // ========================================================================
 
   it('should block checkout creation for a deleted creator', async () => {
@@ -98,8 +98,8 @@ describe('Delete Creator E2E', () => {
 
     // Attempt a checkout session — should fail with 410
     try {
-      const result = await ledger.request('create-checkout', {
-        creator_id: checkoutBlockedCreatorId,
+      const result = await ledger.request('checkout-sessions', {
+        participant_id: checkoutBlockedCreatorId,
         amount: 3000,
         success_url: 'https://example.com/success',
       })

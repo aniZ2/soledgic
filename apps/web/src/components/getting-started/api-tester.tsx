@@ -27,10 +27,10 @@ const COMMANDS = {
   creator: {
     title: 'Create a Creator',
     description: 'Register a creator who will receive payouts from your platform.',
-    endpoint: '/functions/v1/create-creator',
+    endpoint: '/functions/v1/participants',
     method: 'POST',
     body: {
-      creator_id: 'creator_demo_1',
+      participant_id: 'creator_demo_1',
       display_name: 'Demo Creator',
       email: 'demo@example.com',
       default_split_percent: 80,

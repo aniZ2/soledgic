@@ -811,7 +811,7 @@ curl -X POST "$SUPABASE_URL/functions/v1/execute-payout" \
 
 | Field | Detail |
 |-------|--------|
-| **Expected** | Redis fails. DB fallback is attempted with `p_fail_closed: true`. If DB fallback also errors, the request is **blocked** (fail-closed). The `FAIL_CLOSED_ENDPOINTS` list includes `execute-payout`, `process-payout`, `record-sale`, and `create-ledger`. |
+| **Expected** | Redis fails. DB fallback is attempted with `p_fail_closed: true`. If DB fallback also errors, the request is **blocked** (fail-closed). The `FAIL_CLOSED_ENDPOINTS` list includes `execute-payout`, `payouts`, `record-sale`, and `create-ledger`. |
 | **Verify** | |
 
 ```bash

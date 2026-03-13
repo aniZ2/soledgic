@@ -1,5 +1,7 @@
 # How Money Flows in Soledgic
 
+> Migration note (March 12, 2026): the public treasury lifecycle is now expressed through participants, wallets, holds, checkout sessions, payouts, and refunds. Any older command endpoint references in this document should be read as legacy mappings. See `docs/RESOURCE_MODEL_MIGRATION.md`.
+
 ## The Core Principle
 
 Every dollar that moves through your platform creates balanced ledger entries. Money in = Money out. Always.

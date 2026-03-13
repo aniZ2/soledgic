@@ -14,35 +14,39 @@ cd "$(dirname "$0")/.."
 # Core transaction functions
 echo "[1/6] Deploying core transaction functions..."
 supabase functions deploy record-sale --no-verify-jwt
-supabase functions deploy record-refund --no-verify-jwt
 supabase functions deploy record-expense --no-verify-jwt
 supabase functions deploy record-income --no-verify-jwt
 supabase functions deploy record-transfer --no-verify-jwt
 supabase functions deploy reverse-transaction --no-verify-jwt
 
+# Treasury resource functions
+echo "[2/6] Deploying treasury resource functions..."
+supabase functions deploy participants --no-verify-jwt
+supabase functions deploy wallets --no-verify-jwt
+supabase functions deploy transfers --no-verify-jwt
+supabase functions deploy holds --no-verify-jwt
+supabase functions deploy checkout-sessions --no-verify-jwt
+supabase functions deploy payouts --no-verify-jwt
+supabase functions deploy refunds --no-verify-jwt
+
 # Query functions
-echo "[2/6] Deploying query functions..."
-supabase functions deploy get-balance --no-verify-jwt
+echo "[3/6] Deploying query functions..."
 supabase functions deploy get-transactions --no-verify-jwt
 
-# Payout functions
-echo "[3/6] Deploying payout functions..."
-supabase functions deploy process-payout --no-verify-jwt
+# Payout execution functions
+echo "[4/6] Deploying payout execution functions..."
 supabase functions deploy execute-payout --no-verify-jwt
 
 # Reporting functions
-echo "[4/6] Deploying reporting functions..."
+echo "[5/6] Deploying reporting functions..."
 supabase functions deploy trial-balance --no-verify-jwt
 supabase functions deploy profit-loss --no-verify-jwt
 
 # Management & Reconciliation
-echo "[5/6] Deploying management functions..."
+echo "[6/6] Deploying management functions..."
 supabase functions deploy reconcile --no-verify-jwt
 supabase functions deploy manage-splits --no-verify-jwt
 supabase functions deploy create-ledger --no-verify-jwt
-
-# Integration functions
-echo "[6/6] Deploying integration functions..."
 supabase functions deploy webhooks --no-verify-jwt
 
 echo ""
@@ -50,22 +54,21 @@ echo "=========================================="
 echo "✅ Deployment Complete!"
 echo "=========================================="
 echo ""
-echo "18 functions deployed with security hardening:"
+echo "Functions deployed with the resource-first treasury surface:"
 echo ""
 echo "Core Transactions:"
-echo "  ✓ record-sale, record-refund, record-expense"
-echo "  ✓ record-income, record-transfer, reverse-transaction"
+echo "  ✓ record-sale, record-expense, record-income"
+echo "  ✓ record-transfer, reverse-transaction"
 echo ""
-echo "Queries:"
-echo "  ✓ get-balance, get-transactions"
+echo "Treasury Resources:"
+echo "  ✓ participants, wallets, transfers"
+echo "  ✓ holds, checkout-sessions, payouts, refunds"
 echo ""
-echo "Payouts:"
-echo "  ✓ process-payout, execute-payout"
+echo "Queries & Payout Execution:"
+echo "  ✓ get-transactions, execute-payout"
 echo ""
-echo "Reports:"
+echo "Reports & Management:"
 echo "  ✓ trial-balance, profit-loss"
-echo ""
-echo "Management:"
 echo "  ✓ reconcile, manage-splits, create-ledger"
 echo ""
 echo "Integrations:"

@@ -51,9 +51,9 @@ Request → Redis (Upstash) → Response
 | `record-sale` | 200 | 20 | 1 min | **Fail-Closed** |
 | `record-expense` | 200 | 20 | 1 min | Fail-Open |
 | `record-income` | 200 | 20 | 1 min | Fail-Open |
-| `record-refund` | 100 | 10 | 1 min | **Fail-Closed** |
+| `refunds` | 100 | 10 | 1 min | **Fail-Closed** |
 | `execute-payout` | 50 | 5 | 1 min | **Fail-Closed** |
-| `process-payout` | 50 | 5 | 1 min | **Fail-Closed** |
+| `payouts` | 50 | 5 | 1 min | **Fail-Closed** |
 | `bank-feed` | 50 | 5 | 1 min | **Fail-Closed** |
 | `processor-webhook` | 500 | 50 | 1 min | **Fail-Closed** |
 | `generate-pdf` | 20 | 2 | 1 min | Fail-Open |
@@ -73,16 +73,16 @@ Request → Redis (Upstash) → Response
 When **BOTH Redis AND Database** are unavailable:
 
 **Fail-Closed** (block requests):
-- `execute-payout`, `process-payout`: Prevents double payouts
+- `execute-payout`, `payouts`: Prevents double payouts
 - `processor-webhook`, `bank-feed`: Prevents replay attacks
-- `record-sale`, `record-refund`: Prevents transaction flooding
+- `record-sale`, `refunds`: Prevents transaction flooding
 - `create-ledger`: Prevents resource exhaustion
 - `send-statements`: Prevents email spam
 - `import-transactions`, `import-bank-statement`: Prevents data flooding
 
 **Fail-Open** (allow with warning):
 - `generate-pdf`, `generate-report`: Better UX, lower risk
-- `get-balance`, `get-transactions`: Read-only operations
+- `participants`, `get-transactions`: Read-only operations
 - `webhooks`, `health-check`: System operations
 
 ### Environment Variables Required
@@ -113,7 +113,7 @@ done
 | Function | Description |
 |----------|-------------|
 | `record-sale` | Sale recording with creator splits |
-| `record-refund` | Refund processing with balance reversal |
+| `refunds` | Refund processing with balance reversal |
 | `record-expense` | Expense tracking with categories |
 | `record-income` | Income recording |
 | `record-transfer` | Internal account transfers |
@@ -125,17 +125,17 @@ done
 ### Queries (4)
 | Function | Description |
 |----------|-------------|
-| `get-balance` | Single creator balance lookup |
-| `get-balances` | All balances, summary, or by creator |
+| `participants/{participant_id}` | Single participant balance lookup |
+| `participants` | All participant balances |
 | `get-transactions` | Transaction listing with filters |
 | `get-runway` | Cash runway and financial health |
 
 ### Payouts (3)
 | Function | Description |
 |----------|-------------|
-| `process-payout` | Initiate payout (Payment Processor/manual) |
+| `payouts` | Initiate payout (Payment Processor/manual) |
 | `execute-payout` | Execute approved payout |
-| `check-payout-eligibility` | Verify tax info, holds, minimums |
+| `participants/{participant_id}/payout-eligibility` | Verify tax info, holds, minimums |
 
 ### Reports (5)
 | Function | Description |

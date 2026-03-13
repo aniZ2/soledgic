@@ -396,6 +396,16 @@ export interface CreateCreatorRequest {
   metadata?: Record<string, unknown>
 }
 
+export interface CreateParticipantRequest {
+  participantId: string
+  displayName?: string
+  email?: string
+  defaultSplitPercent?: number
+  taxInfo?: CreateCreatorRequest['taxInfo']
+  payoutPreferences?: CreateCreatorRequest['payoutPreferences']
+  metadata?: Record<string, unknown>
+}
+
 export interface CreateLedgerRequest {
   businessName: string
   ownerEmail: string
@@ -485,6 +495,74 @@ export interface ReceivePaymentRequest {
   referenceId?: string
   paymentMethod?: string
   paymentDate?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ParticipantWalletMutationRequest {
+  participantId: string
+  amount: number
+  referenceId: string
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ParticipantTransferRequest {
+  fromParticipantId: string
+  toParticipantId: string
+  amount: number
+  referenceId: string
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface HoldQueryOptions {
+  participantId?: string
+  ventureId?: string
+  readyOnly?: boolean
+  limit?: number
+}
+
+export interface ReleaseHoldRequest {
+  holdId: string
+  executeTransfer?: boolean
+}
+
+export type CreateCheckoutSessionRequest = {
+  participantId: string
+  amount: number
+  currency?: string
+  productId?: string
+  productName?: string
+  customerEmail?: string
+  customerId?: string
+  metadata?: Record<string, string>
+} & (
+  { paymentMethodId: string; sourceId?: string; idempotencyKey: string; successUrl?: string; cancelUrl?: string } |
+  { paymentMethodId?: string; sourceId: string; idempotencyKey: string; successUrl?: string; cancelUrl?: string } |
+  { paymentMethodId?: undefined; sourceId?: undefined; successUrl: string; cancelUrl?: string; idempotencyKey?: string }
+)
+
+export interface CreatePayoutRequest {
+  participantId: string
+  amount: number
+  referenceId: string
+  referenceType?: string
+  description?: string
+  payoutMethod?: string
+  fees?: number
+  feesPaidBy?: 'platform' | 'creator'
+  metadata?: Record<string, unknown>
+}
+
+export interface CreateRefundRequest {
+  saleReference: string
+  reason: string
+  amount?: number
+  refundFrom?: 'both' | 'platform_only' | 'creator_only'
+  externalRefundId?: string
+  idempotencyKey?: string
+  mode?: 'ledger_only' | 'processor_refund'
+  processorPaymentId?: string
   metadata?: Record<string, unknown>
 }
 
@@ -602,6 +680,55 @@ export interface CreateCreatorResponse {
   }
 }
 
+export interface ParticipantSummary {
+  id: string
+  name: string | null
+  tier: string | null
+  ledgerBalance: number
+  heldAmount: number
+  availableBalance: number
+}
+
+export interface ParticipantDetail {
+  id: string
+  name: string | null
+  tier: string | null
+  customSplitPercent: number | null
+  ledgerBalance: number
+  heldAmount: number
+  availableBalance: number
+  holds: Array<{
+    amount: number
+    reason: string | null
+    releaseDate: string | null
+    status: string
+  }>
+}
+
+export interface CreateParticipantResponse {
+  success: boolean
+  participant: {
+    id: string
+    accountId: string
+    displayName: string | null
+    email: string | null
+    defaultSplitPercent: number
+    payoutPreferences: Record<string, unknown>
+    createdAt: string
+  }
+}
+
+export interface ParticipantPayoutEligibilityResponse {
+  success: boolean
+  eligibility: {
+    participantId: string
+    eligible: boolean
+    availableBalance: number
+    issues: string[]
+    requirements: Record<string, unknown>
+  }
+}
+
 export interface CreateLedgerResponse {
   success: boolean
   ledger: {
@@ -687,6 +814,16 @@ export interface WalletBalanceResponse {
   } | null
 }
 
+export interface ParticipantWalletResponse {
+  success: boolean
+  wallet: {
+    participantId: string
+    balance: number
+    walletExists: boolean
+    account: WalletBalanceResponse['account']
+  }
+}
+
 export interface WalletDepositRequest {
   userId: string
   /** Amount in cents */
@@ -747,6 +884,117 @@ export interface WalletHistoryResponse {
   total: number
   limit: number
   offset: number
+}
+
+export interface ParticipantWalletEntriesResponse {
+  success: boolean
+  entries: WalletHistoryEntry[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ParticipantWalletMutationResponse {
+  success: boolean
+  transactionId: string
+  balance: number
+}
+
+export interface ParticipantTransferResponse {
+  success: boolean
+  transfer: {
+    transactionId: string
+    fromParticipantId: string
+    toParticipantId: string
+    fromBalance: number
+    toBalance: number
+  }
+}
+
+export interface HeldFund {
+  id: string
+  participantId: string | null
+  participantName: string | null
+  amount: number
+  currency: string
+  heldSince: string
+  daysHeld: number
+  holdReason: string | null
+  holdUntil: string | null
+  readyForRelease: boolean
+  releaseStatus: string
+  transactionReference: string | null
+  productName: string | null
+  ventureId: string | null
+  connectedAccountReady: boolean
+}
+
+export interface HeldFundsResponse {
+  success: boolean
+  holds: HeldFund[]
+  count: number
+}
+
+export interface HeldFundsSummaryResponse {
+  success: boolean
+  summary: Record<string, unknown>
+}
+
+export interface ReleaseHoldResponse {
+  success: boolean
+  release: {
+    id: string
+    holdId: string
+    executed: boolean
+    transferId: string | null
+    transferStatus: string | null
+    amount: number | null
+    currency: string | null
+  }
+}
+
+export interface CheckoutSessionResourceResponse {
+  success: boolean
+  checkoutSession: {
+    id: string
+    mode: 'session' | 'direct' | string
+    checkoutUrl: string | null
+    paymentId: string | null
+    paymentIntentId: string | null
+    status: string | null
+    requiresAction: boolean
+    amount: number
+    currency: string
+    expiresAt: string | null
+    breakdown: CheckoutBreakdown | null
+  }
+}
+
+export interface PayoutResourceResponse {
+  success: boolean
+  payout: {
+    id: string
+    transactionId: string
+    grossAmount: number | null
+    fees: number | null
+    netAmount: number | null
+    previousBalance: number | null
+    newBalance: number | null
+  }
+}
+
+export interface RefundResourceResponse {
+  success: boolean
+  refund: {
+    id: string
+    transactionId: string
+    refundedAmount: number
+    breakdown: {
+      fromCreator: number
+      fromPlatform: number
+    } | null
+    isFullRefund: boolean | null
+  }
 }
 
 export class SoledgicError extends Error {
@@ -927,9 +1175,9 @@ export class Soledgic {
       throw new Error('Either paymentMethodId/sourceId or successUrl is required')
     }
 
-    const response = await this.request<any>('create-checkout', {
+    const response = await this.request<any>('checkout-sessions', {
       amount: req.amount,
-      creator_id: req.creatorId,
+      participant_id: req.creatorId,
       currency: req.currency,
       product_id: req.productId,
       product_name: req.productName,
@@ -942,49 +1190,50 @@ export class Soledgic {
       idempotency_key: req.idempotencyKey,
       metadata: req.metadata,
     })
+    const checkoutSession = response.checkout_session || response
 
     // Session mode response
-    if (response.mode === 'session') {
-      const breakdown = response.breakdown
+    if (checkoutSession.mode === 'session') {
+      const breakdown = checkoutSession.breakdown
         ? {
-            grossAmount: response.breakdown.gross_amount,
-            creatorAmount: response.breakdown.creator_amount,
-            platformAmount: response.breakdown.platform_amount,
-            creatorPercent: response.breakdown.creator_percent,
+            grossAmount: checkoutSession.breakdown.gross_amount,
+            creatorAmount: checkoutSession.breakdown.creator_amount,
+            platformAmount: checkoutSession.breakdown.platform_amount,
+            creatorPercent: checkoutSession.breakdown.creator_percent,
           }
         : undefined
 
       return {
         success: Boolean(response.success),
         mode: 'session',
-        sessionId: response.session_id,
-        checkoutUrl: response.checkout_url,
-        expiresAt: response.expires_at,
+        sessionId: checkoutSession.id,
+        checkoutUrl: checkoutSession.checkout_url,
+        expiresAt: checkoutSession.expires_at,
         breakdown,
       }
     }
 
     // Direct charge response
-    const breakdown = response.breakdown
+    const breakdown = checkoutSession.breakdown
       ? {
-          grossAmount: response.breakdown.gross_amount,
-          creatorAmount: response.breakdown.creator_amount,
-          platformAmount: response.breakdown.platform_amount,
-          creatorPercent: response.breakdown.creator_percent,
+          grossAmount: checkoutSession.breakdown.gross_amount,
+          creatorAmount: checkoutSession.breakdown.creator_amount,
+          platformAmount: checkoutSession.breakdown.platform_amount,
+          creatorPercent: checkoutSession.breakdown.creator_percent,
         }
       : undefined
 
     return {
       success: Boolean(response.success),
-      provider: response.provider,
-      paymentId: response.payment_id ?? response.payment_intent_id,
-      paymentIntentId: response.payment_intent_id ?? response.payment_id,
-      clientSecret: response.client_secret ?? null,
-      checkoutUrl: response.checkout_url ?? null,
-      status: response.status ?? null,
-      requiresAction: Boolean(response.requires_action),
-      amount: response.amount,
-      currency: response.currency,
+      provider: checkoutSession.provider || 'card',
+      paymentId: checkoutSession.payment_id ?? checkoutSession.payment_intent_id,
+      paymentIntentId: checkoutSession.payment_intent_id ?? checkoutSession.payment_id,
+      clientSecret: checkoutSession.client_secret ?? null,
+      checkoutUrl: checkoutSession.checkout_url ?? null,
+      status: checkoutSession.status ?? null,
+      requiresAction: Boolean(checkoutSession.requires_action),
+      amount: checkoutSession.amount,
+      currency: checkoutSession.currency,
       breakdown,
     }
   }
@@ -1007,9 +1256,9 @@ export class Soledgic {
   }
 
   async processPayout(req: ProcessPayoutRequest) {
-    return this.request('process-payout', {
+    const response = await this.request<any>('payouts', {
       reference_id: req.referenceId,
-      creator_id: req.creatorId,
+      participant_id: req.creatorId,
       amount: req.amount,
       reference_type: req.referenceType,
       description: req.description,
@@ -1018,11 +1267,19 @@ export class Soledgic {
       fees_paid_by: req.feesPaidBy,
       metadata: req.metadata,
     })
+
+    return {
+      success: response.success,
+      transaction_id: response.payout?.transaction_id ?? response.transaction_id,
+      payout_id: response.payout?.id ?? null,
+      amount: response.payout?.net_amount ?? req.amount,
+      status: 'created',
+    }
   }
 
   async recordRefund(req: RecordRefundRequest): Promise<RecordRefundResponse> {
-    const response = await this.request<any>('record-refund', {
-      original_sale_reference: req.originalSaleReference,
+    const response = await this.request<any>('refunds', {
+      sale_reference: req.originalSaleReference,
       amount: req.amount,
       reason: req.reason,
       refund_from: req.refundFrom,
@@ -1033,15 +1290,16 @@ export class Soledgic {
       processor_payment_id: req.processorPaymentId,
       metadata: req.metadata,
     })
+    const refund = response.refund || response
     return {
       success: response.success,
-      transactionId: response.transaction_id,
-      refundedAmount: response.refunded_amount,
+      transactionId: refund.transaction_id,
+      refundedAmount: refund.refunded_amount,
       breakdown: {
-        fromCreator: response.breakdown?.from_creator,
-        fromPlatform: response.breakdown?.from_platform,
+        fromCreator: refund.breakdown?.from_creator,
+        fromPlatform: refund.breakdown?.from_platform,
       },
-      isFullRefund: response.is_full_refund,
+      isFullRefund: refund.is_full_refund,
     }
   }
 
@@ -1258,19 +1516,67 @@ export class Soledgic {
   // === BALANCES ===
 
   async getAllBalances() {
-    return this.request('get-balances', { action: 'all_accounts' })
+    const response = await this.requestGet<any>('participants')
+    return {
+      success: response.success,
+      data: (response.participants || []).map((participant: any) => ({
+        creator_id: participant.id,
+        name: participant.name ?? null,
+        tier: participant.tier ?? null,
+        ledger_balance: participant.ledger_balance,
+        held_amount: participant.held_amount,
+        available_balance: participant.available_balance,
+      })),
+    }
   }
 
   async getCreatorBalances() {
-    return this.request('get-balances', { action: 'creator_balances' })
+    return this.getAllBalances()
   }
 
   async getCreatorBalance(creatorId: string) {
-    return this.request('get-balances', { action: 'single_creator', creator_id: creatorId })
+    const response = await this.requestGet<any>(`participants/${creatorId}`)
+    const participant = response.participant || {}
+    return {
+      success: response.success,
+      data: {
+        creator_id: participant.id,
+        name: participant.name ?? null,
+        tier: participant.tier ?? null,
+        custom_split: participant.custom_split_percent ?? null,
+        ledger_balance: participant.ledger_balance,
+        held_amount: participant.held_amount,
+        available_balance: participant.available_balance,
+        holds: (participant.holds || []).map((hold: any) => ({
+          amount: hold.amount,
+          reason: hold.reason ?? null,
+          release_date: hold.release_date ?? null,
+          status: hold.status,
+        })),
+      },
+    }
   }
 
   async getSummary() {
-    return this.request('get-balances', { action: 'summary' })
+    const response = await this.requestGet<any>('participants')
+    const participants = Array.isArray(response.participants) ? response.participants : []
+    const summary = participants.reduce((totals: Record<string, number>, participant: any) => ({
+      total_ledger_balance: totals.total_ledger_balance + Number(participant.ledger_balance || 0),
+      total_held_amount: totals.total_held_amount + Number(participant.held_amount || 0),
+      total_available_balance: totals.total_available_balance + Number(participant.available_balance || 0),
+    }), {
+      total_ledger_balance: 0,
+      total_held_amount: 0,
+      total_available_balance: 0,
+    })
+
+    return {
+      success: response.success,
+      data: {
+        ...summary,
+        participant_count: participants.length,
+      },
+    }
   }
 
   // === REPORTS ===
@@ -1718,47 +2024,50 @@ export class Soledgic {
   // === ESCROW / HELD FUNDS ===
 
   async getEscrowSummary() {
-    return this.request('release-funds', { action: 'get_summary' })
+    const response = await this.requestGet<any>('holds/summary')
+    return {
+      success: response.success,
+      summary: response.summary || {},
+    }
   }
 
   async getHeldFunds(options?: { ventureId?: string; creatorId?: string; readyOnly?: boolean; limit?: number }) {
-    return this.request('release-funds', {
-      action: 'get_held',
+    return this.requestGet('holds', {
       venture_id: options?.ventureId,
-      creator_id: options?.creatorId,
+      participant_id: options?.creatorId,
       ready_only: options?.readyOnly,
       limit: options?.limit,
     })
   }
 
   async releaseFunds(entryId: string, executeTransfer = true) {
-    return this.request('release-funds', {
-      action: 'release',
-      entry_id: entryId,
+    const response = await this.request<any>(`holds/${entryId}/release`, {
       execute_transfer: executeTransfer,
     })
-  }
-
-  async batchReleaseFunds(entryIds: string[], executeTransfer = true) {
-    return this.request('release-funds', {
-      action: 'batch_release',
-      entry_ids: entryIds,
-      execute_transfer: executeTransfer,
-    })
-  }
-
-  async autoReleaseFunds(options?: { executeTransfer?: boolean; limit?: number }) {
-    return this.request('release-funds', {
-      action: 'auto_release',
-      execute_transfer: options?.executeTransfer,
-      limit: options?.limit,
-    })
+    return {
+      success: response.success,
+      release_id: response.release?.id ?? null,
+      entry_id: response.release?.hold_id ?? entryId,
+      executed: Boolean(response.release?.executed),
+      transfer_id: response.release?.transfer_id ?? null,
+      transfer_status: response.release?.transfer_status ?? null,
+      amount: response.release?.amount ?? null,
+      currency: response.release?.currency ?? null,
+    }
   }
 
   // === PAYOUT ELIGIBILITY ===
 
   async checkPayoutEligibility(creatorId: string) {
-    return this.request('check-payout-eligibility', { creator_id: creatorId })
+    const response = await this.requestGet<any>(`participants/${creatorId}/payout-eligibility`)
+    return {
+      success: response.success,
+      creator_id: response.eligibility?.participant_id ?? creatorId,
+      eligible: Boolean(response.eligibility?.eligible),
+      available_balance: response.eligibility?.available_balance ?? 0,
+      issues: response.eligibility?.issues || [],
+      requirements: response.eligibility?.requirements || {},
+    }
   }
 
   // === HEALTH CHECKS ===
@@ -1821,8 +2130,8 @@ export class Soledgic {
   // === CREATOR ONBOARDING ===
 
   async createCreator(req: CreateCreatorRequest): Promise<CreateCreatorResponse> {
-    const response = await this.request<any>('create-creator', {
-      creator_id: req.creatorId,
+    const response = await this.request<any>('participants', {
+      participant_id: req.creatorId,
       display_name: req.displayName,
       email: req.email,
       default_split_percent: req.defaultSplitPercent,
@@ -1847,16 +2156,96 @@ export class Soledgic {
       } : undefined,
       metadata: req.metadata,
     })
+    const participant = response.participant || {}
     return {
       success: response.success,
       creator: {
+        id: participant.id,
+        accountId: participant.account_id,
+        displayName: participant.display_name,
+        email: participant.email,
+        defaultSplitPercent: participant.default_split_percent,
+        payoutPreferences: participant.payout_preferences || {},
+        createdAt: participant.created_at,
+      },
+    }
+  }
+
+  // === TREASURY RESOURCES ===
+
+  async createParticipant(req: CreateParticipantRequest): Promise<CreateParticipantResponse> {
+    const response = await this.createCreator({
+      creatorId: req.participantId,
+      displayName: req.displayName,
+      email: req.email,
+      defaultSplitPercent: req.defaultSplitPercent,
+      taxInfo: req.taxInfo,
+      payoutPreferences: req.payoutPreferences,
+      metadata: req.metadata,
+    })
+
+    return {
+      success: response.success,
+      participant: {
         id: response.creator.id,
-        accountId: response.creator.account_id,
-        displayName: response.creator.display_name,
+        accountId: response.creator.accountId,
+        displayName: response.creator.displayName,
         email: response.creator.email,
-        defaultSplitPercent: response.creator.default_split_percent,
-        payoutPreferences: response.creator.payout_preferences || {},
-        createdAt: response.creator.created_at,
+        defaultSplitPercent: response.creator.defaultSplitPercent,
+        payoutPreferences: response.creator.payoutPreferences,
+        createdAt: response.creator.createdAt,
+      },
+    }
+  }
+
+  async listParticipants(): Promise<{ success: boolean; participants: ParticipantSummary[] }> {
+    const response = await this.requestGet<any>('participants')
+    return {
+      success: response.success,
+      participants: (response.participants || []).map((participant: any) => ({
+        id: participant.id,
+        name: participant.name ?? null,
+        tier: participant.tier ?? null,
+        ledgerBalance: participant.ledger_balance,
+        heldAmount: participant.held_amount,
+        availableBalance: participant.available_balance,
+      })),
+    }
+  }
+
+  async getParticipant(participantId: string): Promise<{ success: boolean; participant: ParticipantDetail }> {
+    const response = await this.requestGet<any>(`participants/${participantId}`)
+    const participant = response.participant || {}
+    return {
+      success: response.success,
+      participant: {
+        id: participant.id,
+        name: participant.name ?? null,
+        tier: participant.tier ?? null,
+        customSplitPercent: participant.custom_split_percent ?? null,
+        ledgerBalance: participant.ledger_balance,
+        heldAmount: participant.held_amount,
+        availableBalance: participant.available_balance,
+        holds: (participant.holds || []).map((hold: any) => ({
+          amount: hold.amount,
+          reason: hold.reason ?? null,
+          releaseDate: hold.release_date ?? null,
+          status: hold.status,
+        })),
+      },
+    }
+  }
+
+  async getParticipantPayoutEligibility(participantId: string): Promise<ParticipantPayoutEligibilityResponse> {
+    const response = await this.requestGet<any>(`participants/${participantId}/payout-eligibility`)
+    return {
+      success: response.success,
+      eligibility: {
+        participantId: response.eligibility?.participant_id ?? participantId,
+        eligible: Boolean(response.eligibility?.eligible),
+        availableBalance: response.eligibility?.available_balance ?? 0,
+        issues: response.eligibility?.issues || [],
+        requirements: response.eligibility?.requirements || {},
       },
     }
   }
@@ -2117,86 +2506,80 @@ export class Soledgic {
   // === WALLETS ===
 
   async getWalletBalance(userId: string): Promise<WalletBalanceResponse> {
-    const response = await this.request<any>('manage-wallet', {
-      action: 'get_balance',
-      user_id: userId,
-    })
+    const response = await this.requestGet<any>(`wallets/${userId}`)
+    const wallet = response.wallet || {}
     return {
       success: response.success,
-      balance: response.balance,
-      walletExists: response.wallet_exists,
-      account: response.account
+      balance: wallet.balance,
+      walletExists: wallet.wallet_exists,
+      account: wallet.account
         ? {
-            id: response.account.id,
-            entityId: response.account.entity_id,
-            name: response.account.name,
-            isActive: response.account.is_active,
-            createdAt: response.account.created_at,
+            id: wallet.account.id,
+            entityId: wallet.account.participant_id,
+            name: wallet.account.name,
+            isActive: wallet.account.is_active,
+            createdAt: wallet.account.created_at,
           }
         : null,
     }
   }
 
   async walletDeposit(req: WalletDepositRequest): Promise<WalletMutationResponse> {
-    const response = await this.request<any>('manage-wallet', {
-      action: 'deposit',
-      user_id: req.userId,
+    const response = await this.request<any>(`wallets/${req.userId}/deposits`, {
       amount: req.amount,
       reference_id: req.referenceId,
       description: req.description,
       metadata: req.metadata,
     })
+    const deposit = response.deposit || response
     return {
       success: response.success,
-      transactionId: response.transaction_id,
-      balance: response.balance,
+      transactionId: deposit.transaction_id,
+      balance: deposit.balance,
     }
   }
 
   async walletWithdraw(req: WalletWithdrawRequest): Promise<WalletMutationResponse> {
-    const response = await this.request<any>('manage-wallet', {
-      action: 'withdraw',
-      user_id: req.userId,
+    const response = await this.request<any>(`wallets/${req.userId}/withdrawals`, {
       amount: req.amount,
       reference_id: req.referenceId,
       description: req.description,
       metadata: req.metadata,
     })
+    const withdrawal = response.withdrawal || response
     return {
       success: response.success,
-      transactionId: response.transaction_id,
-      balance: response.balance,
+      transactionId: withdrawal.transaction_id,
+      balance: withdrawal.balance,
     }
   }
 
   async walletTransfer(req: WalletTransferRequest): Promise<WalletTransferResponse> {
-    const response = await this.request<any>('manage-wallet', {
-      action: 'transfer',
-      from_user_id: req.fromUserId,
-      to_user_id: req.toUserId,
+    const response = await this.request<any>('transfers', {
+      from_participant_id: req.fromUserId,
+      to_participant_id: req.toUserId,
       amount: req.amount,
       reference_id: req.referenceId,
       description: req.description,
       metadata: req.metadata,
     })
+    const transfer = response.transfer || response
     return {
       success: response.success,
-      transactionId: response.transaction_id,
-      fromBalance: response.from_balance,
-      toBalance: response.to_balance,
+      transactionId: transfer.transaction_id,
+      fromBalance: transfer.from_balance,
+      toBalance: transfer.to_balance,
     }
   }
 
   async getWalletHistory(userId: string, options?: { limit?: number; offset?: number }): Promise<WalletHistoryResponse> {
-    const response = await this.request<any>('manage-wallet', {
-      action: 'history',
-      user_id: userId,
+    const response = await this.requestGet<any>(`wallets/${userId}/entries`, {
       limit: options?.limit,
       offset: options?.offset,
     })
     return {
       success: response.success,
-      transactions: (response.transactions || []).map((t: any) => ({
+      transactions: (response.entries || []).map((t: any) => ({
         entryId: t.entry_id,
         entryType: t.entry_type,
         amount: t.amount,
@@ -2211,6 +2594,234 @@ export class Soledgic {
       total: response.total,
       limit: response.limit,
       offset: response.offset,
+    }
+  }
+
+  async getParticipantWallet(participantId: string): Promise<ParticipantWalletResponse> {
+    const response = await this.getWalletBalance(participantId)
+    return {
+      success: response.success,
+      wallet: {
+        participantId,
+        balance: response.balance,
+        walletExists: response.walletExists,
+        account: response.account,
+      },
+    }
+  }
+
+  async listWalletEntriesForParticipant(
+    participantId: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<ParticipantWalletEntriesResponse> {
+    const response = await this.getWalletHistory(participantId, options)
+    return {
+      success: response.success,
+      entries: response.transactions,
+      total: response.total,
+      limit: response.limit,
+      offset: response.offset,
+    }
+  }
+
+  async depositToWallet(req: ParticipantWalletMutationRequest): Promise<ParticipantWalletMutationResponse> {
+    const response = await this.walletDeposit({
+      userId: req.participantId,
+      amount: req.amount,
+      referenceId: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transactionId: response.transactionId,
+      balance: response.balance,
+    }
+  }
+
+  async withdrawFromWallet(req: ParticipantWalletMutationRequest): Promise<ParticipantWalletMutationResponse> {
+    const response = await this.walletWithdraw({
+      userId: req.participantId,
+      amount: req.amount,
+      referenceId: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transactionId: response.transactionId,
+      balance: response.balance,
+    }
+  }
+
+  async createTransfer(req: ParticipantTransferRequest): Promise<ParticipantTransferResponse> {
+    const response = await this.walletTransfer({
+      fromUserId: req.fromParticipantId,
+      toUserId: req.toParticipantId,
+      amount: req.amount,
+      referenceId: req.referenceId,
+      description: req.description,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      transfer: {
+        transactionId: response.transactionId,
+        fromParticipantId: req.fromParticipantId,
+        toParticipantId: req.toParticipantId,
+        fromBalance: response.fromBalance,
+        toBalance: response.toBalance,
+      },
+    }
+  }
+
+  async listHolds(options?: HoldQueryOptions): Promise<HeldFundsResponse> {
+    const response = await this.requestGet<any>('holds', {
+      participant_id: options?.participantId,
+      venture_id: options?.ventureId,
+      ready_only: options?.readyOnly,
+      limit: options?.limit,
+    })
+    return {
+      success: response.success,
+      holds: (response.holds || []).map((hold: any) => ({
+        id: hold.id,
+        participantId: hold.participant_id ?? null,
+        participantName: hold.participant_name ?? null,
+        amount: hold.amount,
+        currency: hold.currency,
+        heldSince: hold.held_since,
+        daysHeld: hold.days_held,
+        holdReason: hold.hold_reason ?? null,
+        holdUntil: hold.hold_until ?? null,
+        readyForRelease: Boolean(hold.ready_for_release),
+        releaseStatus: hold.release_status,
+        transactionReference: hold.transaction_reference ?? null,
+        productName: hold.product_name ?? null,
+        ventureId: hold.venture_id ?? null,
+        connectedAccountReady: Boolean(hold.connected_account_ready),
+      })),
+      count: response.count ?? 0,
+    }
+  }
+
+  async getHoldSummary(): Promise<HeldFundsSummaryResponse> {
+    const response = await this.requestGet<any>('holds/summary')
+    return {
+      success: response.success,
+      summary: response.summary || {},
+    }
+  }
+
+  async releaseHold(req: ReleaseHoldRequest): Promise<ReleaseHoldResponse> {
+    const response = await this.request<any>(`holds/${req.holdId}/release`, {
+      execute_transfer: req.executeTransfer !== false,
+    })
+    const release = response.release || response
+    return {
+      success: response.success,
+      release: {
+        id: release.id,
+        holdId: release.hold_id ?? req.holdId,
+        executed: Boolean(release.executed),
+        transferId: release.transfer_id ?? null,
+        transferStatus: release.transfer_status ?? null,
+        amount: release.amount ?? null,
+        currency: release.currency ?? null,
+      },
+    }
+  }
+
+  async createCheckoutSession(
+    req: CreateCheckoutSessionRequest,
+  ): Promise<CheckoutSessionResourceResponse> {
+    const response = await this.createCheckout({
+      amount: req.amount,
+      creatorId: req.participantId,
+      currency: req.currency,
+      productId: req.productId,
+      productName: req.productName,
+      customerEmail: req.customerEmail,
+      customerId: req.customerId,
+      paymentMethodId: 'paymentMethodId' in req ? req.paymentMethodId : undefined,
+      sourceId: 'sourceId' in req ? req.sourceId : undefined,
+      successUrl: req.successUrl,
+      cancelUrl: req.cancelUrl,
+      idempotencyKey: 'idempotencyKey' in req ? req.idempotencyKey : undefined,
+      metadata: req.metadata,
+    } as CreateCheckoutRequest)
+
+    return {
+      success: response.success,
+      checkoutSession: {
+        id: 'sessionId' in response ? response.sessionId : response.paymentId,
+        mode: 'sessionId' in response ? 'session' : 'direct',
+        checkoutUrl: response.checkoutUrl ?? null,
+        paymentId: 'paymentId' in response ? response.paymentId : null,
+        paymentIntentId: 'paymentIntentId' in response ? response.paymentIntentId : null,
+        status: 'status' in response ? response.status ?? null : null,
+        requiresAction: 'requiresAction' in response ? response.requiresAction : false,
+        amount: 'amount' in response ? response.amount : req.amount,
+        currency: 'currency' in response ? response.currency : (req.currency || 'USD'),
+        expiresAt: 'expiresAt' in response ? response.expiresAt : null,
+        breakdown: response.breakdown ?? null,
+      },
+    }
+  }
+
+  async createPayout(req: CreatePayoutRequest): Promise<PayoutResourceResponse> {
+    const response = await this.request<any>('payouts', {
+      participant_id: req.participantId,
+      amount: req.amount,
+      reference_id: req.referenceId,
+      reference_type: req.referenceType,
+      description: req.description,
+      payout_method: req.payoutMethod,
+      fees: req.fees,
+      fees_paid_by: req.feesPaidBy,
+      metadata: req.metadata,
+    })
+    const payout = response.payout || response
+    return {
+      success: response.success,
+      payout: {
+        id: payout.id,
+        transactionId: payout.transaction_id,
+        grossAmount: payout.gross_amount ?? null,
+        fees: payout.fees ?? null,
+        netAmount: payout.net_amount ?? null,
+        previousBalance: payout.previous_balance ?? null,
+        newBalance: payout.new_balance ?? null,
+      },
+    }
+  }
+
+  async createRefund(req: CreateRefundRequest): Promise<RefundResourceResponse> {
+    const response = await this.recordRefund({
+      originalSaleReference: req.saleReference,
+      reason: req.reason,
+      amount: req.amount,
+      refundFrom: req.refundFrom,
+      externalRefundId: req.externalRefundId,
+      idempotencyKey: req.idempotencyKey,
+      mode: req.mode,
+      processorPaymentId: req.processorPaymentId,
+      metadata: req.metadata,
+    })
+    return {
+      success: response.success,
+      refund: {
+        id: response.transactionId,
+        transactionId: response.transactionId,
+        refundedAmount: response.refundedAmount,
+        breakdown: response.breakdown
+          ? {
+              fromCreator: response.breakdown.fromCreator,
+              fromPlatform: response.breakdown.fromPlatform,
+            }
+          : null,
+        isFullRefund: response.isFullRefund ?? null,
+      },
     }
   }
 }

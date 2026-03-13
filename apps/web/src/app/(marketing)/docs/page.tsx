@@ -5,37 +5,37 @@ import { API_BASE_URL } from './constants'
 const sections = [
   {
     title: 'Quickstart',
-    description: 'Get up and running with Soledgic in under 5 minutes',
+    description: 'Create a participant, launch checkout, inspect balances, and send payouts',
     href: '/docs/quickstart',
     icon: BookOpen,
   },
   {
     title: 'Authentication',
-    description: 'Learn how to authenticate your API requests',
+    description: 'Authenticate resource requests with API keys and environment isolation',
     href: '/docs/authentication',
     icon: Key,
   },
   {
     title: 'Core Concepts',
-    description: 'Understand ledgers, accounts, and double-entry accounting',
+    description: 'Understand the resource layer, ledger guarantees, holds, and replay safety',
     href: '/docs/concepts',
     icon: Lightbulb,
   },
   {
     title: 'API Reference',
-    description: 'Complete reference for all API endpoints',
+    description: 'Generated reference for treasury resources and supporting accounting APIs',
     href: '/docs/api',
     icon: Code,
   },
   {
     title: 'Webhooks',
-    description: 'Receive real-time notifications for ledger events',
+    description: 'Receive checkout, payout, and refund events from the platform',
     href: '/docs/webhooks',
     icon: Bell,
   },
   {
     title: 'SDKs & Libraries',
-    description: 'Official SDKs for JavaScript, Python, and more',
+    description: 'Use the TypeScript SDK or integrate directly over REST',
     href: '/docs/sdks',
     icon: Package,
   },
@@ -44,50 +44,54 @@ const sections = [
 export default function DocsPage() {
   return (
     <div>
-      {/* Hero */}
       <div className="mb-12">
         <h1 className="text-4xl font-bold text-foreground mb-4">
           Soledgic Documentation
         </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl">
-          Double-entry accounting for creator platforms. Track revenue splits, manage payouts,
-          and maintain an immutable audit trail.
+        <p className="text-xl text-muted-foreground max-w-3xl">
+          Treasury infrastructure for platforms. Model participants, balances, holds, checkout
+          sessions, payouts, and refunds on top of a ledger-native core.
         </p>
       </div>
 
-      {/* Quick example */}
       <div className="bg-slate-900 rounded-lg p-6 mb-12 overflow-x-auto">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm text-slate-400">Record your first sale</span>
+          <span className="text-sm text-slate-400">Create your first participant</span>
           <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">POST</span>
         </div>
         <pre className="text-sm text-slate-300">
-{`curl -X POST ${API_BASE_URL}/v1/record-sale \\
+{`curl -X POST ${API_BASE_URL}/v1/participants \\
   -H "x-api-key: sk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "reference_id": "order_123",
-    "creator_id": "creator_456",
-    "amount": 2999,
-    "description": "Digital product sale"
+    "participant_id": "creator_456",
+    "display_name": "Jane Creator",
+    "email": "jane@example.com",
+    "default_split_percent": 80
   }'`}
         </pre>
       </div>
 
-      {/* How It Works */}
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-6 mb-12">
-        <h2 className="text-lg font-semibold text-foreground mb-2">How It Works</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-2">Resource Flow</h2>
+        <div className="bg-card border border-border rounded-lg p-4 mb-4 overflow-x-auto">
+          <pre className="text-sm text-muted-foreground">
+{`participant
+  -> checkout_session
+  -> wallet balance / hold
+  -> payout
+  -> refund`}
+          </pre>
+        </div>
         <p className="text-sm text-muted-foreground">
-          Every financial write runs inside a PostgreSQL RPC with row locks and atomic transactions—your
-          ledger either records the full double-entry set or nothing. Stateless Edge Workers handle auth,
-          validation, and orchestration, then delegate to these database RPCs.{' '}
-          <Link href="/docs/concepts#architecture" className="text-primary hover:underline">
-            Learn more about the architecture →
+          The public API is resource-first. Edge functions validate and route requests into shared
+          treasury services, and those services commit balanced ledger writes through PostgreSQL RPCs.
+          <Link href="/docs/concepts#architecture" className="text-primary hover:underline ml-1">
+            See the architecture details
           </Link>
         </p>
       </div>
 
-      {/* Section cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
         {sections.map((section) => {
           const Icon = section.icon
@@ -116,47 +120,46 @@ export default function DocsPage() {
         })}
       </div>
 
-      {/* Features */}
       <div className="border-t border-border pt-12">
         <h2 className="text-2xl font-bold text-foreground mb-6">Why Soledgic?</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div>
-            <h3 className="font-semibold text-foreground mb-2">Double-Entry Accounting</h3>
+            <h3 className="font-semibold text-foreground mb-2">Resource-First Treasury API</h3>
             <p className="text-sm text-muted-foreground">
-              Every transaction creates balanced entries. Your books always reconcile,
-              with a complete audit trail.
+              Participants, wallets, holds, checkouts, payouts, and refunds are the canonical
+              public surface for new integrations.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold text-foreground mb-2">Test & Live Modes</h3>
+            <h3 className="font-semibold text-foreground mb-2">Ledger Guarantees</h3>
             <p className="text-sm text-muted-foreground">
-              Develop with test API keys, then switch to live when ready.
-              Data is completely isolated between modes.
+              Money movement maps to balanced entries and atomic database writes. The ledger either
+              commits the full state change or nothing.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold text-foreground mb-2">Built for Platforms</h3>
+            <h3 className="font-semibold text-foreground mb-2">Built for Platform Economies</h3>
             <p className="text-sm text-muted-foreground">
-              Handle creator revenue splits, tax withholding, and payout scheduling
-              out of the box.
+              Model delayed release policies, creator balances, internal transfers, and payout
+              schedules without bolting treasury logic onto a checkout API.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Support */}
       <div className="mt-12 p-6 bg-muted/50 rounded-lg">
         <h2 className="font-semibold text-foreground mb-2">Need help?</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Can&apos;t find what you&apos;re looking for? Our team is here to help.
+          Start with the quickstart, then move into the API reference once your participant and
+          checkout model is clear.
         </p>
         <div className="flex gap-4">
-          <a
-            href="mailto:support@soledgic.com"
+          <Link
+            href="/docs/quickstart"
             className="text-sm text-primary hover:underline"
           >
-            Contact support →
-          </a>
+            Quickstart →
+          </Link>
           <Link
             href="/docs/api"
             className="text-sm text-primary hover:underline"

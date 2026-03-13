@@ -94,12 +94,14 @@ export function ProcessPayoutModal({
     setError(null)
 
     try {
-      const response = await callLedgerFunction('process-payout', {
+      const referenceId = `dashboard_payout_${selectedCreatorId}_${Date.now()}`
+      const response = await callLedgerFunction('payouts', {
         ledgerId,
         method: 'POST',
         body: {
-          creator_id: selectedCreatorId,
+          participant_id: selectedCreatorId,
           amount: amountCents,
+          reference_id: referenceId,
           description: description.trim() || undefined,
         },
       })

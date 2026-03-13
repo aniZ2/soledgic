@@ -61,7 +61,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Test valid API key (GET endpoint)
 RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -X GET "$API_URL/get-balance" \
+  -X GET "$API_URL/participants" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
   -H "x-api-key: $API_KEY")
@@ -78,7 +78,7 @@ fi
 
 # Test invalid API key
 RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -X GET "$API_URL/get-balance" \
+  -X GET "$API_URL/participants" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
   -H "x-api-key: sk_test_invalid_key_12345")
@@ -93,7 +93,7 @@ fi
 
 # Test missing API key
 RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -X GET "$API_URL/get-balance" \
+  -X GET "$API_URL/participants" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY")
 
@@ -114,7 +114,7 @@ echo "TEST 2: Security Headers"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 HEADERS=$(curl -s -D - -o /dev/null \
-  -X GET "$API_URL/get-balance" \
+  -X GET "$API_URL/participants" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
   -H "x-api-key: $API_KEY")
@@ -202,7 +202,7 @@ RATE_LIMITED=0
 
 for i in {1..10}; do
   RESPONSE=$(curl -s -w "\n%{http_code}" \
-    -X GET "$API_URL/get-balance" \
+    -X GET "$API_URL/participants" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
     -H "x-api-key: $API_KEY")

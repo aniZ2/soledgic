@@ -19,6 +19,8 @@ const AUTH_BADGE_CLASS: Record<ApiEndpointDoc['auth'], string> = {
 }
 
 const CATEGORY_ORDER = [
+  'Treasury',
+  'Payments',
   'Transactions',
   'Payouts',
   'Checkouts',
@@ -38,7 +40,6 @@ const CATEGORY_ORDER = [
 
 const ENDPOINT_CATEGORIES: Record<string, string> = {
   'record-sale': 'Transactions',
-  'record-refund': 'Transactions',
   'record-expense': 'Transactions',
   'record-income': 'Transactions',
   'record-adjustment': 'Transactions',
@@ -49,21 +50,27 @@ const ENDPOINT_CATEGORIES: Record<string, string> = {
   'record-bill': 'Transactions',
   'pay-bill': 'Transactions',
   'import-transactions': 'Transactions',
-
-  'process-payout': 'Payouts',
-  'check-payout-eligibility': 'Payouts',
   'execute-payout': 'Payouts',
   'scheduled-payouts': 'Payouts',
 
-  'create-checkout': 'Checkouts',
+  'checkout-sessions': 'Payments',
+  'payouts': 'Payments',
+  'refunds': 'Payments',
   'receive-payment': 'Checkouts',
   'preflight-authorization': 'Checkouts',
-  'release-funds': 'Checkouts',
 
-  'create-creator': 'Accounts',
+  'participants': 'Treasury',
+  'participant-detail': 'Treasury',
+  'participant-payout-eligibility': 'Treasury',
+  'wallet-detail': 'Treasury',
+  'wallet-entries': 'Treasury',
+  'wallet-deposit': 'Treasury',
+  'wallet-withdrawal': 'Treasury',
+  'transfers': 'Treasury',
+  'holds': 'Treasury',
+  'holds-summary': 'Treasury',
+  'hold-release': 'Treasury',
   'delete-creator': 'Accounts',
-  'get-balance': 'Accounts',
-  'get-balances': 'Accounts',
   'manage-splits': 'Accounts',
   'register-instrument': 'Accounts',
 
@@ -123,8 +130,8 @@ function categorySlug(category: string): string {
   return category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
-function getCategory(endpoint: string): string {
-  return ENDPOINT_CATEGORIES[endpoint] ?? 'Other'
+function getCategory(entry: ApiEndpointDoc): string {
+  return ENDPOINT_CATEGORIES[entry.endpoint] ?? 'Other'
 }
 
 function getSampleValue(name: string, type: string): SampleValue {
@@ -173,6 +180,15 @@ function buildExampleBody(entry: ApiEndpointDoc): string {
   return JSON.stringify(body, null, 2)
 }
 
+function buildPath(entry: ApiEndpointDoc): string {
+  const pathParams = entry.parameters.filter((param) => param.in === 'path')
+  let path = entry.path
+  for (const param of pathParams) {
+    path = path.replace(`{${param.name}}`, encodeURIComponent(String(getSampleValue(param.name, param.type))))
+  }
+  return path
+}
+
 function formatCurl(parts: string[]): string {
   return parts.map((part, index) => (index < parts.length - 1 ? `${part} \\` : part)).join('\n')
 }
@@ -180,7 +196,7 @@ function formatCurl(parts: string[]): string {
 function buildCurlExample(entry: ApiEndpointDoc): string {
   const method = entry.methods[0] ?? 'POST'
   const query = buildQueryString(entry)
-  const url = `${API_BASE_URL}${entry.path}${query}`
+  const url = `${API_BASE_URL}${buildPath(entry)}${query}`
   const headers: string[] = []
 
   if (entry.auth === 'API key') {
@@ -255,6 +271,12 @@ function EndpointRow({ entry }: { entry: ApiEndpointDoc }) {
 }
 
 function EndpointDetails({ entry }: { entry: ApiEndpointDoc }) {
+  const isSupabaseFunction = entry.source.startsWith('supabase/functions/')
+  const implementationLabel = isSupabaseFunction ? 'Supabase function' : 'Gateway implementation'
+  const implementationValue = isSupabaseFunction
+    ? `/functions/v1/${entry.endpoint}`
+    : entry.source
+
   return (
     <details id={entry.endpoint} className="border border-border rounded-lg p-4 bg-card">
       <summary className="cursor-pointer list-none">
@@ -300,8 +322,8 @@ function EndpointDetails({ entry }: { entry: ApiEndpointDoc }) {
             <code className="text-sm text-slate-300">{API_BASE_URL}{entry.path}</code>
           </div>
           <div className="bg-slate-900 rounded-lg p-3">
-            <div className="text-xs text-slate-400 mb-1">Supabase function</div>
-            <code className="text-sm text-slate-300">/functions/v1/{entry.endpoint}</code>
+            <div className="text-xs text-slate-400 mb-1">{implementationLabel}</div>
+            <code className="text-sm text-slate-300">{implementationValue}</code>
           </div>
         </div>
 
@@ -366,7 +388,9 @@ function EndpointDetails({ entry }: { entry: ApiEndpointDoc }) {
 }
 
 export default function ApiReferencePage() {
-  const catalog = [...API_ENDPOINT_CATALOG].sort((a, b) => a.endpoint.localeCompare(b.endpoint))
+  const catalog = [...API_ENDPOINT_CATALOG].sort((a, b) =>
+    Number(a.deprecated) - Number(b.deprecated) || a.endpoint.localeCompare(b.endpoint),
+  )
   const totalEndpoints = catalog.length
   const internalCount = catalog.filter((entry) => entry.internal).length
   const deprecatedCount = catalog.filter((entry) => entry.deprecated).length
@@ -375,7 +399,7 @@ export default function ApiReferencePage() {
   // Group endpoints by category
   const grouped = new Map<string, ApiEndpointDoc[]>()
   for (const entry of catalog) {
-    const cat = getCategory(entry.endpoint)
+    const cat = getCategory(entry)
     const list = grouped.get(cat) ?? []
     list.push(entry)
     grouped.set(cat, list)
@@ -394,8 +418,14 @@ export default function ApiReferencePage() {
     <div className="max-w-5xl">
       <h1 className="text-4xl font-bold text-foreground mb-4">API Reference</h1>
       <p className="text-xl text-muted-foreground mb-8">
-        Full generated reference for every Soledgic API endpoint.
+        Generated reference for the Soledgic API. The treasury resources are the canonical surface for new integrations.
       </p>
+
+      <section className="mb-12 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4">
+        <p className="text-sm text-amber-700">
+          The public treasury API is resource-first. If you are migrating older integrations, use the resource mapping guide in <code className="bg-amber-100 px-1.5 py-0.5 rounded">docs/RESOURCE_MODEL_MIGRATION.md</code>.
+        </p>
+      </section>
 
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Base URLs</h2>

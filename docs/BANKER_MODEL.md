@@ -1,5 +1,7 @@
 # Soledgic: The Banker Model
 
+> Migration note (March 12, 2026): the current public treasury API is resource-first. When this document references `create-checkout`, `release-funds`, or other command endpoints, treat them as legacy compatibility flows. The canonical public surface is documented in `docs/RESOURCE_MODEL_MIGRATION.md`.
+
 ## Architecture Overview
 
 ```
@@ -39,7 +41,7 @@
 
 ### Gate 1: Release (Platform → Connected Account)
 - Money moves from YOUR Payment Processor balance to the creator's Custom account
-- **YOU control this** via `release-funds` endpoint
+- **YOU control this** via the `holds` resource family
 - Default: Held for 7 days (dispute window)
 - Can be: Manual only, Auto after X days, or Rule-based
 
@@ -94,7 +96,7 @@ Create and manage Payment Processor Custom accounts for creators.
 }
 ```
 
-### 2. `POST /create-checkout`
+### 2. `POST /checkout-sessions`
 
 Create payment intent (unchanged from before). Money lands in YOUR platform account.
 
@@ -115,7 +117,7 @@ Automatically handled. Creates ledger entries with:
 - `hold_until: NOW() + 7 days`
 - `hold_reason: 'dispute_window'`
 
-### 4. `POST /release-funds`
+### 4. `POST /holds/{hold_id}/release`
 
 The banker's control panel.
 
@@ -235,7 +237,7 @@ For creators to request payout from their connected account to bank.
 ## Flow: Reader Buys Book
 
 ```
-1. Buyer → Client App → POST /create-checkout
+1. Buyer → Client App → POST /checkout-sessions
    ↓
 2. Client App shows Payment Processor Elements checkout
    ↓
@@ -253,7 +255,7 @@ For creators to request payout from their connected account to bank.
    ↓
 7. [7 days pass, OR admin clicks Release]
    ↓
-8. POST /release-funds { action: 'release', entry_id: '...' }
+8. POST /holds/{hold_id}/release
    ↓
 9. Soledgic → Payment Processor Transfer API
    ↓
@@ -293,9 +295,9 @@ For creators to request payout from their connected account to bank.
   - Connected accounts migration (historical)
 
 - [ ] Deploy functions:
-  - `create-checkout`
+  - `checkout-sessions`
   - `process-processor-inbox`
-  - `release-funds`
+  - `holds`
 
 - [ ] Configure Payment Processor:
   - Ensure Platform account exists
@@ -318,8 +320,8 @@ For creators to request payout from their connected account to bank.
 - Connected accounts migration - Connected accounts infrastructure
 
 ### New Edge Functions
-- `create-checkout/index.ts` - Payment initiation
-- `release-funds/index.ts` - Escrow release control
+- `checkout-sessions/index.ts` - Payment initiation
+- `holds/index.ts` - Escrow release control
 - `process-processor-inbox/index.ts` - Processor event normalization/ingestion
 
 ### Modified Files

@@ -1,5 +1,7 @@
 # Soledgic - Complete System Reference
 
+> Migration note (March 12, 2026): the canonical public treasury API is now resource-first: `/v1/participants`, `/v1/wallets`, `/v1/transfers`, `/v1/holds`, `/v1/checkout-sessions`, `/v1/payouts`, and `/v1/refunds`. Legacy command endpoints described below remain in the codebase for development compatibility but are deprecated for new integrations. See `docs/RESOURCE_MODEL_MIGRATION.md`.
+
 > **Soledgic is a platform finance system that records transactions and can initiate payouts via external processors. It does not custody funds, and compliance remains with the payment rail.**
 
 ---
@@ -137,69 +139,61 @@ CREDIT Platform Rev   -$4.00   (your revenue)
 
 ---
 
-#### 2. Get Balance
-**GET** `/get-balance?creator_id=xxx`
+#### 2. Get Participant Balance
+**GET** `/participants/{participant_id}`
 
-Returns creator's current balance.
+Returns a participant's current balance.
 
 Response:
 ```json
 {
   "success": true,
-  "balance": {
-    "creator_id": "author_123",
-    "available": 11.99,
-    "pending": 0,
-    "total_earned": 11.99,
-    "total_paid_out": 0,
-    "currency": "USD"
+  "participant": {
+    "id": "author_123",
+    "available_balance": 11.99,
+    "held_amount": 0,
+    "ledger_balance": 11.99,
+    "tier": "starter"
   }
 }
 ```
 
 ---
 
-#### 3. Get All Balances
-**GET** `/get-balance?include_platform=true`
+#### 3. List Participant Balances
+**GET** `/participants`
 
-Returns all creator balances + platform summary.
+Returns all participant balances.
 
 Response:
 ```json
 {
   "success": true,
-  "balances": [
-    {"creator_id": "author_123", "available": 11.99, "pending": 0, "currency": "USD"}
-  ],
-  "platform_summary": {
-    "total_revenue": 3.00,
-    "total_owed_creators": 11.99,
-    "total_paid_out": 0,
-    "cash_balance": 14.99
-  }
+  "participants": [
+    {"id": "author_123", "available_balance": 11.99, "held_amount": 0, "ledger_balance": 11.99, "tier": "starter"}
+  ]
 }
 ```
 
 ---
 
-#### 4. Record Payout
-**POST** `/process-payout`
+#### 4. Create Payout
+**POST** `/payouts`
 
 Records a payout event from Payment Processor (does NOT initiate payouts).
 
 ```json
 {
-  "creator_id": "author_123",
+  "participant_id": "author_123",
   "amount": 1199,
-  "payment_method": "processor",
-  "payment_reference": "tr_xxx",
-  "status": "completed"
+  "reference_id": "payout_001",
+  "payout_method": "processor"
 }
 ```
 
 **⚠️ Key constraints:**
-- `payment_reference` is **required** (must come from processor)
-- `status` must be `completed` or `failed` (no pending states)
+- `reference_id` is required and must be stable across retries
+- payout execution still happens through `execute-payout`
 
 Creates these ledger entries (only for completed):
 ```
@@ -209,14 +203,14 @@ CREDIT Cash           -$11.99  (money out)
 
 ---
 
-#### 5. Record Refund
-**POST** `/record-refund`
+#### 5. Create Refund
+**POST** `/refunds`
 
 Records a refund with configurable who-pays policy.
 
 ```json
 {
-  "original_sale_reference": "processor_pi_xxx",
+  "sale_reference": "processor_pi_xxx",
   "reason": "Customer requested refund",
   "refund_from": "both"
 }
@@ -353,10 +347,10 @@ soledgic/
 │   │   └── 00000000000000_v1_baseline.sql   # Full schema baseline
 │   └── functions/
 │       ├── record-sale/          # Record sales with split
-│       ├── get-balance/          # Query balances
+│       ├── participants/         # Participant balance resources
 │       ├── get-transactions/     # Query history
-│       ├── process-payout/       # Record payout events
-│       ├── record-refund/        # Record refunds
+│       ├── payouts/              # Record payout events
+│       ├── refunds/              # Record refunds
 │       ├── reverse-transaction/  # Immutable reversals
 │       └── export-report/        # CSV/JSON exports
 ├── api/                          # TypeScript SDK
@@ -412,8 +406,8 @@ curl -X POST "https://api.soledgic.com/v1/record-sale" \
   -H "Content-Type: application/json" \
   -d '{"reference_id": "test_002", "creator_id": "author_123", "amount": 999}'
 
-# Get balance
-curl "https://api.soledgic.com/v1/get-balance?creator_id=author_123" \
+# Get participant balance
+curl "https://api.soledgic.com/v1/participants/author_123" \
   -H "Authorization: Bearer <ANON_KEY>" \
   -H "x-api-key: <LEDGER_API_KEY>"
 

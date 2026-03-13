@@ -16,9 +16,8 @@ deploy() {
   supabase functions deploy "$1" --no-verify-jwt 2>/dev/null || echo "    ⚠ $1 needs review"
 }
 
-echo "[1/10] Core Transactions (9)..."
+echo "[1/12] Core Transactions (8)..."
 deploy record-sale
-deploy record-refund
 deploy record-expense
 deploy record-income
 deploy record-transfer
@@ -27,25 +26,30 @@ deploy record-bill
 deploy record-opening-balance
 deploy reverse-transaction
 
-echo "[2/10] Queries (4)..."
-deploy get-balance
-deploy get-balances
+echo "[2/12] Treasury Resources (7)..."
+deploy participants
+deploy wallets
+deploy transfers
+deploy holds
+deploy checkout-sessions
+deploy payouts
+deploy refunds
+
+echo "[3/12] Queries (2)..."
 deploy get-transactions
 deploy get-runway
 
-echo "[3/10] Payouts (3)..."
-deploy process-payout
+echo "[4/12] Payout Execution (1)..."
 deploy execute-payout
-deploy check-payout-eligibility
 
-echo "[4/10] Reports (5)..."
+echo "[5/12] Reports (5)..."
 deploy trial-balance
 deploy profit-loss
 deploy generate-report
 deploy generate-pdf
 deploy export-report
 
-echo "[5/10] Management (7)..."
+echo "[6/12] Management (7)..."
 deploy reconcile
 deploy manage-splits
 deploy manage-contractors
@@ -54,33 +58,33 @@ deploy manage-budgets
 deploy manage-bank-accounts
 deploy close-period
 
-echo "[6/10] Ledger & Health (3)..."
+echo "[7/12] Ledger & Health (3)..."
 deploy create-ledger
 deploy list-ledgers
 deploy health-check
 
-echo "[7/10] Integrations (1)..."
+echo "[8/12] Integrations (1)..."
 deploy webhooks
 
-echo "[8/10] Standard Mode & Statements (4)..."
+echo "[9/12] Standard Mode & Statements (4)..."
 deploy pay-bill
 deploy receive-payment
 deploy send-statements
 deploy frozen-statements
 
-echo "[9/10] Tax & Billing (4)..."
+echo "[10/12] Tax & Billing (4)..."
 deploy generate-tax-summary
 deploy tax-documents
 deploy submit-tax-info
 deploy billing
 
-echo "[10/11] Imports & Utilities (6)..."
+echo "[11/12] Imports & Utilities (4)..."
 deploy import-transactions
 deploy import-bank-statement
 deploy upload-receipt
 deploy process-webhooks
 
-echo "[11/11] Bank Aggregator (3)..."
+echo "[12/12] Bank Aggregator (3)..."
 deploy bank-aggregator
 deploy sync-bank-feeds
 deploy bank-aggregator-webhooks

@@ -27,13 +27,13 @@ echo ""
 
 # Test 1: Get Balance
 echo -e "${YELLOW}Test 1: Get All Balances${NC}"
-curl -s -X GET "$BASE_URL/get-balance" \
+curl -s -X GET "$BASE_URL/participants" \
   -H "x-api-key: $API_KEY" | jq .
 echo ""
 
 # Test 2: Get Single Creator Balance
 echo -e "${YELLOW}Test 2: Get Single Creator Balance${NC}"
-curl -s -X GET "$BASE_URL/get-balance?creator_id=test_creator" \
+curl -s -X GET "$BASE_URL/participants/test_creator" \
   -H "x-api-key: $API_KEY" | jq .
 echo ""
 
@@ -59,7 +59,7 @@ echo ""
 
 # Test 5: Invalid API Key (should fail)
 echo -e "${YELLOW}Test 5: Invalid API Key (should fail)${NC}"
-curl -s -X GET "$BASE_URL/get-balance" \
+curl -s -X GET "$BASE_URL/participants" \
   -H "x-api-key: invalid_key" | jq .
 echo ""
 

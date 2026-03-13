@@ -1,5 +1,7 @@
 # Soledgic Customer Onboarding Guide
 
+> Migration note (March 12, 2026): onboard new customers against the resource-first treasury API, not the older command surface. Start from `docs/RESOURCE_MODEL_MIGRATION.md` before using examples in this guide.
+
 ## Overview
 
 This document outlines the process for onboarding the first external customer to Soledgic. It covers technical setup, configuration, testing, and go-live procedures.

@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2 } from 'lucide-react'
+import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2, CheckCircle, AlertTriangle } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
+import { TaxInfoForm } from '@/components/creators/tax-info-form'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Creator {
@@ -37,6 +38,19 @@ interface HeldFund {
   release_status: 'held' | 'pending_release'
 }
 
+interface TaxInfo {
+  id: string
+  legal_name: string
+  tax_id_type: string
+  tax_id_last4: string
+  business_type: string
+  certified_at: string | null
+  address_line1: string | null
+  address_city: string | null
+  address_state: string | null
+  address_postal_code: string | null
+}
+
 interface CreatorDetailClientProps {
   ledger: {
     id: string
@@ -58,6 +72,7 @@ interface CreatorDetailClientProps {
   transactions: Transaction[]
   heldFunds: HeldFund[]
   hasTaxInfo: boolean
+  taxInfo: TaxInfo | null
   hasTransactions: boolean
 }
 
@@ -68,6 +83,7 @@ export function CreatorDetailClient({
   transactions,
   heldFunds,
   hasTaxInfo,
+  taxInfo,
   hasTransactions,
 }: CreatorDetailClientProps) {
   const router = useRouter()
@@ -77,6 +93,7 @@ export function CreatorDetailClient({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [releasingEntryId, setReleasingEntryId] = useState<string | null>(null)
   const [releaseError, setReleaseError] = useState<string | null>(null)
+  const [showTaxForm, setShowTaxForm] = useState(false)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -127,11 +144,11 @@ export function CreatorDetailClient({
     setReleasingEntryId(entryId)
 
     try {
-      const response = await callLedgerFunction('release-funds', {
+      const response = await callLedgerFunction(`holds/${entryId}/release`, {
         ledgerId: ledger.id,
+        method: 'POST',
         body: {
-          action: 'release',
-          entry_id: entryId,
+          execute_transfer: true,
         },
       })
 
@@ -264,6 +281,89 @@ export function CreatorDetailClient({
             {hasTaxInfo ? 'On File' : 'Missing'}
           </p>
         </div>
+      </div>
+
+      {/* Tax Information */}
+      <div className="bg-card border border-border rounded-lg p-6 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Tax Information
+          </h2>
+          {taxInfo && !showTaxForm && (
+            <button
+              onClick={() => setShowTaxForm(true)}
+              className="text-sm text-primary hover:text-primary/80"
+            >
+              Update
+            </button>
+          )}
+        </div>
+
+        {showTaxForm || !taxInfo ? (
+          <div>
+            {!taxInfo && (
+              <div className="flex items-center gap-2 mb-4 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/20">
+                <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0" />
+                <p className="text-sm text-yellow-700 dark:text-yellow-500">
+                  Tax information is required for 1099 reporting. Only the last 4 digits of the TIN are stored.
+                </p>
+              </div>
+            )}
+            <TaxInfoForm
+              ledgerId={ledger.id}
+              creatorId={creatorAccount.entity_id}
+              onSuccess={() => window.location.reload()}
+            />
+            {taxInfo && showTaxForm && (
+              <button
+                onClick={() => setShowTaxForm(false)}
+                className="mt-3 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        ) : (
+          <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <dt className="text-sm text-muted-foreground">Legal Name</dt>
+              <dd className="text-foreground font-medium">{taxInfo.legal_name}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Tax ID</dt>
+              <dd className="text-foreground font-medium">
+                {taxInfo.tax_id_type.toUpperCase()} ending in {taxInfo.tax_id_last4}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Business Type</dt>
+              <dd className="text-foreground font-medium capitalize">
+                {taxInfo.business_type.replace(/_/g, ' ')}
+              </dd>
+            </div>
+            {taxInfo.address_line1 && (
+              <div>
+                <dt className="text-sm text-muted-foreground">Address</dt>
+                <dd className="text-foreground">
+                  {taxInfo.address_line1}
+                  {taxInfo.address_city && `, ${taxInfo.address_city}`}
+                  {taxInfo.address_state && `, ${taxInfo.address_state}`}
+                  {taxInfo.address_postal_code && ` ${taxInfo.address_postal_code}`}
+                </dd>
+              </div>
+            )}
+            {taxInfo.certified_at && (
+              <div>
+                <dt className="text-sm text-muted-foreground">Certified</dt>
+                <dd className="text-green-600 flex items-center gap-1">
+                  <CheckCircle className="w-4 h-4" />
+                  {formatDate(taxInfo.certified_at)}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
       </div>
 
       {/* Held Funds */}
@@ -404,7 +504,13 @@ export function CreatorDetailClient({
             {Object.entries(creatorAccount.metadata).map(([key, value]) => (
               <div key={key}>
                 <dt className="text-sm text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</dt>
-                <dd className="text-foreground">{String(value)}</dd>
+                <dd className="text-foreground">
+                  {value == null
+                    ? '—'
+                    : typeof value === 'object'
+                    ? <pre className="text-sm bg-muted rounded px-2 py-1 mt-1 whitespace-pre-wrap">{JSON.stringify(value, null, 2)}</pre>
+                    : String(value)}
+                </dd>
               </div>
             ))}
           </dl>

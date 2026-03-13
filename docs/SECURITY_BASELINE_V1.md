@@ -107,7 +107,7 @@ This document certifies that Soledgic API has completed security hardening and e
 | Endpoint | Redis Limit | DB Fallback |
 |----------|-------------|-------------|
 | record-sale | 200/min | 20/min |
-| record-refund | 100/min | 10/min |
+| refunds | 100/min | 10/min |
 | execute-payout | 50/min | 5/min |
 | create-ledger | 10/hour | 1/hour |
 | generate-pdf | 20/min | 2/min |
@@ -117,11 +117,11 @@ This document certifies that Soledgic API has completed security hardening and e
 
 These endpoints BLOCK if rate limiting is unavailable:
 - `execute-payout`
-- `process-payout`
+- `payouts`
 - `processor-webhook`
 - `bank-feed`
 - `record-sale`
-- `record-refund`
+- `refunds`
 - `create-ledger`
 - `send-statements`
 - `import-transactions`
