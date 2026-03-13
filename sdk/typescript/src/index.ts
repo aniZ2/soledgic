@@ -83,42 +83,6 @@ export interface RecordSaleRequest {
   metadata?: Record<string, unknown>
 }
 
-export type CheckoutProvider = 'card'
-
-interface CreateCheckoutRequestBase {
-  amount: number
-  creatorId: string
-  currency?: string
-  productId?: string
-  productName?: string
-  customerEmail?: string
-  customerId?: string
-  // The active checkout provider is the whitelabeled card processor.
-  paymentProvider?: CheckoutProvider
-  metadata?: Record<string, string>
-  // Session mode: when paymentMethodId is omitted, a hosted checkout session
-  // is created. The buyer visits checkoutUrl to enter their card.
-  successUrl?: string
-  cancelUrl?: string
-}
-
-export type CreateCheckoutRequest = CreateCheckoutRequestBase & (
-  // Direct charge: idempotencyKey is required to prevent duplicate transfers
-  { paymentMethodId: string; sourceId?: string; idempotencyKey: string } |
-  { paymentMethodId?: string; sourceId: string; idempotencyKey: string } |
-  // Session mode: idempotencyKey is not needed (session ID is the key)
-  { paymentMethodId?: undefined; sourceId?: undefined; successUrl: string; idempotencyKey?: string }
-)
-
-export interface CreateCheckoutSessionResponse {
-  success: boolean
-  mode: 'session'
-  sessionId: string
-  checkoutUrl: string
-  expiresAt: string
-  breakdown?: CheckoutBreakdown
-}
-
 export interface RecordIncomeRequest {
   referenceId: string
   amount: number
@@ -351,35 +315,6 @@ export interface PreflightResult {
   decisionId: string
   decision: AuthorizationDecisionType
   warning?: string
-}
-
-export interface ProcessPayoutRequest {
-  referenceId: string
-  creatorId?: string
-  walletId?: string
-  amount: number
-  referenceType?: string
-  description?: string
-  payoutMethod?: string
-  fees?: number
-  feesPaidBy?: 'platform' | 'creator'
-  metadata?: Record<string, unknown>
-}
-
-export interface RecordRefundRequest {
-  originalSaleReference: string
-  amount?: number
-  reason: string
-  refundFrom?: 'both' | 'platform_only' | 'creator_only'
-  externalRefundId?: string
-  idempotencyKey?: string
-  /** Refund mode: 'ledger_only' records without processor settlement,
-   *  'processor_refund' records and instructs processor to return funds. Default: 'ledger_only'. */
-  mode?: 'ledger_only' | 'processor_refund'
-  /** @deprecated Use mode: 'processor_refund' instead */
-  executeProcessorRefund?: boolean
-  processorPaymentId?: string
-  metadata?: Record<string, unknown>
 }
 
 export interface RecordRefundResponse {
@@ -639,6 +574,7 @@ export type CreateCheckoutSessionRequest = {
 
 export interface CreatePayoutRequest {
   participantId: string
+  walletId?: string
   amount: number
   referenceId: string
   referenceType?: string
@@ -698,20 +634,6 @@ export interface CheckoutBreakdown {
   creatorAmount: number
   platformAmount: number
   creatorPercent: number
-}
-
-export interface CreateCheckoutResponse {
-  success: boolean
-  provider: CheckoutProvider
-  paymentId: string
-  paymentIntentId: string
-  clientSecret?: string | null
-  checkoutUrl?: string | null
-  status?: string | null
-  requiresAction: boolean
-  amount: number
-  currency: string
-  breakdown?: CheckoutBreakdown
 }
 
 export interface ReverseResponse {
@@ -1191,40 +1113,8 @@ export interface WalletTopupResponse {
   balance: number | null
 }
 
-export interface WalletBalanceResponse {
-  success: boolean
-  balance: number
-  walletExists: boolean
-  account: {
-    id: string
-    entityId: string
-    name: string | null
-    isActive: boolean
-    createdAt: string
-  } | null
-}
-
-export interface ParticipantWalletResponse {
-  success: boolean
-  wallet: {
-    participantId: string
-    balance: number
-    walletExists: boolean
-    account: WalletBalanceResponse['account']
-  }
-}
-
-export interface WalletDepositRequest {
-  userId: string
-  /** Amount in cents */
-  amount: number
-  referenceId: string
-  description?: string
-  metadata?: Record<string, unknown>
-}
-
 export interface WalletWithdrawRequest {
-  userId: string
+  walletId: string
   /** Amount in cents */
   amount: number
   referenceId: string
@@ -1232,29 +1122,12 @@ export interface WalletWithdrawRequest {
   metadata?: Record<string, unknown>
 }
 
-export interface WalletTransferRequest {
-  fromUserId?: string
-  toUserId?: string
-  fromWalletId?: string
-  toWalletId?: string
-  /** Amount in cents */
-  amount: number
-  referenceId: string
-  description?: string
-  metadata?: Record<string, unknown>
-}
-
-export interface WalletMutationResponse {
+export interface WalletWithdrawalResponse {
   success: boolean
-  transactionId: string
-  balance: number
-}
-
-export interface WalletTransferResponse {
-  success: boolean
-  transactionId: string
-  fromBalance: number
-  toBalance: number
+  walletId: string | null
+  ownerId: string | null
+  transactionId: string | null
+  balance: number | null
 }
 
 export interface WalletHistoryEntry {
@@ -1268,28 +1141,6 @@ export interface WalletHistoryEntry {
   status: string
   metadata: Record<string, unknown> | null
   createdAt: string
-}
-
-export interface WalletHistoryResponse {
-  success: boolean
-  transactions: WalletHistoryEntry[]
-  total: number
-  limit: number
-  offset: number
-}
-
-export interface ParticipantWalletEntriesResponse {
-  success: boolean
-  entries: WalletHistoryEntry[]
-  total: number
-  limit: number
-  offset: number
-}
-
-export interface ParticipantWalletMutationResponse {
-  success: boolean
-  transactionId: string
-  balance: number
 }
 
 export interface ParticipantTransferResponse {
@@ -1855,76 +1706,6 @@ export class Soledgic {
 
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
 
-  async createCheckout(req: CreateCheckoutRequest): Promise<CreateCheckoutResponse | CreateCheckoutSessionResponse> {
-    const hasPaymentMethod = Boolean(req.paymentMethodId || req.sourceId)
-
-    if (!hasPaymentMethod && !req.successUrl) {
-      throw new Error('Either paymentMethodId/sourceId or successUrl is required')
-    }
-
-    const response = await this.request<any>('checkout-sessions', {
-      amount: req.amount,
-      participant_id: req.creatorId,
-      currency: req.currency,
-      product_id: req.productId,
-      product_name: req.productName,
-      customer_email: req.customerEmail,
-      customer_id: req.customerId,
-      payment_method_id: req.paymentMethodId,
-      source_id: req.sourceId,
-      success_url: req.successUrl,
-      cancel_url: req.cancelUrl,
-      idempotency_key: req.idempotencyKey,
-      metadata: req.metadata,
-    })
-    const checkoutSession = response.checkout_session || response
-
-    // Session mode response
-    if (checkoutSession.mode === 'session') {
-      const breakdown = checkoutSession.breakdown
-        ? {
-            grossAmount: checkoutSession.breakdown.gross_amount,
-            creatorAmount: checkoutSession.breakdown.creator_amount,
-            platformAmount: checkoutSession.breakdown.platform_amount,
-            creatorPercent: checkoutSession.breakdown.creator_percent,
-          }
-        : undefined
-
-      return {
-        success: Boolean(response.success),
-        mode: 'session',
-        sessionId: checkoutSession.id,
-        checkoutUrl: checkoutSession.checkout_url,
-        expiresAt: checkoutSession.expires_at,
-        breakdown,
-      }
-    }
-
-    // Direct charge response
-    const breakdown = checkoutSession.breakdown
-      ? {
-          grossAmount: checkoutSession.breakdown.gross_amount,
-          creatorAmount: checkoutSession.breakdown.creator_amount,
-          platformAmount: checkoutSession.breakdown.platform_amount,
-          creatorPercent: checkoutSession.breakdown.creator_percent,
-        }
-      : undefined
-
-    return {
-      success: Boolean(response.success),
-      provider: checkoutSession.provider || 'card',
-      paymentId: checkoutSession.payment_id ?? checkoutSession.payment_intent_id,
-      paymentIntentId: checkoutSession.payment_intent_id ?? checkoutSession.payment_id,
-      clientSecret: checkoutSession.client_secret ?? null,
-      checkoutUrl: checkoutSession.checkout_url ?? null,
-      status: checkoutSession.status ?? null,
-      requiresAction: Boolean(checkoutSession.requires_action),
-      amount: checkoutSession.amount,
-      currency: checkoutSession.currency,
-      breakdown,
-    }
-  }
-
   async recordSale(req: RecordSaleRequest): Promise<SaleResponse> {
     return this.request('record-sale', {
       reference_id: req.referenceId,
@@ -1940,64 +1721,6 @@ export class Soledgic {
       transaction_date: req.transactionDate,
       metadata: req.metadata,
     })
-  }
-
-  async processPayout(req: ProcessPayoutRequest) {
-    const response = await this.request<any>('payouts', {
-      reference_id: req.referenceId,
-      wallet_id: req.walletId,
-      participant_id: req.creatorId,
-      amount: req.amount,
-      reference_type: req.referenceType,
-      description: req.description,
-      payout_method: req.payoutMethod,
-      fees: req.fees,
-      fees_paid_by: req.feesPaidBy,
-      metadata: req.metadata,
-    })
-
-    return {
-      success: response.success,
-      transaction_id: response.payout?.transaction_id ?? response.transaction_id,
-      payout_id: response.payout?.id ?? null,
-      amount: response.payout?.net_amount ?? req.amount,
-      status: 'created',
-    }
-  }
-
-  async recordRefund(req: RecordRefundRequest): Promise<RecordRefundResponse> {
-    const response = await this.request<any>('refunds', {
-      sale_reference: req.originalSaleReference,
-      amount: req.amount,
-      reason: req.reason,
-      refund_from: req.refundFrom,
-      external_refund_id: req.externalRefundId,
-      idempotency_key: req.idempotencyKey,
-      mode: req.mode,
-      execute_processor_refund: req.executeProcessorRefund,
-      processor_payment_id: req.processorPaymentId,
-      metadata: req.metadata,
-    })
-    const refund = response.refund || response
-    return {
-      success: response.success,
-      transactionId: refund.transaction_id ?? null,
-      referenceId: refund.reference_id ?? null,
-      saleReference: refund.sale_reference ?? req.originalSaleReference ?? null,
-      refundedAmount: refund.refunded_amount ?? null,
-      currency: refund.currency ?? null,
-      status: refund.status ?? null,
-      breakdown: refund.breakdown
-        ? {
-            fromCreator: refund.breakdown?.from_creator,
-            fromPlatform: refund.breakdown?.from_platform,
-          }
-        : null,
-      isFullRefund: refund.is_full_refund ?? null,
-      repairPending: refund.repair_pending ?? null,
-      warning: response.warning ?? null,
-      warningCode: response.warning_code ?? null,
-    }
   }
 
   // === STANDARD MODE - INCOME & EXPENSES ===
@@ -2265,50 +1988,6 @@ export class Soledgic {
 
   async autoPromoteCreators() {
     return this.request('manage-splits', { action: 'auto_promote' })
-  }
-
-  // === BALANCES ===
-
-  async getAllBalances() {
-    const response = await this.requestGet<any>('participants')
-    return {
-      success: response.success,
-      data: (response.participants || []).map((participant: any) => ({
-        creator_id: participant.id,
-        name: participant.name ?? null,
-        tier: participant.tier ?? null,
-        ledger_balance: participant.ledger_balance,
-        held_amount: participant.held_amount,
-        available_balance: participant.available_balance,
-      })),
-    }
-  }
-
-  async getCreatorBalances() {
-    return this.getAllBalances()
-  }
-
-  async getCreatorBalance(creatorId: string) {
-    const response = await this.requestGet<any>(`participants/${creatorId}`)
-    const participant = response.participant || {}
-    return {
-      success: response.success,
-      data: {
-        creator_id: participant.id,
-        name: participant.name ?? null,
-        tier: participant.tier ?? null,
-        custom_split: participant.custom_split_percent ?? null,
-        ledger_balance: participant.ledger_balance,
-        held_amount: participant.held_amount,
-        available_balance: participant.available_balance,
-        holds: (participant.holds || []).map((hold: any) => ({
-          amount: hold.amount,
-          reason: hold.reason ?? null,
-          release_date: hold.release_date ?? null,
-          status: hold.status,
-        })),
-      },
-    }
   }
 
   async getSummary() {
@@ -3189,10 +2868,6 @@ export class Soledgic {
     }
   }
 
-  async evaluateRisk(req: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
-    return this.evaluateFraud(req)
-  }
-
   async createFraudPolicy(req: CreatePolicyRequest): Promise<FraudPolicyResponse> {
     const response = await this.request<any>('fraud/policies', {
       policy_type: req.policyType,
@@ -3215,10 +2890,6 @@ export class Soledgic {
     }
   }
 
-  async createRiskPolicy(req: CreatePolicyRequest): Promise<FraudPolicyResponse> {
-    return this.createFraudPolicy(req)
-  }
-
   async listFraudPolicies(): Promise<FraudPolicyListResponse> {
     const response = await this.requestGet<any>('fraud/policies')
     return {
@@ -3236,10 +2907,6 @@ export class Soledgic {
     }
   }
 
-  async listRiskPolicies(): Promise<FraudPolicyListResponse> {
-    return this.listFraudPolicies()
-  }
-
   async deleteFraudPolicy(policyId: string): Promise<FraudPolicyDeleteResponse> {
     const response = await this.requestDelete<any>(`fraud/policies/${policyId}`)
     return {
@@ -3247,10 +2914,6 @@ export class Soledgic {
       deleted: Boolean(response.deleted),
       policyId: response.policy_id,
     }
-  }
-
-  async deleteRiskPolicy(policyId: string): Promise<FraudPolicyDeleteResponse> {
-    return this.deleteFraudPolicy(policyId)
   }
 
   // === TAX DOCUMENTS ===
@@ -3279,10 +2942,6 @@ export class Soledgic {
           : null,
       },
     }
-  }
-
-  async calculateTaxForCreator(creatorId: string, taxYear?: number): Promise<TaxCalculationResponse> {
-    return this.calculateTaxForParticipant(creatorId, taxYear)
   }
 
   async generateAllTaxDocuments(taxYear?: number): Promise<TaxDocumentGenerationResponse> {
@@ -3666,42 +3325,8 @@ export class Soledgic {
     }
   }
 
-  async getWalletBalance(userId: string): Promise<WalletBalanceResponse> {
-    const response = await this.requestGet<any>(`wallets/${userId}`)
-    const wallet = response.wallet || {}
-    return {
-      success: response.success,
-      balance: wallet.balance,
-      walletExists: wallet.wallet_exists,
-      account: wallet.account
-        ? {
-            id: wallet.account.id,
-            entityId: wallet.account.participant_id,
-            name: wallet.account.name,
-            isActive: wallet.account.is_active,
-            createdAt: wallet.account.created_at,
-          }
-        : null,
-    }
-  }
-
-  async walletDeposit(req: WalletDepositRequest): Promise<WalletMutationResponse> {
-    const response = await this.request<any>(`wallets/${req.userId}/deposits`, {
-      amount: req.amount,
-      reference_id: req.referenceId,
-      description: req.description,
-      metadata: req.metadata,
-    })
-    const deposit = response.deposit || response
-    return {
-      success: response.success,
-      transactionId: deposit.transaction_id,
-      balance: deposit.balance,
-    }
-  }
-
-  async walletWithdraw(req: WalletWithdrawRequest): Promise<WalletMutationResponse> {
-    const response = await this.request<any>(`wallets/${req.userId}/withdrawals`, {
+  async withdrawFromWallet(req: WalletWithdrawRequest): Promise<WalletWithdrawalResponse> {
+    const response = await this.request<any>(`wallets/${req.walletId}/withdrawals`, {
       amount: req.amount,
       reference_id: req.referenceId,
       description: req.description,
@@ -3710,136 +3335,31 @@ export class Soledgic {
     const withdrawal = response.withdrawal || response
     return {
       success: response.success,
-      transactionId: withdrawal.transaction_id,
-      balance: withdrawal.balance,
-    }
-  }
-
-  async walletTransfer(req: WalletTransferRequest): Promise<WalletTransferResponse> {
-    const payload: Record<string, unknown> = {
-      amount: req.amount,
-      reference_id: req.referenceId,
-      description: req.description,
-      metadata: req.metadata,
-    }
-
-    if (req.fromWalletId || req.toWalletId) {
-      payload.from_wallet_id = req.fromWalletId
-      payload.to_wallet_id = req.toWalletId
-    } else {
-      payload.from_participant_id = req.fromUserId
-      payload.to_participant_id = req.toUserId
-    }
-
-    const response = await this.request<any>('transfers', payload)
-    const transfer = response.transfer || response
-    return {
-      success: response.success,
-      transactionId: transfer.transaction_id,
-      fromBalance: transfer.from_balance,
-      toBalance: transfer.to_balance,
-    }
-  }
-
-  async getWalletHistory(userId: string, options?: { limit?: number; offset?: number }): Promise<WalletHistoryResponse> {
-    const response = await this.requestGet<any>(`wallets/${userId}/entries`, {
-      limit: options?.limit,
-      offset: options?.offset,
-    })
-    return {
-      success: response.success,
-      transactions: (response.entries || []).map((t: any) => ({
-        entryId: t.entry_id,
-        entryType: t.entry_type,
-        amount: t.amount,
-        transactionId: t.transaction_id,
-        referenceId: t.reference_id,
-        transactionType: t.transaction_type,
-        description: t.description,
-        status: t.status,
-        metadata: t.metadata,
-        createdAt: t.created_at,
-      })),
-      total: response.total,
-      limit: response.limit,
-      offset: response.offset,
-    }
-  }
-
-  async getParticipantWallet(participantId: string): Promise<ParticipantWalletResponse> {
-    const response = await this.getWalletBalance(participantId)
-    return {
-      success: response.success,
-      wallet: {
-        participantId,
-        balance: response.balance,
-        walletExists: response.walletExists,
-        account: response.account,
-      },
-    }
-  }
-
-  async listWalletEntriesForParticipant(
-    participantId: string,
-    options?: { limit?: number; offset?: number },
-  ): Promise<ParticipantWalletEntriesResponse> {
-    const response = await this.getWalletHistory(participantId, options)
-    return {
-      success: response.success,
-      entries: response.transactions,
-      total: response.total,
-      limit: response.limit,
-      offset: response.offset,
-    }
-  }
-
-  async depositToWallet(req: ParticipantWalletMutationRequest): Promise<ParticipantWalletMutationResponse> {
-    const response = await this.walletDeposit({
-      userId: req.participantId,
-      amount: req.amount,
-      referenceId: req.referenceId,
-      description: req.description,
-      metadata: req.metadata,
-    })
-    return {
-      success: response.success,
-      transactionId: response.transactionId,
-      balance: response.balance,
-    }
-  }
-
-  async withdrawFromWallet(req: ParticipantWalletMutationRequest): Promise<ParticipantWalletMutationResponse> {
-    const response = await this.walletWithdraw({
-      userId: req.participantId,
-      amount: req.amount,
-      referenceId: req.referenceId,
-      description: req.description,
-      metadata: req.metadata,
-    })
-    return {
-      success: response.success,
-      transactionId: response.transactionId,
-      balance: response.balance,
+      walletId: withdrawal.wallet_id ?? null,
+      ownerId: withdrawal.owner_id ?? null,
+      transactionId: withdrawal.transaction_id ?? null,
+      balance: withdrawal.balance ?? null,
     }
   }
 
   async createTransfer(req: ParticipantTransferRequest): Promise<ParticipantTransferResponse> {
-    const response = await this.walletTransfer({
-      fromUserId: req.fromParticipantId,
-      toUserId: req.toParticipantId,
+    const response = await this.request<any>('transfers', {
+      from_participant_id: req.fromParticipantId,
+      to_participant_id: req.toParticipantId,
       amount: req.amount,
-      referenceId: req.referenceId,
+      reference_id: req.referenceId,
       description: req.description,
       metadata: req.metadata,
     })
+    const transfer = response.transfer || response
     return {
       success: response.success,
       transfer: {
-        transactionId: response.transactionId,
+        transactionId: transfer.transaction_id,
         fromParticipantId: req.fromParticipantId,
         toParticipantId: req.toParticipantId,
-        fromBalance: response.fromBalance,
-        toBalance: response.toBalance,
+        fromBalance: transfer.from_balance,
+        toBalance: transfer.to_balance,
       },
     }
   }
@@ -3904,36 +3424,50 @@ export class Soledgic {
   async createCheckoutSession(
     req: CreateCheckoutSessionRequest,
   ): Promise<CheckoutSessionResourceResponse> {
-    const response = await this.createCheckout({
+    const hasPaymentMethod = 'paymentMethodId' in req ? Boolean(req.paymentMethodId || req.sourceId) : false
+    if (!hasPaymentMethod && !req.successUrl) {
+      throw new Error('Either paymentMethodId/sourceId or successUrl is required')
+    }
+
+    const response = await this.request<any>('checkout-sessions', {
       amount: req.amount,
-      creatorId: req.participantId,
+      participant_id: req.participantId,
       currency: req.currency,
-      productId: req.productId,
-      productName: req.productName,
-      customerEmail: req.customerEmail,
-      customerId: req.customerId,
-      paymentMethodId: 'paymentMethodId' in req ? req.paymentMethodId : undefined,
-      sourceId: 'sourceId' in req ? req.sourceId : undefined,
-      successUrl: req.successUrl,
-      cancelUrl: req.cancelUrl,
-      idempotencyKey: 'idempotencyKey' in req ? req.idempotencyKey : undefined,
+      product_id: req.productId,
+      product_name: req.productName,
+      customer_email: req.customerEmail,
+      customer_id: req.customerId,
+      payment_method_id: 'paymentMethodId' in req ? req.paymentMethodId : undefined,
+      source_id: 'sourceId' in req ? req.sourceId : undefined,
+      success_url: req.successUrl,
+      cancel_url: req.cancelUrl,
+      idempotency_key: 'idempotencyKey' in req ? req.idempotencyKey : undefined,
       metadata: req.metadata,
-    } as CreateCheckoutRequest)
+    })
+
+    const checkoutSession = response.checkout_session || response
 
     return {
-      success: response.success,
+      success: Boolean(response.success),
       checkoutSession: {
-        id: 'sessionId' in response ? response.sessionId : response.paymentId,
-        mode: 'sessionId' in response ? 'session' : 'direct',
-        checkoutUrl: response.checkoutUrl ?? null,
-        paymentId: 'paymentId' in response ? response.paymentId : null,
-        paymentIntentId: 'paymentIntentId' in response ? response.paymentIntentId : null,
-        status: 'status' in response ? response.status ?? null : null,
-        requiresAction: 'requiresAction' in response ? response.requiresAction : false,
-        amount: 'amount' in response ? response.amount : req.amount,
-        currency: 'currency' in response ? response.currency : (req.currency || 'USD'),
-        expiresAt: 'expiresAt' in response ? response.expiresAt : null,
-        breakdown: response.breakdown ?? null,
+        id: checkoutSession.id ?? checkoutSession.payment_id ?? checkoutSession.payment_intent_id,
+        mode: checkoutSession.mode === 'session' ? 'session' : 'direct',
+        checkoutUrl: checkoutSession.checkout_url ?? null,
+        paymentId: checkoutSession.payment_id ?? null,
+        paymentIntentId: checkoutSession.payment_intent_id ?? checkoutSession.payment_id ?? null,
+        status: checkoutSession.status ?? null,
+        requiresAction: Boolean(checkoutSession.requires_action),
+        amount: checkoutSession.amount ?? req.amount,
+        currency: checkoutSession.currency ?? (req.currency || 'USD'),
+        expiresAt: checkoutSession.expires_at ?? null,
+        breakdown: checkoutSession.breakdown
+          ? {
+              grossAmount: checkoutSession.breakdown.gross_amount,
+              creatorAmount: checkoutSession.breakdown.creator_amount,
+              platformAmount: checkoutSession.breakdown.platform_amount,
+              creatorPercent: checkoutSession.breakdown.creator_percent,
+            }
+          : null,
       },
     }
   }
@@ -3941,6 +3475,7 @@ export class Soledgic {
   async createPayout(req: CreatePayoutRequest): Promise<PayoutResourceResponse> {
     const response = await this.request<any>('payouts', {
       participant_id: req.participantId,
+      wallet_id: req.walletId,
       amount: req.amount,
       reference_id: req.referenceId,
       reference_type: req.referenceType,
@@ -3966,37 +3501,38 @@ export class Soledgic {
   }
 
   async createRefund(req: CreateRefundRequest): Promise<RefundResourceResponse> {
-    const response = await this.recordRefund({
-      originalSaleReference: req.saleReference,
+    const response = await this.request<any>('refunds', {
+      sale_reference: req.saleReference,
       reason: req.reason,
       amount: req.amount,
-      refundFrom: req.refundFrom,
-      externalRefundId: req.externalRefundId,
-      idempotencyKey: req.idempotencyKey,
+      refund_from: req.refundFrom,
+      external_refund_id: req.externalRefundId,
+      idempotency_key: req.idempotencyKey,
       mode: req.mode,
-      processorPaymentId: req.processorPaymentId,
+      processor_payment_id: req.processorPaymentId,
       metadata: req.metadata,
     })
+    const refund = response.refund || response
     return {
       success: response.success,
       warning: response.warning ?? null,
-      warningCode: response.warningCode ?? null,
+      warningCode: response.warning_code ?? null,
       refund: {
-        id: response.referenceId ?? response.transactionId ?? '',
-        transactionId: response.transactionId,
-        referenceId: response.referenceId ?? null,
-        saleReference: response.saleReference ?? null,
-        refundedAmount: response.refundedAmount,
-        currency: response.currency ?? null,
-        status: response.status ?? null,
-        breakdown: response.breakdown
+        id: refund.id ?? refund.reference_id ?? refund.transaction_id ?? '',
+        transactionId: refund.transaction_id ?? null,
+        referenceId: refund.reference_id ?? null,
+        saleReference: refund.sale_reference ?? null,
+        refundedAmount: refund.refunded_amount ?? null,
+        currency: refund.currency ?? null,
+        status: refund.status ?? null,
+        breakdown: refund.breakdown
           ? {
-              fromCreator: response.breakdown.fromCreator,
-              fromPlatform: response.breakdown.fromPlatform,
+              fromCreator: refund.breakdown.from_creator,
+              fromPlatform: refund.breakdown.from_platform,
             }
           : null,
-        isFullRefund: response.isFullRefund ?? null,
-        repairPending: response.repairPending ?? null,
+        isFullRefund: refund.is_full_refund ?? null,
+        repairPending: refund.repair_pending ?? null,
       },
     }
   }

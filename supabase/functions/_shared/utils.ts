@@ -239,7 +239,7 @@ export function maintenanceResponse(req?: Request, requestId?: string): Response
 // CORS CONFIGURATION
 // ============================================================================
 
-// Client domains via env (e.g. "https://booklyverse.com,https://app.booklyverse.com")
+// Client domains via env (e.g. "https://platform.example.com,https://app.example.com")
 const EXTRA_ALLOWED_ORIGINS = (Deno.env.get('CORS_ALLOWED_ORIGINS') || '')
   .split(',')
   .map((o: string) => o.trim())

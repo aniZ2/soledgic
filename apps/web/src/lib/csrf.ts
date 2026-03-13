@@ -23,7 +23,7 @@ const ALLOWED_ORIGINS = [
     'http://localhost:3001',
     'http://127.0.0.1:3000',
   ] : []),
-  // Client domains via env (e.g. "https://booklyverse.com,https://app.booklyverse.com")
+  // Client domains via env (e.g. "https://platform.example.com,https://app.example.com")
   ...EXTRA_ALLOWED_ORIGINS,
 ]
 

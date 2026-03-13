@@ -12,7 +12,7 @@ describe('Delete Creator E2E', () => {
   const checkoutBlockedCreatorId = `e2e_del_coblock_${ts}`
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
 
     // Create all test creators in parallel
     await Promise.all([

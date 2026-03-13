@@ -78,7 +78,7 @@ export class SoledgicTestClient {
     if (!res.ok && !data.success) {
       const error: any = new Error(data.error || `HTTP ${res.status}`)
       error.status = res.status
-      error.code = data.code
+      error.code = data.error_code || data.code
       error.details = data
       throw error
     }
@@ -125,7 +125,7 @@ export class SoledgicTestClient {
     if (!res.ok && !data.success) {
       const error: any = new Error(data.error || `HTTP ${res.status}`)
       error.status = res.status
-      error.code = data.code
+      error.code = data.error_code || data.code
       error.details = data
       throw error
     }
@@ -187,15 +187,15 @@ export class SoledgicTestClient {
     return results
   }
 
-  // Payouts - matches process-payout Edge Function
-  async processPayout(params: {
-    creatorId: string
+  // Payouts
+  async createPayout(params: {
+    participantId: string
     referenceId: string
     amount?: number
     description?: string
   }) {
     const response = await this.request('payouts', {
-      participant_id: params.creatorId,
+      participant_id: params.participantId,
       reference_id: params.referenceId,
       amount: params.amount,
       description: params.description,
@@ -214,13 +214,13 @@ export class SoledgicTestClient {
     }
   }
 
-  // Balances - get-balances doesn't require action
+  // Participant balances
   async getBalances() {
     return this.requestGet('participants')
   }
 
-  async getCreatorBalance(creatorId: string) {
-    const response = await this.requestGet(`participants/${creatorId}`)
+  async getParticipantBalance(participantId: string) {
+    const response = await this.requestGet(`participants/${participantId}`)
     return {
       success: response.success,
       data: {
@@ -406,8 +406,8 @@ export class SoledgicTestClient {
   // REFUNDS
   // ============================================================================
 
-  async recordRefund(params: {
-    originalSaleReference: string
+  async createRefund(params: {
+    saleReference: string
     amount?: number
     reason: string
     refundFrom?: 'both' | 'platform_only' | 'creator_only'
@@ -418,7 +418,7 @@ export class SoledgicTestClient {
     metadata?: Record<string, any>
   }) {
     const response = await this.request('refunds', {
-      sale_reference: params.originalSaleReference,
+      sale_reference: params.saleReference,
       amount: params.amount,
       reason: params.reason,
       refund_from: params.refundFrom,
@@ -642,8 +642,7 @@ export function createServiceClient(): SoledgicServiceClient | null {
 // ============================================================================
 // 
 // Set these in your CI/CD environment or local .env.test file:
-//   TEST_API_KEY_BOOKLYVERSE=sk_test_...
-//   TEST_API_KEY_ACME=sk_test_...
+//   TEST_API_KEY_PRIMARY=sk_live_...
 //
 // NEVER hardcode API keys in source code!
 // ============================================================================
@@ -655,8 +654,7 @@ function isPlaceholder(value: string): boolean {
     v.includes('replace_with') ||
     v.includes('your_') ||
     v === 'sk_test_replace_with_local_key' ||
-    v === 'sk_test_your_booklyverse_test_key_here' ||
-    v === 'sk_test_your_acme_test_key_here'
+    v === 'sk_test_your_primary_test_key_here'
   )
 }
 
@@ -666,15 +664,14 @@ function cleanSecret(value: string | undefined): string {
 }
 
 export const TEST_KEYS = {
-  booklyverse: cleanSecret(process.env.TEST_API_KEY_BOOKLYVERSE),
-  acme: cleanSecret(process.env.TEST_API_KEY_ACME),
+  primary: cleanSecret(process.env.TEST_API_KEY_PRIMARY),
 }
 
 // Supabase anon key for Authorization header
 const SUPABASE_ANON_KEY = cleanSecret(process.env.SUPABASE_ANON_KEY)
 
 // Create test client
-export function createTestClient(key: keyof typeof TEST_KEYS = 'booklyverse') {
+export function createTestClient(key: keyof typeof TEST_KEYS = 'primary') {
   const apiKey = TEST_KEYS[key]
   if (!apiKey) {
     throw new Error(

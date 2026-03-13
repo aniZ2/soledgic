@@ -105,13 +105,14 @@ await ledger.configurePayoutRail('manual', {
 
 ```typescript
 // 1. Create payout in ledger
-const payout = await ledger.processPayout({
-  creatorId: 'creator_jane_doe',
+const payout = await ledger.createPayout({
+  participantId: 'creator_jane_doe',
   referenceId: 'payout_dec_2024',
+  amount: 50000,
 })
 
 // 2. Execute via payment rail
-const result = await ledger.executePayout(payout.payout_id)
+const result = await ledger.executePayout(payout.payout.id)
 // { success: true, rail: 'processor_connect', external_id: 'tr_xxx' }
 
 // Batch execution

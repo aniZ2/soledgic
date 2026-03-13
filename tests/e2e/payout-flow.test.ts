@@ -7,7 +7,7 @@ describe('Payout Flow E2E', () => {
   let payoutTransactionId: string | null = null
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
 
     try {
       await ledger.createCreator({
@@ -34,7 +34,7 @@ describe('Payout Flow E2E', () => {
   })
 
   it('should verify creator has available balance', async () => {
-    const result = await ledger.getCreatorBalance(creatorId)
+    const result = await ledger.getParticipantBalance(creatorId)
 
     expect(result.success).toBe(true)
     expect(result.data.available_balance).toBeGreaterThan(0)
@@ -44,8 +44,8 @@ describe('Payout Flow E2E', () => {
   it('should process a payout (ledger operation)', async () => {
     const payoutRef = `e2e_payout_${Date.now()}`
 
-    const result = await ledger.processPayout({
-      creatorId,
+    const result = await ledger.createPayout({
+      participantId: creatorId,
       referenceId: payoutRef,
       amount: 5000, // $50.00
       description: 'E2E payout test',
@@ -63,8 +63,8 @@ describe('Payout Flow E2E', () => {
 
   it('should reject payout exceeding available balance', async () => {
     await expect(
-      ledger.processPayout({
-        creatorId,
+      ledger.createPayout({
+        participantId: creatorId,
         referenceId: `e2e_payout_excess_${Date.now()}`,
         amount: 999999999,
         description: 'Should fail - insufficient balance',
@@ -75,16 +75,16 @@ describe('Payout Flow E2E', () => {
   it('should reject duplicate payout reference', async () => {
     const dupRef = `e2e_payout_dup_${Date.now()}`
 
-    await ledger.processPayout({
-      creatorId,
+    await ledger.createPayout({
+      participantId: creatorId,
       referenceId: dupRef,
       amount: 1000,
       description: 'First payout',
     })
 
     await expect(
-      ledger.processPayout({
-        creatorId,
+      ledger.createPayout({
+        participantId: creatorId,
         referenceId: dupRef,
         amount: 1000,
         description: 'Duplicate payout',
@@ -115,7 +115,7 @@ describe('Payout Flow E2E', () => {
   })
 
   it('should reflect payout in updated balance', async () => {
-    const result = await ledger.getCreatorBalance(creatorId)
+    const result = await ledger.getParticipantBalance(creatorId)
 
     expect(result.success).toBe(true)
     console.log(`Creator balance after payout: $${result.data.available_balance}`)

@@ -17,7 +17,7 @@ describe('Period Close with AR/AP', () => {
   let client: SoledgicTestClient
 
   beforeAll(async () => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
     // Clean up data from previous tests to ensure consistency
     try {
       await client.cleanupTestData()
@@ -77,7 +77,7 @@ describe('Closed Period Restrictions', () => {
   let closedMonth: number
 
   beforeAll(async () => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
     
     // Try to close a past period for testing
     // Use a month that's definitely in the past
@@ -135,7 +135,7 @@ describe('Trial Balance Integrity', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should maintain balance after invoice lifecycle', async () => {
@@ -239,7 +239,7 @@ describe('Cross-Report Consistency', () => {
   let client: SoledgicTestClient
 
   beforeAll(async () => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
     // Clean up data to ensure consistency checks are isolated
     try {
       await client.cleanupTestData()
@@ -331,7 +331,7 @@ describe('Edge Cases & Error Recovery', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should handle orphaned payments gracefully', async () => {

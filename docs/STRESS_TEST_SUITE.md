@@ -579,8 +579,8 @@ describe('Duplicate Payout Request', () => {
 
     // Fire two payout requests simultaneously
     const [result1, result2] = await Promise.all([
-      ledger.processPayout({ creatorId: 'creator_1', referenceId: payoutRef }),
-      ledger.processPayout({ creatorId: 'creator_1', referenceId: payoutRef }),
+      ledger.createPayout({ participantId: 'creator_1', referenceId: payoutRef, amount: 1000 }),
+      ledger.createPayout({ participantId: 'creator_1', referenceId: payoutRef, amount: 1000 }),
     ])
 
     // Both should "succeed" (second is idempotent)
@@ -769,9 +769,10 @@ it('should reject negative amount', async () => {
 ```javascript
 it('should reject payout exceeding balance', async () => {
   // Creator with $50 balance
-  const result = await ledger.processPayout({
-    creatorId: 'creator_with_50_balance',
+  const result = await ledger.createPayout({
+    participantId: 'creator_with_50_balance',
     amount: 10000, // $100
+    referenceId: 'stress_insufficient_balance_payout',
   })
 
   expect(result.success).toBe(false)

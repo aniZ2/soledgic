@@ -214,13 +214,14 @@ export default function ApiKeysPage() {
         <h3 className="font-semibold text-foreground mb-4">Usage Example</h3>
         <div className="bg-muted rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-foreground">
-{`curl -X POST https://soledgic.supabase.co/functions/v1/record-sale \\
+{`curl -X POST https://soledgic.supabase.co/functions/v1/checkout-sessions \\
   -H "Content-Type: application/json" \\
   -H "x-api-key: YOUR_API_KEY" \\
   -d '{
-    "reference_id": "sale_123",
-    "creator_id": "creator_1",
-    "amount": 2999
+    "participant_id": "creator_1",
+    "amount": 2999,
+    "product_name": "Premium product",
+    "success_url": "https://example.com/success"
   }'`}
           </pre>
         </div>

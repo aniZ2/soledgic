@@ -21,7 +21,7 @@ describe('Invoice Lifecycle - Happy Path', () => {
   let invoiceNumber: string
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should create a draft invoice', async () => {
@@ -110,7 +110,7 @@ describe('Partial Payments', () => {
   let invoiceId: string
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should create and send invoice', async () => {
@@ -203,7 +203,7 @@ describe('Invoice Void/Reversal', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should void a draft invoice (no AR impact)', async () => {
@@ -324,7 +324,7 @@ describe('Period Close Interactions', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should block invoice operations in closed period', async () => {
@@ -364,7 +364,7 @@ describe('Concurrent Invoice Operations', () => {
   let client: SoledgicTestClient
 
   beforeAll(async () => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should handle concurrent partial payments without double-crediting', async () => {
@@ -454,7 +454,7 @@ describe('AR/AP Aging Accuracy', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should correctly age invoices over time', async () => {
@@ -503,7 +503,7 @@ describe('Balance Sheet Consistency', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should maintain balanced equation after invoice operations', async () => {
@@ -559,7 +559,7 @@ describe('Error Handling & Edge Cases', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should reject invoice with no line items', async () => {

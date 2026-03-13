@@ -412,32 +412,32 @@ export function GettingStartedClient({
             </div>
           </div>
 
-          {/* Record Sale */}
+          {/* Checkout session */}
           <div className="p-6">
-            <h3 className="font-medium text-foreground mb-2">2. Record a Sale</h3>
+            <h3 className="font-medium text-foreground mb-2">2. Create a Checkout Session</h3>
             <p className="text-sm text-muted-foreground mb-3">
-              Record when a creator makes a sale. Amount is in cents.
+              Start a hosted checkout flow for a participant. Amount is in cents.
             </p>
             <div className="relative">
               <pre className="bg-muted rounded-lg p-4 overflow-x-auto text-sm">
-{`curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\
+{`curl -X POST '${supabaseUrl}/functions/v1/checkout-sessions' \\
   -H 'Content-Type: application/json' \\
   -H 'x-api-key: YOUR_API_KEY' \\
   -d '{
-    "reference_id": "sale_abc123",
-    "creator_id": "creator_123",
+    "participant_id": "creator_123",
     "amount": 5000,
-    "description": "Product sale"
+    "product_name": "Premium product",
+    "success_url": "https://example.com/success"
   }'`}
               </pre>
               <button
                 onClick={() => copyToClipboard(
-                  `curl -X POST '${supabaseUrl}/functions/v1/record-sale' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"reference_id": "sale_abc123", "creator_id": "creator_123", "amount": 5000, "description": "Product sale"}'`,
-                  'record-sale'
+                  `curl -X POST '${supabaseUrl}/functions/v1/checkout-sessions' \\\n  -H 'Content-Type: application/json' \\\n  -H 'x-api-key: YOUR_API_KEY' \\\n  -d '{"participant_id": "creator_123", "amount": 5000, "product_name": "Premium product", "success_url": "https://example.com/success"}'`,
+                  'checkout-sessions'
                 )}
                 className="absolute top-2 right-2 p-2 hover:bg-background/50 rounded"
               >
-                {copied === 'record-sale' ? (
+                {copied === 'checkout-sessions' ? (
                   <Check className="w-4 h-4 text-green-500" />
                 ) : (
                   <Copy className="w-4 h-4 text-muted-foreground" />

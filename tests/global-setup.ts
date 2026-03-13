@@ -16,7 +16,7 @@ export default async function globalSetup() {
   // Load environment variables from .env.test
   const env = loadEnv('test', process.cwd(), '')
 
-  const apiKey = env.TEST_API_KEY_BOOKLYVERSE
+  const apiKey = env.TEST_API_KEY_PRIMARY
   const anonKey = env.SUPABASE_ANON_KEY
   const baseUrl = env.SOLEDGIC_URL
   if (!baseUrl) {
@@ -25,7 +25,7 @@ export default async function globalSetup() {
   }
 
   if (isPlaceholder(apiKey) || isPlaceholder(anonKey)) {
-    console.log('⚠️ Missing real TEST_API_KEY_BOOKLYVERSE or SUPABASE_ANON_KEY - skipping cleanup\n')
+    console.log('⚠️ Missing real TEST_API_KEY_PRIMARY or SUPABASE_ANON_KEY - skipping cleanup\n')
     return
   }
 

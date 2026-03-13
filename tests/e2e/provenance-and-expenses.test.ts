@@ -8,7 +8,7 @@ describe('Provenance Report & Expense Flow E2E', () => {
   const expenseRef = `e2e_prov_expense_${Date.now()}`
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
 
     try {
       await ledger.createCreator({

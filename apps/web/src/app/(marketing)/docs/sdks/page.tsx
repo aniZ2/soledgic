@@ -89,7 +89,11 @@ console.log(checkout.checkoutSession.checkoutUrl);`}
         <h3 className="text-lg font-semibold text-foreground mb-3">Treasury Helpers</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
-{`const wallet = await soledgic.getParticipantWallet('creator_456');
+{`const wallets = await soledgic.listWallets({
+  ownerId: 'creator_456',
+  walletType: 'creator_earnings',
+});
+
 const holds = await soledgic.listHolds({ participantId: 'creator_456' });
 const eligibility = await soledgic.getParticipantPayoutEligibility('creator_456');
 

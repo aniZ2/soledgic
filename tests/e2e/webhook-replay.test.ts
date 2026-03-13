@@ -9,7 +9,7 @@ describe('Webhook Replay & Idempotency E2E', () => {
   const creatorId = `e2e_webhook_creator_${Date.now()}`
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
     service = createServiceClient()
 
     try {
@@ -63,8 +63,8 @@ describe('Webhook Replay & Idempotency E2E', () => {
   })
 
   it('should list webhook deliveries (may be empty without refund/payout events)', async () => {
-    // record-sale does NOT call queue_webhook — only record-refund,
-    // process-payout, reconcile-checkout-ledger, and process-processor-inbox do.
+    // record-sale does NOT call queue_webhook — refunds,
+    // payouts, reconcile-checkout-ledger, and process-processor-inbox do.
     // This test verifies the deliveries endpoint works correctly.
     const deliveries = await ledger.listWebhookDeliveries()
     expect(deliveries.success).toBe(true)

@@ -5,7 +5,7 @@ describe('Bank Feed Mismatches', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   describe('Amount Mismatch', () => {
@@ -80,7 +80,7 @@ describe('Partial Imports', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   describe('Valid Records', () => {
@@ -118,7 +118,7 @@ describe('Transaction Lifecycle', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   describe('Void Transaction', () => {
@@ -174,7 +174,7 @@ describe('Balance Integrity', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   it('should retrieve trial balance', async () => {
@@ -205,7 +205,7 @@ describe('Payout Flow', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   it('should process payout with required fields', async () => {
@@ -220,8 +220,8 @@ describe('Payout Flow', () => {
     // Process payout with all required fields
     try {
       const payoutRef = `payout_${Date.now()}`
-      const result = await ledger.processPayout({
-        creatorId: 'creator_payout_test',
+      const result = await ledger.createPayout({
+        participantId: 'creator_payout_test',
         referenceId: payoutRef,
         amount: 50000,
       })
@@ -240,7 +240,7 @@ describe('Edge Cases', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   it('should reject zero-amount transaction', async () => {

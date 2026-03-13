@@ -5,7 +5,7 @@ describe('Large Volume Stress Test', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   it('should handle 50 transactions in rapid succession', async () => {
@@ -62,7 +62,7 @@ describe('Rate Limiting Behavior', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   it('should handle high request volume', async () => {
@@ -100,7 +100,7 @@ describe('Report Generation', () => {
   let ledger: SoledgicTestClient
 
   beforeAll(() => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
   })
 
   it('should generate P&L report', async () => {

@@ -175,7 +175,7 @@ async function handleRefundUpdate(
 
   // ========================================================================
   // AUTO-REPAIR: If no ledger refund transaction exists, check for a pending
-  // processor refund record (created when record-refund's ledger write failed
+  // processor refund record (created when the refunds ledger write failed
   // after a successful processor refund) and attempt to book it now.
   // ========================================================================
   if (!refundTx?.id) {
@@ -424,7 +424,7 @@ async function markInboxRow(
 }
 
 /**
- * Resolve the creator split percentage using the same cascade as create-checkout:
+ * Resolve the creator split percentage using the same cascade as checkout-sessions:
  *   1. Product-specific split (product_splits table)
  *   2. Creator-specific custom_split_percent (accounts.metadata)
  *   3. Creator tier split (creator_tiers table)
@@ -484,7 +484,7 @@ async function resolveCreatorSplitPercent(
  * Handle a completed charge event from the processor.
  * If the charge has Soledgic tags (ledger_id, creator_id) but no matching
  * ledger sale transaction, this books the sale automatically. This is the
- * safety net for the direct-charge path in create-checkout which doesn't
+ * safety net for the direct-charge path in checkout-sessions which doesn't
  * write ledger entries synchronously.
  *
  * IMPORTANT: record_sale_atomic expects amounts in CENTS (minor units).
@@ -531,7 +531,7 @@ async function handleChargeCompleted(
     ? Math.round(Number(amountMinor) * minorUnitFactor(ev.currency))
     : Number(amountMinor)
 
-  // Resolve split using the same cascade as create-checkout
+  // Resolve split using the same cascade as checkout-sessions
   const { data: ledgerRow } = await supabase
     .from('ledgers')
     .select('settings')
@@ -702,7 +702,7 @@ Deno.serve(async (req: Request) => {
 
       // ====================================================================
       // CHARGE HANDLER: Auto-book charges that have no matching ledger sale.
-      // This catches direct charges from create-checkout (payment_method_id
+      // This catches direct charges from checkout-sessions (payment_method_id
       // flow) where ledger booking was skipped or failed.
       // ====================================================================
       if (!dryRun && ev.kind === 'charge' && ev.status === 'completed') {

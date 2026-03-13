@@ -214,16 +214,16 @@ describe('Soledgic SDK', () => {
 
   // === CHECKOUT ===
 
-  it('createCheckout rejects when neither paymentMethodId nor successUrl provided', async () => {
+  it('createCheckoutSession rejects when neither paymentMethodId nor successUrl provided', async () => {
     const fn = mockFetch({})
     const sdk = createClient(fn)
     await expect(
-      sdk.createCheckout({ amount: 1000, creatorId: 'c_1' } as any)
+      sdk.createCheckoutSession({ amount: 1000, participantId: 'c_1' } as any)
     ).rejects.toThrow('Either paymentMethodId/sourceId or successUrl is required')
     expect(fn).not.toHaveBeenCalled()
   })
 
-  it('createCheckout maps session response', async () => {
+  it('createCheckoutSession maps session response', async () => {
     const fn = mockFetch({
       success: true,
       checkout_session: {
@@ -235,44 +235,50 @@ describe('Soledgic SDK', () => {
       },
     })
     const sdk = createClient(fn)
-    const result = await sdk.createCheckout({
+    const result = await sdk.createCheckoutSession({
       amount: 10000,
-      creatorId: 'c_1',
+      participantId: 'c_1',
       successUrl: 'https://example.com/success',
     })
 
-    expect(result).toMatchObject({
-      success: true,
+    expect(result.checkoutSession).toMatchObject({
+      id: 'sess_1',
       mode: 'session',
-      sessionId: 'sess_1',
       checkoutUrl: 'https://pay.example.com',
     })
   })
 
-  // === RECORD REFUND ===
+  // === REFUNDS ===
 
-  it('recordRefund maps snake_case response to camelCase', async () => {
+  it('createRefund maps snake_case response to camelCase', async () => {
     const fn = mockFetch({
       success: true,
-      transaction_id: 'txn_r1',
-      refunded_amount: 5000,
-      breakdown: { from_creator: 4000, from_platform: 1000 },
-      is_full_refund: true,
+      refund: {
+        id: 'refund_1',
+        transaction_id: 'txn_r1',
+        reference_id: 'refund_1',
+        sale_reference: 'order_1',
+        refunded_amount: 5000,
+        currency: 'USD',
+        status: 'completed',
+        breakdown: { from_creator: 4000, from_platform: 1000 },
+        is_full_refund: true,
+      },
     })
     const sdk = createClient(fn)
-    const result = await sdk.recordRefund({
-      originalSaleReference: 'order_1',
+    const result = await sdk.createRefund({
+      saleReference: 'order_1',
       reason: 'Returned',
     })
 
-    expect(result.transactionId).toBe('txn_r1')
-    expect(result.refundedAmount).toBe(5000)
-    expect(result.breakdown.fromCreator).toBe(4000)
-    expect(result.breakdown.fromPlatform).toBe(1000)
-    expect(result.isFullRefund).toBe(true)
+    expect(result.refund.transactionId).toBe('txn_r1')
+    expect(result.refund.refundedAmount).toBe(5000)
+    expect(result.refund.breakdown?.fromCreator).toBe(4000)
+    expect(result.refund.breakdown?.fromPlatform).toBe(1000)
+    expect(result.refund.isFullRefund).toBe(true)
   })
 
-  it('recordRefund surfaces pending repair refunds without dropping the refund object', async () => {
+  it('createRefund surfaces pending repair refunds without dropping the refund object', async () => {
     const fn = mockFetch({
       success: true,
       warning: 'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
@@ -295,19 +301,19 @@ describe('Soledgic SDK', () => {
       },
     }, 202)
     const sdk = createClient(fn)
-    const result = await sdk.recordRefund({
-      originalSaleReference: 'order_1',
+    const result = await sdk.createRefund({
+      saleReference: 'order_1',
       amount: 3000,
       reason: 'Returned',
       mode: 'processor_refund',
     })
 
     expect(result.success).toBe(true)
-    expect(result.transactionId).toBeNull()
-    expect(result.referenceId).toBe('refund_pending_1')
-    expect(result.saleReference).toBe('order_1')
-    expect(result.status).toBe('pending_repair')
-    expect(result.repairPending).toBe(true)
+    expect(result.refund.transactionId).toBeNull()
+    expect(result.refund.referenceId).toBe('refund_pending_1')
+    expect(result.refund.saleReference).toBe('order_1')
+    expect(result.refund.status).toBe('pending_repair')
+    expect(result.refund.repairPending).toBe(true)
     expect(result.warningCode).toBe('processor_refund_pending_repair')
   })
 
@@ -379,7 +385,7 @@ describe('Soledgic SDK', () => {
 
   // === PAYOUT ===
 
-  it('processPayout maps to snake_case', async () => {
+  it('createPayout maps to snake_case', async () => {
     const fn = mockFetch({
       success: true,
       payout: {
@@ -392,8 +398,8 @@ describe('Soledgic SDK', () => {
       },
     })
     const sdk = createClient(fn)
-    await sdk.processPayout({
-      creatorId: 'c_1',
+    await sdk.createPayout({
+      participantId: 'c_1',
       referenceId: 'payout_1',
       amount: 5000,
       feesPaidBy: 'platform',
@@ -575,7 +581,7 @@ describe('Soledgic SDK', () => {
     expect(result.transactionId).toBe('txn_topup_1')
   })
 
-  it('processPayout forwards wallet_id when provided', async () => {
+  it('createPayout forwards wallet_id when provided', async () => {
     const fn = mockFetch({
       success: true,
       payout: {
@@ -588,7 +594,8 @@ describe('Soledgic SDK', () => {
       },
     })
     const sdk = createClient(fn)
-    await sdk.processPayout({
+    await sdk.createPayout({
+      participantId: 'c_1',
       walletId: '550e8400-e29b-41d4-a716-446655440000',
       referenceId: 'payout_1',
       amount: 5000,
@@ -599,20 +606,26 @@ describe('Soledgic SDK', () => {
     expect(body.wallet_id).toBe('550e8400-e29b-41d4-a716-446655440000')
   })
 
-  it('walletTransfer forwards wallet ids when provided', async () => {
-    const fn = mockFetch({ success: true, transfer: { transaction_id: 'txn_t1', from_balance: 100, to_balance: 200 } })
+  it('withdrawFromWallet uses wallet withdrawals endpoint', async () => {
+    const fn = mockFetch({
+      success: true,
+      withdrawal: {
+        wallet_id: '550e8400-e29b-41d4-a716-446655440000',
+        owner_id: 'reader_1',
+        transaction_id: 'txn_w1',
+        balance: 1800,
+      },
+    })
     const sdk = createClient(fn)
-    await sdk.walletTransfer({
-      fromWalletId: '550e8400-e29b-41d4-a716-446655440000',
-      toWalletId: '550e8400-e29b-41d4-a716-446655440001',
+    const result = await sdk.withdrawFromWallet({
+      walletId: '550e8400-e29b-41d4-a716-446655440000',
       amount: 2000,
-      referenceId: 'transfer_1',
+      referenceId: 'withdrawal_1',
     })
 
-    const body = JSON.parse(fn.mock.calls[0][1].body)
-    expect(body.from_wallet_id).toBe('550e8400-e29b-41d4-a716-446655440000')
-    expect(body.to_wallet_id).toBe('550e8400-e29b-41d4-a716-446655440001')
-    expect(body.from_participant_id).toBeUndefined()
+    expect(String(fn.mock.calls[0][0])).toContain('/wallets/550e8400-e29b-41d4-a716-446655440000/withdrawals')
+    expect(result.walletId).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(result.transactionId).toBe('txn_w1')
   })
 
   // === TRANSFER ===
@@ -920,28 +933,38 @@ describe('Soledgic SDK', () => {
     })
   })
 
-  it('getParticipantWallet wraps wallet balance with participant vocabulary', async () => {
+  it('getWallet maps wallet objects directly', async () => {
     const fn = mockFetch({
       success: true,
       wallet: {
+        id: 'wallet_1',
+        object: 'wallet',
+        wallet_type: 'creator_earnings',
+        scope_type: 'participant',
+        owner_id: 'p_1',
+        owner_type: 'participant',
         participant_id: 'p_1',
+        account_type: 'creator_balance',
+        name: 'Creator Earnings',
+        currency: 'USD',
+        status: 'active',
         balance: 75,
-        wallet_exists: true,
-        account: {
-          id: 'acct_wallet',
-          participant_id: 'p_1',
-          name: 'Wallet p_1',
-          is_active: true,
-          created_at: '2026-01-01T00:00:00Z',
-        },
+        held_amount: 5,
+        available_balance: 70,
+        redeemable: true,
+        transferable: false,
+        topup_supported: false,
+        payout_supported: true,
+        created_at: '2026-01-01T00:00:00Z',
+        metadata: {},
       },
     })
     const sdk = createClient(fn)
-    const result = await sdk.getParticipantWallet('p_1')
+    const result = await sdk.getWallet('wallet_1')
 
-    expect(result.wallet.participantId).toBe('p_1')
-    expect(result.wallet.balance).toBe(75)
-    expect(result.wallet.walletExists).toBe(true)
+    expect(result.wallet.id).toBe('wallet_1')
+    expect(result.wallet.ownerId).toBe('p_1')
+    expect(result.wallet.availableBalance).toBe(70)
   })
 
   it('getParticipant maps linked user ids into participant details', async () => {
@@ -1054,7 +1077,7 @@ describe('Soledgic SDK', () => {
 
   // === RISK EVALUATION ===
 
-  it('evaluateRisk maps nested response', async () => {
+  it('evaluateFraud maps nested response', async () => {
     const fn = mockFetch({
       success: true,
       cached: false,
@@ -1070,7 +1093,7 @@ describe('Soledgic SDK', () => {
       },
     })
     const sdk = createClient(fn)
-    const result = await sdk.evaluateRisk({
+    const result = await sdk.evaluateFraud({
       idempotencyKey: 'eval_key_1',
       amount: 50000,
     })
@@ -1168,16 +1191,16 @@ describe('Soledgic SDK', () => {
 
   // === FRAUD / TAX / COMPLIANCE ROUTING ===
 
-  it('listRiskPolicies uses fraud policies GET route', async () => {
+  it('listFraudPolicies uses fraud policies GET route', async () => {
     const fn = mockFetch({ success: true, policies: [] })
     const sdk = createClient(fn)
-    await sdk.listRiskPolicies()
+    await sdk.listFraudPolicies()
 
     expect(fn.mock.calls[0][1].method).toBe('GET')
     expect(fn.mock.calls[0][0]).toContain('/fraud/policies')
   })
 
-  it('calculateTaxForCreator uses tax calculations GET route', async () => {
+  it('calculateTaxForParticipant uses tax calculations GET route', async () => {
     const fn = mockFetch({
       success: true,
       calculation: {
@@ -1193,7 +1216,7 @@ describe('Soledgic SDK', () => {
       },
     })
     const sdk = createClient(fn)
-    await sdk.calculateTaxForCreator('creator_1', 2025)
+    await sdk.calculateTaxForParticipant('creator_1', 2025)
 
     expect(fn.mock.calls[0][1].method).toBe('GET')
     expect(fn.mock.calls[0][0]).toContain('/tax/calculations/creator_1')

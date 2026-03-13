@@ -7,7 +7,7 @@ describe('Refund Entry Method E2E', () => {
   const saleRef = `e2e_rem_sale_${Date.now()}`
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
 
     try {
       await ledger.createCreator({
@@ -31,8 +31,8 @@ describe('Refund Entry Method E2E', () => {
   })
 
   it('should record a ledger-only refund as entry_method=manual', async () => {
-    const result = await ledger.recordRefund({
-      originalSaleReference: saleRef,
+    const result = await ledger.createRefund({
+      saleReference: saleRef,
       amount: 3000, // $30 partial
       reason: 'E2E test: ledger-only refund should be manual',
       mode: 'ledger_only',
@@ -50,8 +50,8 @@ describe('Refund Entry Method E2E', () => {
   it('should reject over-refund beyond remaining balance', async () => {
     // Already refunded $30 of $100, so $70 remains
     await expect(
-      ledger.recordRefund({
-        originalSaleReference: saleRef,
+      ledger.createRefund({
+        saleReference: saleRef,
         amount: 8000, // $80 > $70 remaining
         reason: 'E2E test: over-refund attempt',
         mode: 'ledger_only',
@@ -60,8 +60,8 @@ describe('Refund Entry Method E2E', () => {
   })
 
   it('should allow remaining partial refund within balance', async () => {
-    const result = await ledger.recordRefund({
-      originalSaleReference: saleRef,
+    const result = await ledger.createRefund({
+      saleReference: saleRef,
       amount: 7000, // $70 = exact remaining
       reason: 'E2E test: remaining balance refund',
       mode: 'ledger_only',

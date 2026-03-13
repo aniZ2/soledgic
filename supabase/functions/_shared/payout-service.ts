@@ -28,6 +28,68 @@ export interface PayoutRequest {
   metadata?: Record<string, any>
 }
 
+const TRANSIENT_PAYOUT_RPC_CODES = new Set(['40001', '40P01', '55P03', '57014'])
+const TRANSIENT_PAYOUT_RPC_MESSAGE_PATTERNS = [
+  'could not serialize access',
+  'deadlock detected',
+  'lock timeout',
+  'statement timeout',
+]
+
+function isTransientPayoutRpcError(error: { code?: string | null; message?: string | null; details?: string | null } | null | undefined): boolean {
+  if (!error) {
+    return false
+  }
+
+  if (error.code && TRANSIENT_PAYOUT_RPC_CODES.has(error.code)) {
+    return true
+  }
+
+  const combinedMessage = `${error.message ?? ''} ${error.details ?? ''}`.toLowerCase()
+  return TRANSIENT_PAYOUT_RPC_MESSAGE_PATTERNS.some((pattern) => combinedMessage.includes(pattern))
+}
+
+async function callProcessPayoutRpcWithRetry(
+  supabase: SupabaseClient,
+  args: Record<string, unknown>,
+  requestId: string,
+): Promise<{ data: unknown; error: { code?: string | null; message?: string | null; details?: string | null } | null }> {
+  let lastResult: { data: unknown; error: { code?: string | null; message?: string | null; details?: string | null } | null } = {
+    data: null,
+    error: null,
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await supabase.rpc('process_payout_atomic', args)
+    lastResult = {
+      data: result.data ?? null,
+      error: result.error
+        ? {
+            code: result.error.code ?? null,
+            message: result.error.message ?? null,
+            details: (result.error as { details?: string | null }).details ?? null,
+          }
+        : null,
+    }
+
+    if (!lastResult.error) {
+      return lastResult
+    }
+
+    if (!isTransientPayoutRpcError(lastResult.error) || attempt === 3) {
+      return lastResult
+    }
+
+    console.warn(`[${requestId}] Transient payout RPC error on attempt ${attempt}; retrying`, {
+      code: lastResult.error.code,
+      message: lastResult.error.message,
+    })
+    await new Promise((resolve) => setTimeout(resolve, attempt * 100))
+  }
+
+  return lastResult
+}
+
 export async function processPayoutResponse(
   req: Request,
   supabase: SupabaseClient,
@@ -93,7 +155,7 @@ export async function processPayoutResponse(
     sanitizedMetadata.notes = validateString(body.metadata.notes, 500)
   }
 
-  const { data: rpcResult, error: rpcError } = await supabase.rpc('process_payout_atomic', {
+  const { data: rpcResult, error: rpcError } = await callProcessPayoutRpcWithRetry(supabase, {
     p_ledger_id: ledger.id,
     p_reference_id: referenceId,
     p_creator_id: participantId,
@@ -104,7 +166,7 @@ export async function processPayoutResponse(
     p_description: description,
     p_reference_type: body.reference_type || 'manual',
     p_metadata: sanitizedMetadata,
-  })
+  }, requestId)
 
   if (rpcError) {
     console.error('Payout RPC error:', rpcError)

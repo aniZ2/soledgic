@@ -34,6 +34,72 @@ Deno.test('processPayoutResponse: returns structured invalid_reference_id error'
   assertEquals(result.body.error_code, 'invalid_reference_id')
 })
 
+Deno.test('processPayoutResponse: retries transient RPC failures before succeeding', async () => {
+  let payoutRpcCalls = 0
+
+  const supabase = {
+    rpc(fn: string) {
+      if (fn === 'process_payout_atomic') {
+        payoutRpcCalls++
+
+        if (payoutRpcCalls === 1) {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: '40P01',
+              message: 'deadlock detected',
+              details: 'Process blocked while waiting on another transaction',
+            },
+          })
+        }
+
+        return Promise.resolve({
+          data: {
+            status: 'created',
+            transaction_id: 'txn_payout_1',
+            gross_payout: 50,
+            fees: 0,
+            net_to_creator: 50,
+            previous_balance: 240,
+            new_balance: 190,
+          },
+          error: null,
+        })
+      }
+
+      if (fn === 'queue_webhook') {
+        return Promise.resolve({ data: null, error: null })
+      }
+
+      throw new Error(`Unexpected RPC in payout retry test: ${fn}`)
+    },
+    from() {
+      return {
+        insert() {
+          return Promise.resolve({ error: null })
+        },
+      }
+    },
+  } as any
+
+  const result = await processPayoutResponse(req, supabase, ledger, {
+    participant_id: 'participant_1',
+    amount: 5000,
+    reference_id: 'payout_1',
+  }, requestId)
+  const body = result.body as {
+    success: boolean
+    payout: { id: string; gross_amount: number; new_balance: number }
+  }
+
+  assertEquals(payoutRpcCalls, 2)
+  assertEquals(result.status, 200)
+  assertEquals(body.success, true)
+  assertEquals(body.payout.id, 'txn_payout_1')
+  assertEquals(body.payout.gross_amount, 50)
+  assertEquals(body.payout.new_balance, 190)
+})
+
 Deno.test('createParticipantResponse: returns structured invalid_user_id error', async () => {
   const result = await createParticipantResponse(req, {} as any, ledger, {
     participant_id: 'participant_1',

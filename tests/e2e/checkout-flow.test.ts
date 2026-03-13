@@ -10,7 +10,7 @@ describe('Checkout Flow E2E', () => {
   const saleRef = `e2e_checkout_sale_${Date.now()}`
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
     service = createServiceClient()
 
     // Create a test creator
@@ -67,7 +67,7 @@ describe('Checkout Flow E2E', () => {
   })
 
   it('should reflect sale in creator balance', async () => {
-    const result = await ledger.getCreatorBalance(creatorId)
+    const result = await ledger.getParticipantBalance(creatorId)
 
     expect(result.success).toBe(true)
     expect(result.data).toBeDefined()

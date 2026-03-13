@@ -156,20 +156,25 @@ await soledgic.createLedger({
 ## API Quick Reference
 
 ```typescript
-// Record a sale with split
-await soledgic.recordSale({
+// Create a hosted checkout with the split handled underneath
+await soledgic.createCheckoutSession({
   amount: 10000, // $100.00 in cents
-  creatorId: 'creator_123',
-  description: 'Ebook purchase'
+  participantId: 'creator_123',
+  productName: 'Ebook purchase',
+  successUrl: 'https://example.com/success'
 })
 
 // Pay a creator
 await soledgic.createPayout({
-  creatorId: 'creator_123',
+  participantId: 'creator_123',
+  referenceId: 'payout_2026_03_13_001',
   amount: 50000 // $500.00
 })
 
-// Check creator balance
-const balance = await soledgic.getCreatorBalance('creator_123')
-// { available: 77.44, pending: 0, lifetime: 1542.88 }
+// Inspect creator earnings wallets
+const wallets = await soledgic.listWallets({
+  ownerId: 'creator_123',
+  walletType: 'creator_earnings'
+})
+// [{ availableBalance: 77.44, ... }]
 ```

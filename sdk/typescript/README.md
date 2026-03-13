@@ -99,10 +99,7 @@ Soledgic does not expose a shared universal wallet balance.
 | `getWallet(walletId)` | Fetch a wallet object by wallet id |
 | `getWalletEntries(walletId, opts?)` | List entries for a wallet object |
 | `topUpWallet(req)` | Top up a wallet object |
-| `getParticipantWallet(participantId)` | Get wallet balance and available balance |
-| `walletDeposit(req)` | Legacy participant-bound wallet deposit helper |
-| `walletWithdraw(req)` | Legacy participant-bound wallet withdrawal helper |
-| `getWalletHistory(participantId, opts?)` | Legacy participant-bound wallet history helper |
+| `withdrawFromWallet(req)` | Withdraw from a wallet object |
 | `createTransfer(req)` | Move funds between wallets when transfer is permitted |
 | `listHolds(opts?)` | List held funds |
 | `getHoldSummary()` | Get aggregate held-funds totals |
@@ -155,8 +152,6 @@ earnings wallets are provisioned through participant and treasury flows.
 | `exportTaxDocuments(taxYear?, format?)` | Export tax documents as CSV or JSON |
 | `markTaxDocumentFiled(documentId)` | Mark a document as filed |
 | `generateTaxSummary(taxYear, participantId?)` | Generate tax summary totals for the year |
-
-`evaluateRisk`, `createRiskPolicy`, `listRiskPolicies`, `deleteRiskPolicy`, and `calculateTaxForCreator` remain as compatibility aliases over the newer `fraud/*` and `tax/*` routes.
 
 ### Webhooks
 

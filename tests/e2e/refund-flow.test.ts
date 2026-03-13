@@ -8,7 +8,7 @@ describe('Refund Flow E2E', () => {
   const partialSaleRef = `e2e_refund_partial_${Date.now()}`
 
   beforeAll(async () => {
-    ledger = createTestClient('booklyverse')
+    ledger = createTestClient()
 
     try {
       await ledger.createCreator({
@@ -39,8 +39,8 @@ describe('Refund Flow E2E', () => {
   })
 
   it('should process a full refund (ledger-only)', async () => {
-    const result = await ledger.recordRefund({
-      originalSaleReference: saleRef,
+    const result = await ledger.createRefund({
+      saleReference: saleRef,
       reason: 'E2E test: customer requested full refund',
       mode: 'ledger_only',
     })
@@ -55,8 +55,8 @@ describe('Refund Flow E2E', () => {
   })
 
   it('should process a partial refund (ledger-only)', async () => {
-    const result = await ledger.recordRefund({
-      originalSaleReference: partialSaleRef,
+    const result = await ledger.createRefund({
+      saleReference: partialSaleRef,
       amount: 3000, // $30 of $80
       reason: 'E2E test: partial refund',
       mode: 'ledger_only',
@@ -70,8 +70,8 @@ describe('Refund Flow E2E', () => {
 
   it('should reject refund on already-fully-refunded sale', async () => {
     await expect(
-      ledger.recordRefund({
-        originalSaleReference: saleRef,
+      ledger.createRefund({
+        saleReference: saleRef,
         reason: 'E2E test: duplicate refund attempt',
         mode: 'ledger_only',
       })
@@ -89,8 +89,8 @@ describe('Refund Flow E2E', () => {
       description: 'Sale for idempotency test',
     })
 
-    const first = await ledger.recordRefund({
-      originalSaleReference: secondPartialRef,
+    const first = await ledger.createRefund({
+      saleReference: secondPartialRef,
       amount: 2000,
       reason: 'Idempotency test',
       mode: 'ledger_only',
@@ -101,8 +101,8 @@ describe('Refund Flow E2E', () => {
 
     // Same idempotency key should not create a duplicate
     try {
-      const second = await ledger.recordRefund({
-        originalSaleReference: secondPartialRef,
+      const second = await ledger.createRefund({
+        saleReference: secondPartialRef,
         amount: 2000,
         reason: 'Idempotency test',
         mode: 'ledger_only',
@@ -118,7 +118,7 @@ describe('Refund Flow E2E', () => {
   })
 
   it('should reflect refunds in creator balance', async () => {
-    const result = await ledger.getCreatorBalance(creatorId)
+    const result = await ledger.getParticipantBalance(creatorId)
 
     expect(result.success).toBe(true)
     expect(result.data).toBeDefined()

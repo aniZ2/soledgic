@@ -316,25 +316,29 @@ DEBIT  Platform Revenue   +$4.00   ← Reduce revenue
 
 ## TypeScript SDK
 
-Located in `/api/src/`
+Located in `/sdk/typescript/src/`
 
 ```typescript
-import { soledgic } from '@soledgic/sdk'
+import Soledgic from '@soledgic/sdk'
 
-const soledgic = new soledgic({
+const soledgic = new Soledgic({
   apiKey: 'your_api_key',
   baseUrl: 'https://api.soledgic.com/v1'
 })
 
-// Record a sale
-const sale = await soledgic.recordSale({
-  referenceId: 'processor_pi_xxx',
-  creatorId: 'author_123',
-  amount: 1999
+// Create a checkout session
+const checkout = await soledgic.createCheckoutSession({
+  participantId: 'author_123',
+  amount: 1999,
+  productName: 'Book purchase',
+  successUrl: 'https://example.com/success',
 })
 
-// Get balance
-const balance = await soledgic.getCreatorBalance('author_123')
+// List creator earnings wallets
+const wallets = await soledgic.listWallets({
+  ownerId: 'author_123',
+  walletType: 'creator_earnings'
+})
 
 // Export report
 const report = await soledgic.exportReport({
@@ -349,15 +353,20 @@ const report = await soledgic.exportReport({
 
 ```
 soledgic/
+├── apps/
+│   └── web/                      # Product shell, docs, gateway, dashboard
+├── sdk/
+│   └── typescript/               # Public TypeScript SDK
 ├── supabase/
 │   ├── migrations/
 │   │   └── 00000000000000_v1_baseline.sql   # Full schema baseline
 │   └── functions/
-│       ├── record-sale/          # Record sales with split
-│       ├── participants/         # Participant balance resources
-│       ├── get-transactions/     # Query history
-│       ├── payouts/              # Record payout events
-│       ├── refunds/              # Record refunds
+│       ├── participants/         # Participant treasury resources
+│       ├── wallets/              # Wallet resources
+│       ├── holds/                # Held-funds lifecycle
+│       ├── checkout-sessions/    # Commerce checkout flows
+│       ├── payouts/              # Payout resources
+│       ├── refunds/              # Refund resources
 │       ├── reverse-transaction/  # Immutable reversals
 │       └── export-report/        # CSV/JSON exports
 ├── api/                          # TypeScript SDK

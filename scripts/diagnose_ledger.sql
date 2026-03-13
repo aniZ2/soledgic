@@ -1,10 +1,10 @@
 -- Diagnostic Script for Soledgic Test Failures
 -- Run this with: supabase db execute --file ./scripts/diagnose_ledger.sql
 
--- 1. Find the booklyverse ledger
+-- 1. Find the target ledger
 SELECT id, business_name, status, created_at 
 FROM ledgers 
-WHERE business_name ILIKE '%booklyverse%' 
+WHERE business_name ILIKE '%integration test platform%' 
    OR business_name ILIKE '%test%'
 ORDER BY created_at DESC
 LIMIT 5;

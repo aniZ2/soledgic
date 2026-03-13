@@ -37,15 +37,15 @@ const COMMANDS = {
     },
   },
   transaction: {
-    title: 'Record a Transaction',
-    description: 'Record a sale that splits revenue to the creator.',
-    endpoint: '/functions/v1/record-sale',
+    title: 'Create a Checkout Session',
+    description: 'Create a hosted checkout session for a participant.',
+    endpoint: '/functions/v1/checkout-sessions',
     method: 'POST',
     body: {
-      reference_id: 'sale_demo_1',
-      creator_id: 'creator_demo_1',
+      participant_id: 'creator_demo_1',
       amount: 1000,
-      description: 'Demo sale',
+      product_name: 'Demo product',
+      success_url: 'https://example.com/success',
     },
   },
   webhook: {

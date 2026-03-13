@@ -16,7 +16,7 @@ describe('Bill Recording & Payment', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should record a bill (unpaid expense)', async () => {
@@ -112,7 +112,7 @@ describe('AP Aging Report', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should generate AP aging report', async () => {
@@ -164,7 +164,7 @@ describe('Bills & Balance Sheet Consistency', () => {
   let client: SoledgicTestClient
 
   beforeAll(async () => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
     // Clean up to ensure balance sheet consistency checks are isolated
     try {
       await client.cleanupTestData()
@@ -221,7 +221,7 @@ describe('Expense Categories & Tax Integration', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should record bills with IRS categories', async () => {
@@ -266,7 +266,7 @@ describe('Concurrent Bill Operations', () => {
   let client: SoledgicTestClient
 
   beforeAll(() => {
-    client = createTestClient('booklyverse')
+    client = createTestClient()
   })
 
   it('should handle concurrent bill creation', async () => {
