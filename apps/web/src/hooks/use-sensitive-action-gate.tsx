@@ -6,7 +6,7 @@ import {
   type SensitiveActionChallenge,
 } from '@/lib/sensitive-action-shared'
 
-type RetryAction = () => Promise<void> | void
+type RetryAction = () => Promise<unknown> | unknown
 
 export function useSensitiveActionGate() {
   const [challenge, setChallenge] = useState<SensitiveActionChallenge | null>(null)

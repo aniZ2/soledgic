@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Link2, Network, ShieldCheck, WalletCards } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 
 type IdentityProfile = {
   id: string
@@ -91,6 +93,8 @@ export default function IdentitySettingsPage() {
   const [payoutProfile, setPayoutProfile] = useState<PayoutProfile>(null)
   const [summary, setSummary] = useState<PortfolioSummary | null>(null)
   const [participants, setParticipants] = useState<PortfolioParticipant[]>([])
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   function createEmptyTaxProfile(): TaxProfile {
     return {
@@ -209,7 +213,12 @@ export default function IdentitySettingsPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save tax profile')
+      if (!res.ok) {
+        if (handleProtectedResponse(res, data, saveTaxProfile)) {
+          return
+        }
+        throw new Error(data.error || 'Failed to save tax profile')
+      }
       setTaxProfile(data.tax_profile || null)
       setMessage('Shared tax profile saved.')
     } catch (saveError) {
@@ -238,7 +247,12 @@ export default function IdentitySettingsPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save payout profile')
+      if (!res.ok) {
+        if (handleProtectedResponse(res, data, savePayoutProfile)) {
+          return
+        }
+        throw new Error(data.error || 'Failed to save payout profile')
+      }
       setPayoutProfile(data.payout_profile || null)
       setMessage('Shared payout profile saved.')
     } catch (saveError) {
@@ -603,6 +617,11 @@ export default function IdentitySettingsPage() {
           </table>
         </div>
       </section>
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

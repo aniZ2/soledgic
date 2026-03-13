@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import {
   Building, Save, Loader2, Check, AlertTriangle,
   Trash2, X, Globe,
@@ -51,6 +53,8 @@ export default function OrganizationSettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const loadOrganization = useCallback(async () => {
     const supabase = createClient()
@@ -100,8 +104,7 @@ export default function OrganizationSettingsPage() {
     return () => clearTimeout(timeoutId)
   }, [loadOrganization])
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const saveOrganizationSettings = async () => {
     setSaving(true)
     setErrorMessage(null)
     setSuccessMessage(null)
@@ -122,6 +125,9 @@ export default function OrganizationSettingsPage() {
         setOrg(prev => prev ? { ...prev, name: name.trim() } : null)
         router.refresh()
       } else {
+        if (handleProtectedResponse(res, json, saveOrganizationSettings)) {
+          return
+        }
         setErrorMessage(json.error || 'Failed to save settings')
       }
     } catch {
@@ -129,6 +135,11 @@ export default function OrganizationSettingsPage() {
     }
 
     setSaving(false)
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await saveOrganizationSettings()
   }
 
   const handleDelete = async () => {
@@ -148,6 +159,9 @@ export default function OrganizationSettingsPage() {
         // Redirect to login after deletion
         router.push('/login?message=organization_deleted')
       } else {
+        if (handleProtectedResponse(res, json, handleDelete)) {
+          return
+        }
         setErrorMessage(json.error || 'Failed to delete organization')
         setShowDeleteConfirm(false)
       }
@@ -396,6 +410,12 @@ export default function OrganizationSettingsPage() {
           Only organization owners and admins can modify these settings.
         </p>
       )}
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

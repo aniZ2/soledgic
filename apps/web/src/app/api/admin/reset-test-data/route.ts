@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 
 export const POST = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
 
     const { data: body, error: parseError } = await parseJsonBody<{
@@ -30,6 +32,11 @@ export const POST = createApiHandler(
         { error: 'Only organization owners and admins can reset test data' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'reset test data')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     const orgId = membership.organization_id

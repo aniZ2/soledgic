@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, ArrowRightLeft } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordTransferModalProps {
@@ -45,6 +47,8 @@ export function RecordTransferModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   // Form state
   const [amount, setAmount] = useState('')
@@ -53,9 +57,7 @@ export function RecordTransferModal({
   const [transferType, setTransferType] = useState('tax_reserve')
   const [description, setDescription] = useState('')
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const submitTransfer = async () => {
     const amountCents = Math.floor(parseFloat(amount) * 100)
     if (isNaN(amountCents) || amountCents <= 0) {
       setError('Please enter a valid amount')
@@ -86,6 +88,9 @@ export function RecordTransferModal({
       const data = await response.json()
 
       if (!response.ok) {
+        if (handleProtectedResponse(response, data, submitTransfer)) {
+          return
+        }
         throw new Error(data.error || 'Failed to record transfer')
       }
 
@@ -100,6 +105,11 @@ export function RecordTransferModal({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await submitTransfer()
   }
 
   const resetForm = () => {
@@ -290,6 +300,12 @@ export function RecordTransferModal({
           )}
         </form>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

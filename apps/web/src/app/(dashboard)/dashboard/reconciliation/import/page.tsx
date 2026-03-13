@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import Link from 'next/link'
 import { ArrowLeft, Upload, Check, AlertCircle, ChevronRight, ArrowRight } from 'lucide-react'
 
@@ -57,6 +59,8 @@ export default function ImportTransactionsPage() {
   const [error, setError] = useState<string | null>(null)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   // Column mapping state
   const [mapping, setMapping] = useState({
@@ -171,6 +175,9 @@ export default function ImportTransactionsPage() {
         setImportResult(result)
         setStep('done')
       } else {
+        if (handleProtectedResponse(res, data, handleImport)) {
+          return
+        }
         setError(data.error || 'Failed to import')
       }
     } catch (err: unknown) {
@@ -564,6 +571,12 @@ export default function ImportTransactionsPage() {
           </div>
         </div>
       )}
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

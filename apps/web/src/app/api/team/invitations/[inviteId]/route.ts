@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 
 function getInviteIdFromUrl(request: Request): string | null {
   const url = new URL(request.url)
@@ -11,7 +12,8 @@ function getInviteIdFromUrl(request: Request): string | null {
 
 // DELETE /api/team/invitations/[inviteId] — Revoke pending invitation
 export const DELETE = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
     const inviteId = getInviteIdFromUrl(request)
 
@@ -45,6 +47,11 @@ export const DELETE = createApiHandler(
         { error: 'Only owners and admins can revoke invitations' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'revoke team invitations')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     // Get the invitation — must belong to caller's org and be pending

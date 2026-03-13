@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, RotateCcw, Search } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordRefundModalProps {
@@ -30,6 +32,8 @@ export function RecordRefundModal({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [saleInfo, setSaleInfo] = useState<{ id: string; amount: number; creator?: string } | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   // Form state
   const [saleReference, setSaleReference] = useState(preselectedSaleRef || '')
@@ -75,9 +79,7 @@ export function RecordRefundModal({
     }
   }, [isOpen, preselectedSaleRef, lookupSale])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const submitRefund = async () => {
     if (!saleReference.trim()) {
       setError('Please enter the original sale reference')
       return
@@ -112,6 +114,9 @@ export function RecordRefundModal({
       const data = await response.json()
 
       if (!response.ok) {
+        if (handleProtectedResponse(response, data, submitRefund)) {
+          return
+        }
         throw new Error(data.error || 'Failed to process refund')
       }
 
@@ -126,6 +131,11 @@ export function RecordRefundModal({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await submitRefund()
   }
 
   const resetForm = () => {
@@ -284,6 +294,12 @@ export function RecordRefundModal({
           )}
         </form>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { WalletCards, ArrowDownToLine, ArrowUpFromLine, X } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface WalletAccount {
@@ -37,6 +39,8 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
   const [description, setDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const formatCurrency = (dollars: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -71,7 +75,7 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
     setError(null)
   }
 
-  const handleSubmit = async () => {
+  const submitWalletOperation = async () => {
     if (!selectedWallet || !modalType) return
     if (!selectedWallet.entity_id) {
       setError('Wallet is missing a participant ID')
@@ -114,6 +118,9 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
       const data = await res.json()
 
       if (!res.ok || !data.success) {
+        if (handleProtectedResponse(res, data, submitWalletOperation)) {
+          return
+        }
         setError(data.error || 'Operation failed')
         return
       }
@@ -125,6 +132,10 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleSubmit = async () => {
+    await submitWalletOperation()
   }
 
   return (
@@ -322,6 +333,12 @@ export function WalletsClient({ ledger, wallets, stats }: WalletsClientProps) {
           </div>
         </div>
       )}
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

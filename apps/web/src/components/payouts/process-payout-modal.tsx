@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, DollarSign } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Creator {
@@ -38,6 +40,8 @@ export function ProcessPayoutModal({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [creators, setCreators] = useState<Creator[]>([])
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   // Form state
   const [selectedCreatorId, setSelectedCreatorId] = useState('')
@@ -72,8 +76,7 @@ export function ProcessPayoutModal({
   const selectedCreator = creators.find(c => c.entity_id === selectedCreatorId)
   const maxAmount = selectedCreator?.balance || 0
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitPayout = async () => {
     if (!selectedCreatorId) {
       setError('Please select a creator')
       return
@@ -109,6 +112,9 @@ export function ProcessPayoutModal({
       const data = await response.json()
 
       if (!response.ok) {
+        if (handleProtectedResponse(response, data, submitPayout)) {
+          return
+        }
         throw new Error(data.error || 'Failed to process payout')
       }
 
@@ -127,6 +133,11 @@ export function ProcessPayoutModal({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await submitPayout()
   }
 
   const formatCurrency = (cents: number) => {
@@ -279,6 +290,12 @@ export function ProcessPayoutModal({
           )}
         </form>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

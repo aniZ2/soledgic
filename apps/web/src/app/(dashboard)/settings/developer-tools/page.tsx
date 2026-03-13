@@ -3,10 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { ArrowLeft, Wrench, Trash2, AlertTriangle, CheckCircle, Loader2, Eye, EyeOff } from 'lucide-react'
 import { useReadonly } from '@/components/livemode-provider'
 import { setReadonlyAction } from '@/lib/livemode-server'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 
 export default function DeveloperToolsPage() {
   const router = useRouter()
@@ -35,6 +37,8 @@ export default function DeveloperToolsPage() {
   // Read-only toggle state
   const [togglingReadonly, setTogglingReadonly] = useState(false)
   const [readonlyError, setReadonlyError] = useState<string | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const handleRepairOrphans = async () => {
     setRepairing(true)
@@ -45,6 +49,9 @@ export default function DeveloperToolsPage() {
       const res = await fetchWithCsrf('/api/admin/repair-orphans', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
+        if (handleProtectedResponse(res, data, handleRepairOrphans)) {
+          return
+        }
         setRepairError(data.error || 'Repair failed')
       } else {
         setRepairResult(data)
@@ -68,6 +75,9 @@ export default function DeveloperToolsPage() {
       })
       const data = await res.json()
       if (!res.ok) {
+        if (handleProtectedResponse(res, data, handleResetTestData)) {
+          return
+        }
         setResetError(data.error || 'Reset failed')
       } else {
         setResetResult(data)
@@ -309,6 +319,12 @@ export default function DeveloperToolsPage() {
           </div>
         </div>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

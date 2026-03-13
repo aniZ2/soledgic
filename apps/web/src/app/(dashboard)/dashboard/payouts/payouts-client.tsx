@@ -4,6 +4,8 @@ import { useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { Wallet, Clock, CheckCircle, XCircle, AlertCircle, Plus, FileText } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Payout {
@@ -44,6 +46,8 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [batchLoading, setBatchLoading] = useState<'execute' | 'nacha' | null>(null)
   const [batchError, setBatchError] = useState<string | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const pendingPayouts = useMemo(
     () => payouts.filter((p) => p.status === 'pending'),
@@ -101,6 +105,9 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
+        if (handleProtectedResponse(res, data, handleBatchExecute)) {
+          return
+        }
         throw new Error(data?.error || `Batch execute failed (${res.status})`)
       }
       window.location.reload()
@@ -125,6 +132,9 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
+        if (handleProtectedResponse(res, data, handleGenerateNacha)) {
+          return
+        }
         throw new Error(data?.error || `NACHA generation failed (${res.status})`)
       }
       // If the response is a file download, trigger it
@@ -415,6 +425,12 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
         onClose={() => setIsModalOpen(false)}
         ledgerId={ledger.id}
         onSuccess={handlePayoutSuccess}
+      />
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
       />
     </div>
   )

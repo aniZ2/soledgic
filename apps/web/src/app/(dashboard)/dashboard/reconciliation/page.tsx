@@ -5,12 +5,14 @@ import Link from 'next/link'
 import { Upload, ExternalLink } from 'lucide-react'
 import { useToast } from '@/components/notifications/toast-provider'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { ConnectBank, ConnectionList } from '@/components/connect-bank'
 import { ProvenanceReport } from '@/components/reconciliation/provenance-report'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 
 interface Connection {
   id: string
@@ -29,6 +31,8 @@ export default function ReconciliationPage() {
   const [syncing, setSyncing] = useState<string | null>(null)
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null)
   const toast = useToast()
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const loadConnections = useCallback(async (lid?: string) => {
     const id = lid || ledgerId
@@ -90,6 +94,13 @@ export default function ReconciliationPage() {
         body: { action: 'sync', connection_id: connectionId },
       })
       const result = await res.json()
+      if (!res.ok) {
+        if (handleProtectedResponse(res, result, () => handleSync(connectionId))) {
+          return
+        }
+        toast.error('Sync error', result.error || 'Sync failed')
+        return
+      }
       if (result.success) {
         toast.success('Sync complete', `${result.data.added} added, ${result.data.auto_matched} auto-matched`)
       } else {
@@ -111,15 +122,22 @@ export default function ReconciliationPage() {
     if (!ledgerId || !disconnectTarget) return
 
     try {
-      await callLedgerFunction('bank-aggregator', {
+      const res = await callLedgerFunction('bank-aggregator', {
         ledgerId,
         method: 'POST',
         body: { action: 'disconnect', connection_id: disconnectTarget },
       })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.success === false) {
+        if (handleProtectedResponse(res, data, confirmDisconnect)) {
+          return
+        }
+        throw new Error(data?.error || 'Failed to disconnect')
+      }
       toast.success('Bank account disconnected')
       loadConnections()
-    } catch {
-      toast.error('Failed to disconnect')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to disconnect')
     }
     setDisconnectTarget(null)
   }
@@ -196,6 +214,12 @@ export default function ReconciliationPage() {
         message="Disconnect this bank account? Existing imported transactions will be preserved."
         confirmLabel="Disconnect"
         variant="danger"
+      />
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
       />
     </div>
   )

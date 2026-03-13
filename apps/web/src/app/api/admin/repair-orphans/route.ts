@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { createHash } from 'crypto'
 
 function makeApiKey(livemode: boolean): string {
@@ -12,7 +13,8 @@ function hashApiKey(apiKey: string): string {
 }
 
 export const POST = createApiHandler(
-  async (_request, { user }) => {
+  async (_request, context) => {
+    const { user } = context
     const supabase = await createClient()
 
     // Verify user is an admin/owner of their org
@@ -28,6 +30,11 @@ export const POST = createApiHandler(
         { error: 'Only organization owners and admins can run repairs' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'repair orphaned ledgers')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     const orgId = membership.organization_id

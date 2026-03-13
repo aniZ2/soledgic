@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { canAddTeamMember } from '@/lib/entitlements'
 import { sendTeamInviteEmail } from '@/lib/email'
 import { createServiceRoleClient, getServerServiceKey, getServerSupabaseUrl } from '@/lib/supabase/service'
@@ -105,7 +106,8 @@ export const GET = createApiHandler(
 
 // POST /api/team — Send invitation
 export const POST = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
 
     const { data: body, error: parseError } = await parseJsonBody<{
@@ -164,6 +166,11 @@ export const POST = createApiHandler(
         { error: 'Only owners and admins can invite team members' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'invite team members')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     // Admin cannot invite as admin (only owner can)

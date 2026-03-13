@@ -390,6 +390,9 @@ export default function WebhooksPage() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
+        if (handleProtectedResponse(res, data, createEndpoint)) {
+          return
+        }
         throw new Error(data.error || 'Failed to create webhook endpoint')
       }
 
@@ -420,6 +423,9 @@ export default function WebhooksPage() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
+        if (handleProtectedResponse(res, data, confirmDeleteEndpoint)) {
+          return
+        }
         throw new Error(data.error || 'Failed to delete webhook endpoint')
       }
       toast.success('Webhook endpoint deleted')
@@ -473,6 +479,9 @@ export default function WebhooksPage() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
+        if (handleProtectedResponse(res, data, () => toggleEndpoint(id, isActive))) {
+          return
+        }
         throw new Error(data.error || 'Failed to update webhook endpoint')
       }
       toast.success(isActive ? 'Webhook endpoint disabled' : 'Webhook endpoint enabled')

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 type TaxProfilePayload = {
@@ -72,7 +73,8 @@ export const GET = createApiHandler(
 )
 
 export const PUT = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const { data: body, error: parseError } = await parseJsonBody<TaxProfilePayload>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid JSON body' }, { status: 400 })
@@ -100,6 +102,11 @@ export const PUT = createApiHandler(
 
     const address = body.address || {}
     const now = body.certify === true ? new Date().toISOString() : null
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'update shared tax information')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
+    }
 
     const supabase = createServiceRoleClient()
     const { data, error } = await supabase

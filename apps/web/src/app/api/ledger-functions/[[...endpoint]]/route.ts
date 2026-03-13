@@ -10,6 +10,7 @@ const DEFAULT_SOLEDGIC_API_VERSION =
 const ALLOWED_ENDPOINT_ROOTS = new Set([
   'health-check',
   'delete-creator',
+  'execute-payout',
   'record-sale',
   'record-expense',
   'record-income',
@@ -43,11 +44,95 @@ const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
   'holds',
   'wallets',
   'transfers',
+  'execute-payout',
   'import-transactions',
   'send-statements',
   'delete-creator',
   'bank-aggregator',
 ])
+
+const STEP_UP_ENDPOINT_ROOTS = new Set([
+  'wallets',
+  'payouts',
+  'holds',
+  'delete-creator',
+  'refunds',
+  'record-income',
+  'record-transfer',
+  'record-adjustment',
+])
+
+function getSensitiveActionLabel(
+  endpointRoot: string,
+  method: string,
+  bodyData: Record<string, unknown> | null,
+): string | null {
+  const isReadMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS'
+  if (isReadMethod) {
+    return null
+  }
+
+  if (endpointRoot === 'webhooks') {
+    if (bodyData?.action === 'rotate_secret') return 'rotate webhook secrets'
+    if (bodyData?.action === 'create') return 'create webhook endpoints'
+    if (bodyData?.action === 'update') return 'update webhook endpoints'
+    if (bodyData?.action === 'delete') return 'delete webhook endpoints'
+    return null
+  }
+
+  if (STEP_UP_ENDPOINT_ROOTS.has(endpointRoot)) {
+    switch (endpointRoot) {
+      case 'wallets':
+        return 'modify wallet balances'
+      case 'payouts':
+        return 'process payouts'
+      case 'holds':
+        return 'release or change held funds'
+      case 'delete-creator':
+        return 'delete creators'
+      case 'refunds':
+        return 'process refunds'
+      case 'record-income':
+        return 'record income entries'
+      case 'record-transfer':
+        return 'record internal transfers'
+      case 'record-adjustment':
+        return 'record journal adjustments'
+      default:
+        return 'perform this sensitive action'
+    }
+  }
+
+  const action = typeof bodyData?.action === 'string' ? bodyData.action : null
+
+  if (endpointRoot === 'execute-payout') {
+    if (action === 'batch_execute') return 'execute payout batches'
+    if (action === 'generate_batch_file') return 'generate payout batch files'
+    if (action === 'execute') return 'execute payouts'
+    if (action === 'configure_rail') return 'configure payout rails'
+    return null
+  }
+
+  if (endpointRoot === 'bank-aggregator') {
+    if (action === 'get_connect_config' || action === 'store_enrollment') {
+      return 'connect bank accounts'
+    }
+    if (action === 'sync') return 'sync bank transactions'
+    if (action === 'disconnect') return 'disconnect bank accounts'
+    return null
+  }
+
+  if (endpointRoot === 'import-transactions') {
+    if (action === 'import') return 'import transactions'
+    return null
+  }
+
+  if (endpointRoot === 'send-statements') {
+    return 'send creator statements'
+  }
+
+  return null
+}
 
 function getEndpointFromRequest(request: Request): string | null {
   const pathname = new URL(request.url).pathname
@@ -145,13 +230,15 @@ async function proxyLedgerFunction(
     return NextResponse.json({ error: 'ledger_id is required' }, { status: 400 })
   }
 
-  if (endpointRoot === 'webhooks' && bodyData?.action === 'rotate_secret') {
-    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'rotate webhook secrets')
+  const actionLabel = getSensitiveActionLabel(endpointRoot, method, bodyData)
+  if (actionLabel) {
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, actionLabel)
     if (sensitiveAuthFailure) {
       return sensitiveAuthFailure
     }
   }
 
+  const isReadMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS'
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -160,8 +247,6 @@ async function proxyLedgerFunction(
   if (!access.allowed) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
-
-  const isReadMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS'
   if (!isReadMethod && access.role === 'viewer') {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }

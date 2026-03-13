@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, FileEdit, Plus, Trash2 } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordAdjustmentModalProps {
@@ -57,6 +59,8 @@ export function RecordAdjustmentModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   // Form state
   const [adjustmentType, setAdjustmentType] = useState('correction')
@@ -95,9 +99,7 @@ export function RecordAdjustmentModal({
     return { debits, credits, balanced: Math.abs(debits - credits) < 0.01 }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const submitAdjustment = async () => {
     if (!reason.trim()) {
       setError('Please provide a reason for the adjustment')
       return
@@ -143,6 +145,9 @@ export function RecordAdjustmentModal({
       const data = await response.json()
 
       if (!response.ok) {
+        if (handleProtectedResponse(response, data, submitAdjustment)) {
+          return
+        }
         throw new Error(data.error || 'Failed to record adjustment')
       }
 
@@ -157,6 +162,11 @@ export function RecordAdjustmentModal({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await submitAdjustment()
   }
 
   const resetForm = () => {
@@ -376,6 +386,12 @@ export function RecordAdjustmentModal({
           )}
         </form>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

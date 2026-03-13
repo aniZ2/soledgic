@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 
 function getMemberIdFromUrl(request: Request): string | null {
   const url = new URL(request.url)
@@ -11,7 +12,8 @@ function getMemberIdFromUrl(request: Request): string | null {
 
 // PATCH /api/team/[memberId] — Change member role
 export const PATCH = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
     const memberId = getMemberIdFromUrl(request)
 
@@ -66,6 +68,11 @@ export const PATCH = createApiHandler(
         { error: 'Only owners and admins can change member roles' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'change team member roles')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     // Get target member
@@ -142,7 +149,8 @@ export const PATCH = createApiHandler(
 
 // DELETE /api/team/[memberId] — Remove member (soft-remove)
 export const DELETE = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
     const memberId = getMemberIdFromUrl(request)
 
@@ -176,6 +184,11 @@ export const DELETE = createApiHandler(
         { error: 'Only owners and admins can remove team members' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'remove team members')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     // Get target member

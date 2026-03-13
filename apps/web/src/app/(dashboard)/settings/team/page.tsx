@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { MemberList, TeamMember, Invitation } from '@/components/team/member-list'
 import { InviteMemberDialog } from '@/components/team/invite-member-dialog'
 import { UserPlus, AlertCircle } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 
 interface TeamData {
   members: TeamMember[]
@@ -32,6 +34,8 @@ export default function TeamSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [teamData, setTeamData] = useState<TeamData | null>(null)
   const [showInviteDialog, setShowInviteDialog] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const loadTeamData = useCallback(async () => {
     try {
@@ -74,6 +78,9 @@ export default function TeamSettingsPage() {
       const data = await res.json()
 
       if (!res.ok) {
+        if (handleProtectedResponse(res, data, () => handleInvite(email, role))) {
+          return { success: false }
+        }
         return { success: false, error: data.error || 'Failed to send invitation', code: data.code }
       }
 
@@ -91,8 +98,12 @@ export default function TeamSettingsPage() {
         method: 'DELETE',
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const data = await res.json()
+        if (handleProtectedResponse(res, data, () => handleRemoveMember(memberId))) {
+          return
+        }
         throw new Error(data.error || 'Failed to remove member')
       }
 
@@ -108,8 +119,12 @@ export default function TeamSettingsPage() {
         method: 'DELETE',
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const data = await res.json()
+        if (handleProtectedResponse(res, data, () => handleRevokeInvitation(inviteId))) {
+          return
+        }
         throw new Error(data.error || 'Failed to revoke invitation')
       }
 
@@ -232,6 +247,12 @@ export default function TeamSettingsPage() {
         onClose={() => setShowInviteDialog(false)}
         onInvite={handleInvite}
         currentUserRole={current_user_role}
+      />
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
       />
     </div>
   )

@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from 'react'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { Building2, Loader2, CheckCircle, AlertCircle, Unplug } from 'lucide-react'
 
 interface Connection {
@@ -21,6 +23,8 @@ interface ConnectBankProps {
 export function ConnectBank({ ledgerId, onConnectionChange }: ConnectBankProps) {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const openTellerConnect = useCallback(async () => {
     setConnecting(true)
@@ -35,6 +39,12 @@ export function ConnectBank({ ledgerId, onConnectionChange }: ConnectBankProps) 
       })
 
       const result = await res.json()
+      if (!res.ok) {
+        if (handleProtectedResponse(res, result, openTellerConnect)) {
+          setConnecting(false)
+          return
+        }
+      }
       if (!result.success || !result.data?.application_id) {
         setError(result.error || 'Failed to initialize bank connection')
         setConnecting(false)
@@ -66,6 +76,12 @@ export function ConnectBank({ ledgerId, onConnectionChange }: ConnectBankProps) 
             })
 
             const storeResult = await storeRes.json()
+            if (!storeRes.ok) {
+              if (handleProtectedResponse(storeRes, storeResult, openTellerConnect)) {
+                setConnecting(false)
+                return
+              }
+            }
             if (storeResult.success) {
               onConnectionChange?.()
             } else {
@@ -110,6 +126,12 @@ export function ConnectBank({ ledgerId, onConnectionChange }: ConnectBankProps) 
           {error}
         </p>
       )}
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

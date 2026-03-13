@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { useToast } from '@/components/notifications/toast-provider'
 import Link from 'next/link'
 import { ArrowLeft, Download, Mail, User, Send } from 'lucide-react'
@@ -33,6 +35,8 @@ export default function CreatorStatementsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const toast = useToast()
   const [sendingAll, setSendingAll] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const loadData = useCallback(async () => {
     const supabase = createClient()
@@ -156,11 +160,17 @@ export default function CreatorStatementsPage() {
       },
     })
     const data = await res.json()
-    
+
+    if (!res.ok || !data.success) {
+      if (handleProtectedResponse(res, data, () => sendStatement(creatorId))) {
+        return
+      }
+      toast.error('Send failed', data.error)
+      return
+    }
+
     if (data.success) {
       toast.success('Statement sent')
-    } else {
-      toast.error('Send failed', data.error)
     }
   }
 
@@ -178,11 +188,18 @@ export default function CreatorStatementsPage() {
       },
     })
     const data = await res.json()
-    
+
+    if (!res.ok || !data.success) {
+      if (handleProtectedResponse(res, data, sendAllStatements)) {
+        return
+      }
+      toast.error('Send failed', data.error)
+      setSendingAll(false)
+      return
+    }
+
     if (data.success) {
       toast.success('Statements queued', `${data.data?.queued || 0} statements queued for delivery`)
-    } else {
-      toast.error('Send failed', data.error)
     }
 
     setSendingAll(false)
@@ -367,6 +384,12 @@ export default function CreatorStatementsPage() {
           Go to Settings →
         </Link>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

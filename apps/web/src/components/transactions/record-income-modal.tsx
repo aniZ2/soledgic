@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { X, Loader2, AlertCircle, CheckCircle, DollarSign } from 'lucide-react'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface RecordIncomeModalProps {
@@ -35,6 +37,8 @@ export function RecordIncomeModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   // Form state
   const [amount, setAmount] = useState('')
@@ -44,9 +48,7 @@ export function RecordIncomeModal({
   const [customerName, setCustomerName] = useState('')
   const [receivedTo, setReceivedTo] = useState('cash')
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const submitIncome = async () => {
     const amountCents = Math.floor(parseFloat(amount) * 100)
     if (isNaN(amountCents) || amountCents <= 0) {
       setError('Please enter a valid amount')
@@ -78,6 +80,9 @@ export function RecordIncomeModal({
       const data = await response.json()
 
       if (!response.ok) {
+        if (handleProtectedResponse(response, data, submitIncome)) {
+          return
+        }
         throw new Error(data.error || 'Failed to record income')
       }
 
@@ -92,6 +97,11 @@ export function RecordIncomeModal({
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await submitIncome()
   }
 
   const resetForm = () => {
@@ -258,6 +268,12 @@ export function RecordIncomeModal({
           )}
         </form>
       </div>
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
+      />
     </div>
   )
 }

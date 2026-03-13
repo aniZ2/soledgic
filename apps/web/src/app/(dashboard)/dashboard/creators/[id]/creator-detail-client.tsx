@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2, CheckCircle, AlertTriangle } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
+import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { TaxInfoForm } from '@/components/creators/tax-info-form'
+import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 
 interface Creator {
@@ -94,6 +96,8 @@ export function CreatorDetailClient({
   const [releasingEntryId, setReleasingEntryId] = useState<string | null>(null)
   const [releaseError, setReleaseError] = useState<string | null>(null)
   const [showTaxForm, setShowTaxForm] = useState(false)
+  const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
+    useSensitiveActionGate()
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -126,6 +130,9 @@ export function CreatorDetailClient({
 
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || payload?.success === false) {
+        if (handleProtectedResponse(response, payload, handleDeleteCreator)) {
+          return
+        }
         throw new Error(payload?.error || 'Failed to delete creator')
       }
 
@@ -154,6 +161,9 @@ export function CreatorDetailClient({
 
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || payload?.success === false) {
+        if (handleProtectedResponse(response, payload, () => handleReleaseFunds(entryId))) {
+          return
+        }
         throw new Error(payload?.error || 'Failed to release held funds')
       }
 
@@ -535,6 +545,12 @@ export function CreatorDetailClient({
         message={`Are you sure you want to delete "${creatorAccount.name}"? This action cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
+      />
+
+      <SensitiveActionModal
+        challenge={challenge}
+        onClose={dismissChallenge}
+        onVerified={retryVerifiedAction}
       />
     </div>
   )

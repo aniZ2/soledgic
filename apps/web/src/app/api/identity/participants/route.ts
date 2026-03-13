@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { isParticipantId, isUuid } from '@/lib/identity'
 import { getActiveMembershipForLedger } from '@/lib/identity-server'
 import { createServiceRoleClient } from '@/lib/supabase/service'
@@ -12,7 +13,8 @@ type LinkParticipantPayload = {
 }
 
 export const POST = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const { data: body, error: parseError } = await parseJsonBody<LinkParticipantPayload>(request)
     if (parseError || !body) {
       return NextResponse.json({ error: parseError || 'Invalid JSON body' }, { status: 400 })
@@ -52,6 +54,11 @@ export const POST = createApiHandler(
 
     if (!isOrgAdmin && targetUserId !== user!.id) {
       return NextResponse.json({ error: 'Only owners and admins can link other users' }, { status: 403 })
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'link participant identities')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     if (!isOrgAdmin) {

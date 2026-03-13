@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
+import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 
 // GET /api/organizations - List organizations for authenticated user
 export const GET = createApiHandler(
@@ -42,7 +43,8 @@ export const GET = createApiHandler(
 
 // PATCH /api/organizations - Update organization settings
 export const PATCH = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
 
     const { data: body, error: parseError } = await parseJsonBody<{
@@ -78,6 +80,11 @@ export const PATCH = createApiHandler(
         { error: 'Only owners and admins can update organization settings' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'update organization settings')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     // Build update object
@@ -136,7 +143,8 @@ export const PATCH = createApiHandler(
 
 // DELETE /api/organizations - Delete organization (owner only)
 export const DELETE = createApiHandler(
-  async (request, { user }) => {
+  async (request, context) => {
+    const { user } = context
     const supabase = await createClient()
 
     // Get user's membership
@@ -160,6 +168,11 @@ export const DELETE = createApiHandler(
         { error: 'Only the organization owner can delete the organization' },
         { status: 403 }
       )
+    }
+
+    const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'delete the organization')
+    if (sensitiveAuthFailure) {
+      return sensitiveAuthFailure
     }
 
     // Soft delete: set status to 'deleted'
