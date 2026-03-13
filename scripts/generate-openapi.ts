@@ -1804,6 +1804,14 @@ const tags = [...usedTags]
     description: TAG_DESCRIPTIONS[name] ?? '',
   }))
 
+const UNUSED_REQUEST_SCHEMAS = new Set([
+  'CreateCheckoutRequest',
+  'ProcessPayoutRequest',
+  'RecordRefundRequest',
+  'CreateCreatorRequest',
+  'RefundsListRequest',
+])
+
 const spec = {
   openapi: '3.1.0',
   info: {
@@ -1837,6 +1845,9 @@ const spec = {
     },
     schemas: Object.fromEntries(
       Object.entries(SCHEMAS).filter(([name]) => {
+        if (UNUSED_REQUEST_SCHEMAS.has(name)) {
+          return false
+        }
         // Exclude request schemas that are only used to expand GET query params
         // (never $ref'd in the output — avoids no-unused-components warnings)
         const mapping = Object.values(ENDPOINT_SCHEMA_MAP).find((m) => m.request === name)
