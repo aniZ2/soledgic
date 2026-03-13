@@ -31,6 +31,7 @@ const TREASURY_RESOURCE_ENDPOINTS: ApiEndpointDoc[] = [
     source: 'supabase/functions/participants/index.ts',
     parameters: [
       { in: 'body', name: 'participant_id', type: 'string', required: true },
+      { in: 'body', name: 'user_id', type: 'string', required: false },
       { in: 'body', name: 'display_name', type: 'string', required: false },
       { in: 'body', name: 'email', type: 'string', required: false },
       { in: 'body', name: 'default_split_percent', type: 'number', required: false },

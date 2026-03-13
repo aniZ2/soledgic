@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
-  CreditCard, Key, Bell, Building, Users, Shield
+  CreditCard, Key, Bell, Building, Users, Shield, Fingerprint
 } from 'lucide-react'
 
 const settingsNav = [
@@ -13,6 +13,7 @@ const settingsNav = [
   { href: '/dashboard/settings/team', label: 'Team', icon: Users },
   { href: '/dashboard/settings/notifications', label: 'Notifications', icon: Bell },
   { href: '/dashboard/settings/security', label: 'Security', icon: Shield },
+  { href: '/settings/identity', label: 'Identity', icon: Fingerprint },
 ]
 
 export default function SettingsLayout({

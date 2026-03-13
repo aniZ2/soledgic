@@ -38,6 +38,7 @@ const handler = createHandler(
 
         const response = await createParticipantResponse(req, supabase, ledger, {
           participant_id: String(payload.participant_id ?? payload.creator_id ?? ''),
+          user_id: typeof payload.user_id === 'string' ? payload.user_id : undefined,
           display_name: typeof payload.display_name === 'string' ? payload.display_name : undefined,
           email: typeof payload.email === 'string' ? payload.email : undefined,
           default_split_percent: typeof payload.default_split_percent === 'number' ? payload.default_split_percent : undefined,

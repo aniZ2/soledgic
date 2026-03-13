@@ -5,15 +5,24 @@ import {
   sanitizeForAudit,
   validateId,
   validateString,
+  validateUUID,
 } from './utils.ts'
 import {
   ResourceResult,
   resourceError,
   resourceOk,
 } from './treasury-resource.ts'
+import {
+  getLinkedUserIdForParticipant,
+  getLinkedUserIdsForParticipants,
+  linkParticipantToUser,
+  upsertSharedPayoutProfile,
+  upsertSharedTaxProfile,
+} from './identity-service.ts'
 
 export interface CreateParticipantRequest {
   participant_id: string
+  user_id?: string
   display_name?: string
   email?: string
   default_split_percent?: number
@@ -71,9 +80,13 @@ export async function createParticipantResponse(
 
   const displayName = body.display_name ? validateString(body.display_name, 255) : null
   const email = body.email ? validateString(body.email, 255) : null
+  const linkedUserId = body.user_id !== undefined ? validateUUID(body.user_id) : null
 
   if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
     return resourceError('Invalid email format', 400, {}, 'invalid_email')
+  }
+  if (body.user_id !== undefined && !linkedUserId) {
+    return resourceError('Invalid user_id: must be a UUID', 400, {}, 'invalid_user_id')
   }
 
   let splitPercent = 80
@@ -127,6 +140,42 @@ export async function createParticipantResponse(
     return resourceError('Failed to create participant', 500, {}, 'participant_create_failed')
   }
 
+  if (linkedUserId) {
+    const linkResult = await linkParticipantToUser(
+      supabase,
+      ledger,
+      participantId,
+      linkedUserId,
+      'provisioned',
+      { created_via: 'participants.create' },
+    )
+
+    if (linkResult.error) {
+      await supabase
+        .from('accounts')
+        .delete()
+        .eq('id', account.id)
+
+      return resourceError('Failed to link participant identity', 500, {}, 'participant_identity_link_failed')
+    }
+
+    await upsertSharedTaxProfile(supabase, linkedUserId, {
+      legal_name: body.tax_info?.legal_name || null,
+      tax_id_type: body.tax_info?.tax_id_type || null,
+      tax_id_last4: body.tax_info?.tax_id_last4 || null,
+      business_type: body.tax_info?.business_type || null,
+      address: body.tax_info?.address || null,
+      metadata: { source: 'participants.create' },
+    })
+
+    await upsertSharedPayoutProfile(supabase, linkedUserId, {
+      method: body.payout_preferences?.method || null,
+      schedule: body.payout_preferences?.schedule || null,
+      minimum_amount: body.payout_preferences?.minimum_amount ?? null,
+      metadata: { source: 'participants.create' },
+    })
+  }
+
   createAuditLogAsync(supabase, req, {
     ledger_id: ledger.id,
     action: 'creator.created',
@@ -149,6 +198,7 @@ export async function createParticipantResponse(
     participant: {
       id: participantId,
       account_id: account.id,
+      linked_user_id: linkedUserId,
       display_name: displayName,
       email,
       default_split_percent: splitPercent,
@@ -171,6 +221,12 @@ export async function listParticipantBalancesResponse(
     .eq('account_type', 'creator_balance')
     .eq('is_active', true)
 
+  const linkedUserIds = await getLinkedUserIdsForParticipants(
+    supabase,
+    ledger.id,
+    (creators || []).map((creator) => String(creator.entity_id)).filter(Boolean),
+  )
+
   const participants = []
   for (const creator of creators || []) {
     const entries = await getActiveEntries(supabase, creator.id)
@@ -190,6 +246,7 @@ export async function listParticipantBalancesResponse(
 
     participants.push({
       id: creator.entity_id,
+      linked_user_id: linkedUserIds.get(String(creator.entity_id)) || null,
       name: creator.name,
       tier: creator.metadata?.tier_name || 'starter',
       ledger_balance: ledgerBalance,
@@ -252,10 +309,13 @@ export async function getParticipantBalanceResponse(
     }
   }
 
+  const linkedUserId = await getLinkedUserIdForParticipant(supabase, ledger.id, participantId)
+
   return resourceOk({
     success: true,
     participant: {
       id: participantId,
+      linked_user_id: linkedUserId,
       name: creator.name,
       tier: creator.metadata?.tier_name || 'starter',
       custom_split_percent: creator.metadata?.custom_split_percent,

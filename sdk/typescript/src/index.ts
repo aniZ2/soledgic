@@ -491,6 +491,7 @@ export interface CreateCreatorRequest {
 
 export interface CreateParticipantRequest {
   participantId: string
+  userId?: string
   displayName?: string
   email?: string
   defaultSplitPercent?: number
@@ -775,6 +776,7 @@ export interface CreateCreatorResponse {
 
 export interface ParticipantSummary {
   id: string
+  linkedUserId: string | null
   name: string | null
   tier: string | null
   ledgerBalance: number
@@ -784,6 +786,7 @@ export interface ParticipantSummary {
 
 export interface ParticipantDetail {
   id: string
+  linkedUserId: string | null
   name: string | null
   tier: string | null
   customSplitPercent: number | null
@@ -803,6 +806,7 @@ export interface CreateParticipantResponse {
   participant: {
     id: string
     accountId: string
+    linkedUserId: string | null
     displayName: string | null
     email: string | null
     defaultSplitPercent: number
@@ -2567,26 +2571,46 @@ export class Soledgic {
   // === TREASURY RESOURCES ===
 
   async createParticipant(req: CreateParticipantRequest): Promise<CreateParticipantResponse> {
-    const response = await this.createCreator({
-      creatorId: req.participantId,
-      displayName: req.displayName,
+    const response = await this.request<any>('participants', {
+      participant_id: req.participantId,
+      user_id: req.userId,
+      display_name: req.displayName,
       email: req.email,
-      defaultSplitPercent: req.defaultSplitPercent,
-      taxInfo: req.taxInfo,
-      payoutPreferences: req.payoutPreferences,
+      default_split_percent: req.defaultSplitPercent,
+      tax_info: req.taxInfo ? {
+        tax_id_type: req.taxInfo.taxIdType,
+        tax_id_last4: req.taxInfo.taxIdLast4,
+        legal_name: req.taxInfo.legalName,
+        business_type: req.taxInfo.businessType,
+        address: req.taxInfo.address ? {
+          line1: req.taxInfo.address.line1,
+          line2: req.taxInfo.address.line2,
+          city: req.taxInfo.address.city,
+          state: req.taxInfo.address.state,
+          postal_code: req.taxInfo.address.postalCode,
+          country: req.taxInfo.address.country,
+        } : undefined,
+      } : undefined,
+      payout_preferences: req.payoutPreferences ? {
+        schedule: req.payoutPreferences.schedule,
+        minimum_amount: req.payoutPreferences.minimumAmount,
+        method: req.payoutPreferences.method,
+      } : undefined,
       metadata: req.metadata,
     })
 
+    const participant = response.participant || {}
     return {
       success: response.success,
       participant: {
-        id: response.creator.id,
-        accountId: response.creator.accountId,
-        displayName: response.creator.displayName,
-        email: response.creator.email,
-        defaultSplitPercent: response.creator.defaultSplitPercent,
-        payoutPreferences: response.creator.payoutPreferences,
-        createdAt: response.creator.createdAt,
+        id: participant.id,
+        accountId: participant.account_id,
+        linkedUserId: participant.linked_user_id ?? null,
+        displayName: participant.display_name,
+        email: participant.email,
+        defaultSplitPercent: participant.default_split_percent,
+        payoutPreferences: participant.payout_preferences || {},
+        createdAt: participant.created_at,
       },
     }
   }
@@ -2597,6 +2621,7 @@ export class Soledgic {
       success: response.success,
       participants: (response.participants || []).map((participant: any) => ({
         id: participant.id,
+        linkedUserId: participant.linked_user_id ?? null,
         name: participant.name ?? null,
         tier: participant.tier ?? null,
         ledgerBalance: participant.ledger_balance,
@@ -2613,6 +2638,7 @@ export class Soledgic {
       success: response.success,
       participant: {
         id: participant.id,
+        linkedUserId: participant.linked_user_id ?? null,
         name: participant.name ?? null,
         tier: participant.tier ?? null,
         customSplitPercent: participant.custom_split_percent ?? null,

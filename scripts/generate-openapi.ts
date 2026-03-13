@@ -328,6 +328,7 @@ const SCHEMAS: Record<string, object> = {
     type: 'object',
     properties: {
       participant_id: { type: 'string' },
+      user_id: { type: 'string', format: 'uuid' },
       display_name: { type: 'string' },
       email: { type: 'string', format: 'email' },
       default_split_percent: { type: 'number', minimum: 0, maximum: 100 },
@@ -779,6 +780,7 @@ const SCHEMAS: Record<string, object> = {
     type: 'object',
     properties: {
       id: { type: 'string' },
+      linked_user_id: { type: ['string', 'null'], format: 'uuid' },
       name: { type: ['string', 'null'] },
       tier: { type: ['string', 'null'] },
       ledger_balance: { type: 'number' },
@@ -833,6 +835,7 @@ const SCHEMAS: Record<string, object> = {
             type: 'object',
             properties: {
               id: { type: 'string' },
+              linked_user_id: { type: ['string', 'null'], format: 'uuid' },
               name: { type: ['string', 'null'] },
               tier: { type: ['string', 'null'] },
               custom_split_percent: { type: ['number', 'null'] },
@@ -869,6 +872,7 @@ const SCHEMAS: Record<string, object> = {
             properties: {
               id: { type: 'string' },
               account_id: { type: 'string', format: 'uuid' },
+              linked_user_id: { type: ['string', 'null'], format: 'uuid' },
               display_name: { type: ['string', 'null'] },
               email: { type: ['string', 'null'] },
               default_split_percent: { type: 'number' },

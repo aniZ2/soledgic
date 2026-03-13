@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   return {
     test: {
       // Unit tests only — stress tests use vitest.stress.config.ts (npm run test:stress)
-      include: ['sdk/typescript/src/**/*.test.ts', 'api/src/**/*.test.ts'],
+      include: ['sdk/typescript/src/**/*.test.ts', 'api/src/**/*.test.ts', 'apps/web/src/**/*.test.ts'],
       testTimeout: 30000,
       hookTimeout: 10000,
     },

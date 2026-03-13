@@ -549,6 +549,7 @@ describe('Soledgic SDK', () => {
       participant: {
         id: 'p_1',
         account_id: 'acct_1',
+        linked_user_id: '550e8400-e29b-41d4-a716-446655440000',
         display_name: 'Alice',
         email: 'alice@example.com',
         default_split_percent: 80,
@@ -559,13 +560,16 @@ describe('Soledgic SDK', () => {
     const sdk = createClient(fn)
     const result = await sdk.createParticipant({
       participantId: 'p_1',
+      userId: '550e8400-e29b-41d4-a716-446655440000',
       displayName: 'Alice',
       email: 'alice@example.com',
     })
 
     const body = JSON.parse(fn.mock.calls[0][1].body)
     expect(body.participant_id).toBe('p_1')
+    expect(body.user_id).toBe('550e8400-e29b-41d4-a716-446655440000')
     expect(result.participant.accountId).toBe('acct_1')
+    expect(result.participant.linkedUserId).toBe('550e8400-e29b-41d4-a716-446655440000')
     expect(result.participant.displayName).toBe('Alice')
   })
 
@@ -694,6 +698,7 @@ describe('Soledgic SDK', () => {
       participants: [
         {
           id: 'p_1',
+          linked_user_id: '550e8400-e29b-41d4-a716-446655440000',
           name: 'Alice',
           tier: 'starter',
           ledger_balance: 120,
@@ -707,6 +712,7 @@ describe('Soledgic SDK', () => {
 
     expect(result.participants[0]).toEqual({
       id: 'p_1',
+      linkedUserId: '550e8400-e29b-41d4-a716-446655440000',
       name: 'Alice',
       tier: 'starter',
       ledgerBalance: 120,
@@ -737,6 +743,28 @@ describe('Soledgic SDK', () => {
     expect(result.wallet.participantId).toBe('p_1')
     expect(result.wallet.balance).toBe(75)
     expect(result.wallet.walletExists).toBe(true)
+  })
+
+  it('getParticipant maps linked user ids into participant details', async () => {
+    const fn = mockFetch({
+      success: true,
+      participant: {
+        id: 'p_1',
+        linked_user_id: '550e8400-e29b-41d4-a716-446655440000',
+        name: 'Alice',
+        tier: 'starter',
+        custom_split_percent: 90,
+        ledger_balance: 120,
+        held_amount: 20,
+        available_balance: 100,
+        holds: [],
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.getParticipant('p_1')
+
+    expect(result.participant.linkedUserId).toBe('550e8400-e29b-41d4-a716-446655440000')
+    expect(result.participant.customSplitPercent).toBe(90)
   })
 
   it('createTransfer maps participant transfer vocabulary to wallet transfer', async () => {

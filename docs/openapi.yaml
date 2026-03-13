@@ -3311,6 +3311,9 @@ components:
       properties:
         participant_id:
           type: "string"
+        user_id:
+          type: "string"
+          format: "uuid"
         display_name:
           type: "string"
         email:
@@ -3894,6 +3897,11 @@ components:
       properties:
         id:
           type: "string"
+        linked_user_id:
+          type:
+            - "string"
+            - "null"
+          format: "uuid"
         name:
           type:
             - "string"
@@ -3976,6 +3984,11 @@ components:
               properties:
                 id:
                   type: "string"
+                linked_user_id:
+                  type:
+                    - "string"
+                    - "null"
+                  format: "uuid"
                 name:
                   type:
                     - "string"
@@ -4024,6 +4037,11 @@ components:
                   type: "string"
                 account_id:
                   type: "string"
+                  format: "uuid"
+                linked_user_id:
+                  type:
+                    - "string"
+                    - "null"
                   format: "uuid"
                 display_name:
                   type:

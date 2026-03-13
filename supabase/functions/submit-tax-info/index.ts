@@ -12,6 +12,10 @@ import {
   sanitizeForAudit
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  getLinkedUserIdForParticipant,
+  upsertSharedTaxProfile,
+} from '../_shared/identity-service.ts'
 
 function taxInfoError(req: Request, requestId: string, error: string, status: number, errorCode: string) {
   return jsonResponse({
@@ -164,6 +168,31 @@ const handler = createHandler(
         business_type: body.business_type,
       }),
     }, requestId)
+
+    const linkedUserId = await getLinkedUserIdForParticipant(supabase, ledger.id, participantId)
+    if (linkedUserId) {
+      await upsertSharedTaxProfile(supabase, linkedUserId, {
+        legal_name: legalName,
+        tax_id_type: body.tax_id_type,
+        tax_id_last4: body.tax_id_last4,
+        business_type: body.business_type,
+        address: {
+          line1: addressLine1,
+          line2: addressLine2,
+          city: addressCity,
+          state: addressState,
+          postal_code: addressPostalCode,
+          country: addressCountry,
+        },
+        certified_at: now,
+        certified_by: participantId,
+        metadata: {
+          source: 'submit-tax-info',
+          ledger_id: ledger.id,
+          participant_id: participantId,
+        },
+      })
+    }
 
     return jsonResponse({
       success: true,

@@ -2,6 +2,7 @@ import { assertEquals } from 'https://deno.land/std@0.224.0/testing/asserts.ts'
 import { createCheckoutResponse } from '../checkout-service.ts'
 import { releaseHeldFundsResponse } from '../holds-service.ts'
 import { processPayoutResponse } from '../payout-service.ts'
+import { createParticipantResponse } from '../participants-service.ts'
 import { listRefundsResponse, recordRefundResponse } from '../refund-service.ts'
 
 const ledger = {
@@ -31,6 +32,16 @@ Deno.test('processPayoutResponse: returns structured invalid_reference_id error'
 
   assertEquals(result.status, 400)
   assertEquals(result.body.error_code, 'invalid_reference_id')
+})
+
+Deno.test('createParticipantResponse: returns structured invalid_user_id error', async () => {
+  const result = await createParticipantResponse(req, {} as any, ledger, {
+    participant_id: 'participant_1',
+    user_id: 'not-a-uuid',
+  }, requestId)
+
+  assertEquals(result.status, 400)
+  assertEquals(result.body.error_code, 'invalid_user_id')
 })
 
 Deno.test('releaseHeldFundsResponse: returns structured invalid_hold_id error', async () => {
