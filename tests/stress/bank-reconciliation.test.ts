@@ -1,6 +1,38 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { createTestClient, SoledgicTestClient } from '../test-client'
 
+async function recordSaleWithTransientTolerance(
+  ledger: SoledgicTestClient,
+  params: {
+    referenceId: string
+    creatorId: string
+    amount: number
+    description?: string
+    transactionDate?: string
+    metadata?: Record<string, any>
+  },
+  attempts = 3,
+) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await ledger.recordSale(params)
+    } catch (error: any) {
+      const isTransient = error?.status === 500 || error?.status === 429 || error?.code === 'RATE_LIMITED'
+      if (!isTransient || attempt === attempts - 1) {
+        throw error
+      }
+
+      const retryAfterSeconds = Number(error?.details?.retry_after || 0)
+      const waitMs = retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000 + 1000
+        : 2000 * (attempt + 1)
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
+    }
+  }
+
+  throw new Error('recordSaleWithTransientTolerance exhausted retry attempts')
+}
+
 describe('Bank Feed Mismatches', () => {
   let ledger: SoledgicTestClient
 
@@ -10,23 +42,13 @@ describe('Bank Feed Mismatches', () => {
 
   describe('Amount Mismatch', () => {
     it('should record transactions for reconciliation testing', async () => {
-      // Retry once on 500 — edge function cold starts can cause transient failures
-      let sale: any
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const refId = `stress_amount_mismatch_${Date.now()}_${attempt}`
-          sale = await ledger.recordSale({
-            referenceId: refId,
-            creatorId: 'creator_stress_test',
-            amount: 10000,
-            description: 'Amount mismatch test',
-          })
-          break
-        } catch (err: any) {
-          if (attempt === 1 || err.status !== 500) throw err
-          await new Promise(r => setTimeout(r, 2000))
-        }
-      }
+      const refId = `stress_amount_mismatch_${Date.now()}`
+      const sale = await recordSaleWithTransientTolerance(ledger, {
+        referenceId: refId,
+        creatorId: 'creator_stress_test',
+        amount: 10000,
+        description: 'Amount mismatch test',
+      })
 
       expect(sale.success).toBe(true)
       expect(sale.transaction_id).toBeDefined()
@@ -38,7 +60,7 @@ describe('Bank Feed Mismatches', () => {
       const refId = `stress_dupe_${Date.now()}`
 
       // First sale succeeds
-      const result1 = await ledger.recordSale({
+      const result1 = await recordSaleWithTransientTolerance(ledger, {
         referenceId: refId,
         creatorId: 'creator_stress_test',
         amount: 1000,
@@ -125,7 +147,7 @@ describe('Transaction Lifecycle', () => {
     it('should void a transaction', async () => {
       const refId = `stress_void_${Date.now()}`
       
-      const sale = await ledger.recordSale({
+      const sale = await recordSaleWithTransientTolerance(ledger, {
         referenceId: refId,
         creatorId: 'creator_stress_test',
         amount: 5000,
@@ -150,7 +172,7 @@ describe('Transaction Lifecycle', () => {
     it('should attempt to reverse a transaction', async () => {
       const refId = `stress_reverse_${Date.now()}`
       
-      const sale = await ledger.recordSale({
+      const sale = await recordSaleWithTransientTolerance(ledger, {
         referenceId: refId,
         creatorId: 'creator_stress_test',
         amount: 7500,
@@ -181,7 +203,7 @@ describe('Balance Integrity', () => {
     // Record some transactions first
     const baseRef = `stress_balance_${Date.now()}`
     
-    await ledger.recordSale({
+    await recordSaleWithTransientTolerance(ledger, {
       referenceId: `${baseRef}_1`,
       creatorId: 'creator_stress_test',
       amount: 10000,
@@ -208,13 +230,13 @@ describe('Payout Flow', () => {
     ledger = createTestClient()
   })
 
-  it('should process payout with required fields', async () => {
-    // First create some balance
-    const saleRef = `stress_payout_setup_${Date.now()}`
-    await ledger.recordSale({
-      referenceId: saleRef,
-      creatorId: 'creator_payout_test',
-      amount: 100000,
+    it('should process payout with required fields', async () => {
+      // First create some balance
+      const saleRef = `stress_payout_setup_${Date.now()}`
+      await recordSaleWithTransientTolerance(ledger, {
+        referenceId: saleRef,
+        creatorId: 'creator_payout_test',
+        amount: 100000,
     })
 
     // Process payout with all required fields
