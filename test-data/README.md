@@ -27,7 +27,7 @@ curl -X GET "$SOLEDGIC_API_URL/participants" -H "x-api-key: $SOLEDGIC_API_KEY"
 
 ## Test Ledger
 
-- **Name:** Booklyverse
+- **Name:** Example Marketplace
 - **ID:** 0a885204-e07a-48c1-97e9-495ac96a2581
 - **Mode:** Marketplace (80/20 split)
 - **Status:** Active
