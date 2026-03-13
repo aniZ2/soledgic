@@ -9,10 +9,15 @@ import {
   errorResponse,
   validateUrl,
   validateString,
+  validateInteger,
   LedgerContext,
   getClientIp
 } from '../_shared/utils.ts'
 import { buildWebhookHeaders } from '../_shared/webhook-signing.ts'
+import {
+  buildWebhookReplayUpdate,
+  normalizeWebhookDelivery,
+} from '../_shared/webhook-management.ts'
 
 interface WebhookRequest {
   action: 'list' | 'create' | 'update' | 'delete' | 'test' | 'deliveries' | 'retry' | 'rotate_secret'
@@ -22,6 +27,7 @@ interface WebhookRequest {
   description?: string
   events?: string[]
   is_active?: boolean
+  limit?: number
 }
 
 // SECURITY: Check if an IP address is private/internal
@@ -181,7 +187,7 @@ const handler = createHandler(
             events: body.events || ['*'],
             is_active: true,
           })
-          .select('id, url, secret, events')
+          .select('id, url, description, secret, events, is_active, created_at, secret_rotated_at')
           .single()
 
         if (error) {
@@ -391,22 +397,28 @@ const handler = createHandler(
       }
 
       case 'deliveries': {
+        const limit = validateInteger(body.limit, 1, 200) ?? 100
         const query = supabase
           .from('webhook_deliveries')
           .select(`
             id,
+            endpoint_id,
             event_type,
             status,
             attempts,
+            max_attempts,
             response_status,
+            response_body,
             response_time_ms,
             created_at,
             delivered_at,
+            next_retry_at,
+            payload,
             webhook_endpoints(url)
           `)
           .eq('ledger_id', ledger.id)
           .order('created_at', { ascending: false })
-          .limit(100)
+          .limit(limit)
 
         if (body.endpoint_id) {
           query.eq('endpoint_id', body.endpoint_id)
@@ -414,7 +426,10 @@ const handler = createHandler(
 
         const { data: deliveries } = await query
 
-        return jsonResponse({ success: true, data: deliveries || [] }, 200, req)
+        return jsonResponse({
+          success: true,
+          data: (deliveries || []).map((delivery) => normalizeWebhookDelivery(delivery as any)),
+        }, 200, req)
       }
 
       case 'retry': {
@@ -424,11 +439,7 @@ const handler = createHandler(
 
         const { error } = await supabase
           .from('webhook_deliveries')
-          .update({
-            status: 'pending',
-            scheduled_at: new Date().toISOString(),
-            next_retry_at: null,
-          })
+          .update(buildWebhookReplayUpdate())
           .eq('id', body.delivery_id)
           .eq('ledger_id', ledger.id)
 

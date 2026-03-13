@@ -9,6 +9,8 @@ export interface SoledgicConfig {
   baseUrl: string
   /** Request timeout in milliseconds. Default: 30000 (30s). */
   timeout?: number
+  /** API version header to send with requests. Default: 2026-03-01. */
+  apiVersion?: string
 }
 
 export type WebhookPayloadInput =
@@ -30,6 +32,39 @@ export interface ParsedWebhookEvent<T = Record<string, unknown>> {
   data: T | null
   raw: Record<string, unknown>
 }
+
+export interface WebhookEndpoint {
+  id: string
+  url: string
+  description: string | null
+  events: string[]
+  isActive: boolean
+  createdAt: string
+  secretRotatedAt: string | null
+}
+
+export interface WebhookEndpointSecretResult extends WebhookEndpoint {
+  secret: string | null
+}
+
+export interface WebhookDelivery {
+  id: string
+  endpointId: string | null
+  endpointUrl: string | null
+  eventType: string
+  status: string
+  attempts: number
+  maxAttempts: number | null
+  responseStatus: number | null
+  responseBody: string | null
+  responseTimeMs: number | null
+  createdAt: string
+  deliveredAt: string | null
+  nextRetryAt: string | null
+  payload: Record<string, unknown> | null
+}
+
+const DEFAULT_API_VERSION = '2026-03-01'
 
 // === REQUEST TYPES ===
 
@@ -1253,10 +1288,68 @@ export class ConflictError extends SoledgicError {
   }
 }
 
+function mapWebhookEndpoint(endpoint: any): WebhookEndpoint {
+  return {
+    id: String(endpoint?.id ?? ''),
+    url: typeof endpoint?.url === 'string' ? endpoint.url : '',
+    description: typeof endpoint?.description === 'string' ? endpoint.description : null,
+    events: Array.isArray(endpoint?.events)
+      ? endpoint.events.filter((event: unknown): event is string => typeof event === 'string')
+      : [],
+    isActive: Boolean(endpoint?.is_active),
+    createdAt: typeof endpoint?.created_at === 'string' ? endpoint.created_at : '',
+    secretRotatedAt:
+      typeof endpoint?.secret_rotated_at === 'string' ? endpoint.secret_rotated_at : null,
+  }
+}
+
+function resolveWebhookEndpointUrl(webhookEndpoints: unknown, endpointUrl: unknown): string | null {
+  if (typeof endpointUrl === 'string') {
+    return endpointUrl
+  }
+
+  if (Array.isArray(webhookEndpoints)) {
+    const first = webhookEndpoints[0]
+    return typeof first?.url === 'string' ? first.url : null
+  }
+
+  if (webhookEndpoints && typeof webhookEndpoints === 'object' && typeof (webhookEndpoints as any).url === 'string') {
+    return (webhookEndpoints as any).url
+  }
+
+  return null
+}
+
+function mapWebhookDelivery(delivery: any): WebhookDelivery {
+  return {
+    id: String(delivery?.id ?? ''),
+    endpointId: typeof delivery?.endpoint_id === 'string' ? delivery.endpoint_id : null,
+    endpointUrl: resolveWebhookEndpointUrl(delivery?.webhook_endpoints, delivery?.endpoint_url),
+    eventType: typeof delivery?.event_type === 'string' ? delivery.event_type : 'unknown',
+    status: typeof delivery?.status === 'string' ? delivery.status : 'unknown',
+    attempts: Number(delivery?.attempts || 0),
+    maxAttempts:
+      typeof delivery?.max_attempts === 'number' ? delivery.max_attempts : null,
+    responseStatus:
+      typeof delivery?.response_status === 'number' ? delivery.response_status : null,
+    responseBody: typeof delivery?.response_body === 'string' ? delivery.response_body : null,
+    responseTimeMs:
+      typeof delivery?.response_time_ms === 'number' ? delivery.response_time_ms : null,
+    createdAt: typeof delivery?.created_at === 'string' ? delivery.created_at : '',
+    deliveredAt: typeof delivery?.delivered_at === 'string' ? delivery.delivered_at : null,
+    nextRetryAt: typeof delivery?.next_retry_at === 'string' ? delivery.next_retry_at : null,
+    payload:
+      delivery?.payload && typeof delivery.payload === 'object'
+        ? delivery.payload as Record<string, unknown>
+        : null,
+  }
+}
+
 export class Soledgic {
   private _getKey: () => string
   private baseUrl: string
   private timeoutMs: number
+  private apiVersion: string
 
   constructor(config: SoledgicConfig) {
     if (!config.apiKey) {
@@ -1274,6 +1367,7 @@ export class Soledgic {
     ;(this as any)._destroyKey = () => { key = null }
     this.baseUrl = config.baseUrl.replace(/\/$/, '')
     this.timeoutMs = config.timeout ?? 30_000
+    this.apiVersion = (config.apiVersion || '').trim() || DEFAULT_API_VERSION
   }
 
   /** Clear the API key from memory. After calling destroy(), all requests will throw. */
@@ -1318,7 +1412,7 @@ export class Soledgic {
         headers: {
           'x-api-key': this._getKey(),
           'Content-Type': 'application/json',
-          'Soledgic-Version': '2026-03-01',
+          'Soledgic-Version': this.apiVersion,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -1352,7 +1446,7 @@ export class Soledgic {
         method: 'GET',
         headers: {
           'x-api-key': this._getKey(),
-          'Soledgic-Version': '2026-03-01',
+          'Soledgic-Version': this.apiVersion,
         },
         signal: controller.signal,
       })
@@ -1379,7 +1473,7 @@ export class Soledgic {
         headers: {
           'x-api-key': this._getKey(),
           'Content-Type': 'application/json',
-          'Soledgic-Version': '2026-03-01',
+          'Soledgic-Version': this.apiVersion,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -1984,7 +2078,11 @@ export class Soledgic {
   // === WEBHOOKS ===
 
   async listWebhookEndpoints() {
-    return this.request('webhooks', { action: 'list' })
+    const response = await this.request<any>('webhooks', { action: 'list' })
+    return {
+      success: response.success,
+      data: Array.isArray(response.data) ? response.data.map(mapWebhookEndpoint) : [],
+    }
   }
 
   async createWebhookEndpoint(config: {
@@ -1992,12 +2090,20 @@ export class Soledgic {
     description?: string
     events?: string[]
   }) {
-    return this.request('webhooks', {
+    const response = await this.request<any>('webhooks', {
       action: 'create',
       url: config.url,
       description: config.description,
       events: config.events || ['*'],
     })
+    return {
+      success: response.success,
+      data: {
+        ...mapWebhookEndpoint(response.data || {}),
+        secret: typeof response.data?.secret === 'string' ? response.data.secret : null,
+      },
+      message: typeof response.message === 'string' ? response.message : undefined,
+    }
   }
 
   async updateWebhookEndpoint(endpointId: string, updates: {
@@ -2006,7 +2112,7 @@ export class Soledgic {
     events?: string[]
     isActive?: boolean
   }) {
-    return this.request('webhooks', {
+    const response = await this.request<any>('webhooks', {
       action: 'update',
       endpoint_id: endpointId,
       url: updates.url,
@@ -2014,22 +2120,66 @@ export class Soledgic {
       events: updates.events,
       is_active: updates.isActive,
     })
+    return {
+      success: response.success,
+      data: mapWebhookEndpoint(response.data || {}),
+    }
   }
 
   async deleteWebhookEndpoint(endpointId: string) {
-    return this.request('webhooks', { action: 'delete', endpoint_id: endpointId })
+    const response = await this.request<any>('webhooks', { action: 'delete', endpoint_id: endpointId })
+    return {
+      success: response.success,
+      message: typeof response.message === 'string' ? response.message : undefined,
+    }
   }
 
   async testWebhookEndpoint(endpointId: string) {
-    return this.request('webhooks', { action: 'test', endpoint_id: endpointId })
+    const response = await this.request<any>('webhooks', { action: 'test', endpoint_id: endpointId })
+    return {
+      success: response.success,
+      error: typeof response.error === 'string' ? response.error : undefined,
+      data: {
+        delivered: Boolean(response.data?.delivered),
+        status: typeof response.data?.status === 'number' ? response.data.status : null,
+        responseTimeMs:
+          typeof response.data?.response_time_ms === 'number' ? response.data.response_time_ms : null,
+      },
+    }
   }
 
-  async getWebhookDeliveries(endpointId?: string) {
-    return this.request('webhooks', { action: 'deliveries', endpoint_id: endpointId })
+  async getWebhookDeliveries(endpointId?: string, limit?: number) {
+    const response = await this.request<any>('webhooks', {
+      action: 'deliveries',
+      endpoint_id: endpointId,
+      limit,
+    })
+    return {
+      success: response.success,
+      data: Array.isArray(response.data) ? response.data.map(mapWebhookDelivery) : [],
+    }
   }
 
   async retryWebhookDelivery(deliveryId: string) {
-    return this.request('webhooks', { action: 'retry', delivery_id: deliveryId })
+    const response = await this.request<any>('webhooks', { action: 'retry', delivery_id: deliveryId })
+    return {
+      success: response.success,
+      message: typeof response.message === 'string' ? response.message : undefined,
+    }
+  }
+
+  async rotateWebhookSecret(endpointId: string) {
+    const response = await this.request<any>('webhooks', {
+      action: 'rotate_secret',
+      endpoint_id: endpointId,
+    })
+    return {
+      success: response.success,
+      data: {
+        secret: typeof response.data?.secret === 'string' ? response.data.secret : null,
+      },
+      message: typeof response.message === 'string' ? response.message : undefined,
+    }
   }
 
   // === BREACH ALERTS ===

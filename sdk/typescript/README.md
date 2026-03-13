@@ -16,6 +16,7 @@ import Soledgic from '@soledgic/sdk'
 const ledger = new Soledgic({
   apiKey: 'sk_live_your_api_key',
   baseUrl: 'https://your-project.supabase.co/functions/v1',
+  apiVersion: '2026-03-01',
 })
 
 // === MARKETPLACE MODE ===

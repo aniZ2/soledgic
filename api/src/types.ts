@@ -754,6 +754,8 @@ export interface SoledgicConfig {
   baseUrl: string
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number
+  /** API version header to pin requests against (default: 2026-03-01) */
+  apiVersion?: string
   /** Custom fetch implementation (for testing) */
   fetch?: typeof fetch
 }

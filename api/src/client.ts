@@ -126,6 +126,7 @@ export class Soledgic {
   private getApiKey: () => string
   private baseUrl: string
   private timeout: number
+  private apiVersion: string
   private fetchFn: typeof fetch
   private destroyed: boolean = false
 
@@ -139,6 +140,7 @@ export class Soledgic {
 
     this.baseUrl = config.baseUrl?.replace(/\/$/, '') || ''
     this.timeout = config.timeout || 30000
+    this.apiVersion = (config.apiVersion || '').trim() || '2026-03-01'
     this.fetchFn = config.fetch || fetch
   }
 
@@ -201,6 +203,7 @@ export class Soledgic {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': this.getApiKey(),
+          'Soledgic-Version': this.apiVersion,
         },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,

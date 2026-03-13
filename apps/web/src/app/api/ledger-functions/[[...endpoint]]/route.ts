@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
 
+const DEFAULT_SOLEDGIC_API_VERSION =
+  (process.env.SOLEDGIC_API_VERSION || '').trim() || '2026-03-01'
+
 const ALLOWED_ENDPOINT_ROOTS = new Set([
   'health-check',
   'delete-creator',
@@ -159,7 +162,7 @@ async function proxyLedgerFunction(
   const headers = new Headers()
   headers.set('x-soledgic-internal-token', internalToken)
   headers.set('x-ledger-id', ledgerId)
-  headers.set('Soledgic-Version', '2026-03-01')
+  headers.set('Soledgic-Version', DEFAULT_SOLEDGIC_API_VERSION)
 
   let body: string | undefined
   if (method !== 'GET' && method !== 'DELETE') {

@@ -485,6 +485,12 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "name": "is_active",
         "type": "boolean",
         "required": false
+      },
+      {
+        "in": "body",
+        "name": "limit",
+        "type": "number",
+        "required": false
       }
     ]
   },

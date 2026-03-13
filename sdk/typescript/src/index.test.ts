@@ -14,9 +14,9 @@ function mockFetch(body: any, status = 200, contentType = 'application/json') {
   })
 }
 
-function createClient(fetchFn: any): Soledgic {
+function createClient(fetchFn: any, config: Partial<{ apiVersion: string }> = {}): Soledgic {
   vi.stubGlobal('fetch', fetchFn)
-  return new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+  return new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL, ...config })
 }
 
 async function buildWebhookSignature(payload: string, secret: string, timestamp: number) {
@@ -72,6 +72,24 @@ describe('Soledgic SDK', () => {
     const [url, opts] = fn.mock.calls[0]
     expect(opts.headers['x-api-key']).toBe(API_KEY)
     expect(opts.headers['Content-Type']).toBe('application/json')
+  })
+
+  it('sends the default Soledgic-Version header', async () => {
+    const fn = mockFetch({ success: true, periods: [] })
+    const sdk = createClient(fn)
+    await sdk.listPeriods()
+
+    const [, opts] = fn.mock.calls[0]
+    expect(opts.headers['Soledgic-Version']).toBe('2026-03-01')
+  })
+
+  it('uses a configured Soledgic-Version header when provided', async () => {
+    const fn = mockFetch({ success: true, periods: [] })
+    const sdk = createClient(fn, { apiVersion: '2026-06-01' })
+    await sdk.listPeriods()
+
+    const [, opts] = fn.mock.calls[0]
+    expect(opts.headers['Soledgic-Version']).toBe('2026-06-01')
   })
 
   it('throws SoledgicError on non-OK response', async () => {
@@ -577,6 +595,97 @@ describe('Soledgic SDK', () => {
 
     expect(event.type).toBe('payout.executed')
     expect(event.data?.payout_id).toBe('po_1')
+  })
+
+  it('listWebhookEndpoints maps webhook endpoints to camelCase', async () => {
+    const fn = mockFetch({
+      success: true,
+      data: [
+        {
+          id: 'wh_1',
+          url: 'https://example.com/webhooks',
+          description: 'Primary endpoint',
+          events: ['payout.executed'],
+          is_active: true,
+          created_at: '2026-03-13T12:00:00Z',
+          secret_rotated_at: '2026-03-13T13:00:00Z',
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listWebhookEndpoints()
+
+    expect(result.data[0]).toEqual({
+      id: 'wh_1',
+      url: 'https://example.com/webhooks',
+      description: 'Primary endpoint',
+      events: ['payout.executed'],
+      isActive: true,
+      createdAt: '2026-03-13T12:00:00Z',
+      secretRotatedAt: '2026-03-13T13:00:00Z',
+    })
+  })
+
+  it('getWebhookDeliveries maps delivery details and endpoint url', async () => {
+    const fn = mockFetch({
+      success: true,
+      data: [
+        {
+          id: 'wd_1',
+          endpoint_id: 'wh_1',
+          endpoint_url: 'https://example.com/webhooks',
+          event_type: 'refund.created',
+          status: 'failed',
+          attempts: 3,
+          max_attempts: 5,
+          response_status: 500,
+          response_body: 'upstream error',
+          response_time_ms: 890,
+          created_at: '2026-03-13T12:00:00Z',
+          delivered_at: null,
+          next_retry_at: '2026-03-13T12:05:00Z',
+          payload: { event: 'refund.created' },
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.getWebhookDeliveries('wh_1', 25)
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.endpoint_id).toBe('wh_1')
+    expect(body.limit).toBe(25)
+    expect(result.data[0]).toEqual({
+      id: 'wd_1',
+      endpointId: 'wh_1',
+      endpointUrl: 'https://example.com/webhooks',
+      eventType: 'refund.created',
+      status: 'failed',
+      attempts: 3,
+      maxAttempts: 5,
+      responseStatus: 500,
+      responseBody: 'upstream error',
+      responseTimeMs: 890,
+      createdAt: '2026-03-13T12:00:00Z',
+      deliveredAt: null,
+      nextRetryAt: '2026-03-13T12:05:00Z',
+      payload: { event: 'refund.created' },
+    })
+  })
+
+  it('rotateWebhookSecret returns the newly-issued secret', async () => {
+    const fn = mockFetch({
+      success: true,
+      data: { secret: 'whsec_next' },
+      message: 'Secret rotated. Previous secret valid for 24 hours.',
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.rotateWebhookSecret('wh_1')
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.action).toBe('rotate_secret')
+    expect(body.endpoint_id).toBe('wh_1')
+    expect(result.data.secret).toBe('whsec_next')
+    expect(result.message).toContain('Previous secret valid for 24 hours')
   })
 
   it('listParticipants maps creator balances to participant summaries', async () => {

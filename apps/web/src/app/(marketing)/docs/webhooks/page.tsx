@@ -15,7 +15,7 @@ export default function WebhooksPage() {
           <Link href="/settings/webhooks" className="text-primary hover:underline">
             Settings → Webhooks
           </Link>
-          .
+          . The dashboard now exposes endpoint filtering, delivery inspection, manual replay, and secret rotation so operators do not need to leave the app to manage delivery health.
         </p>
       </section>
 
@@ -137,7 +137,8 @@ export default function WebhooksPage() {
 
 const soledgic = new Soledgic({
   apiKey: process.env.SOLEDGIC_API_KEY!,
-  baseUrl: 'https://soledgic.com/v1',
+  baseUrl: 'https://api.soledgic.com/v1',
+  apiVersion: '2026-03-01',
 });
 
 const rawBody = await request.text();
@@ -162,7 +163,21 @@ if (!isValid) {
           <li>Up to 5 retry attempts for non-2xx responses</li>
           <li>Exponential backoff between attempts, capped at 4 hours</li>
           <li>HTTP 429 responses are slowed down to at least 5 minutes before retry</li>
-          <li>Failed deliveries stay visible in webhook delivery history</li>
+          <li>Failed deliveries stay visible in webhook delivery history, including payload and response body</li>
+          <li>Operators can manually replay exhausted deliveries from Settings → Webhooks</li>
+        </ul>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Operations</h2>
+        <p className="text-muted-foreground mb-4">
+          The webhook settings screen is designed for production operations, not just initial setup.
+        </p>
+        <ul className="list-disc list-inside text-muted-foreground space-y-2">
+          <li>Filter delivery history by endpoint</li>
+          <li>Inspect payloads, headers, attempts, and downstream response bodies</li>
+          <li>Replay stuck or exhausted deliveries after downstream fixes</li>
+          <li>Rotate endpoint secrets and keep the previous secret valid during the grace period</li>
         </ul>
       </section>
 

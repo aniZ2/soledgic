@@ -19,7 +19,8 @@ import { Soledgic } from '@soledgic/sdk'
 
 const soledgic = new Soledgic({
   apiKey: 'your_api_key',
-  baseUrl: 'https://your-project.supabase.co/functions/v1'
+  baseUrl: 'https://your-project.supabase.co/functions/v1',
+  apiVersion: '2026-03-01',
 })
 
 // Create a hosted checkout session
@@ -56,6 +57,7 @@ const soledgic = new Soledgic({
   apiKey: 'your_api_key',           // Required
   baseUrl: 'https://...',           // Your Supabase functions URL
   timeout: 30000,                   // Request timeout (ms)
+  apiVersion: '2026-03-01',         // Optional version pin
 })
 ```
 

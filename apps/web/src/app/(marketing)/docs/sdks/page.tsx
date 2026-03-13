@@ -31,7 +31,11 @@ export default function SdksPage() {
           <pre className="text-sm text-slate-300">
 {`import Soledgic from '@soledgic/sdk';
 
-const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY!);
+const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: '${API_BASE_URL}/v1',
+  apiVersion: '2026-03-01',
+});
 
 const participant = await soledgic.createParticipant({
   participantId: 'creator_456',
@@ -50,6 +54,21 @@ const checkout = await soledgic.createCheckoutSession({
 });
 
 console.log(checkout.checkoutSession.checkoutUrl);`}
+          </pre>
+        </div>
+
+        <h3 className="text-lg font-semibold text-foreground mb-3">Version Pinning</h3>
+        <p className="text-muted-foreground mb-4">
+          Even before public versioning matters, the SDK can pin the request header you want to ship against.
+        </p>
+
+        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
+          <pre className="text-sm text-slate-300">
+{`const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: '${API_BASE_URL}/v1',
+  apiVersion: '2026-03-01',
+});`}
           </pre>
         </div>
 
@@ -149,7 +168,8 @@ const result = await response.json();`}
 
 const soledgic = new Soledgic({
   apiKey: process.env.SOLEDGIC_API_KEY!,
-  baseUrl: 'https://soledgic.com/v1',
+  baseUrl: '${API_BASE_URL}/v1',
+  apiVersion: '2026-03-01',
 });
 
 const rawBody = await request.text();
@@ -166,6 +186,14 @@ const event = soledgic.webhooks.parseEvent(rawBody);
 if (event.type === 'payout.executed') {
   console.log('Payout completed:', event.data.payout_id);
 }`}
+          </pre>
+        </div>
+
+        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mt-4">
+          <pre className="text-sm text-slate-300">
+{`const endpoints = await soledgic.listWebhookEndpoints();
+const deliveries = await soledgic.getWebhookDeliveries(undefined, 25);
+const rotated = await soledgic.rotateWebhookSecret(endpoints.data[0].id);`}
           </pre>
         </div>
       </section>
