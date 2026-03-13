@@ -61,7 +61,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold mt-8 mb-3">5. Billing and Charges</h2>
             <h3 className="text-lg font-medium mt-4 mb-2">5.1 Plans and Pricing</h3>
             <p>
-              The Service is offered under pricing plans as described on our pricing page. The current offering starts free with one included ledger and one included team member. Payment processing fees apply separately, and each additional ledger or additional team member is billed at $20/month. We reserve the right to modify pricing with 30 days&apos; written notice to active customers.
+              The Service is offered under pricing plans as described on our pricing page. The current offering starts free with one included ledger, one included team member, and 1,000 transactions per month. Payment processing fees apply separately. Usage beyond the included limits is billed at $20/month per additional ledger, $20/month per additional team member, and $0.02 per additional transaction. We reserve the right to modify pricing with 30 days&apos; written notice to active customers.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.2 Free Start</h3>
@@ -76,7 +76,7 @@ export default function TermsPage() {
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.4 Overage Charges</h3>
             <p>
-              If you exceed the included limits in your plan, additional ledgers and additional team members are billed at $20/month each. Overages are charged on your next billing cycle.
+              If you exceed the included limits in your plan, additional ledgers are billed at $20/month each, additional team members are billed at $20/month each, and additional transactions are billed at $0.02 each. Overages are charged on your next billing cycle.
             </p>
 
             <h3 className="text-lg font-medium mt-4 mb-2">5.5 Cancellation</h3>

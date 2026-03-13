@@ -33,14 +33,14 @@ export default function RefundPolicyPage() {
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-3">2. Free Start</h2>
             <p>
-              All new accounts start free with one included ledger and one included team member. Because no base subscription fee is charged to start, there is no refund scenario for free-plan usage.
+              All new accounts start free with one included ledger, one included team member, and 1,000 included transactions per month. Because no base subscription fee is charged to start, there is no refund scenario for free-plan usage.
             </p>
           </section>
 
           <section>
             <h2 className="text-xl font-semibold mt-8 mb-3">3. Paid Usage Billing Cycle</h2>
             <p>
-              Paid usage (such as additional ledgers and additional team members) is billed on your billing cycle. If you remove paid usage before your next cycle:
+              Paid usage (such as additional ledgers, additional team members, and transactions beyond the included monthly threshold) is billed on your billing cycle. If you remove paid usage before your next cycle:
             </p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
               <li>You will not be charged for that removed usage in future billing periods.</li>
@@ -74,7 +74,7 @@ export default function RefundPolicyPage() {
             <p>The following are not eligible for refunds:</p>
             <ul className="list-disc pl-6 space-y-2 mt-2">
               <li>Paid usage charges beyond the first 30 days (except as described in Section 4.2)</li>
-              <li>Overage charges for additional ledgers or additional team members that were provisioned and used</li>
+              <li>Overage charges for additional ledgers, additional team members, or additional transactions that were provisioned or consumed</li>
               <li>Charges for prior billing periods where the Service was available</li>
               <li>Accounts terminated for violation of our <Link href="/terms" className="text-primary hover:underline">Terms of Service</Link> or <Link href="/acceptable-use" className="text-primary hover:underline">Acceptable Use Policy</Link></li>
             </ul>

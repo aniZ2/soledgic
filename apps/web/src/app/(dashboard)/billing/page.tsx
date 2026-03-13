@@ -268,7 +268,7 @@ export default function BillingPage() {
     return (
       <div className="max-w-3xl">
         <h1 className="text-3xl font-bold text-foreground">Billing</h1>
-        <p className="mt-2 text-muted-foreground">Usage-based billing for ledgers and team members.</p>
+        <p className="mt-2 text-muted-foreground">Free to start, with monthly overages for usage beyond included ledger, team, and transaction limits.</p>
         <div className="mt-6 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
           {error || 'Unable to load billing data.'}
         </div>
@@ -289,13 +289,13 @@ export default function BillingPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground">Billing</h1>
         <p className="text-muted-foreground mt-1">
-          Usage-based billing for ledgers and team members.
+          Free to start, with monthly overages for usage beyond included ledger, team, and transaction limits.
         </p>
       </div>
 
       {billing.policy.bypass_enabled ? (
         <div className="mb-6 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-800">
-          Internal platform billing bypass is enabled for this organization. Usage is still measured, but automatic charges are waived.
+          Billing bypass is enabled for this organization. Usage is still measured, but automatic charges are waived while this policy is active.
         </div>
       ) : null}
 
@@ -421,7 +421,7 @@ export default function BillingPage() {
           <div className="rounded-lg border border-border bg-card p-6">
             <h2 className="text-lg font-semibold text-foreground">Billing Policy</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Controls whether this organization is billed normally or treated as an internal platform.
+              Controls whether this organization uses standard automatic billing or an operator-managed billing policy.
             </p>
 
             <div className="mt-5 rounded-lg border border-border bg-muted/30 p-4">
@@ -463,7 +463,7 @@ export default function BillingPage() {
               </div>
             ) : (
               <p className="mt-4 text-xs text-muted-foreground">
-                Operator-managed billing modes are restricted to internal platform operators.
+                Only authorized operators can change billing mode.
               </p>
             )}
           </div>
@@ -502,7 +502,7 @@ export default function BillingPage() {
             </div>
 
             <p className="mt-5 text-xs text-muted-foreground">
-              Overages are calculated from active live ledgers and active team members.
+              Overages are calculated from active live ledgers, active team members, and monthly transaction volume.
             </p>
           </div>
 
