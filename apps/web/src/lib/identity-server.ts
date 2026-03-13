@@ -101,7 +101,16 @@ export async function getIdentityPortfolioForUser(
       .in('status', ['held', 'partial']),
     supabase
       .from('organizations')
-      .select('id, name')
+      .select(`
+        id,
+        name,
+        ecosystem_id,
+        ecosystem:ecosystems(
+          id,
+          name,
+          slug
+        )
+      `)
       .in('id', Array.from(new Set(
         links
           .map((link) => (link.ledgers as { organization_id?: string | null } | null)?.organization_id)
@@ -112,7 +121,20 @@ export async function getIdentityPortfolioForUser(
   const accounts = accountsResult.data || []
   const holds = holdsResult.data || []
   const organizations = new Map(
-    (organizationsResult.data || []).map((org) => [String(org.id), String(org.name)]),
+    (organizationsResult.data || []).map((org) => {
+      const ecosystemRaw = Array.isArray(org.ecosystem) ? org.ecosystem[0] : org.ecosystem
+      const ecosystem = asRecord(ecosystemRaw)
+
+      return [
+        String(org.id),
+        {
+          name: asString(org.name),
+          ecosystemId: asString(org.ecosystem_id),
+          ecosystemName: asString(ecosystem?.name),
+          ecosystemSlug: asString(ecosystem?.slug),
+        },
+      ]
+    }),
   )
 
   const accountMap = new Map<string, {
@@ -157,6 +179,7 @@ export async function getIdentityPortfolioForUser(
     const account = accountMap.get(key)
     const heldAmount = Math.round((holdMap.get(key) || 0) * 100) / 100
     const ledgerBalance = Math.round((account?.balance || 0) * 100) / 100
+    const organization = ledger.organization_id ? organizations.get(String(ledger.organization_id)) : null
 
     return {
       linkId: String(link.id),
@@ -166,7 +189,10 @@ export async function getIdentityPortfolioForUser(
       ledgerId: String(link.ledger_id),
       ledgerName: asString(ledger.business_name),
       organizationId: asString(ledger.organization_id),
-      organizationName: ledger.organization_id ? (organizations.get(String(ledger.organization_id)) || null) : null,
+      organizationName: organization?.name || null,
+      ecosystemId: organization?.ecosystemId || null,
+      ecosystemName: organization?.ecosystemName || null,
+      ecosystemSlug: organization?.ecosystemSlug || null,
       ledgerGroupId: asString(ledger.ledger_group_id),
       livemode: Boolean(ledger.livemode),
       name: account?.name || null,

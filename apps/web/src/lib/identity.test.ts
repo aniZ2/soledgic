@@ -13,6 +13,9 @@ describe('summarizeIdentityPortfolio', () => {
         ledgerName: 'Booklyverse',
         organizationId: 'org_1',
         organizationName: 'Osifo Labs',
+        ecosystemId: 'eco_1',
+        ecosystemName: 'Osifo',
+        ecosystemSlug: 'osifo',
         ledgerGroupId: null,
         livemode: false,
         name: 'Creator One',
@@ -32,6 +35,9 @@ describe('summarizeIdentityPortfolio', () => {
         ledgerName: 'Kinship Vault',
         organizationId: 'org_2',
         organizationName: 'Osifo Ventures',
+        ecosystemId: 'eco_1',
+        ecosystemName: 'Osifo',
+        ecosystemSlug: 'osifo',
         ledgerGroupId: null,
         livemode: true,
         name: 'Creator Two',
@@ -51,6 +57,9 @@ describe('summarizeIdentityPortfolio', () => {
         ledgerName: 'Vantage EU',
         organizationId: 'org_1',
         organizationName: 'Osifo Labs',
+        ecosystemId: 'eco_2',
+        ecosystemName: 'Partner Stack',
+        ecosystemSlug: 'partner-stack',
         ledgerGroupId: null,
         livemode: true,
         name: 'Creator Three',
@@ -66,6 +75,7 @@ describe('summarizeIdentityPortfolio', () => {
     expect(summary.participantCount).toBe(3)
     expect(summary.ledgerCount).toBe(3)
     expect(summary.organizationCount).toBe(2)
+    expect(summary.ecosystemCount).toBe(2)
     expect(summary.totalsByCurrency).toEqual([
       {
         currency: 'EUR',

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Key, CreditCard, Building, Users, Bell, Shield, Wrench, Fingerprint } from 'lucide-react'
+import { Key, CreditCard, Building, Users, Bell, Shield, Wrench, Fingerprint, Network } from 'lucide-react'
 
 export default async function SettingsPage() {
   const settingsGroups = [
@@ -39,6 +39,12 @@ export default async function SettingsPage() {
           description: 'Organization name, logo, and settings',
           href: '/settings/organization',
           icon: Building,
+        },
+        {
+          name: 'Ecosystem',
+          description: 'Group multiple platforms under one ecosystem control plane',
+          href: '/settings/ecosystem',
+          icon: Network,
         },
         {
           name: 'Team Members',

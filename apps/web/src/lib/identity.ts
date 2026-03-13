@@ -48,6 +48,9 @@ export interface LinkedParticipantPortfolioItem {
   ledgerName: string | null
   organizationId: string | null
   organizationName: string | null
+  ecosystemId: string | null
+  ecosystemName: string | null
+  ecosystemSlug: string | null
   ledgerGroupId: string | null
   livemode: boolean
   name: string | null
@@ -63,6 +66,7 @@ export interface IdentityPortfolioSummary {
   participantCount: number
   ledgerCount: number
   organizationCount: number
+  ecosystemCount: number
   totalsByCurrency: Array<{
     currency: string
     participantCount: number
@@ -78,6 +82,7 @@ export function summarizeIdentityPortfolio(
 ): IdentityPortfolioSummary {
   const ledgerIds = new Set<string>()
   const organizationIds = new Set<string>()
+  const ecosystemIds = new Set<string>()
   const currencyTotals = new Map<string, {
     currency: string
     participantCount: number
@@ -93,6 +98,9 @@ export function summarizeIdentityPortfolio(
     }
     if (participant.organizationId) {
       organizationIds.add(participant.organizationId)
+    }
+    if (participant.ecosystemId) {
+      ecosystemIds.add(participant.ecosystemId)
     }
 
     const currency = participant.currency || 'USD'
@@ -119,6 +127,7 @@ export function summarizeIdentityPortfolio(
     participantCount: participants.length,
     ledgerCount: ledgerIds.size,
     organizationCount: organizationIds.size,
+    ecosystemCount: ecosystemIds.size,
     totalsByCurrency: Array.from(currencyTotals.values())
       .map((totals) => ({
         currency: totals.currency,

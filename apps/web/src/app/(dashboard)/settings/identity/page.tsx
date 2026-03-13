@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Loader2, Link2, ShieldCheck, WalletCards } from 'lucide-react'
+import { Loader2, Link2, Network, ShieldCheck, WalletCards } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
 type IdentityProfile = {
@@ -43,6 +43,7 @@ type PortfolioSummary = {
   participantCount: number
   ledgerCount: number
   organizationCount: number
+  ecosystemCount: number
   totalsByCurrency: Array<{
     currency: string
     participantCount: number
@@ -59,6 +60,8 @@ type PortfolioParticipant = {
   ledgerId: string
   ledgerName: string | null
   organizationName: string | null
+  ecosystemName: string | null
+  ecosystemSlug: string | null
   name: string | null
   email: string | null
   ledgerBalance: number
@@ -259,7 +262,7 @@ export default function IdentitySettingsPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Identity</h1>
         <p className="mt-1 text-muted-foreground">
-          One user across your ecosystem, with separate ledger-scoped balances and shared tax and payout profiles.
+          One user identity across linked platforms, with separate ledger-scoped balances and shared tax and payout profiles.
         </p>
       </div>
 
@@ -274,7 +277,7 @@ export default function IdentitySettingsPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <WalletCards className="h-4 w-4" />
@@ -296,19 +299,31 @@ export default function IdentitySettingsPage() {
             {summary?.ledgerCount || 0}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Spanning {summary?.organizationCount || 0} organizations
+            Spanning {summary?.organizationCount || 0} platforms
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <ShieldCheck className="h-4 w-4" />
-            Organizations
+            Platforms
           </div>
           <div className="mt-2 text-2xl font-semibold text-foreground">
             {summary?.organizationCount || 0}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Shared identity, but permissions stay product-specific
+            Shared identity, but permissions stay platform-specific
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Network className="h-4 w-4" />
+            Ecosystems
+          </div>
+          <div className="mt-2 text-2xl font-semibold text-foreground">
+            {summary?.ecosystemCount || 0}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Grouped above platforms without merging balances
           </p>
         </div>
       </section>
@@ -550,6 +565,7 @@ export default function IdentitySettingsPage() {
               <tr className="text-left text-muted-foreground">
                 <th className="py-2 pr-4 font-medium">Participant</th>
                 <th className="py-2 pr-4 font-medium">Ledger</th>
+                <th className="py-2 pr-4 font-medium">Ecosystem</th>
                 <th className="py-2 pr-4 font-medium">Available</th>
                 <th className="py-2 pr-4 font-medium">Held</th>
                 <th className="py-2 pr-4 font-medium">Linked</th>
@@ -558,7 +574,7 @@ export default function IdentitySettingsPage() {
             <tbody className="divide-y divide-border">
               {participants.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-6 text-muted-foreground">
+                  <td colSpan={6} className="py-6 text-muted-foreground">
                     No participant records are linked to this identity yet.
                   </td>
                 </tr>
@@ -570,7 +586,11 @@ export default function IdentitySettingsPage() {
                   </td>
                   <td className="py-3 pr-4">
                     <div className="text-foreground">{participant.ledgerName || participant.ledgerId}</div>
-                    <div className="text-xs text-muted-foreground">{participant.organizationName || 'Unassigned org'}</div>
+                    <div className="text-xs text-muted-foreground">{participant.organizationName || 'Unassigned platform'}</div>
+                  </td>
+                  <td className="py-3 pr-4">
+                    <div className="text-foreground">{participant.ecosystemName || 'Standalone'}</div>
+                    <div className="text-xs text-muted-foreground">{participant.ecosystemSlug || 'No ecosystem slug'}</div>
                   </td>
                   <td className="py-3 pr-4 text-foreground">{currency(participant.availableBalance, participant.currency)}</td>
                   <td className="py-3 pr-4 text-muted-foreground">{currency(participant.heldAmount, participant.currency)}</td>

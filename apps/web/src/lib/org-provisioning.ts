@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { buildDefaultBillingSettingsForOwner } from '@/lib/internal-platforms'
+import { ensureEcosystemForOrganization } from '@/lib/ecosystem-server'
 
 export type ProvisionLedgerMode = 'standard' | 'marketplace'
 
@@ -44,6 +45,7 @@ type ExistingOrganization = {
   name: string
   slug: string
   owner_id: string
+  ecosystem_id?: string | null
   settings: JsonObject | null
 }
 
@@ -124,6 +126,14 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
           }
         }
 
+        await ensureEcosystemForOrganization(supabase, {
+          organizationId: existing.id,
+          organizationName,
+          organizationSlug: slug,
+          organizationOwnerId: existing.owner_id,
+          ecosystemId: existing.ecosystem_id || null,
+        })
+
         return {
           organizationId: existing.id,
           organizationSlug: slug,
@@ -160,6 +170,13 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
 
     const createdId = getStringField(created, 'id')
     if (!createError && typeof createdId === 'string' && createdId.length > 0) {
+      await ensureEcosystemForOrganization(supabase, {
+        organizationId: createdId,
+        organizationName,
+        organizationSlug: slug,
+        organizationOwnerId: input.userId,
+      })
+
       return {
         organizationId: createdId,
         organizationSlug: slug,
