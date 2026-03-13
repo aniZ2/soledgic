@@ -1,4 +1,6 @@
-CREATE OR REPLACE FUNCTION public.get_pending_webhooks(p_limit integer DEFAULT 100)
+DROP FUNCTION IF EXISTS public.get_pending_webhooks(integer);
+
+CREATE FUNCTION public.get_pending_webhooks(p_limit integer DEFAULT 100)
  RETURNS TABLE(
   delivery_id uuid,
   ledger_id uuid,
@@ -32,3 +34,7 @@ BEGIN
   LIMIT p_limit;
 END;
 $function$;
+
+GRANT EXECUTE ON FUNCTION public.get_pending_webhooks(integer) TO anon;
+GRANT EXECUTE ON FUNCTION public.get_pending_webhooks(integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_pending_webhooks(integer) TO service_role;
