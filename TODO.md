@@ -55,7 +55,6 @@ All security audit items from December 2024 are resolved:
 
 ### Operational
 
-- [ ] Verify `ENVIRONMENT=production` is set in Supabase secrets
 - [ ] Schedule SOC 2 Type II audit
 - [ ] Schedule penetration test
 
