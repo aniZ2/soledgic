@@ -85,11 +85,19 @@ export default function WebhooksPage() {
               </tr>
               <tr className="border-b border-border">
                 <td className="py-2 px-3"><code className="bg-muted px-1 rounded">X-Soledgic-Signature</code></td>
-                <td className="py-2 px-3 text-muted-foreground">HMAC-SHA256 signature for payload verification</td>
+                <td className="py-2 px-3 text-muted-foreground"><code className="bg-muted px-1 rounded">t=&lt;unix&gt;,v1=&lt;hex&gt;</code> HMAC-SHA256 signature for payload verification</td>
               </tr>
-              <tr>
+              <tr className="border-b border-border">
                 <td className="py-2 px-3"><code className="bg-muted px-1 rounded">X-Soledgic-Event</code></td>
                 <td className="py-2 px-3 text-muted-foreground">The event name, such as payout.executed</td>
+              </tr>
+              <tr className="border-b border-border">
+                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">X-Soledgic-Delivery-Id</code></td>
+                <td className="py-2 px-3 text-muted-foreground">Stable delivery identifier for deduplication and replay handling</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3"><code className="bg-muted px-1 rounded">X-Soledgic-Attempt</code></td>
+                <td className="py-2 px-3 text-muted-foreground">Current delivery attempt number</td>
               </tr>
             </tbody>
           </table>
@@ -99,10 +107,7 @@ export default function WebhooksPage() {
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
 {`{
-  "id": "evt_abc123",
-  "type": "payout.executed",
-  "created_at": "2026-03-12T10:30:00Z",
-  "livemode": false,
+  "event": "payout.executed",
   "data": {
     "payout_id": "6f2f0ac5-4f50-4e96-b412-4f534f1c85c6",
     "external_id": "tr_123",
@@ -128,18 +133,24 @@ export default function WebhooksPage() {
 
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
           <pre className="text-sm text-slate-300">
-{`const crypto = require('crypto');
+{`import Soledgic from '@soledgic/sdk';
 
-function verifyWebhookSignature(payload, signature, secret) {
-  const expected = 'sha256=' + crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(payload))
-    .digest('hex');
+const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: 'https://soledgic.com/v1',
+});
 
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected),
-  );
+const rawBody = await request.text();
+const signature = request.headers.get('x-soledgic-signature') || '';
+
+const isValid = await soledgic.webhooks.verifySignature(
+  rawBody,
+  signature,
+  process.env.SOLEDGIC_WEBHOOK_SECRET!,
+);
+
+if (!isValid) {
+  throw new Error('Invalid webhook signature');
 }`}
           </pre>
         </div>
@@ -149,7 +160,8 @@ function verifyWebhookSignature(payload, signature, secret) {
         <h2 className="text-2xl font-semibold text-foreground mb-4">Retry Policy</h2>
         <ul className="list-disc list-inside text-muted-foreground space-y-2 mb-4">
           <li>Up to 5 retry attempts for non-2xx responses</li>
-          <li>Exponential backoff between attempts</li>
+          <li>Exponential backoff between attempts, capped at 4 hours</li>
+          <li>HTTP 429 responses are slowed down to at least 5 minutes before retry</li>
           <li>Failed deliveries stay visible in webhook delivery history</li>
         </ul>
       </section>

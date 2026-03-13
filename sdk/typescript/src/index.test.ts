@@ -19,6 +19,22 @@ function createClient(fetchFn: any): Soledgic {
   return new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
 }
 
+async function buildWebhookSignature(payload: string, secret: string, timestamp: number) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${timestamp}.${payload}`))
+  const hex = Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+
+  return `t=${timestamp},v1=${hex}`
+}
+
 describe('Soledgic SDK', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -81,6 +97,19 @@ describe('Soledgic SDK', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(SoledgicError)
       expect((err as SoledgicError).status).toBe(404)
+    }
+  })
+
+  it('exposes API error_code on thrown errors', async () => {
+    const fn = mockFetch({ error: 'Invalid participant_id', error_code: 'invalid_participant_id' }, 400)
+    const sdk = createClient(fn)
+
+    try {
+      await sdk.createParticipant({ participantId: 'bad id' })
+      expect.unreachable('should have thrown')
+    } catch (err) {
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect((err as SoledgicError).code).toBe('invalid_participant_id')
     }
   })
 
@@ -223,6 +252,40 @@ describe('Soledgic SDK', () => {
     expect(result.breakdown.fromCreator).toBe(4000)
     expect(result.breakdown.fromPlatform).toBe(1000)
     expect(result.isFullRefund).toBe(true)
+  })
+
+  it('listRefunds uses GET with sale_reference query params and maps response', async () => {
+    const fn = mockFetch({
+      success: true,
+      count: 1,
+      refunds: [
+        {
+          id: 'txn_r1',
+          transaction_id: 'txn_r1',
+          reference_id: 'refund_1',
+          sale_reference: 'order_1',
+          refunded_amount: 5000,
+          currency: 'USD',
+          status: 'completed',
+          reason: 'Returned',
+          refund_from: 'both',
+          external_refund_id: 'rf_ext_1',
+          created_at: '2026-03-13T12:00:00Z',
+          breakdown: { from_creator: 4000, from_platform: 1000 },
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listRefunds({ saleReference: 'order_1', limit: 5 })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/refunds')
+    expect(String(url)).toContain('sale_reference=order_1')
+    expect(String(url)).toContain('limit=5')
+    expect(result.count).toBe(1)
+    expect(result.refunds[0].saleReference).toBe('order_1')
+    expect(result.refunds[0].breakdown?.fromPlatform).toBe(1000)
   })
 
   // === PAYOUT ===
@@ -415,6 +478,34 @@ describe('Soledgic SDK', () => {
     expect(body.participant_id).toBe('p_1')
     expect(result.participant.accountId).toBe('acct_1')
     expect(result.participant.displayName).toBe('Alice')
+  })
+
+  it('webhooks.verifySignature validates timestamped signatures', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const payload = JSON.stringify({
+      event: 'payout.executed',
+      data: { payout_id: 'po_1' },
+    })
+    const timestamp = 1_762_000_000
+    const header = await buildWebhookSignature(payload, 'whsec_test', timestamp)
+
+    const isValid = await sdk.webhooks.verifySignature(payload, header, 'whsec_test', {
+      toleranceSeconds: 300,
+      now: timestamp,
+    })
+
+    expect(isValid).toBe(true)
+  })
+
+  it('webhooks.parseEvent normalizes event payloads', () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const event = sdk.webhooks.parseEvent<{ payout_id: string }>(JSON.stringify({
+      event: 'payout.executed',
+      data: { payout_id: 'po_1' },
+    }))
+
+    expect(event.type).toBe('payout.executed')
+    expect(event.data?.payout_id).toBe('po_1')
   })
 
   it('listParticipants maps creator balances to participant summaries', async () => {

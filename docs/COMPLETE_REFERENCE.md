@@ -221,6 +221,11 @@ Records a refund with configurable who-pays policy.
 - `platform_only` - Platform absorbs full refund (creator keeps earnings)
 - `creator_only` - Creator absorbs full refund
 
+#### 5b. List Refunds
+**GET** `/refunds?sale_reference=processor_pi_xxx`
+
+Returns recent refunds, with optional filtering by original sale reference.
+
 ---
 
 #### 6. Reverse Transaction
@@ -424,7 +429,7 @@ curl -X POST "https://api.soledgic.com/v1/export-report" \
 ## Outbound Webhook Events
 
 Soledgic sends webhook events to registered customer endpoints. Each request includes:
-- `X-Soledgic-Signature: sha256=<hex>` — HMAC-SHA256 of the raw body, keyed by the endpoint's webhook secret
+- `X-Soledgic-Signature: t=<unix>,v1=<hex>` — HMAC-SHA256 of `<timestamp>.<raw_body>`, keyed by the endpoint's webhook secret
 - `X-Soledgic-Event: <event_type>` — event type header
 
 | Event | When | Typical client action |

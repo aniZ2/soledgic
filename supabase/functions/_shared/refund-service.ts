@@ -27,6 +27,11 @@ export interface RefundRequest {
   metadata?: Record<string, any>
 }
 
+export interface ListRefundsRequest {
+  sale_reference?: string
+  limit?: number
+}
+
 interface AtomicRefundResult {
   out_transaction_id: string
   out_refunded_cents: number
@@ -60,6 +65,78 @@ async function buildDeterministicRefundReferenceId(
 function parseDuplicateReferenceError(error: any): boolean {
   const message = String(error?.message || '').toLowerCase()
   return error?.code === '23505' || message.includes('unique') || message.includes('duplicate')
+}
+
+function mapRefundRow(row: any) {
+  const metadata = (row?.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>
+  const breakdownSource = metadata.breakdown
+  const breakdown = breakdownSource && typeof breakdownSource === 'object'
+    ? {
+        from_creator: Number((breakdownSource as Record<string, unknown>).from_creator || 0),
+        from_platform: Number((breakdownSource as Record<string, unknown>).from_platform || 0),
+      }
+    : null
+
+  return {
+    id: String(row.id),
+    transaction_id: String(row.id),
+    reference_id: row.reference_id ? String(row.reference_id) : null,
+    sale_reference: metadata.original_sale_reference ? String(metadata.original_sale_reference) : null,
+    refunded_amount: Number(row.amount || 0),
+    currency: row.currency ? String(row.currency) : 'USD',
+    status: row.status ? String(row.status) : 'completed',
+    reason: metadata.reason ? String(metadata.reason) : (row.description ? String(row.description) : null),
+    refund_from: metadata.refund_from ? String(metadata.refund_from) : null,
+    external_refund_id: metadata.external_refund_id ? String(metadata.external_refund_id) : null,
+    created_at: row.created_at ? String(row.created_at) : null,
+    breakdown,
+  }
+}
+
+export async function listRefundsResponse(
+  _req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: ListRefundsRequest,
+  _requestId: string,
+): Promise<ResourceResult> {
+  const saleReference = body.sale_reference ? validateId(body.sale_reference, 255) : null
+  if (body.sale_reference && !saleReference) {
+    return resourceError('Invalid sale_reference', 400, {}, 'invalid_sale_reference')
+  }
+
+  const rawLimit = body.limit ?? 20
+  const limit = Number(rawLimit)
+  if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+    return resourceError('limit must be an integer between 1 and 100', 400, {}, 'invalid_limit')
+  }
+
+  let query = supabase
+    .from('transactions')
+    .select('id, reference_id, amount, currency, status, description, metadata, created_at')
+    .eq('ledger_id', ledger.id)
+    .eq('transaction_type', 'refund')
+
+  if (saleReference) {
+    query = query.eq('metadata->>original_sale_reference', saleReference)
+  }
+
+  const { data: refunds, error } = await query
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('Failed to list refunds:', error)
+    return resourceError('Failed to list refunds', 500, {}, 'refund_list_failed')
+  }
+
+  const mappedRefunds = (refunds || []).map(mapRefundRow)
+
+  return resourceOk({
+    success: true,
+    refunds: mappedRefunds,
+    count: mappedRefunds.length,
+  })
 }
 
 export async function recordRefundResponse(

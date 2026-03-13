@@ -147,15 +147,21 @@ const result = await response.json();`}
           <pre className="text-sm text-slate-300">
 {`import Soledgic from '@soledgic/sdk';
 
-const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY!);
+const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: 'https://soledgic.com/v1',
+});
 
-const isValid = soledgic.webhooks.verifySignature(
-  payload,
+const rawBody = await request.text();
+const signature = request.headers.get('x-soledgic-signature') || '';
+
+const isValid = await soledgic.webhooks.verifySignature(
+  rawBody,
   signature,
   webhookSecret,
 );
 
-const event = soledgic.webhooks.parseEvent(payload);
+const event = soledgic.webhooks.parseEvent(rawBody);
 
 if (event.type === 'payout.executed') {
   console.log('Payout completed:', event.data.payout_id);

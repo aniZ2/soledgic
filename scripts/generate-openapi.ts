@@ -41,6 +41,7 @@ const SCHEMAS: Record<string, object> = {
     properties: {
       success: { type: 'boolean', const: false },
       error: { type: 'string' },
+      error_code: { type: 'string' },
       request_id: { type: 'string' },
     },
     required: ['success', 'error', 'request_id'],
@@ -418,6 +419,14 @@ const SCHEMAS: Record<string, object> = {
       metadata: { type: 'object', additionalProperties: true },
     },
     required: ['sale_reference', 'reason'],
+  },
+
+  RefundsListRequest: {
+    type: 'object',
+    properties: {
+      sale_reference: { type: 'string' },
+      limit: { type: 'integer', minimum: 1, maximum: 100 },
+    },
   },
 
   // ── Response types ────────────────────────────────────────────────────
@@ -1137,6 +1146,44 @@ const SCHEMAS: Record<string, object> = {
       },
     ],
   },
+
+  RefundsListResponse: {
+    allOf: [
+      { $ref: '#/components/schemas/SuccessEnvelope' },
+      {
+        type: 'object',
+        properties: {
+          count: { type: 'integer' },
+          refunds: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                transaction_id: { type: 'string', format: 'uuid' },
+                reference_id: { type: ['string', 'null'] },
+                sale_reference: { type: ['string', 'null'] },
+                refunded_amount: { type: 'number' },
+                currency: { type: 'string' },
+                status: { type: 'string' },
+                reason: { type: ['string', 'null'] },
+                refund_from: { type: ['string', 'null'] },
+                external_refund_id: { type: ['string', 'null'] },
+                created_at: { type: ['string', 'null'], format: 'date-time' },
+                breakdown: {
+                  type: ['object', 'null'],
+                  properties: {
+                    from_creator: { type: 'number' },
+                    from_platform: { type: 'number' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ],
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -1185,7 +1232,10 @@ const ENDPOINT_SCHEMA_MAP: Record<string, SchemaBinding> = {
   'hold-release': { request: 'HoldReleaseRequest', response: 'HoldReleaseResponse' },
   'checkout-sessions': { request: 'TreasuryCheckoutSessionRequest', response: 'CheckoutSessionResourceResponse' },
   'payouts': { request: 'TreasuryPayoutRequest', response: 'PayoutResourceResponse' },
-  'refunds': { request: 'TreasuryRefundRequest', response: 'RefundResourceResponse' },
+  'refunds': {
+    get: { request: 'RefundsListRequest', response: 'RefundsListResponse' },
+    post: { request: 'TreasuryRefundRequest', response: 'RefundResourceResponse' },
+  },
 }
 
 // ---------------------------------------------------------------------------

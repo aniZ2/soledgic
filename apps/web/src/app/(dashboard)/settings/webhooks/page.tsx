@@ -468,18 +468,22 @@ export default function WebhooksPage() {
         <h3 className="font-semibold text-foreground mb-2">Verifying Webhooks</h3>
         <p className="text-sm text-muted-foreground mb-4">
           Each webhook includes a signature header <code className="bg-muted px-1 rounded">X-Soledgic-Signature</code>.
-          Verify it using HMAC-SHA256:
+          Verify the raw request body using the timestamped HMAC signature:
         </p>
         <pre className="text-sm bg-background border border-border px-4 py-3 rounded overflow-x-auto">
-{`const crypto = require('crypto');
+{`const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: 'https://soledgic.com/v1',
+});
 
-function verifySignature(payload, signature, secret) {
-  const expected = 'sha256=' + crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(payload))
-    .digest('hex');
-  return signature === expected;
-}`}
+const rawBody = await request.text();
+const signature = request.headers.get('x-soledgic-signature') || '';
+
+const isValid = await soledgic.webhooks.verifySignature(
+  rawBody,
+  signature,
+  webhookSecret,
+);`}
         </pre>
       </div>
 

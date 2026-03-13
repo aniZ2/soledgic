@@ -8,7 +8,10 @@ import {
   getResourceSegments,
   respondWithResult,
 } from '../_shared/treasury-resource.ts'
-import { recordRefundResponse } from '../_shared/refund-service.ts'
+import {
+  listRefundsResponse,
+  recordRefundResponse,
+} from '../_shared/refund-service.ts'
 
 const handler = createHandler(
   { endpoint: 'refunds', requireAuth: true, rateLimit: true },
@@ -20,6 +23,17 @@ const handler = createHandler(
     const segments = getResourceSegments(req, 'refunds')
     if (segments.length !== 0) {
       return errorResponse('Not found', 404, req, requestId)
+    }
+
+    if (req.method === 'GET') {
+      const url = new URL(req.url)
+      const rawLimit = url.searchParams.get('limit')
+      const response = await listRefundsResponse(req, supabase, ledger, {
+        sale_reference: url.searchParams.get('sale_reference') || undefined,
+        limit: rawLimit === null ? undefined : Number(rawLimit),
+      }, requestId)
+
+      return respondWithResult(req, requestId, response)
     }
 
     if (req.method !== 'POST') {

@@ -12,6 +12,7 @@ import {
   LedgerContext,
   getClientIp
 } from '../_shared/utils.ts'
+import { buildWebhookHeaders } from '../_shared/webhook-signing.ts'
 
 interface WebhookRequest {
   action: 'list' | 'create' | 'update' | 'delete' | 'test' | 'deliveries' | 'retry' | 'rotate_secret'
@@ -21,22 +22,6 @@ interface WebhookRequest {
   description?: string
   events?: string[]
   is_active?: boolean
-}
-
-// SECURITY: HMAC signature generation
-async function generateHmacSignature(payload: string, secret: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  )
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
-  return Array.from(new Uint8Array(sig))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
 }
 
 // SECURITY: Check if an IP address is private/internal
@@ -334,7 +319,7 @@ const handler = createHandler(
 
         const { data: endpoint } = await supabase
           .from('webhook_endpoints')
-          .select('url, secret')
+          .select('url, secret, previous_secret, secret_rotated_at')
           .eq('id', body.endpoint_id)
           .eq('ledger_id', ledger.id)
           .single()
@@ -359,7 +344,14 @@ const handler = createHandler(
         }
 
         const payloadStr = JSON.stringify(testPayload)
-        const signature = await generateHmacSignature(payloadStr, endpoint.secret)
+        const deliveryId = crypto.randomUUID()
+        const headers = await buildWebhookHeaders(payloadStr, endpoint.secret, {
+          eventType: 'test',
+          deliveryId,
+          attempt: 1,
+          previousSecret: endpoint.previous_secret,
+          secretRotatedAt: endpoint.secret_rotated_at,
+        })
 
         const startTime = Date.now()
         try {
@@ -368,12 +360,7 @@ const handler = createHandler(
 
           const response = await fetch(endpoint.url, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Soledgic-Signature': `sha256=${signature}`,
-              'X-Soledgic-Event': 'test',
-              'X-Soledgic-Delivery-Id': crypto.randomUUID(),
-            },
+            headers,
             body: payloadStr,
             signal: controller.signal,
           })

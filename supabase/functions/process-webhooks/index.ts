@@ -13,6 +13,7 @@ import {
   isPrivateIP,
   logSecurityEvent
 } from '../_shared/utils.ts'
+import { buildWebhookHeaders } from '../_shared/webhook-signing.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders(req) })
@@ -127,19 +128,27 @@ Deno.serve(async (req) => {
         }
 
         const payloadStr = JSON.stringify(webhook.payload)
-        
-        // Generate HMAC signature
-        const key = await crypto.subtle.importKey(
-          'raw', 
-          new TextEncoder().encode(webhook.endpoint_secret), 
-          { name: 'HMAC', hash: 'SHA-256' }, 
-          false, 
-          ['sign']
-        )
-        const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadStr))
-        const signature = Array.from(new Uint8Array(sig))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('')
+        const { data: endpointSecrets } = await supabase
+          .from('webhook_deliveries')
+          .select(`
+            endpoint_id,
+            webhook_endpoints!inner(previous_secret, secret_rotated_at)
+          `)
+          .eq('id', webhook.delivery_id)
+          .single()
+
+        const endpointConfig = endpointSecrets?.webhook_endpoints as {
+          previous_secret?: string | null
+          secret_rotated_at?: string | null
+        } | null
+
+        const webhookHeaders = await buildWebhookHeaders(payloadStr, webhook.endpoint_secret, {
+          eventType: webhook.event_type,
+          deliveryId: webhook.delivery_id,
+          attempt: Number(webhook.attempts || 0) + 1,
+          previousSecret: endpointConfig?.previous_secret ?? null,
+          secretRotatedAt: endpointConfig?.secret_rotated_at ?? null,
+        })
 
         const startTime = Date.now()
         const controller = new AbortController()
@@ -148,13 +157,7 @@ Deno.serve(async (req) => {
         try {
           const response = await fetch(webhook.endpoint_url, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Soledgic-Signature': `sha256=${signature}`,
-              'X-Soledgic-Event': webhook.event_type,
-              'X-Soledgic-Delivery': webhook.delivery_id,
-              'User-Agent': 'Soledgic-Webhook/1.0',
-            },
+            headers: webhookHeaders,
             body: payloadStr,
             signal: controller.signal,
           })

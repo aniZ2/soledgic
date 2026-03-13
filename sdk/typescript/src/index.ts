@@ -11,6 +11,26 @@ export interface SoledgicConfig {
   timeout?: number
 }
 
+export type WebhookPayloadInput =
+  | string
+  | ArrayBuffer
+  | ArrayBufferView
+  | Record<string, unknown>
+
+export interface VerifyWebhookSignatureOptions {
+  toleranceSeconds?: number
+  now?: number | Date
+}
+
+export interface ParsedWebhookEvent<T = Record<string, unknown>> {
+  id: string | null
+  type: string
+  createdAt: string | null
+  livemode: boolean | null
+  data: T | null
+  raw: Record<string, unknown>
+}
+
 // === REQUEST TYPES ===
 
 export interface RecordSaleRequest {
@@ -335,6 +355,35 @@ export interface RecordRefundResponse {
     fromPlatform: number
   }
   isFullRefund: boolean
+}
+
+export interface ListRefundsRequest {
+  saleReference?: string
+  limit?: number
+}
+
+export interface RefundSummary {
+  id: string
+  transactionId: string
+  referenceId: string | null
+  saleReference: string | null
+  refundedAmount: number
+  currency: string
+  status: string
+  reason: string | null
+  refundFrom: string | null
+  externalRefundId: string | null
+  createdAt: string | null
+  breakdown: {
+    fromCreator: number
+    fromPlatform: number
+  } | null
+}
+
+export interface ListRefundsResponse {
+  success: boolean
+  refunds: RefundSummary[]
+  count: number
 }
 
 export interface ReverseTransactionRequest {
@@ -997,6 +1046,157 @@ export interface RefundResourceResponse {
   }
 }
 
+function isArrayBufferView(value: unknown): value is ArrayBufferView {
+  return typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value)
+}
+
+function webhookPayloadToString(payload: WebhookPayloadInput): string {
+  if (typeof payload === 'string') {
+    return payload
+  }
+
+  if (payload instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(payload))
+  }
+
+  if (isArrayBufferView(payload)) {
+    return new TextDecoder().decode(payload)
+  }
+
+  return JSON.stringify(payload)
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const aLen = a.length
+  const bLen = b.length
+  const maxLen = Math.max(aLen, bLen)
+
+  let result = aLen ^ bLen
+  for (let i = 0; i < maxLen; i++) {
+    const aChar = i < aLen ? a.charCodeAt(i) : 0
+    const bChar = i < bLen ? b.charCodeAt(i) : 0
+    result |= aChar ^ bChar
+  }
+
+  return result === 0
+}
+
+async function hmacHex(secret: string, payload: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Web Crypto API is not available in this runtime')
+  }
+
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await globalThis.crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))
+
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function parseWebhookSignatureHeader(signatureHeader: string): {
+  timestamp: number | null
+  v1Signatures: string[]
+  legacySignature: string | null
+} {
+  if (!signatureHeader) {
+    return { timestamp: null, v1Signatures: [], legacySignature: null }
+  }
+
+  if (signatureHeader.startsWith('sha256=')) {
+    return {
+      timestamp: null,
+      v1Signatures: [],
+      legacySignature: signatureHeader.slice('sha256='.length),
+    }
+  }
+
+  let timestamp: number | null = null
+  const v1Signatures: string[] = []
+
+  for (const part of signatureHeader.split(',')) {
+    const [key, value] = part.trim().split('=')
+    if (!key || !value) continue
+
+    if (key === 't') {
+      const numeric = Number(value)
+      timestamp = Number.isFinite(numeric) ? numeric : null
+    } else if (key === 'v1') {
+      v1Signatures.push(value)
+    }
+  }
+
+  return { timestamp, v1Signatures, legacySignature: null }
+}
+
+function toEpochSeconds(value?: number | Date): number {
+  if (value instanceof Date) {
+    return Math.floor(value.getTime() / 1000)
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value)
+  }
+  return Math.floor(Date.now() / 1000)
+}
+
+export async function verifyWebhookSignature(
+  payload: WebhookPayloadInput,
+  signatureHeader: string,
+  secret: string,
+  options: VerifyWebhookSignatureOptions = {},
+): Promise<boolean> {
+  const payloadString = webhookPayloadToString(payload)
+  const parsed = parseWebhookSignatureHeader(signatureHeader)
+
+  if (parsed.legacySignature) {
+    const expected = await hmacHex(secret, payloadString)
+    return timingSafeEqual(parsed.legacySignature, expected)
+  }
+
+  if (parsed.timestamp === null || parsed.v1Signatures.length === 0) {
+    return false
+  }
+
+  const toleranceSeconds = options.toleranceSeconds ?? 300
+  if (toleranceSeconds > 0) {
+    const nowSeconds = toEpochSeconds(options.now)
+    if (Math.abs(nowSeconds - parsed.timestamp) > toleranceSeconds) {
+      return false
+    }
+  }
+
+  const expected = await hmacHex(secret, `${parsed.timestamp}.${payloadString}`)
+  return parsed.v1Signatures.some((signature) => timingSafeEqual(signature, expected))
+}
+
+export function parseWebhookEvent<T = Record<string, unknown>>(
+  payload: WebhookPayloadInput,
+): ParsedWebhookEvent<T> {
+  const payloadString = webhookPayloadToString(payload)
+  const parsed = JSON.parse(payloadString) as Record<string, unknown>
+  const type =
+    typeof parsed.type === 'string'
+      ? parsed.type
+      : typeof parsed.event === 'string'
+        ? parsed.event
+        : 'unknown'
+
+  return {
+    id: typeof parsed.id === 'string' ? parsed.id : null,
+    type,
+    createdAt: typeof parsed.created_at === 'string' ? parsed.created_at : null,
+    livemode: typeof parsed.livemode === 'boolean' ? parsed.livemode : null,
+    data: (parsed.data as T | null | undefined) ?? null,
+    raw: parsed,
+  }
+}
+
 export class SoledgicError extends Error {
   constructor(
     message: string,
@@ -1010,29 +1210,29 @@ export class SoledgicError extends Error {
 }
 
 export class ValidationError extends SoledgicError {
-  constructor(message: string, details?: unknown) {
-    super(message, 400, details, 'VALIDATION_ERROR')
+  constructor(message: string, details?: unknown, code = 'VALIDATION_ERROR') {
+    super(message, 400, details, code)
     this.name = 'ValidationError'
   }
 }
 
 export class AuthenticationError extends SoledgicError {
-  constructor(message: string = 'Invalid API key', details?: unknown) {
-    super(message, 401, details, 'AUTHENTICATION_ERROR')
+  constructor(message: string = 'Invalid API key', details?: unknown, code = 'AUTHENTICATION_ERROR') {
+    super(message, 401, details, code)
     this.name = 'AuthenticationError'
   }
 }
 
 export class NotFoundError extends SoledgicError {
-  constructor(message: string, details?: unknown) {
-    super(message, 404, details, 'NOT_FOUND')
+  constructor(message: string, details?: unknown, code = 'NOT_FOUND') {
+    super(message, 404, details, code)
     this.name = 'NotFoundError'
   }
 }
 
 export class ConflictError extends SoledgicError {
-  constructor(message: string, details?: unknown) {
-    super(message, 409, details, 'CONFLICT')
+  constructor(message: string, details?: unknown, code = 'CONFLICT') {
+    super(message, 409, details, code)
     this.name = 'ConflictError'
   }
 }
@@ -1065,13 +1265,31 @@ export class Soledgic {
     (this as any)._destroyKey?.()
   }
 
+  readonly webhooks = {
+    verifySignature: (
+      payload: WebhookPayloadInput,
+      signatureHeader: string,
+      secret: string,
+      options?: VerifyWebhookSignatureOptions,
+    ) => verifyWebhookSignature(payload, signatureHeader, secret, options),
+    parseEvent: <T = Record<string, unknown>>(payload: WebhookPayloadInput) =>
+      parseWebhookEvent<T>(payload),
+  }
+
   private throwTypedError(message: string, status: number, data: unknown): never {
+    const apiCode =
+      typeof (data as any)?.error_code === 'string'
+        ? (data as any).error_code
+        : typeof (data as any)?.code === 'string'
+          ? (data as any).code
+          : undefined
+
     switch (status) {
-      case 400: throw new ValidationError(message, data)
-      case 401: throw new AuthenticationError(message, data)
-      case 404: throw new NotFoundError(message, data)
-      case 409: throw new ConflictError(message, data)
-      default:  throw new SoledgicError(message, status, data)
+      case 400: throw new ValidationError(message, data, apiCode)
+      case 401: throw new AuthenticationError(message, data, apiCode)
+      case 404: throw new NotFoundError(message, data, apiCode)
+      case 409: throw new ConflictError(message, data, apiCode)
+      default:  throw new SoledgicError(message, status, data, apiCode)
     }
   }
 
@@ -2822,6 +3040,37 @@ export class Soledgic {
           : null,
         isFullRefund: response.isFullRefund ?? null,
       },
+    }
+  }
+
+  async listRefunds(req: ListRefundsRequest = {}): Promise<ListRefundsResponse> {
+    const response = await this.requestGet<any>('refunds', {
+      sale_reference: req.saleReference,
+      limit: req.limit,
+    })
+
+    return {
+      success: response.success,
+      count: response.count ?? (response.refunds || []).length,
+      refunds: (response.refunds || []).map((refund: any) => ({
+        id: refund.id,
+        transactionId: refund.transaction_id,
+        referenceId: refund.reference_id ?? null,
+        saleReference: refund.sale_reference ?? null,
+        refundedAmount: refund.refunded_amount,
+        currency: refund.currency,
+        status: refund.status,
+        reason: refund.reason ?? null,
+        refundFrom: refund.refund_from ?? null,
+        externalRefundId: refund.external_refund_id ?? null,
+        createdAt: refund.created_at ?? null,
+        breakdown: refund.breakdown
+          ? {
+              fromCreator: refund.breakdown.from_creator,
+              fromPlatform: refund.breakdown.from_platform,
+            }
+          : null,
+      })),
     }
   }
 }

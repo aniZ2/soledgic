@@ -539,11 +539,58 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
   /v1/refunds:
-    post:
-      operationId: "refunds"
-      summary: "Create a refund against a recorded sale."
+    get:
+      operationId: "refunds-get"
+      summary: "List refunds or create a refund against a recorded sale."
       tags:
         - "Payments"
+      parameters:
+        - name: "sale_reference"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundsListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: "refunds-post"
+      summary: "List refunds or create a refund against a recorded sale."
+      tags:
+        - "Payments"
+      parameters:
+        - name: "sale_reference"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
       requestBody:
         required: true
         content:
@@ -3014,6 +3061,8 @@ components:
           const: false
         error:
           type: "string"
+        error_code:
+          type: "string"
         request_id:
           type: "string"
       required:
@@ -3695,6 +3744,15 @@ components:
       required:
         - "sale_reference"
         - "reason"
+    RefundsListRequest:
+      type: "object"
+      properties:
+        sale_reference:
+          type: "string"
+        limit:
+          type: "integer"
+          minimum: 1
+          maximum: 100
     SaleBreakdown:
       type: "object"
       properties:
@@ -4567,6 +4625,64 @@ components:
                   type:
                     - "boolean"
                     - "null"
+    RefundsListResponse:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: "object"
+          properties:
+            count:
+              type: "integer"
+            refunds:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  id:
+                    type: "string"
+                    format: "uuid"
+                  transaction_id:
+                    type: "string"
+                    format: "uuid"
+                  reference_id:
+                    type:
+                      - "string"
+                      - "null"
+                  sale_reference:
+                    type:
+                      - "string"
+                      - "null"
+                  refunded_amount:
+                    type: "number"
+                  currency:
+                    type: "string"
+                  status:
+                    type: "string"
+                  reason:
+                    type:
+                      - "string"
+                      - "null"
+                  refund_from:
+                    type:
+                      - "string"
+                      - "null"
+                  external_refund_id:
+                    type:
+                      - "string"
+                      - "null"
+                  created_at:
+                    type:
+                      - "string"
+                      - "null"
+                    format: "date-time"
+                  breakdown:
+                    type:
+                      - "object"
+                      - "null"
+                    properties:
+                      from_creator:
+                        type: "number"
+                      from_platform:
+                        type: "number"
   responses:
     BadRequest:
       description: "Validation error"
