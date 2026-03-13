@@ -1,5 +1,5 @@
-type JsonRecord = Record<string, any>
-type MockDb = Record<string, JsonRecord[]>
+type JsonRecord = Record<string, unknown>
+export type MockDb = Record<string, JsonRecord[]>
 
 function clone<T>(value: T): T {
   return structuredClone(value)
@@ -34,7 +34,8 @@ class MockQueryBuilder {
     this.table = table
   }
 
-  select(_columns?: string) {
+  select(columns?: string) {
+    void columns
     return this
   }
 
@@ -96,9 +97,12 @@ class MockQueryBuilder {
     }
   }
 
-  then<TResult1 = any, TResult2 = never>(
+  then<
+    TResult1 = { data: JsonRecord[]; error: null },
+    TResult2 = never,
+  >(
     onfulfilled?: ((value: { data: JsonRecord[]; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
-    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ) {
     return this.execute().then(onfulfilled, onrejected)
   }

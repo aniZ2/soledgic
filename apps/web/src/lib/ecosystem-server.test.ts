@@ -1,13 +1,14 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
 import {
   ensureEcosystemForOrganization,
   getCurrentEcosystemForUser,
 } from './ecosystem-server'
-import { createMockSupabase } from './test-support/mock-supabase'
+import { createMockSupabase, type MockDb } from './test-support/mock-supabase'
 
 describe('ecosystem-server', () => {
   it('bootstraps a new ecosystem for an organization without one', async () => {
-    const db = {
+    const db: MockDb = {
       ecosystems: [],
       ecosystem_memberships: [],
       organizations: [
@@ -23,8 +24,8 @@ describe('ecosystem-server', () => {
       ],
     }
 
-    const supabase = createMockSupabase(db as any)
-    const ecosystem = await ensureEcosystemForOrganization(supabase as any, {
+    const supabase = createMockSupabase(db) as unknown as SupabaseClient
+    const ecosystem = await ensureEcosystemForOrganization(supabase, {
       organizationId: 'org_alpha',
       organizationName: 'Platform Alpha',
       organizationSlug: 'platform-alpha',
@@ -45,7 +46,7 @@ describe('ecosystem-server', () => {
   })
 
   it('returns two platforms under the same current ecosystem', async () => {
-    const db = {
+    const db: MockDb = {
       organization_members: [
         {
           id: 'membership_alpha',
@@ -99,8 +100,8 @@ describe('ecosystem-server', () => {
       ],
     }
 
-    const supabase = createMockSupabase(db as any)
-    const summary = await getCurrentEcosystemForUser(supabase as any, 'user_1')
+    const supabase = createMockSupabase(db) as unknown as SupabaseClient
+    const summary = await getCurrentEcosystemForUser(supabase, 'user_1')
 
     expect(summary).toEqual(
       expect.objectContaining({

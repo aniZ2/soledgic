@@ -5,7 +5,7 @@ export default function ConceptsPage() {
     <div className="max-w-3xl">
       <h1 className="text-4xl font-bold text-foreground mb-4">Core Concepts</h1>
       <p className="text-xl text-muted-foreground mb-8">
-        Understand the public treasury resources and the ledger underneath them.
+        Understand the public treasury, reconciliation, fraud, compliance, and tax resources and the ledger underneath them.
       </p>
 
       <section className="mb-12">
@@ -69,9 +69,26 @@ export default function ConceptsPage() {
   -> wallet balance
   -> hold (optional)
   -> payout
-  -> refund`}
+  -> refund
+  -> reconciliation
+  -> fraud evaluation
+  -> compliance review
+  -> tax summary / document`}
           </pre>
         </div>
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Operational Resources</h2>
+        <p className="text-muted-foreground mb-4">
+          Soledgic also exposes ledger-scoped operational resources once money starts moving.
+        </p>
+        <ul className="list-disc list-inside text-muted-foreground space-y-2">
+          <li><code className="bg-muted px-1.5 py-0.5 rounded">reconciliations/*</code> tracks unmatched transactions, matches, and frozen snapshots.</li>
+          <li><code className="bg-muted px-1.5 py-0.5 rounded">fraud/*</code> evaluates proposed transactions and manages policy rules.</li>
+          <li><code className="bg-muted px-1.5 py-0.5 rounded">compliance/*</code> summarizes ledger-scoped access, security, and financial monitoring signals.</li>
+          <li><code className="bg-muted px-1.5 py-0.5 rounded">tax/*</code> exposes calculations, summaries, generated documents, and exports.</li>
+        </ul>
       </section>
 
       <section className="mb-12">
@@ -142,7 +159,8 @@ export default function ConceptsPage() {
           <div className="p-4 bg-card border border-border rounded-lg">
             <h3 className="font-semibold text-foreground mb-1">Resource Layer</h3>
             <p className="text-sm text-muted-foreground">
-              Public endpoints expose participants, wallets, holds, transfers, checkout sessions, payouts, and refunds.
+              Public endpoints expose participants, wallets, holds, transfers, checkout sessions, payouts, refunds, reconciliations,
+              fraud evaluations, compliance monitoring, and tax operations.
             </p>
           </div>
           <div className="p-4 bg-card border border-border rounded-lg">

@@ -50,6 +50,7 @@ import {
   // Tax
   GenerateTaxSummaryRequest,
   GenerateTaxSummaryResponse,
+  ComplianceOverviewResponse,
   // Webhooks
   CreateWebhookEndpointRequest,
   WebhookEndpointResponse,
@@ -862,9 +863,11 @@ export class Soledgic {
   async generateTaxSummary(request: GenerateTaxSummaryRequest): Promise<GenerateTaxSummaryResponse> {
     if (!request.taxYear) throw new ValidationError('taxYear is required')
 
-    const response = await this.request<Record<string, unknown>>('generate-tax-summary', {
-      method: 'POST',
-      body: this.toSnakeCase(request as unknown as Record<string, unknown>),
+    const response = await this.request<Record<string, unknown>>(`tax/summaries/${request.taxYear}`, {
+      method: 'GET',
+      params: {
+        participant_id: request.creatorId,
+      },
     })
 
     return this.toCamelCase<GenerateTaxSummaryResponse>(response)
@@ -877,16 +880,32 @@ export class Soledgic {
   /**
    * Evaluate risk for a proposed transaction before execution.
    */
-  async evaluateRisk(request: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
+  async evaluateFraud(request: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
     if (!request.idempotencyKey) throw new ValidationError('idempotencyKey is required')
     if (!request.amount || request.amount <= 0) throw new ValidationError('amount must be positive')
 
-    const response = await this.request<Record<string, unknown>>('risk-evaluation', {
+    const response = await this.request<Record<string, unknown>>('fraud/evaluations', {
       method: 'POST',
       body: this.toSnakeCase(request as unknown as Record<string, unknown>),
     })
 
     return this.toCamelCase<RiskEvaluationResponse>(response)
+  }
+
+  async evaluateRisk(request: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
+    return this.evaluateFraud(request)
+  }
+
+  /**
+   * Get a ledger-scoped compliance overview.
+   */
+  async getComplianceOverview(params: { days?: number; hours?: number } = {}): Promise<ComplianceOverviewResponse> {
+    const response = await this.request<Record<string, unknown>>('compliance/overview', {
+      method: 'GET',
+      params,
+    })
+
+    return this.toCamelCase<ComplianceOverviewResponse>(response)
   }
 
   // ============================================================================

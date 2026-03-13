@@ -50,7 +50,8 @@ export default function DocsPage() {
         </h1>
         <p className="text-xl text-muted-foreground max-w-3xl">
           Treasury infrastructure for platforms. Model participants, balances, holds, checkout
-          sessions, payouts, and refunds on top of a ledger-native core.
+          sessions, payouts, refunds, reconciliations, fraud checks, compliance monitoring, and
+          tax workflows on top of a ledger-native core.
         </p>
       </div>
 
@@ -80,7 +81,12 @@ export default function DocsPage() {
   -> checkout_session
   -> wallet balance / hold
   -> payout
-  -> refund`}
+  -> refund
+
+reconciliations
+  -> fraud evaluation
+  -> compliance monitoring
+  -> tax documents / summaries`}
           </pre>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -134,7 +140,8 @@ export default function DocsPage() {
           <div>
             <h3 className="font-semibold text-foreground mb-2">Resource-First Treasury API</h3>
             <p className="text-sm text-muted-foreground">
-              Participants, wallets, holds, checkouts, payouts, and refunds are the canonical
+              Participants, wallets, holds, checkouts, payouts, refunds, reconciliations,
+              fraud evaluation, compliance monitoring, and tax resources are the canonical
               public surface for new integrations.
             </p>
           </div>

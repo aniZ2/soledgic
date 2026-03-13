@@ -1,0 +1,38 @@
+name: Docs Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  docs-validation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install SDK dependencies
+        run: npm ci --prefix sdk/typescript
+
+      - name: Generate OpenAPI
+        run: npm run generate:openapi
+
+      - name: Build TypeScript SDK
+        run: npm --prefix sdk/typescript run build
+
+      - name: Compile SDK docs example
+        run: npx tsx sdk/typescript/examples/docs-validation.ts
+
+      - name: Validate docs
+        run: npm run validate:docs

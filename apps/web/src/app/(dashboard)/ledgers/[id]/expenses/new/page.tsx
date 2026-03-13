@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useRef, use } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Upload, X, FileText, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { ArrowLeft, Upload, X, FileText, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const EXPENSE_CATEGORIES = [
@@ -277,10 +278,13 @@ export default function NewExpensePage({
               <div className="border border-border rounded-lg p-4">
                 <div className="flex items-start gap-4">
                   {receiptPreview ? (
-                    <img
+                    <Image
                       src={receiptPreview}
                       alt="Receipt preview"
+                      width={80}
+                      height={80}
                       className="w-20 h-20 object-cover rounded-md border border-border"
+                      unoptimized
                     />
                   ) : (
                     <div className="w-20 h-20 bg-muted rounded-md flex items-center justify-center">

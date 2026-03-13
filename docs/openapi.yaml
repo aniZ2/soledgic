@@ -823,66 +823,6 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/configure-risk-policy:
-    post:
-      operationId: "configure-risk-policy"
-      summary: "Configure Risk Policy"
-      tags:
-        - "Risk"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                action:
-                  type: "string"
-                  enum:
-                    - "create"
-                    - "list"
-                    - "delete"
-                policy_type:
-                  type: "string"
-                  enum:
-                    - "require_instrument"
-                    - "budget_cap"
-                    - "projection_guard"
-                config:
-                  type: "object"
-                  additionalProperties: true
-                severity:
-                  type: "string"
-                  enum:
-                    - "hard"
-                    - "soft"
-                priority:
-                  type: "integer"
-                policy_id:
-                  type: "string"
-                  format: "uuid"
-              required:
-                - "action"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
   /v1/delete-creator:
     post:
       operationId: "delete-creator"
@@ -1165,45 +1105,6 @@ paths:
                     - "csv"
               required:
                 - "report_type"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/generate-tax-summary:
-    post:
-      operationId: "generate-tax-summary"
-      summary: "Generate Tax Summary"
-      tags:
-        - "Tax"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                tax_year:
-                  type: "number"
-                creator_id:
-                  type: "string"
-              required:
-                - "tax_year"
       responses:
         "200":
           description: "Success"
@@ -2211,61 +2112,6 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/reconcile:
-    post:
-      operationId: "reconcile"
-      summary: "Reconciliation"
-      tags:
-        - "Accounting"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                action:
-                  type: "string"
-                  enum:
-                    - "start"
-                    - "match"
-                    - "unmatch"
-                    - "complete"
-                    - "status"
-                transaction_id:
-                  type: "string"
-                  format: "uuid"
-                bank_transaction_id:
-                  type: "string"
-                  format: "uuid"
-                period_id:
-                  type: "string"
-                  format: "uuid"
-                as_of_date:
-                  type: "string"
-                  format: "date"
-              required:
-                - "action"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
   /v1/record-adjustment:
     post:
       operationId: "record-adjustment"
@@ -2652,38 +2498,6 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "500":
           $ref: "#/components/responses/InternalError"
-  /v1/risk-evaluation:
-    post:
-      operationId: "risk-evaluation"
-      summary: "Risk Evaluation"
-      tags:
-        - "Risk"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RiskEvaluationRequest"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RiskEvaluationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
   /v1/send-statements:
     post:
       operationId: "send-statements"
@@ -2718,62 +2532,6 @@ paths:
                 email_config:
                   type: "object"
                   additionalProperties: true
-              required:
-                - "action"
-      responses:
-        "200":
-          description: "Success"
-          headers: *a1
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SuccessEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "429":
-          $ref: "#/components/responses/RateLimited"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /v1/tax-documents:
-    post:
-      operationId: "tax-documents"
-      summary: "Tax Documents"
-      tags:
-        - "Tax"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: "object"
-              properties:
-                action:
-                  type: "string"
-                  enum:
-                    - "calculate"
-                    - "generate_all"
-                    - "list"
-                    - "get"
-                    - "export"
-                    - "mark_filed"
-                tax_year:
-                  type: "integer"
-                creator_id:
-                  type: "string"
-                document_id:
-                  type: "string"
-                  format: "uuid"
-                format:
-                  type: "string"
-                  enum:
-                    - "csv"
-                    - "json"
               required:
                 - "action"
       responses:
@@ -2932,6 +2690,773 @@ paths:
                   type: "boolean"
               required:
                 - "action"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/reconciliations/unmatched:
+    get:
+      operationId: "reconciliations-unmatched"
+      summary: "List unmatched ledger transactions that still need settlement or bank reconciliation."
+      tags:
+        - "Accounting"
+      parameters:
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/reconciliations/matches:
+    post:
+      operationId: "reconciliations-match-create"
+      summary: "Match a ledger transaction to an external bank or settlement transaction."
+      tags:
+        - "Accounting"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                transaction_id:
+                  type: "string"
+                bank_transaction_id:
+                  type: "string"
+              required:
+                - "transaction_id"
+                - "bank_transaction_id"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/reconciliations/matches/{transaction_id}:
+    delete:
+      operationId: "reconciliations-match-delete"
+      summary: "Remove an existing reconciliation match for a transaction."
+      tags:
+        - "Accounting"
+      parameters:
+        - name: "transaction_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/reconciliations/snapshots:
+    post:
+      operationId: "reconciliations-snapshot-create"
+      summary: "Create a reconciliation snapshot for an accounting period or as-of date."
+      tags:
+        - "Accounting"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                period_id:
+                  type: "string"
+                as_of_date:
+                  type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/reconciliations/snapshots/{period_id}:
+    get:
+      operationId: "reconciliations-snapshot-detail"
+      summary: "Fetch the latest reconciliation snapshot for a period and verify its integrity hash."
+      tags:
+        - "Accounting"
+      parameters:
+        - name: "period_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/reconciliations/auto-match:
+    post:
+      operationId: "reconciliations-auto-match"
+      summary: "Attempt to automatically match a bank aggregator transaction to a ledger transaction."
+      tags:
+        - "Accounting"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                bank_aggregator_transaction_id:
+                  type: "string"
+              required:
+                - "bank_aggregator_transaction_id"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/fraud/evaluations:
+    post:
+      operationId: "fraud-evaluations"
+      summary: "Evaluate a proposed transaction against configured fraud and policy rules."
+      tags:
+        - "Risk"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RiskEvaluationRequest"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskEvaluationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/fraud/evaluations/{evaluation_id}:
+    get:
+      operationId: "fraud-evaluation-detail"
+      summary: "Get a previously created fraud evaluation."
+      tags:
+        - "Risk"
+      parameters:
+        - name: "evaluation_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/fraud/policies:
+    get:
+      operationId: "fraud-policies-get"
+      summary: "List configured fraud policies or create a new policy rule."
+      tags:
+        - "Risk"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: "fraud-policies-post"
+      summary: "List configured fraud policies or create a new policy rule."
+      tags:
+        - "Risk"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                policy_type:
+                  type: "string"
+                  enum:
+                    - "require_instrument"
+                    - "budget_cap"
+                    - "projection_guard"
+                config:
+                  type: "object"
+                  additionalProperties: true
+                severity:
+                  type: "string"
+                  enum:
+                    - "hard"
+                    - "soft"
+                priority:
+                  type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/fraud/policies/{policy_id}:
+    delete:
+      operationId: "fraud-policy-delete"
+      summary: "Delete a configured fraud policy."
+      tags:
+        - "Risk"
+      parameters:
+        - name: "policy_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/compliance/overview:
+    get:
+      operationId: "compliance-overview"
+      summary: "Get a ledger-scoped overview of compliance and monitoring signals."
+      tags:
+        - "Risk"
+      parameters:
+        - name: "days"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+        - name: "hours"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/compliance/access-patterns:
+    get:
+      operationId: "compliance-access-patterns"
+      summary: "List suspicious or high-volume access patterns for the current ledger."
+      tags:
+        - "Risk"
+      parameters:
+        - name: "hours"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/compliance/financial-activity:
+    get:
+      operationId: "compliance-financial-activity"
+      summary: "Summarize payout, sale, refund, and dispute activity for compliance review."
+      tags:
+        - "Risk"
+      parameters:
+        - name: "days"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/compliance/security-summary:
+    get:
+      operationId: "compliance-security-summary"
+      summary: "Summarize risk-scored security and audit events for the current ledger."
+      tags:
+        - "Risk"
+      parameters:
+        - name: "days"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/documents:
+    get:
+      operationId: "tax-documents-v2"
+      summary: "List generated tax documents for a tax year."
+      tags:
+        - "Tax"
+      parameters:
+        - name: "tax_year"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/documents/generate:
+    post:
+      operationId: "tax-documents-generate"
+      summary: "Generate tax documents for all participants that cross the filing threshold."
+      tags:
+        - "Tax"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              properties:
+                tax_year:
+                  type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/documents/export:
+    get:
+      operationId: "tax-documents-export"
+      summary: "Export generated tax documents as CSV or JSON."
+      tags:
+        - "Tax"
+      parameters:
+        - name: "tax_year"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+        - name: "format"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "csv"
+              - "json"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+            text/csv:
+              schema:
+                type: "string"
+                description: "CSV file content"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/documents/{document_id}:
+    get:
+      operationId: "tax-document-detail"
+      summary: "Fetch a single generated tax document."
+      tags:
+        - "Tax"
+      parameters:
+        - name: "document_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/documents/{document_id}/mark-filed:
+    post:
+      operationId: "tax-document-mark-filed"
+      summary: "Mark a generated tax document as filed."
+      tags:
+        - "Tax"
+      parameters:
+        - name: "document_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/calculations/{participant_id}:
+    get:
+      operationId: "tax-calculation"
+      summary: "Calculate participant-level tax totals and shared tax profile status for a year."
+      tags:
+        - "Tax"
+      parameters:
+        - name: "participant_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - name: "tax_year"
+          in: "query"
+          required: false
+          schema:
+            type: "number"
+      responses:
+        "200":
+          description: "Success"
+          headers: *a1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/tax/summaries/{tax_year}:
+    get:
+      operationId: "tax-summary"
+      summary: "Generate and return tax summary totals for one year, optionally filtered to a participant."
+      tags:
+        - "Tax"
+      parameters:
+        - name: "tax_year"
+          in: "path"
+          required: true
+          schema:
+            type: "number"
+        - name: "participant_id"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
       responses:
         "200":
           description: "Success"

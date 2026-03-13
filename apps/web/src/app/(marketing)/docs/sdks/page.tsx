@@ -18,7 +18,8 @@ export default function SdksPage() {
         </div>
 
         <p className="text-muted-foreground mb-4">
-          The TypeScript SDK exposes the resource-first treasury surface directly.
+          The TypeScript SDK exposes the resource-first treasury, reconciliation, fraud,
+          compliance, and tax surfaces directly.
         </p>
 
         <div className="mb-4 rounded-lg border border-slate-500/20 bg-slate-500/10 p-4">
@@ -102,6 +103,28 @@ const payout = await soledgic.createPayout({
 const refund = await soledgic.createRefund({
   saleReference: 'sale_123',
   reason: 'Customer requested refund',
+});`}
+          </pre>
+        </div>
+
+        <h3 className="text-lg font-semibold text-foreground mt-6 mb-3">Risk, Compliance, and Tax</h3>
+        <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
+          <pre className="text-sm text-slate-300">
+{`const evaluation = await soledgic.evaluateFraud({
+  idempotencyKey: 'risk_eval_checkout_001',
+  amount: 2999,
+  category: 'digital_goods',
+});
+
+const compliance = await soledgic.getComplianceOverview({ days: 30, hours: 24 });
+const unmatched = await soledgic.listUnmatchedTransactions();
+const summary = await soledgic.generateTaxSummary(2025);
+
+console.log({
+  fraudSignal: evaluation.evaluation.signal,
+  highRiskEvents: compliance.overview.highRiskEvents,
+  unmatchedCount: unmatched.unmatchedCount,
+  participantsRequiring1099: summary.totals.participantsRequiring1099,
 });`}
           </pre>
         </div>

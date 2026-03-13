@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Link2, Network, ShieldCheck, WalletCards } from 'lucide-react'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 
@@ -121,7 +121,7 @@ export default function IdentitySettingsPage() {
     }
   }
 
-  async function loadIdentity() {
+  const loadIdentity = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -155,11 +155,11 @@ export default function IdentitySettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadIdentity()
-  }, [])
+  }, [loadIdentity])
 
   async function saveProfile() {
     if (!profile) return

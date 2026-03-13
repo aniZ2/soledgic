@@ -9,7 +9,6 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 type RouteParams = { params: Promise<{ path?: string[] }> }
 
 const PUBLIC_API_HOSTS = ['api.soledgic.com', 'soledgic.com', 'www.soledgic.com']
-
 function hostMatches(host: string, expected: string): boolean {
   return host === expected || host.startsWith(`${expected}:`)
 }

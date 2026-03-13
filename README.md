@@ -23,6 +23,10 @@ The public treasury surface is resource-first:
 - `checkout-sessions`
 - `payouts`
 - `refunds`
+- `reconciliations`
+- `fraud`
+- `compliance`
+- `tax`
 
 Behind those resources is a shared service layer and a double-entry ledger.
 
@@ -59,7 +63,11 @@ Create a client:
 ```ts
 import Soledgic from '@soledgic/sdk'
 
-const soledgic = new Soledgic(process.env.SOLEDGIC_API_KEY!)
+const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: 'https://api.soledgic.com/v1',
+  apiVersion: '2026-03-01',
+})
 ```
 
 Create a participant:

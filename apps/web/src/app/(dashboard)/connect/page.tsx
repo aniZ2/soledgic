@@ -70,20 +70,6 @@ export default async function ConnectPage() {
     }
   }
 
-  // Count existing webhook endpoints
-  let existingWebhookCount = 0
-  try {
-    const { count } = await serviceClient
-      .from('webhook_endpoints')
-      .select('id', { count: 'exact', head: true })
-      .eq('ledger_id', ledger.id)
-      .eq('is_active', true)
-
-    existingWebhookCount = count || 0
-  } catch {
-    // webhook_endpoints table may not exist
-  }
-
   const wizardCompleted = user.user_metadata?.connect_wizard_completed === true
 
   return (
@@ -93,7 +79,6 @@ export default async function ConnectPage() {
       hasApiKey={hasApiKey}
       supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL || ''}
       wizardCompleted={wizardCompleted}
-      existingWebhookCount={existingWebhookCount}
     />
   )
 }

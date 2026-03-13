@@ -652,15 +652,43 @@ export interface GetRunwayResponse {
 
 export interface GenerateTaxSummaryResponse {
   success: boolean
-  creatorTaxSummaries?: Array<{
-    creatorId: string
+  taxYear?: number
+  note?: string
+  summaries?: Array<{
+    participantId: string
+    linkedUserId?: string | null
     grossEarnings: number
     netEarnings: number
-    totalPayouts: number
-    totalRefunds: number
+    totalPaidOut: number
+    refundsIssued: number
+    requires1099?: boolean
   }>
-  totalGrossEarnings?: number
+  totals?: {
+    totalGross: number
+    totalRefunds: number
+    totalNet: number
+    totalPaid: number
+    participantsRequiring1099: number
+  }
   error?: string
+}
+
+export interface ComplianceOverviewResponse {
+  success: boolean
+  overview: {
+    windowDays: number
+    accessWindowHours: number
+    totalEvents: number
+    uniqueIps: number
+    uniqueActors: number
+    highRiskEvents: number
+    criticalRiskEvents: number
+    failedAuthEvents: number
+    payoutsFailed: number
+    refundsRecorded: number
+    disputeEvents: number
+  }
+  note: string
 }
 
 export interface WebhookEndpointResponse {

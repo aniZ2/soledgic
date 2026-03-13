@@ -504,7 +504,7 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ],
     "auth": "API key",
     "internal": false,
-    "deprecated": false,
+    "deprecated": true,
     "description": "Configure Risk Policy",
     "source": "supabase/functions/configure-risk-policy/index.ts",
     "parameters": [
@@ -894,7 +894,7 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ],
     "auth": "API key",
     "internal": false,
-    "deprecated": false,
+    "deprecated": true,
     "description": "Generate Tax Summary",
     "source": "supabase/functions/generate-tax-summary/index.ts",
     "parameters": [
@@ -1806,7 +1806,7 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ],
     "auth": "API key",
     "internal": false,
-    "deprecated": false,
+    "deprecated": true,
     "description": "Reconciliation",
     "source": "supabase/functions/reconcile/index.ts",
     "parameters": [
@@ -2376,7 +2376,7 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ],
     "auth": "API key",
     "internal": false,
-    "deprecated": false,
+    "deprecated": true,
     "description": "Risk Evaluation",
     "source": "supabase/functions/risk-evaluation/index.ts",
     "parameters": [
@@ -2595,7 +2595,7 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ],
     "auth": "API key",
     "internal": false,
-    "deprecated": false,
+    "deprecated": true,
     "description": "Tax Documents",
     "source": "supabase/functions/tax-documents/index.ts",
     "parameters": [
@@ -2789,6 +2789,544 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "in": "body",
         "name": "is_active",
         "type": "boolean",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "reconciliations-unmatched",
+    "title": "Reconciliations Unmatched",
+    "path": "/v1/reconciliations/unmatched",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "List unmatched ledger transactions that still need settlement or bank reconciliation.",
+    "source": "supabase/functions/reconciliations/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "limit",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "reconciliations-match-create",
+    "title": "Create Reconciliation Match",
+    "path": "/v1/reconciliations/matches",
+    "methods": [
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Match a ledger transaction to an external bank or settlement transaction.",
+    "source": "supabase/functions/reconciliations/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "transaction_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "in": "body",
+        "name": "bank_transaction_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "reconciliations-match-delete",
+    "title": "Delete Reconciliation Match",
+    "path": "/v1/reconciliations/matches/{transaction_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Remove an existing reconciliation match for a transaction.",
+    "source": "supabase/functions/reconciliations/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "transaction_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "reconciliations-snapshot-create",
+    "title": "Create Reconciliation Snapshot",
+    "path": "/v1/reconciliations/snapshots",
+    "methods": [
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Create a reconciliation snapshot for an accounting period or as-of date.",
+    "source": "supabase/functions/reconciliations/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "period_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "as_of_date",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "reconciliations-snapshot-detail",
+    "title": "Reconciliation Snapshot Detail",
+    "path": "/v1/reconciliations/snapshots/{period_id}",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Fetch the latest reconciliation snapshot for a period and verify its integrity hash.",
+    "source": "supabase/functions/reconciliations/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "period_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "reconciliations-auto-match",
+    "title": "Auto Match Settlement Transaction",
+    "path": "/v1/reconciliations/auto-match",
+    "methods": [
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Attempt to automatically match a bank aggregator transaction to a ledger transaction.",
+    "source": "supabase/functions/reconciliations/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "bank_aggregator_transaction_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "fraud-evaluations",
+    "title": "Fraud Evaluations",
+    "path": "/v1/fraud/evaluations",
+    "methods": [
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Evaluate a proposed transaction against configured fraud and policy rules.",
+    "source": "supabase/functions/fraud/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "idempotency_key",
+        "type": "string",
+        "required": true
+      },
+      {
+        "in": "body",
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "in": "body",
+        "name": "currency",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "counterparty_name",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "authorizing_instrument_id",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "expected_date",
+        "type": "string",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "category",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "fraud-evaluation-detail",
+    "title": "Fraud Evaluation Detail",
+    "path": "/v1/fraud/evaluations/{evaluation_id}",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Get a previously created fraud evaluation.",
+    "source": "supabase/functions/fraud/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "evaluation_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "fraud-policies",
+    "title": "Fraud Policies",
+    "path": "/v1/fraud/policies",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "List configured fraud policies or create a new policy rule.",
+    "source": "supabase/functions/fraud/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "policy_type",
+        "type": "'require_instrument' | 'budget_cap' | 'projection_guard'",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "config",
+        "type": "Record<string, unknown>",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "severity",
+        "type": "'hard' | 'soft'",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "priority",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "fraud-policy-delete",
+    "title": "Delete Fraud Policy",
+    "path": "/v1/fraud/policies/{policy_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Delete a configured fraud policy.",
+    "source": "supabase/functions/fraud/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "policy_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "compliance-overview",
+    "title": "Compliance Overview",
+    "path": "/v1/compliance/overview",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Get a ledger-scoped overview of compliance and monitoring signals.",
+    "source": "supabase/functions/compliance/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "days",
+        "type": "number",
+        "required": false
+      },
+      {
+        "in": "query",
+        "name": "hours",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "compliance-access-patterns",
+    "title": "Compliance Access Patterns",
+    "path": "/v1/compliance/access-patterns",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "List suspicious or high-volume access patterns for the current ledger.",
+    "source": "supabase/functions/compliance/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "hours",
+        "type": "number",
+        "required": false
+      },
+      {
+        "in": "query",
+        "name": "limit",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "compliance-financial-activity",
+    "title": "Compliance Financial Activity",
+    "path": "/v1/compliance/financial-activity",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Summarize payout, sale, refund, and dispute activity for compliance review.",
+    "source": "supabase/functions/compliance/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "days",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "compliance-security-summary",
+    "title": "Compliance Security Summary",
+    "path": "/v1/compliance/security-summary",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Summarize risk-scored security and audit events for the current ledger.",
+    "source": "supabase/functions/compliance/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "days",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-documents-v2",
+    "title": "Tax Documents",
+    "path": "/v1/tax/documents",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "List generated tax documents for a tax year.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "tax_year",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-documents-generate",
+    "title": "Generate Tax Documents",
+    "path": "/v1/tax/documents/generate",
+    "methods": [
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Generate tax documents for all participants that cross the filing threshold.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "body",
+        "name": "tax_year",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-documents-export",
+    "title": "Export Tax Documents",
+    "path": "/v1/tax/documents/export",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Export generated tax documents as CSV or JSON.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "query",
+        "name": "tax_year",
+        "type": "number",
+        "required": false
+      },
+      {
+        "in": "query",
+        "name": "format",
+        "type": "'csv' | 'json'",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-document-detail",
+    "title": "Tax Document Detail",
+    "path": "/v1/tax/documents/{document_id}",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Fetch a single generated tax document.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "document_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-document-mark-filed",
+    "title": "Mark Tax Document Filed",
+    "path": "/v1/tax/documents/{document_id}/mark-filed",
+    "methods": [
+      "POST"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Mark a generated tax document as filed.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "document_id",
+        "type": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-calculation",
+    "title": "Tax Calculation",
+    "path": "/v1/tax/calculations/{participant_id}",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Calculate participant-level tax totals and shared tax profile status for a year.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "participant_id",
+        "type": "string",
+        "required": true
+      },
+      {
+        "in": "query",
+        "name": "tax_year",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  {
+    "endpoint": "tax-summary",
+    "title": "Tax Summary",
+    "path": "/v1/tax/summaries/{tax_year}",
+    "methods": [
+      "GET"
+    ],
+    "auth": "API key",
+    "internal": false,
+    "deprecated": false,
+    "description": "Generate and return tax summary totals for one year, optionally filtered to a participant.",
+    "source": "supabase/functions/tax/index.ts",
+    "parameters": [
+      {
+        "in": "path",
+        "name": "tax_year",
+        "type": "number",
+        "required": true
+      },
+      {
+        "in": "query",
+        "name": "participant_id",
+        "type": "string",
         "required": false
       }
     ]

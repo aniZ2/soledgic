@@ -75,6 +75,10 @@ const ENDPOINT_BODY_SIZE_LIMITS: Record<string, number> = {
   'transfers': 64 * 1024,                    // 64KB - wallet transfers
   'holds': 64 * 1024,                        // 64KB - hold queries/releases
   'checkout-sessions': 64 * 1024,            // 64KB - checkout creation
+  'reconciliations': 128 * 1024,             // 128KB - snapshot and matching payloads
+  'fraud': 64 * 1024,                        // 64KB - evaluations and policy writes
+  'compliance': 64 * 1024,                   // 64KB - read-only monitoring queries
+  'tax': 128 * 1024,                         // 128KB - document generation/export requests
   'default': 512 * 1024,                     // 512KB - default
 }
 

@@ -1,10 +1,11 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
 import { getIdentityPortfolioForUser } from './identity-server'
-import { createMockSupabase } from './test-support/mock-supabase'
+import { createMockSupabase, type MockDb } from './test-support/mock-supabase'
 
 describe('identity-server', () => {
   it('aggregates one identity linked across two platforms in the same ecosystem', async () => {
-    const db = {
+    const db: MockDb = {
       participant_identity_links: [
         {
           id: 'link_alpha',
@@ -101,9 +102,9 @@ describe('identity-server', () => {
       ],
     }
 
-    const supabase = createMockSupabase(db as any)
+    const supabase = createMockSupabase(db) as unknown as SupabaseClient
     const portfolio = await getIdentityPortfolioForUser(
-      supabase as any,
+      supabase,
       '550e8400-e29b-41d4-a716-446655440000',
     )
 

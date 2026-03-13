@@ -870,6 +870,214 @@ export interface RiskEvaluationResponse {
   }
 }
 
+export interface FraudPolicyResource {
+  id: string
+  type: PolicyType
+  severity: PolicySeverity
+  priority: number
+  isActive: boolean
+  config: Record<string, unknown>
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface FraudPolicyListResponse {
+  success: boolean
+  policies: FraudPolicyResource[]
+}
+
+export interface FraudPolicyResponse {
+  success: boolean
+  policy: FraudPolicyResource
+}
+
+export interface FraudPolicyDeleteResponse {
+  success: boolean
+  deleted: boolean
+  policyId: string
+}
+
+export interface ReconciliationMatchResponse {
+  success: boolean
+  match: {
+    id: string
+    transactionId: string
+    bankTransactionId: string
+    status: string
+    matchedAt: string
+  }
+}
+
+export interface ReconciliationUnmatchResponse {
+  success: boolean
+  deleted: boolean
+  transactionId: string
+}
+
+export interface UnmatchedTransactionsResponse {
+  success: boolean
+  unmatchedCount: number
+  transactions: Array<{
+    id: string
+    referenceId: string | null
+    description: string | null
+    amount: number
+    currency: string
+    createdAt: string
+    status: string
+    metadata: Record<string, unknown>
+  }>
+}
+
+export interface AutoMatchReconciliationResponse {
+  success: boolean
+  result: {
+    matched: boolean
+    matchType: string | null
+    matchedTransactionId: string | null
+    bankAggregatorTransactionId: string
+  }
+}
+
+export interface TaxDocumentsResponse {
+  success: boolean
+  taxYear: number
+  summary: {
+    totalDocuments: number
+    totalAmount: number
+    byStatus: {
+      calculated: number
+      exported: number
+      filed: number
+    }
+  }
+  documents: any[]
+}
+
+export interface TaxDocumentResponse {
+  success: boolean
+  document: any
+}
+
+export interface TaxDocumentGenerationResponse {
+  success: boolean
+  generation: {
+    taxYear: number
+    created: number
+    skipped: number
+    totalAmount: number
+  }
+}
+
+export interface TaxCalculationResponse {
+  success: boolean
+  calculation: {
+    participantId: string
+    taxYear: number
+    grossPayments: number
+    transactionCount: number
+    requires1099: boolean
+    monthlyTotals: Record<string, unknown>
+    threshold: number
+    linkedUserId: string | null
+    sharedTaxProfile: {
+      status: string
+      legalName: string | null
+      taxIdLast4: string | null
+    } | null
+  }
+}
+
+export interface TaxSummaryResponse {
+  success: boolean
+  taxYear: number
+  note: string
+  summaries: Array<{
+    participantId: string
+    linkedUserId: string | null
+    grossEarnings: number
+    refundsIssued: number
+    netEarnings: number
+    totalPaidOut: number
+    requires1099: boolean
+    sharedTaxProfile: {
+      status: string
+      legalName: string | null
+      taxIdLast4: string | null
+    } | null
+  }>
+  totals: {
+    totalGross: number
+    totalRefunds: number
+    totalNet: number
+    totalPaid: number
+    participantsRequiring1099: number
+  }
+}
+
+export interface ComplianceOverviewResponse {
+  success: boolean
+  overview: {
+    windowDays: number
+    accessWindowHours: number
+    totalEvents: number
+    uniqueIps: number
+    uniqueActors: number
+    highRiskEvents: number
+    criticalRiskEvents: number
+    failedAuthEvents: number
+    payoutsFailed: number
+    refundsRecorded: number
+    disputeEvents: number
+  }
+  note: string
+}
+
+export interface ComplianceAccessPatternsResponse {
+  success: boolean
+  windowHours: number
+  count: number
+  patterns: Array<{
+    ipAddress: string
+    hour: string
+    requestCount: number
+    uniqueActions: number
+    actions: string[]
+    maxRiskScore: number
+    failedAuths: number
+  }>
+}
+
+export interface ComplianceFinancialActivityResponse {
+  success: boolean
+  windowDays: number
+  activity: Array<{
+    date: string
+    payoutsInitiated: number
+    payoutsCompleted: number
+    payoutsFailed: number
+    salesRecorded: number
+    refundsRecorded: number
+    disputeEvents: number
+  }>
+}
+
+export interface ComplianceSecuritySummaryResponse {
+  success: boolean
+  windowDays: number
+  summary: Array<{
+    date: string
+    action: string
+    eventCount: number
+    uniqueIps: number
+    uniqueActors: number
+    avgRiskScore: number
+    maxRiskScore: number
+    highRiskCount: number
+    criticalRiskCount: number
+  }>
+}
+
 export interface UploadReceiptResponse {
   success: boolean
   receiptId: string
@@ -1498,6 +1706,66 @@ export class Soledgic {
     }
   }
 
+  private async requestGetRaw(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<Response> {
+    const url = new URL(`${this.baseUrl}/${endpoint}`)
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined) url.searchParams.set(key, String(value))
+      }
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'x-api-key': this._getKey(),
+          'Soledgic-Version': this.apiVersion,
+        },
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        let parsed: any
+        try { parsed = JSON.parse(text) } catch { parsed = { error: text } }
+        this.throwTypedError(
+          parsed.error || `Request failed: ${response.status}`,
+          response.status,
+          parsed,
+        )
+      }
+      return response
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  private async requestDelete<T>(endpoint: string): Promise<T> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const response = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'DELETE',
+        headers: {
+          'x-api-key': this._getKey(),
+          'Soledgic-Version': this.apiVersion,
+        },
+        signal: controller.signal,
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        this.throwTypedError(
+          data.error || `Request failed: ${response.status}`,
+          response.status,
+          data,
+        )
+      }
+      return data
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   // === MARKETPLACE MODE - SALES & PAYOUTS ===
 
   async createCheckout(req: CreateCheckoutRequest): Promise<CreateCheckoutResponse | CreateCheckoutSessionResponse> {
@@ -1767,38 +2035,95 @@ export class Soledgic {
 
   // === RECONCILIATION ===
 
-  async matchTransaction(req: ReconcileMatchRequest) {
-    return this.request('reconcile', {
-      action: 'match',
+  async matchTransaction(req: ReconcileMatchRequest): Promise<ReconciliationMatchResponse> {
+    const response = await this.request<any>('reconciliations/matches', {
       transaction_id: req.transactionId,
       bank_transaction_id: req.bankTransactionId,
     })
+    return {
+      success: response.success,
+      match: {
+        id: response.match.id,
+        transactionId: response.match.transaction_id,
+        bankTransactionId: response.match.bank_transaction_id,
+        status: response.match.status,
+        matchedAt: response.match.matched_at,
+      },
+    }
   }
 
-  async unmatchTransaction(transactionId: string) {
-    return this.request('reconcile', {
-      action: 'unmatch',
-      transaction_id: transactionId,
-    })
+  async unmatchTransaction(transactionId: string): Promise<ReconciliationUnmatchResponse> {
+    const response = await this.requestDelete<any>(`reconciliations/matches/${transactionId}`)
+    return {
+      success: response.success,
+      deleted: Boolean(response.deleted),
+      transactionId: response.transaction_id,
+    }
   }
 
-  async listUnmatchedTransactions() {
-    return this.request('reconcile', { action: 'list_unmatched' })
+  async listUnmatchedTransactions(): Promise<UnmatchedTransactionsResponse> {
+    const response = await this.requestGet<any>('reconciliations/unmatched')
+    return {
+      success: response.success,
+      unmatchedCount: response.unmatched_count ?? 0,
+      transactions: (response.transactions || []).map((transaction: any) => ({
+        id: transaction.id,
+        referenceId: transaction.reference_id ?? null,
+        description: transaction.description ?? null,
+        amount: transaction.amount,
+        currency: transaction.currency || 'USD',
+        createdAt: transaction.created_at,
+        status: transaction.status,
+        metadata: transaction.metadata || {},
+      })),
+    }
   }
 
   async createReconciliationSnapshot(req: CreateSnapshotRequest): Promise<{ success: boolean; snapshot_id: string; integrity_hash: string }> {
-    return this.request('reconcile', {
-      action: 'create_snapshot',
+    const response = await this.request<any>('reconciliations/snapshots', {
       period_id: req.periodId,
       as_of_date: req.asOfDate,
     })
+    return {
+      success: response.success,
+      snapshot_id: response.snapshot.id,
+      integrity_hash: response.snapshot.integrity_hash,
+    }
   }
 
   async getReconciliationSnapshot(periodId: string): Promise<{ success: boolean; snapshot: ReconciliationSnapshot }> {
-    return this.request('reconcile', {
-      action: 'get_snapshot',
-      period_id: periodId,
+    const response = await this.requestGet<any>(`reconciliations/snapshots/${periodId}`)
+    return {
+      success: response.success,
+      snapshot: {
+        id: response.snapshot.id,
+        periodStart: response.snapshot.period_start,
+        periodEnd: response.snapshot.period_end,
+        integrityHash: response.snapshot.integrity_hash,
+        integrityValid: Boolean(response.snapshot.integrity_valid),
+        summary: {
+          totalMatched: response.snapshot.summary?.total_matched ?? 0,
+          totalUnmatched: response.snapshot.summary?.total_unmatched ?? 0,
+          matchedAmount: response.snapshot.summary?.matched_amount ?? 0,
+          unmatchedAmount: response.snapshot.summary?.unmatched_amount ?? 0,
+        },
+      },
+    }
+  }
+
+  async autoMatchBankTransaction(bankAggregatorTransactionId: string): Promise<AutoMatchReconciliationResponse> {
+    const response = await this.request<any>('reconciliations/auto-match', {
+      bank_aggregator_transaction_id: bankAggregatorTransactionId,
     })
+    return {
+      success: response.success,
+      result: {
+        matched: Boolean(response.result?.matched),
+        matchType: response.result?.match_type ?? null,
+        matchedTransactionId: response.result?.matched_transaction_id ?? null,
+        bankAggregatorTransactionId: response.result?.bank_aggregator_transaction_id ?? bankAggregatorTransactionId,
+      },
+    }
   }
 
   // === FROZEN STATEMENTS ===
@@ -2747,8 +3072,8 @@ export class Soledgic {
 
   // === RISK & POLICY ===
 
-  async evaluateRisk(req: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
-    const response = await this.request<any>('risk-evaluation', {
+  async evaluateFraud(req: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
+    const response = await this.request<any>('fraud/evaluations', {
       idempotency_key: req.idempotencyKey,
       amount: req.amount,
       currency: req.currency,
@@ -2776,67 +3101,283 @@ export class Soledgic {
     }
   }
 
-  async createRiskPolicy(req: CreatePolicyRequest) {
-    return this.request('configure-risk-policy', {
-      action: 'create',
+  async evaluateRisk(req: RiskEvaluationRequest): Promise<RiskEvaluationResponse> {
+    return this.evaluateFraud(req)
+  }
+
+  async createFraudPolicy(req: CreatePolicyRequest): Promise<FraudPolicyResponse> {
+    const response = await this.request<any>('fraud/policies', {
       policy_type: req.policyType,
       config: req.config,
       severity: req.severity,
       priority: req.priority,
     })
+    return {
+      success: response.success,
+      policy: {
+        id: response.policy.id,
+        type: response.policy.type,
+        severity: response.policy.severity,
+        priority: response.policy.priority,
+        isActive: Boolean(response.policy.is_active),
+        config: response.policy.config || {},
+        createdAt: response.policy.created_at ?? null,
+        updatedAt: response.policy.updated_at ?? null,
+      },
+    }
   }
 
-  async listRiskPolicies() {
-    return this.request('configure-risk-policy', { action: 'list' })
+  async createRiskPolicy(req: CreatePolicyRequest): Promise<FraudPolicyResponse> {
+    return this.createFraudPolicy(req)
   }
 
-  async deleteRiskPolicy(policyId: string) {
-    return this.request('configure-risk-policy', { action: 'delete', policy_id: policyId })
+  async listFraudPolicies(): Promise<FraudPolicyListResponse> {
+    const response = await this.requestGet<any>('fraud/policies')
+    return {
+      success: response.success,
+      policies: (response.policies || []).map((policy: any) => ({
+        id: policy.id,
+        type: policy.type,
+        severity: policy.severity,
+        priority: policy.priority,
+        isActive: Boolean(policy.is_active),
+        config: policy.config || {},
+        createdAt: policy.created_at ?? null,
+        updatedAt: policy.updated_at ?? null,
+      })),
+    }
+  }
+
+  async listRiskPolicies(): Promise<FraudPolicyListResponse> {
+    return this.listFraudPolicies()
+  }
+
+  async deleteFraudPolicy(policyId: string): Promise<FraudPolicyDeleteResponse> {
+    const response = await this.requestDelete<any>(`fraud/policies/${policyId}`)
+    return {
+      success: response.success,
+      deleted: Boolean(response.deleted),
+      policyId: response.policy_id,
+    }
+  }
+
+  async deleteRiskPolicy(policyId: string): Promise<FraudPolicyDeleteResponse> {
+    return this.deleteFraudPolicy(policyId)
   }
 
   // === TAX DOCUMENTS ===
 
-  async calculateTaxForCreator(creatorId: string, taxYear?: number) {
-    return this.request('tax-documents', {
-      action: 'calculate',
-      creator_id: creatorId,
+  async calculateTaxForParticipant(participantId: string, taxYear?: number): Promise<TaxCalculationResponse> {
+    const response = await this.requestGet<any>(`tax/calculations/${participantId}`, {
       tax_year: taxYear,
     })
+    return {
+      success: response.success,
+      calculation: {
+        participantId: response.calculation.participant_id,
+        taxYear: response.calculation.tax_year,
+        grossPayments: response.calculation.gross_payments,
+        transactionCount: response.calculation.transaction_count,
+        requires1099: Boolean(response.calculation.requires_1099),
+        monthlyTotals: response.calculation.monthly_totals || {},
+        threshold: response.calculation.threshold,
+        linkedUserId: response.calculation.linked_user_id ?? null,
+        sharedTaxProfile: response.calculation.shared_tax_profile
+          ? {
+              status: response.calculation.shared_tax_profile.status,
+              legalName: response.calculation.shared_tax_profile.legal_name ?? null,
+              taxIdLast4: response.calculation.shared_tax_profile.tax_id_last4 ?? null,
+            }
+          : null,
+      },
+    }
   }
 
-  async generateAllTaxDocuments(taxYear?: number) {
-    return this.request('tax-documents', { action: 'generate_all', tax_year: taxYear })
+  async calculateTaxForCreator(creatorId: string, taxYear?: number): Promise<TaxCalculationResponse> {
+    return this.calculateTaxForParticipant(creatorId, taxYear)
   }
 
-  async listTaxDocuments(taxYear?: number) {
-    return this.request('tax-documents', { action: 'list', tax_year: taxYear })
+  async generateAllTaxDocuments(taxYear?: number): Promise<TaxDocumentGenerationResponse> {
+    const response = await this.request<any>('tax/documents/generate', { tax_year: taxYear })
+    return {
+      success: response.success,
+      generation: {
+        taxYear: response.generation.tax_year,
+        created: response.generation.created,
+        skipped: response.generation.skipped,
+        totalAmount: response.generation.total_amount,
+      },
+    }
   }
 
-  async getTaxDocument(documentId: string) {
-    return this.request('tax-documents', { action: 'get', document_id: documentId })
+  async listTaxDocuments(taxYear?: number): Promise<TaxDocumentsResponse> {
+    const response = await this.requestGet<any>('tax/documents', { tax_year: taxYear })
+    return {
+      success: response.success,
+      taxYear: response.tax_year,
+      summary: {
+        totalDocuments: response.summary?.total_documents ?? 0,
+        totalAmount: response.summary?.total_amount ?? 0,
+        byStatus: {
+          calculated: response.summary?.by_status?.calculated ?? 0,
+          exported: response.summary?.by_status?.exported ?? 0,
+          filed: response.summary?.by_status?.filed ?? 0,
+        },
+      },
+      documents: response.documents || [],
+    }
+  }
+
+  async getTaxDocument(documentId: string): Promise<TaxDocumentResponse> {
+    const response = await this.requestGet<any>(`tax/documents/${documentId}`)
+    return {
+      success: response.success,
+      document: response.document,
+    }
   }
 
   async exportTaxDocuments(taxYear?: number, format: 'csv' | 'json' = 'json') {
-    const body = { action: 'export', tax_year: taxYear, format }
     if (format === 'csv') {
-      const response = await this.requestRaw('tax-documents', body)
+      const response = await this.requestGetRaw('tax/documents/export', { tax_year: taxYear, format })
       const csv = await response.text()
       const disposition = response.headers.get('Content-Disposition') || ''
       const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
       return { csv, filename: filenameMatch?.[1] || `1099_export_${taxYear}.csv` }
     }
-    return this.request('tax-documents', body)
+    return this.requestGet('tax/documents/export', { tax_year: taxYear, format })
   }
 
-  async markTaxDocumentFiled(documentId: string) {
-    return this.request('tax-documents', { action: 'mark_filed', document_id: documentId })
+  async markTaxDocumentFiled(documentId: string): Promise<TaxDocumentResponse> {
+    const response = await this.request<any>(`tax/documents/${documentId}/mark-filed`, {})
+    return {
+      success: response.success,
+      document: {
+        id: response.document.id,
+        tax_year: response.document.tax_year,
+        status: response.document.status,
+      },
+    }
   }
 
-  async generateTaxSummary(taxYear: number, creatorId?: string) {
-    return this.request('generate-tax-summary', {
-      tax_year: taxYear,
-      creator_id: creatorId,
+  async generateTaxSummary(taxYear: number, creatorId?: string): Promise<TaxSummaryResponse> {
+    const response = await this.requestGet<any>(`tax/summaries/${taxYear}`, {
+      participant_id: creatorId,
     })
+    return {
+      success: response.success,
+      taxYear: response.tax_year,
+      note: response.note,
+      summaries: (response.summaries || []).map((summary: any) => ({
+        participantId: summary.participant_id,
+        linkedUserId: summary.linked_user_id ?? null,
+        grossEarnings: summary.gross_earnings,
+        refundsIssued: summary.refunds_issued,
+        netEarnings: summary.net_earnings,
+        totalPaidOut: summary.total_paid_out,
+        requires1099: Boolean(summary.requires_1099),
+        sharedTaxProfile: summary.shared_tax_profile
+          ? {
+              status: summary.shared_tax_profile.status,
+              legalName: summary.shared_tax_profile.legal_name ?? null,
+              taxIdLast4: summary.shared_tax_profile.tax_id_last4 ?? null,
+            }
+          : null,
+      })),
+      totals: {
+        totalGross: response.totals.total_gross,
+        totalRefunds: response.totals.total_refunds,
+        totalNet: response.totals.total_net,
+        totalPaid: response.totals.total_paid,
+        participantsRequiring1099: response.totals.participants_requiring_1099,
+      },
+    }
+  }
+
+  // === COMPLIANCE MONITORING ===
+
+  async getComplianceOverview(options?: { days?: number; hours?: number }): Promise<ComplianceOverviewResponse> {
+    const response = await this.requestGet<any>('compliance/overview', {
+      days: options?.days,
+      hours: options?.hours,
+    })
+    return {
+      success: response.success,
+      overview: {
+        windowDays: response.overview.window_days,
+        accessWindowHours: response.overview.access_window_hours,
+        totalEvents: response.overview.total_events,
+        uniqueIps: response.overview.unique_ips,
+        uniqueActors: response.overview.unique_actors,
+        highRiskEvents: response.overview.high_risk_events,
+        criticalRiskEvents: response.overview.critical_risk_events,
+        failedAuthEvents: response.overview.failed_auth_events,
+        payoutsFailed: response.overview.payouts_failed,
+        refundsRecorded: response.overview.refunds_recorded,
+        disputeEvents: response.overview.dispute_events,
+      },
+      note: response.note,
+    }
+  }
+
+  async listComplianceAccessPatterns(options?: { hours?: number; limit?: number }): Promise<ComplianceAccessPatternsResponse> {
+    const response = await this.requestGet<any>('compliance/access-patterns', {
+      hours: options?.hours,
+      limit: options?.limit,
+    })
+    return {
+      success: response.success,
+      windowHours: response.window_hours,
+      count: response.count,
+      patterns: (response.patterns || []).map((pattern: any) => ({
+        ipAddress: pattern.ip_address,
+        hour: pattern.hour,
+        requestCount: pattern.request_count,
+        uniqueActions: pattern.unique_actions,
+        actions: pattern.actions || [],
+        maxRiskScore: pattern.max_risk_score,
+        failedAuths: pattern.failed_auths,
+      })),
+    }
+  }
+
+  async listComplianceFinancialActivity(options?: { days?: number }): Promise<ComplianceFinancialActivityResponse> {
+    const response = await this.requestGet<any>('compliance/financial-activity', {
+      days: options?.days,
+    })
+    return {
+      success: response.success,
+      windowDays: response.window_days,
+      activity: (response.activity || []).map((entry: any) => ({
+        date: entry.date,
+        payoutsInitiated: entry.payouts_initiated,
+        payoutsCompleted: entry.payouts_completed,
+        payoutsFailed: entry.payouts_failed,
+        salesRecorded: entry.sales_recorded,
+        refundsRecorded: entry.refunds_recorded,
+        disputeEvents: entry.dispute_events,
+      })),
+    }
+  }
+
+  async listComplianceSecuritySummary(options?: { days?: number }): Promise<ComplianceSecuritySummaryResponse> {
+    const response = await this.requestGet<any>('compliance/security-summary', {
+      days: options?.days,
+    })
+    return {
+      success: response.success,
+      windowDays: response.window_days,
+      summary: (response.summary || []).map((entry: any) => ({
+        date: entry.date,
+        action: entry.action,
+        eventCount: entry.event_count,
+        uniqueIps: entry.unique_ips,
+        uniqueActors: entry.unique_actors,
+        avgRiskScore: entry.avg_risk_score,
+        maxRiskScore: entry.max_risk_score,
+        highRiskCount: entry.high_risk_count,
+        criticalRiskCount: entry.critical_risk_count,
+      })),
+    }
   }
 
   // === DATA EXPORT ===

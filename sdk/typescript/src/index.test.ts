@@ -967,27 +967,64 @@ describe('Soledgic SDK', () => {
     expect(body.prepared_by).toBe('admin')
   })
 
-  // === ACTION-BASED ROUTING ===
+  // === FRAUD / TAX / COMPLIANCE ROUTING ===
 
-  it('listRiskPolicies sends correct action', async () => {
+  it('listRiskPolicies uses fraud policies GET route', async () => {
     const fn = mockFetch({ success: true, policies: [] })
     const sdk = createClient(fn)
     await sdk.listRiskPolicies()
 
-    const body = JSON.parse(fn.mock.calls[0][1].body)
-    expect(body.action).toBe('list')
-    expect(fn.mock.calls[0][0]).toContain('/configure-risk-policy')
+    expect(fn.mock.calls[0][1].method).toBe('GET')
+    expect(fn.mock.calls[0][0]).toContain('/fraud/policies')
   })
 
-  it('calculateTaxForCreator sends correct action and params', async () => {
-    const fn = mockFetch({ success: true, data: {} })
+  it('calculateTaxForCreator uses tax calculations GET route', async () => {
+    const fn = mockFetch({
+      success: true,
+      calculation: {
+        participant_id: 'creator_1',
+        tax_year: 2025,
+        gross_payments: 1200,
+        transaction_count: 3,
+        requires_1099: true,
+        monthly_totals: {},
+        threshold: 600,
+        linked_user_id: null,
+        shared_tax_profile: null,
+      },
+    })
     const sdk = createClient(fn)
     await sdk.calculateTaxForCreator('creator_1', 2025)
 
-    const body = JSON.parse(fn.mock.calls[0][1].body)
-    expect(body.action).toBe('calculate')
-    expect(body.creator_id).toBe('creator_1')
-    expect(body.tax_year).toBe(2025)
+    expect(fn.mock.calls[0][1].method).toBe('GET')
+    expect(fn.mock.calls[0][0]).toContain('/tax/calculations/creator_1')
+    expect(fn.mock.calls[0][0]).toContain('tax_year=2025')
+  })
+
+  it('getComplianceOverview uses compliance overview GET route', async () => {
+    const fn = mockFetch({
+      success: true,
+      overview: {
+        window_days: 30,
+        access_window_hours: 24,
+        total_events: 10,
+        unique_ips: 2,
+        unique_actors: 1,
+        high_risk_events: 1,
+        critical_risk_events: 0,
+        failed_auth_events: 0,
+        payouts_failed: 0,
+        refunds_recorded: 1,
+        dispute_events: 0,
+      },
+      note: 'monitoring note',
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.getComplianceOverview({ days: 30, hours: 24 })
+
+    expect(fn.mock.calls[0][1].method).toBe('GET')
+    expect(fn.mock.calls[0][0]).toContain('/compliance/overview')
+    expect(result.overview.windowDays).toBe(30)
   })
 
   // === UPLOAD RECEIPT ===

@@ -1253,6 +1253,7 @@ const ENDPOINT_SCHEMA_MAP: Record<string, SchemaBinding> = {
     get: { request: 'RefundsListRequest', response: 'RefundsListResponse' },
     post: { request: 'TreasuryRefundRequest', response: 'RefundResourceResponse' },
   },
+  'fraud-evaluations': { request: 'RiskEvaluationRequest', response: 'RiskEvaluationResponse' },
 }
 
 // ---------------------------------------------------------------------------
@@ -1527,6 +1528,12 @@ const TAG_MAP: Record<string, string> = {
   'pay-bill': 'Accounting',
   'close-period': 'Accounting',
   'reconcile': 'Accounting',
+  'reconciliations-unmatched': 'Accounting',
+  'reconciliations-match-create': 'Accounting',
+  'reconciliations-match-delete': 'Accounting',
+  'reconciliations-snapshot-create': 'Accounting',
+  'reconciliations-snapshot-detail': 'Accounting',
+  'reconciliations-auto-match': 'Accounting',
   'manage-budgets': 'Accounting',
   'manage-recurring': 'Accounting',
   'upload-receipt': 'Accounting',
@@ -1543,9 +1550,24 @@ const TAG_MAP: Record<string, string> = {
   // Tax
   'tax-documents': 'Tax',
   'generate-tax-summary': 'Tax',
+  'tax-documents-v2': 'Tax',
+  'tax-documents-generate': 'Tax',
+  'tax-documents-export': 'Tax',
+  'tax-document-detail': 'Tax',
+  'tax-document-mark-filed': 'Tax',
+  'tax-calculation': 'Tax',
+  'tax-summary': 'Tax',
   // Risk
   'risk-evaluation': 'Risk',
   'configure-risk-policy': 'Risk',
+  'fraud-evaluations': 'Risk',
+  'fraud-evaluation-detail': 'Risk',
+  'fraud-policies': 'Risk',
+  'fraud-policy-delete': 'Risk',
+  'compliance-overview': 'Risk',
+  'compliance-access-patterns': 'Risk',
+  'compliance-financial-activity': 'Risk',
+  'compliance-security-summary': 'Risk',
   'configure-alerts': 'Risk',
   'preflight-authorization': 'Risk',
   'register-instrument': 'Risk',
@@ -1671,6 +1693,10 @@ const CONTENT_TYPE_OVERRIDES: Record<string, Record<string, object>> = {
   'generate-pdf': {
     'application/pdf': { schema: { type: 'string', format: 'binary' } },
     'application/json': { schema: { $ref: '#/components/schemas/ErrorEnvelope' } },
+  },
+  'tax-documents-export': {
+    'application/json': { schema: { $ref: '#/components/schemas/SuccessEnvelope' } },
+    'text/csv': { schema: { type: 'string', description: 'CSV file content' } },
   },
 }
 

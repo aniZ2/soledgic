@@ -11,6 +11,10 @@ This package targets the supported API-key surface:
 - `checkout-sessions`
 - `payouts`
 - `refunds`
+- `reconciliations`
+- `fraud`
+- `compliance`
+- `tax`
 - webhook endpoint management and signature verification
 
 It does not wrap the dashboard/operator control-plane routes such as `/api/identity/*` or `/api/ecosystems/*`.
@@ -100,6 +104,39 @@ console.log({
 | `createPayout(req)` | Create a payout resource |
 | `createRefund(req)` | Create a refund resource |
 | `listRefunds(req?)` | Query refunds, including by `saleReference` |
+
+### Reconciliations
+
+| Method | Description |
+| --- | --- |
+| `listUnmatchedTransactions()` | List ledger transactions that still need reconciliation |
+| `matchTransaction(req)` | Create a reconciliation match |
+| `unmatchTransaction(transactionId)` | Remove a reconciliation match |
+| `createReconciliationSnapshot(req)` | Freeze a reconciliation snapshot for a period or as-of date |
+| `getReconciliationSnapshot(periodId)` | Read the latest snapshot for a period |
+| `autoMatchBankTransaction(bankAggregatorTransactionId)` | Attempt an automatic bank-to-ledger match |
+
+### Fraud, Compliance, and Tax
+
+| Method | Description |
+| --- | --- |
+| `evaluateFraud(req)` | Create a fraud evaluation for a proposed transaction |
+| `listFraudPolicies()` | List active fraud policies |
+| `createFraudPolicy(req)` | Create a fraud policy |
+| `deleteFraudPolicy(policyId)` | Delete a fraud policy |
+| `getComplianceOverview(opts?)` | Summarize ledger-scoped compliance signals |
+| `listComplianceAccessPatterns(opts?)` | Inspect suspicious or high-volume access patterns |
+| `listComplianceFinancialActivity(opts?)` | Summarize payout, sale, refund, and dispute activity |
+| `listComplianceSecuritySummary(opts?)` | Summarize risk-scored security and audit events |
+| `calculateTaxForParticipant(participantId, taxYear?)` | Calculate participant tax totals and shared-profile status |
+| `generateAllTaxDocuments(taxYear?)` | Generate tax documents for the year |
+| `listTaxDocuments(taxYear?)` | List generated tax documents |
+| `getTaxDocument(documentId)` | Read one tax document |
+| `exportTaxDocuments(taxYear?, format?)` | Export tax documents as CSV or JSON |
+| `markTaxDocumentFiled(documentId)` | Mark a document as filed |
+| `generateTaxSummary(taxYear, participantId?)` | Generate tax summary totals for the year |
+
+`evaluateRisk`, `createRiskPolicy`, `listRiskPolicies`, `deleteRiskPolicy`, and `calculateTaxForCreator` remain as compatibility aliases over the newer `fraud/*` and `tax/*` routes.
 
 ### Webhooks
 

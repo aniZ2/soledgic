@@ -27,7 +27,6 @@ interface ConnectWizardProps {
   hasApiKey: boolean
   supabaseUrl: string
   wizardCompleted: boolean
-  existingWebhookCount: number
 }
 
 export function ConnectWizardClient({
@@ -36,7 +35,6 @@ export function ConnectWizardClient({
   hasApiKey,
   supabaseUrl,
   wizardCompleted,
-  existingWebhookCount,
 }: ConnectWizardProps) {
   const router = useRouter()
   const [step, setStep] = useState(1)

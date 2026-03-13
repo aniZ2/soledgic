@@ -17,6 +17,7 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'import-transactions',
   'submit-tax-info',
   'tax-documents',
+  'tax',
   'send-statements',
   'profit-loss',
   'trial-balance',
@@ -29,6 +30,9 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'checkout-sessions',
   'payouts',
   'refunds',
+  'reconciliations',
+  'fraud',
+  'compliance',
   'bank-aggregator',
 ])
 
