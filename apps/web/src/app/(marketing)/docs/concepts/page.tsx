@@ -75,6 +75,20 @@ export default function ConceptsPage() {
       </section>
 
       <section className="mb-12">
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Shared Identity and Ecosystems</h2>
+        <p className="text-muted-foreground mb-4">
+          Soledgic also has a higher-level operator model for shared user identity and multi-platform ecosystems.
+          That layer sits above the public treasury resources.
+        </p>
+        <ul className="list-disc list-inside text-muted-foreground space-y-2">
+          <li>Identity is global to the signed-in user.</li>
+          <li>Participants and wallets remain ledger-scoped.</li>
+          <li>Ecosystems group related platforms for visibility, not pooled balances.</li>
+          <li>These routes are dashboard-only and are not part of the public `/v1` API contract.</li>
+        </ul>
+      </section>
+
+      <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Double-Entry Ledger</h2>
         <p className="text-muted-foreground mb-4">
           Soledgic uses double-entry accounting underneath the resource API. Every state-changing write
@@ -129,6 +143,13 @@ export default function ConceptsPage() {
             <h3 className="font-semibold text-foreground mb-1">Resource Layer</h3>
             <p className="text-sm text-muted-foreground">
               Public endpoints expose participants, wallets, holds, transfers, checkout sessions, payouts, and refunds.
+            </p>
+          </div>
+          <div className="p-4 bg-card border border-border rounded-lg">
+            <h3 className="font-semibold text-foreground mb-1">Operator Control Plane</h3>
+            <p className="text-sm text-muted-foreground">
+              Shared identity, ecosystem management, and internal verification tooling live behind authenticated dashboard routes,
+              not the public API-key surface.
             </p>
           </div>
           <div className="p-4 bg-card border border-border rounded-lg">

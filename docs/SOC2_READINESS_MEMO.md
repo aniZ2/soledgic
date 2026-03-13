@@ -154,12 +154,12 @@ Soledgic's API infrastructure has undergone comprehensive security hardening and
 
 | Control | Status | Evidence |
 |---------|--------|----------|
-| Data Classification | ✅ Implemented | PII removed, only financial amounts stored |
-| Sensitive Data Handling | ✅ Implemented | Bank Feed tokens encrypted in Vault |
+| Data Classification | ✅ Implemented | Financial data plus limited shared tax-profile data classified and scoped |
+| Sensitive Data Handling | ✅ Implemented | Bank Feed tokens encrypted in Vault; limited tax-profile fields restricted |
 
 **Architecture Decision:**
-> Soledgic stores payment amounts only. Platforms maintain recipient PII.
-> This minimizes our data footprint and compliance burden.
+> Soledgic stores payment amounts plus a narrow shared identity/tax-profile subset.
+> Full TINs, filing documents, and broader recipient records remain outside the platform.
 
 ### C1.2 - Confidential Information Disposal
 
@@ -177,14 +177,14 @@ Soledgic's API infrastructure has undergone comprehensive security hardening and
 
 | Control | Status | Notes |
 |---------|--------|-------|
-| PII Collection | ✅ Minimal | No PII stored - amounts only |
-| Consent Management | N/A | B2B API - platforms handle user consent |
-| Data Subject Rights | N/A | No PII = no DSR obligations |
+| PII Collection | ✅ Minimal | Limited shared profile and tax-profile fields only |
+| Consent Management | N/A | B2B API and dashboard operators handle user consent flows |
+| Data Subject Rights | Scoped | Applies only to the limited profile data Soledgic stores |
 
 **Privacy by Design:**
-- Creator IDs are platform-defined identifiers, not PII
-- No names, emails, addresses, or SSNs stored in Soledgic
-- Platforms are responsible for their own privacy compliance
+- Creator IDs remain platform-defined identifiers
+- Shared profiles may include names, address fields, and TIN last4 for operator workflows
+- Platforms remain responsible for broader privacy compliance and full tax-record handling
 
 ---
 

@@ -1,5 +1,7 @@
 # Soledgic Auto-Email & Processor Adapter Guide
 
+> Internal note (March 13, 2026): this guide documents operational helpers and older SDK examples for internal automation. It is separate from the supported public `/v1` treasury contract.
+
 ## Overview
 
 Soledgic now supports two powerful automation features:

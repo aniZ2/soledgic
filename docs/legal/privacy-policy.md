@@ -31,8 +31,9 @@ We are committed to protecting your privacy and handling your data transparently
 
 **Tax Reporting Data:**
 - Payment summaries by recipient ID (amounts only)
-- No SSNs, EINs, TINs, names, or addresses stored
-- You maintain recipient PII in your own systems
+- Optional shared tax-profile fields may include legal name, address, TIN type, and TIN last4
+- Full SSNs, EINs, TINs, and filing documents remain outside Soledgic
+- You remain responsible for broader recipient PII governance in your own systems
 
 **Communications:**
 - Support tickets and email correspondence
@@ -175,11 +176,11 @@ After retention periods expire, data is permanently deleted or anonymized.
 ### 5.3 No Sensitive Tax Information Stored
 
 Soledgic does NOT store:
-- Social Security Numbers (SSNs)
-- Employer Identification Numbers (EINs)
-- Names or addresses for tax purposes
+- Full Social Security Numbers (SSNs)
+- Full Employer Identification Numbers (EINs)
+- Raw tax filing documents
 
-We only store payment amounts by recipient ID. You maintain recipient PII in your own systems and merge with our payment data for 1099 filing.
+We store payment amounts by recipient ID and may store a limited shared tax-profile subset such as legal name, address, TIN type, and TIN last4. You maintain the full taxpayer record and filing process in your own systems.
 
 ### 5.4 Breach Notification
 

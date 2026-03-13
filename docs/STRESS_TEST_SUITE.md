@@ -1,5 +1,7 @@
 # Soledgic Stress Test Suite
 
+> Internal note (March 13, 2026): this suite exercises lower-level ledger helpers and historical SDK shapes in places. It is not the public integration contract. External integrators should use the resource-first `/v1` API and `@soledgic/sdk` methods documented in the public docs.
+
 ## Overview
 
 This document defines failure scenarios and stress tests to validate Soledgic's resilience. Each scenario includes the failure condition, expected behavior, test procedure, and acceptance criteria.

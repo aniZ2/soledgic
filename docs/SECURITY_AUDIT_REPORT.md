@@ -164,7 +164,7 @@ const accessToken = await getAccessToken(supabase, conn.id) // From vault
 
 ### 6. PII Data Handling (9/10)
 
-**Implementation:** No sensitive PII stored
+**Implementation:** Limited sensitive profile data stored; full tax identifiers remain out of scope
 
 ```sql
 -- Migration: 20260118_remove_pii_add_security.sql
@@ -173,8 +173,8 @@ ALTER TABLE ledgers DROP COLUMN IF EXISTS owner_email;
 ```
 
 **Architecture:**
-- ✅ No SSN/EIN/TIN stored
-- ✅ No full addresses stored  
+- ✅ No full SSN/EIN/TIN stored
+- ✅ Shared tax profiles store only legal name, address fields, TIN type, and TIN last4
 - ✅ Tax documents store amounts only (recipient IDs reference external systems)
 - ✅ Bank account numbers: only last 4 digits logged
 

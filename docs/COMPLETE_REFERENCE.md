@@ -1,6 +1,8 @@
 # Soledgic - Complete System Reference
 
-> Migration note (March 12, 2026): the canonical public treasury API is now resource-first: `/v1/participants`, `/v1/wallets`, `/v1/transfers`, `/v1/holds`, `/v1/checkout-sessions`, `/v1/payouts`, and `/v1/refunds`. Legacy command endpoints described below remain in the codebase for development compatibility but are deprecated for new integrations. See `docs/RESOURCE_MODEL_MIGRATION.md`.
+> Migration note (March 12, 2026): the canonical public treasury API is now resource-first: `/v1/participants`, `/v1/wallets`, `/v1/transfers`, `/v1/holds`, `/v1/checkout-sessions`, `/v1/payouts`, and `/v1/refunds`. If older command-style examples appear below, treat them as historical or lower-level references, not the supported public contract. See `docs/RESOURCE_MODEL_MIGRATION.md`.
+
+> Operator note: shared identity, ecosystem management, and fixture-cleanup tooling live in the dashboard control plane and are documented separately in `docs/OPERATOR_CONTROL_PLANE.md`.
 
 > **Soledgic is a platform finance system that records transactions and can initiate payouts via external processors. It does not custody funds, and compliance remains with the payment rail.**
 

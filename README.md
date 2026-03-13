@@ -26,6 +26,8 @@ The public treasury surface is resource-first:
 
 Behind those resources is a shared service layer and a double-entry ledger.
 
+Shared identity and ecosystem management exist too, but they are operator control-plane features rather than public API-key resources. Those routes are documented separately in [docs/OPERATOR_CONTROL_PLANE.md](docs/OPERATOR_CONTROL_PLANE.md).
+
 ## Architecture
 
 ```text
@@ -214,7 +216,7 @@ The resource-first public API is documented in:
 - `apps/web/src/app/(marketing)/docs`
 - `docs/openapi.yaml`
 
-Legacy command-style treasury endpoints still exist in the codebase during development, but they are deprecated for new integrations and are no longer the primary public surface.
+The supported external contract is the `/v1` resource surface plus webhook signing. Dashboard/session routes such as `/api/identity/*` and `/api/ecosystems/*` are intentionally excluded from the public SDK and OpenAPI spec.
 
 ## Local Development
 
@@ -230,6 +232,8 @@ Useful verification commands:
 ```bash
 npx vitest run sdk/typescript/src/index.test.ts
 npm run generate:openapi
+npm run test:ecosystem
+npm run test:ecosystem:cleanup -- --run-id <runId>
 cd apps/web && npm run build
 ```
 

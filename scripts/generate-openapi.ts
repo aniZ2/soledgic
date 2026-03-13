@@ -1821,7 +1821,7 @@ const spec = {
   info: {
     title: 'Soledgic API',
     version: '2026-03-01',
-    description: 'Financial infrastructure API for digital platforms. All amounts are in cents.',
+    description: 'Public API-key financial infrastructure API for digital platforms. All amounts are in cents. Dashboard/session operator routes are intentionally excluded.',
     license: { name: 'Proprietary', identifier: 'LicenseRef-Proprietary' },
   },
   servers: [

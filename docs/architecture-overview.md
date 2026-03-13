@@ -1,6 +1,6 @@
 # Soledgic Architecture Overview
 
-> Migration note (March 12, 2026): the public treasury surface is resource-first. Use `/v1/participants`, `/v1/wallets`, `/v1/transfers`, `/v1/holds`, `/v1/checkout-sessions`, `/v1/payouts`, and `/v1/refunds` for new integrations. Older command-style endpoints in this document are legacy references. See `docs/RESOURCE_MODEL_MIGRATION.md`.
+> Migration note (March 12, 2026): the public treasury surface is resource-first. Use `/v1/participants`, `/v1/wallets`, `/v1/transfers`, `/v1/holds`, `/v1/checkout-sessions`, `/v1/payouts`, and `/v1/refunds` for new integrations. Older command-style endpoints in this document are legacy references. Shared identity and ecosystems are operator control-plane features documented in `docs/OPERATOR_CONTROL_PLANE.md`.
 
 ## What Soledgic Is
 

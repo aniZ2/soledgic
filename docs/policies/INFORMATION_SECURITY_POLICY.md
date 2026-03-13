@@ -132,15 +132,16 @@ Upon termination or role change:
 | Transaction amounts | Confidential | Supabase (encrypted) | Indefinite |
 | API key hashes | Restricted | Supabase (encrypted) | Until rotation |
 | Bank Feed tokens | Restricted | Supabase Vault | Until revocation |
+| Shared tax profile data (legal name, address, TIN type, last4) | Restricted | Supabase (encrypted) | Until user deletion or compliance retention expiry |
 | Audit logs | Confidential | Supabase (encrypted) | 90-180 days |
 | Webhook secrets | Restricted | Environment variables | Until rotation |
 
 ### 6.4 PII Minimization
 
 Soledgic follows a **data minimization** architecture:
-- No customer PII (names, emails, addresses, SSN) is stored
-- Only transaction amounts and platform-defined identifiers are retained
-- Customer platforms are responsible for their own PII management
+- Only the minimum operator-managed identity and tax-profile data is stored
+- Full SSNs/EINs, raw W-9 documents, and filing artifacts are not stored
+- Customer platforms remain responsible for broader PII governance and filing workflows
 
 ---
 
@@ -387,8 +388,8 @@ All vendors with access to confidential data must:
 | Regulation | Applicability | Status |
 |------------|---------------|--------|
 | SOC 2 Type II | Yes | In progress |
-| GDPR | Limited (no EU PII) | Compliant by design |
-| CCPA | Limited (no CA PII) | Compliant by design |
+| GDPR | Limited operator-managed profile data | Ongoing review |
+| CCPA | Limited operator-managed profile data | Ongoing review |
 | PCI DSS | No (Payment Processor handles card data) | N/A |
 
 ### 14.2 Audit Schedule

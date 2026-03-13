@@ -21,6 +21,13 @@ export default function SdksPage() {
           The TypeScript SDK exposes the resource-first treasury surface directly.
         </p>
 
+        <div className="mb-4 rounded-lg border border-slate-500/20 bg-slate-500/10 p-4">
+          <p className="text-sm text-slate-700">
+            The SDK targets the public API-key contract only. Dashboard/session routes for shared identity,
+            ecosystems, and internal tooling are intentionally excluded.
+          </p>
+        </div>
+
         <h3 className="text-lg font-semibold text-foreground mb-3">Installation</h3>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">npm install @soledgic/sdk</pre>
@@ -39,6 +46,7 @@ const soledgic = new Soledgic({
 
 const participant = await soledgic.createParticipant({
   participantId: 'creator_456',
+  userId: '9f9b62d2-2f32-4b20-bc24-1f86b16cb9eb',
   displayName: 'Jane Creator',
   email: 'jane@example.com',
   defaultSplitPercent: 80,
@@ -56,6 +64,11 @@ const checkout = await soledgic.createCheckoutSession({
 console.log(checkout.checkoutSession.checkoutUrl);`}
           </pre>
         </div>
+
+        <p className="text-sm text-muted-foreground mb-6">
+          Participant responses include linked-user fields when the public participant is connected to a shared identity record.
+          That linkage is visible through the public participant resource, but the user profile and ecosystem management routes stay internal.
+        </p>
 
         <h3 className="text-lg font-semibold text-foreground mb-3">Version Pinning</h3>
         <p className="text-muted-foreground mb-4">

@@ -1,6 +1,19 @@
-# Soledgic
+# Soledgic TypeScript SDK
 
-Financial infrastructure for digital platforms. Treasury-grade ledger API with custodial wallets, automatic revenue splits, preflight authorization, and full accounting compliance.
+TypeScript client for Soledgic's public resource-first treasury API.
+
+This package targets the supported API-key surface:
+
+- `participants`
+- `wallets`
+- `transfers`
+- `holds`
+- `checkout-sessions`
+- `payouts`
+- `refunds`
+- webhook endpoint management and signature verification
+
+It does not wrap the dashboard/operator control-plane routes such as `/api/identity/*` or `/api/ecosystems/*`.
 
 ## Installation
 
@@ -10,151 +23,139 @@ npm install @soledgic/sdk
 
 ## Quick Start
 
-```typescript
+```ts
 import Soledgic from '@soledgic/sdk'
 
-const ledger = new Soledgic({
-  apiKey: 'sk_live_your_api_key',
-  baseUrl: 'https://your-project.supabase.co/functions/v1',
+const soledgic = new Soledgic({
+  apiKey: process.env.SOLEDGIC_API_KEY!,
+  baseUrl: 'https://api.soledgic.com/v1',
   apiVersion: '2026-03-01',
 })
 
-// === MARKETPLACE MODE ===
+const participant = await soledgic.createParticipant({
+  participantId: 'creator_456',
+  userId: '9f9b62d2-2f32-4b20-bc24-1f86b16cb9eb',
+  displayName: 'Jane Creator',
+  email: 'jane@example.com',
+  defaultSplitPercent: 80,
+})
 
-// Hosted checkout session (buyer enters card on hosted page)
-const session = await ledger.createCheckout({
-  amount: 2999, // $29.99 in cents
-  creatorId: 'author_123',
-  productName: 'Book purchase',
+const checkout = await soledgic.createCheckoutSession({
+  participantId: participant.participant.id,
+  amount: 2999,
+  currency: 'USD',
+  productName: 'Premium asset pack',
   successUrl: 'https://example.com/success',
   cancelUrl: 'https://example.com/cancel',
 })
-// → { checkoutUrl, sessionId, mode: 'session', ... }
 
-// Direct charge (when you already have the buyer's payment instrument)
-const checkout = await ledger.createCheckout({
-  amount: 2999,
-  creatorId: 'author_123',
-  paymentMethodId: 'PIxxxxxxx',
-  idempotencyKey: 'order_123',
-})
-// → { paymentId, provider, status, ... }
+const wallet = await soledgic.getParticipantWallet(participant.participant.id)
 
-// Record a sale with automatic split
-const sale = await ledger.recordSale({
-  referenceId: 'order_123',
-  creatorId: 'author_123',
-  amount: 2999,  // $29.99 in cents
-  processingFee: 117,
-})
-// → { creatorAmount: 23.06, platformAmount: 5.76, withheld: 2.31 }
-
-// Pay a creator
-const payout = await ledger.processPayout({
-  referenceId: 'payout_001',
-  creatorId: 'author_123',
-  amount: 2000,
-})
-// → { previousBalance: 20.75, newBalance: 0.75 }
-
-// === STANDARD MODE ===
-
-// Record income
-await ledger.recordIncome({
-  referenceId: 'inv_001',
-  amount: 500000,  // $5000
-  description: 'Consulting - Project Alpha',
-  category: 'services',
+const payout = await soledgic.createPayout({
+  participantId: participant.participant.id,
+  referenceId: 'payout_2026_03_13_001',
+  amount: 1500,
+  payoutMethod: 'card',
 })
 
-// Record expense
-await ledger.recordExpense({
-  referenceId: 'exp_001',
-  amount: 15000,  // $150
-  description: 'Office supplies',
-  category: 'office',
-  paidFrom: 'credit_card',
+console.log({
+  checkoutUrl: checkout.checkoutSession.checkoutUrl,
+  linkedUserId: participant.participant.linkedUserId,
+  availableBalance: wallet.wallet.availableBalance,
+  payoutStatus: payout.payout.status,
 })
-
-// === REPORTS ===
-
-const pnl = await ledger.getProfitLoss('2024-01-01', '2024-12-31')
-const balance = await ledger.getTrialBalance()
-const summary = await ledger.get1099Summary(2024)
 ```
 
-## API Reference
+## Public Treasury Methods
 
-### Marketplace Functions
-
-| Method | Description |
-|--------|-------------|
-| `createCheckout(req)` | Create hosted checkout payment |
-| `recordSale(req)` | Record sale with automatic split |
-| `processPayout(req)` | Pay a creator |
-| `listTiers()` | Get all tiers |
-| `getEffectiveSplit(creatorId)` | Get creator's current split |
-| `setCreatorSplit(creatorId, percent)` | Set custom split |
-| `clearCreatorSplit(creatorId)` | Remove custom split |
-| `autoPromoteCreators()` | Promote based on earnings |
-
-`createCheckout` supports two modes: **session** (omit `paymentMethodId`, provide `successUrl`) or **direct** (provide `paymentMethodId` + `idempotencyKey`).
-
-### Standard Functions
+### Participants
 
 | Method | Description |
-|--------|-------------|
-| `recordIncome(req)` | Record business income |
-| `recordExpense(req)` | Record business expense |
+| --- | --- |
+| `createParticipant(req)` | Create or provision a participant-backed treasury account |
+| `listParticipants()` | List participant balances and linked-user state |
+| `getParticipant(participantId)` | Get one participant with active hold detail |
+| `getParticipantPayoutEligibility(participantId)` | Check payout readiness |
 
-### Wallets
+`createParticipant` accepts an optional `userId` so a public participant can be linked to a shared identity record without exposing the operator APIs directly.
 
-| Method | Description |
-|--------|-------------|
-| `getWalletBalance(userId)` | Get wallet balance (0 if none) |
-| `walletDeposit(req)` | Deposit funds into user wallet |
-| `walletWithdraw(req)` | Withdraw funds from user wallet |
-| `walletTransfer(req)` | Transfer between user wallets |
-| `getWalletHistory(userId, opts?)` | Paginated transaction history |
-
-### Balances
+### Wallets, Transfers, and Holds
 
 | Method | Description |
-|--------|-------------|
-| `getAllBalances()` | All account balances |
-| `getCreatorBalances()` | Creator balances with holds |
-| `getCreatorBalance(id)` | Single creator detail |
-| `getSummary()` | Assets, liabilities, P&L |
+| --- | --- |
+| `getParticipantWallet(participantId)` | Get wallet balance and available balance |
+| `walletDeposit(req)` | Deposit funds into a participant wallet |
+| `walletWithdraw(req)` | Withdraw funds from a participant wallet |
+| `getWalletHistory(participantId, opts?)` | List wallet entries |
+| `createTransfer(req)` | Move funds between participant wallets |
+| `listHolds(opts?)` | List held funds |
+| `getHoldsSummary()` | Get aggregate held-funds totals |
+| `releaseHold(req)` | Release a hold and optionally execute the transfer |
 
-### Reports
+### Checkout, Payouts, and Refunds
 
 | Method | Description |
-|--------|-------------|
-| `getProfitLoss(start, end)` | Income statement |
-| `getTrialBalance(asOf)` | Account balances |
-| `get1099Summary(year)` | Contractor payments |
-| `getCreatorEarnings(start, end)` | Creator report |
-| `getTransactions(start, end, creatorId?)` | Transaction history |
+| --- | --- |
+| `createCheckoutSession(req)` | Create hosted or direct checkout flows |
+| `createPayout(req)` | Create a payout resource |
+| `createRefund(req)` | Create a refund resource |
+| `listRefunds(req?)` | Query refunds, including by `saleReference` |
+
+### Webhooks
+
+| Method | Description |
+| --- | --- |
+| `listWebhookEndpoints()` | List configured webhook endpoints |
+| `getWebhookDeliveries(endpointId?, limit?)` | Inspect recent deliveries |
+| `rotateWebhookSecret(endpointId)` | Rotate an endpoint secret |
+| `webhooks.verifySignature(...)` | Verify `X-Soledgic-Signature` |
+| `webhooks.parseEvent(payload)` | Parse a webhook payload into an event object |
+
+## Replay Safety
+
+Replay protection is endpoint-specific:
+
+- direct checkout mode supports `idempotencyKey`
+- refunds support `idempotencyKey`
+- wallet writes, transfers, and payouts rely on stable `referenceId`
+
+If your integration retries requests or replays processor events, treat `referenceId` as mandatory for treasury writes even when the type allows it.
 
 ## Error Handling
 
-```typescript
-import { Soledgic, SoledgicError } from '@soledgic/sdk'
+```ts
+import Soledgic, { SoledgicError } from '@soledgic/sdk'
 
 try {
-  await ledger.processPayout({ ... })
+  await soledgic.createPayout({
+    participantId: 'creator_456',
+    referenceId: 'payout_retry_safe_001',
+    amount: 999999,
+    payoutMethod: 'card',
+  })
 } catch (error) {
   if (error instanceof SoledgicError) {
-    console.log(error.message)  // "Insufficient balance..."
-    console.log(error.status)   // 400
+    console.log(error.message)
+    console.log(error.status)
+    console.log(error.code)
   }
 }
 ```
 
-## Features
+The SDK surfaces structured `error_code` values from the API when they are present. Use those codes for client logic instead of matching on human-readable messages.
 
-- **Dual Mode**: Marketplace (splits) or Standard (simple income/expense)
-- **Auto Splits**: 5-tier priority system (request → creator → product → tier → default)
-- **Withholding**: Tax reserves, refund buffers with auto-release
-- **Full Audit Trail**: Every action logged
-- **CPA-Ready Reports**: P&L, Trial Balance, 1099
+## Security Boundary
+
+This SDK is intentionally limited to the public integration contract:
+
+- API-key treasury resources under `/v1/*`
+- webhook verification helpers
+
+It does not authenticate end-user dashboard sessions, and it does not expose the internal operator routes used for:
+
+- shared identity profiles
+- participant identity linking and unlinking
+- ecosystem management
+- internal fixture cleanup
+
+Those flows are documented in [docs/OPERATOR_CONTROL_PLANE.md](../../docs/OPERATOR_CONTROL_PLANE.md).

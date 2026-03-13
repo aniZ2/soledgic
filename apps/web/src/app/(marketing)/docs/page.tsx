@@ -92,6 +92,14 @@ export default function DocsPage() {
         </p>
       </div>
 
+      <div className="mb-12 rounded-lg border border-slate-500/20 bg-slate-500/10 p-4">
+        <p className="text-sm text-slate-700">
+          Shared identity, participant linking, ecosystems, and fixture cleanup are operator control-plane features.
+          They require authenticated dashboard sessions and are intentionally excluded from the public `/v1` API reference
+          and the TypeScript SDK.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
         {sections.map((section) => {
           const Icon = section.icon

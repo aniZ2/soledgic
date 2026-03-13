@@ -4,30 +4,31 @@
 
 ## What Soledgic Does
 
-Soledgic tracks **payment amounts only**. It does not store any personally identifiable information (PII).
+Soledgic tracks payment amounts and can now store a **limited shared tax profile** for operator-managed identity flows.
 
 | Soledgic Does | Soledgic Does NOT |
 |---------------|-------------------|
-| Calculate annual totals per creator | Store SSNs, EINs, or TINs |
-| Track monthly payment breakdowns | Store names or addresses |
+| Calculate annual totals per creator | Store full SSNs, EINs, or TINs |
+| Track monthly payment breakdowns | Store raw tax documents or filing PDFs |
+| Store legal name, address, TIN type, and TIN last4 in shared tax profiles | Act as the IRS filing service |
 | Export payment summaries (CSV/JSON) | Generate filled 1099 PDFs |
 | Identify creators over $600 threshold | File with IRS |
 
-**Your responsibility:** Maintain recipient records (W-9 data) in your own system, then merge with Soledgic's payment data for 1099 filing.
+**Your responsibility:** Maintain the full recipient tax record and filing workflow. Soledgic can hold limited shared tax-profile data, but full TINs and filing artifacts should stay in your primary compliance systems or processor.
 
 ---
 
-## Why No PII?
+## Why Limited PII?
 
-Storing SSNs and addresses creates:
+Storing full SSNs and filing documents creates:
 - **Security liability** — data breach costs average $4.5M
 - **Compliance burden** — IRS Publication 1281, state privacy laws
 - **Encryption requirements** — at-rest, in-transit, key management
 
-By keeping PII out of Soledgic:
+By keeping the stored tax profile narrow:
 - Your accounting data stays clean and auditable
-- You control sensitive data in your existing systems
-- No SSN encryption headaches
+- You can reuse shared identity data across products
+- Full TIN handling can stay in your existing compliance systems
 
 ---
 
@@ -37,26 +38,31 @@ By keeping PII out of Soledgic:
 ┌─────────────────────────────────────────────────────────────┐
 │  YOUR PLATFORM                                              │
 │                                                             │
-│  1. Collect W-9 from creators (store in YOUR database)      │
+│  1. Collect W-9 from creators                               │
 │     • Legal name                                            │
 │     • TIN (SSN/EIN)                                         │
 │     • Address                                               │
 │     • Tax classification                                    │
 │                                                             │
-│  2. Record sales via Soledgic API                           │
-│     soledgic.recordSale({ creator_id, amount })             │
+│  2. Store full TIN outside Soledgic                         │
+│     Optional: sync legal name / address / last4            │
+│     into shared tax profile for operator workflows          │
+│                                                             │
+│  3. Record sales via Soledgic API                           │
+│     Use participant + checkout/payout/refund flows          │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  SOLEDGIC                                                   │
 │                                                             │
-│  3. Tracks payments by creator_id                           │
+│  4. Tracks payments by creator_id                           │
 │     • Gross amounts                                         │
 │     • Monthly breakdowns                                    │
 │     • Transaction counts                                    │
+│     • Optional shared tax profile metadata                  │
 │                                                             │
-│  4. Export payment summaries                                │
+│  5. Export payment summaries                                │
 │     creator_id, gross_amount, jan, feb, mar...              │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -64,12 +70,12 @@ By keeping PII out of Soledgic:
 ┌─────────────────────────────────────────────────────────────┐
 │  YOUR TAX PROCESS                                           │
 │                                                             │
-│  5. Merge Soledgic export with your W-9 records             │
+│  6. Merge Soledgic export with your full W-9 records        │
 │     JOIN on creator_id                                      │
 │                                                             │
-│  6. Generate 1099 forms (Tax1099, Track1099, etc.)          │
+│  7. Generate 1099 forms (Tax1099, Track1099, etc.)          │
 │                                                             │
-│  7. File with IRS and send to recipients                    │
+│  8. File with IRS and send to recipients                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -89,13 +95,17 @@ By keeping PII out of Soledgic:
 | `transaction_count` | `48` | Number of payments |
 | `monthly_amounts` | `{"jan": 1200, ...}` | Box 5a-5l |
 | `status` | `calculated` | Workflow state |
+| `legal_name` | `Jane Doe LLC` | Optional shared tax profile |
+| `tax_id_type` | `ein` | Optional shared tax profile |
+| `tax_id_last4` | `4321` | Optional shared tax profile |
+| `address_*` | `Austin, TX` | Optional shared tax profile |
 
 ### What's NOT Stored
 
-- ❌ Names (legal or business)
-- ❌ SSN / EIN / TIN
-- ❌ Addresses
-- ❌ W-9 certifications
+- ❌ Full SSN / EIN / TIN
+- ❌ Uploaded W-9 documents
+- ❌ IRS filing receipts
+- ❌ Full taxpayer identity record outside the shared-profile subset
 - ❌ PDF documents
 
 ---
@@ -227,9 +237,10 @@ WHERE s.gross_amount >= 600;
 │  1099 TAX REPORTING                    Tax Year: [2024 ▾]   │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  ⓘ No Personal Information Stored                          │
-│  Soledgic tracks payment amounts only. Export and merge     │
-│  with your own recipient records for 1099 filing.           │
+│  ⓘ Limited Tax Profile Data Stored                         │
+│  Soledgic tracks payment amounts and may store shared       │
+│  tax-profile fields. Keep the full taxpayer record and      │
+│  filing workflow in your primary compliance systems.        │
 │                                                             │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
 │  │ Total   │  │Calculated│  │Exported │  │ Filed   │        │

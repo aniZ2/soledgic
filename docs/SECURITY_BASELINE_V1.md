@@ -240,10 +240,10 @@ supabase secrets set ALLOWED_API_KEYS=sk_live_key1,sk_live_key2
 |-----------|--------|-------|
 | Payment amounts | ✅ | In cents |
 | Creator IDs | ✅ | Platform-defined, not PII |
-| Names | ❌ | Platform responsibility |
-| Emails | ❌ | Platform responsibility |
-| Addresses | ❌ | Platform responsibility |
-| SSN/Tax IDs | ❌ | Platform responsibility |
+| Names | ✅ Limited | Shared profile and shared tax profile only |
+| Emails | ✅ Limited | User profile and participant metadata only |
+| Addresses | ✅ Limited | Shared tax profile only |
+| SSN/Tax IDs | ✅ Limited | TIN type and last4 only; no full identifiers |
 
 ### 7.2 Sensitive Data Encryption ✅
 

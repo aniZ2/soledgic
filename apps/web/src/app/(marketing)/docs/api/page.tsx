@@ -427,6 +427,15 @@ export default function ApiReferencePage() {
         </p>
       </section>
 
+      <section className="mb-12 rounded-lg border border-slate-500/20 bg-slate-500/10 p-4">
+        <p className="text-sm text-slate-700">
+          This reference is for the supported public integration surface. Dashboard/session routes such as
+          <code className="bg-slate-100 px-1.5 py-0.5 rounded mx-1">/api/identity/*</code> and
+          <code className="bg-slate-100 px-1.5 py-0.5 rounded mx-1">/api/ecosystems/*</code> are operator-only
+          and intentionally excluded from the public SDK and OpenAPI spec.
+        </p>
+      </section>
+
       <section className="mb-12">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Base URLs</h2>
         <div className="space-y-3">
