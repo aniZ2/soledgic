@@ -514,6 +514,7 @@ async function main() {
     platforms: ecosystemPlatforms,
     ledgers: allLedgers,
     portfolioSummary: summary,
+    cleanupCommand: `npm run test:ecosystem:cleanup -- --run-id ${runId} --execute`,
   }, null, 2))
 }
 
