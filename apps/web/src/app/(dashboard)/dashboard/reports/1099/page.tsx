@@ -6,9 +6,10 @@ import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provi
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
-import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info, Send } from 'lucide-react'
+import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info, Send, FileEdit } from 'lucide-react'
 import { useToast } from '@/components/notifications/toast-provider'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
+import { CorrectTaxDocumentModal } from '@/components/tax/correct-tax-document-modal'
 
 interface TaxDocument {
   id: string
@@ -25,6 +26,7 @@ interface TaxDocument {
   pdf_path: string | null
   pdf_generated_at: string | null
   copy_type: string | null
+  metadata: Record<string, unknown> | null
 }
 
 interface Stats {
@@ -50,6 +52,7 @@ export default function TaxDocumentsPage() {
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [sendingCopyB, setSendingCopyB] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'mark-filed' | 'generate-all-pdfs' | 'send-copy-b' | null>(null)
+  const [correctingDoc, setCorrectingDoc] = useState<TaxDocument | null>(null)
   const toast = useToast()
 
   const loadData = useCallback(async () => {
@@ -272,14 +275,22 @@ export default function TaxDocumentsPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, doc?: TaxDocument) => {
+    const isCorrection = doc?.metadata?.is_correction === true
     switch (status) {
       case 'calculated':
-        return <span className="px-2 py-1 text-xs rounded bg-blue-500/10 text-blue-700 dark:text-blue-400">Calculated</span>
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className="px-2 py-1 text-xs rounded bg-blue-500/10 text-blue-700 dark:text-blue-400">Calculated</span>
+            {isCorrection && <span className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-700 dark:text-purple-400">Correction</span>}
+          </span>
+        )
       case 'exported':
         return <span className="px-2 py-1 text-xs rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">Exported</span>
       case 'filed':
         return <span className="px-2 py-1 text-xs rounded bg-green-500/10 text-green-700 dark:text-green-400">Filed</span>
+      case 'superseded':
+        return <span className="px-2 py-1 text-xs rounded bg-red-500/10 text-red-700 dark:text-red-400">Superseded</span>
       default:
         return <span className="px-2 py-1 text-xs rounded bg-muted text-muted-foreground">{status}</span>
     }
@@ -445,38 +456,59 @@ export default function TaxDocumentsPage() {
                 <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Transactions</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">PDF</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {documents.map((doc) => (
-                <tr key={doc.id} className="hover:bg-muted/50">
-                  <td className="px-4 py-3">
-                    <code className="text-sm bg-muted px-2 py-1 rounded">{doc.recipient_id}</code>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">
-                    {doc.document_type}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right font-medium">
-                    ${Number(doc.gross_amount).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right text-muted-foreground">
-                    {doc.transaction_count || '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {getStatusBadge(doc.status)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => downloadPdf(doc.id)}
-                      disabled={generatingPdf === doc.id}
-                      className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:text-muted-foreground flex items-center gap-1 ml-auto"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      {generatingPdf === doc.id ? '...' : doc.pdf_path ? 'Re-download' : 'Download'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {documents.map((doc) => {
+                const isSuperseded = doc.status === 'superseded'
+                const isCorrection = doc.metadata?.is_correction === true
+                return (
+                  <tr key={doc.id} className={`hover:bg-muted/50 ${isSuperseded ? 'opacity-60' : ''}`}>
+                    <td className="px-4 py-3">
+                      <code className={`text-sm bg-muted px-2 py-1 rounded ${isSuperseded ? 'line-through' : ''}`}>{doc.recipient_id}</code>
+                      {isCorrection && (
+                        <span className="ml-2 text-xs text-purple-600 dark:text-purple-400">
+                          (corrects {String(doc.metadata?.corrects_document_id ?? '').slice(0, 8)}...)
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {doc.document_type}
+                    </td>
+                    <td className={`px-4 py-3 text-sm text-right font-medium ${isSuperseded ? 'line-through text-muted-foreground' : ''}`}>
+                      ${Number(doc.gross_amount).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right text-muted-foreground">
+                      {doc.transaction_count || '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {getStatusBadge(doc.status, doc)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => downloadPdf(doc.id)}
+                        disabled={generatingPdf === doc.id}
+                        className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 disabled:text-muted-foreground flex items-center gap-1 ml-auto"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        {generatingPdf === doc.id ? '...' : doc.pdf_path ? 'Re-download' : 'Download'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {!isSuperseded && (
+                        <button
+                          onClick={() => setCorrectingDoc(doc)}
+                          className="text-sm text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 flex items-center gap-1 ml-auto"
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                          Correct
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -539,6 +571,22 @@ export default function TaxDocumentsPage() {
         message={`Email 1099-NEC Copy B PDFs to all recipients with $600+ in gross payments for ${taxYear}? Recipients without an email on file will be skipped. Previously sent documents will not be re-sent.`}
         confirmLabel="Send Copy B"
       />
+
+      {correctingDoc && ledgerId && (
+        <CorrectTaxDocumentModal
+          isOpen={true}
+          onClose={() => setCorrectingDoc(null)}
+          ledgerId={ledgerId}
+          documentId={correctingDoc.id}
+          currentGrossAmount={Number(correctingDoc.gross_amount)}
+          recipientId={correctingDoc.recipient_id}
+          taxYear={correctingDoc.tax_year}
+          onSuccess={() => {
+            setCorrectingDoc(null)
+            loadData()
+          }}
+        />
+      )}
     </div>
   )
 }

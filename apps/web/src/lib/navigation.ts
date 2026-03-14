@@ -13,6 +13,7 @@ import {
   Receipt,
   Bell,
   Shield,
+  ShieldCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -51,6 +52,7 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
       { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },
       { name: 'Reports', href: '/dashboard/reports', icon: FileText },
+      { name: 'Compliance', href: '/dashboard/compliance', icon: ShieldCheck },
     ],
   },
   {

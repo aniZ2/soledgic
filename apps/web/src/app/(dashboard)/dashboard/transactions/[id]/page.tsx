@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { 
+import {
   ArrowLeft, ExternalLink,
   FileText, Database, Clock
 } from 'lucide-react'
+import { ReverseTransactionButton } from '@/components/transactions/reverse-transaction-button'
 
 interface TransactionEntry {
   id: string
@@ -174,8 +175,8 @@ export default async function TransactionDetailPage({
           </div>
           <div className="text-right">
             <p className={`text-3xl font-bold ${
-              transaction.transaction_type === 'sale' ? 'text-green-600' : 
-              transaction.transaction_type === 'refund' ? 'text-red-600' : 
+              transaction.transaction_type === 'sale' ? 'text-green-600' :
+              transaction.transaction_type === 'refund' ? 'text-red-600' :
               'text-foreground'
             }`}>
               {formatCurrency(transaction.amount)}
@@ -183,10 +184,18 @@ export default async function TransactionDetailPage({
             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-2 ${
               transaction.status === 'completed' ? 'bg-green-500/10 text-green-600' :
               transaction.status === 'voided' ? 'bg-red-500/10 text-red-600' :
+              transaction.status === 'reversed' ? 'bg-red-500/10 text-red-600' :
               'bg-yellow-500/10 text-yellow-600'
             }`}>
               {transaction.status}
             </span>
+            <div className="mt-3">
+              <ReverseTransactionButton
+                transactionId={transaction.id}
+                transactionAmount={transaction.amount}
+                transactionStatus={transaction.status}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -288,18 +288,30 @@ export class SoledgicTestClient {
   }
 
   // Reverse/void - matches reverse-transaction Edge Function
-  async reverseTransaction(transactionId: string, reason: string) {
+  async reverseTransaction(
+    transactionId: string,
+    reason: string,
+    options?: { idempotency_key?: string; partial_amount?: number },
+  ) {
     return this.request('reverse-transaction', {
       transaction_id: transactionId,
       reason,
+      ...(options?.idempotency_key ? { idempotency_key: options.idempotency_key } : {}),
+      ...(options?.partial_amount != null ? { partial_amount: options.partial_amount } : {}),
     })
   }
 
-  async voidTransaction(transactionId: string, reason: string) {
+  async voidTransaction(
+    transactionId: string,
+    reason: string,
+    options?: { idempotency_key?: string; partial_amount?: number },
+  ) {
     // Same endpoint, just different handling based on transaction state
     return this.request('reverse-transaction', {
       transaction_id: transactionId,
       reason,
+      ...(options?.idempotency_key ? { idempotency_key: options.idempotency_key } : {}),
+      ...(options?.partial_amount != null ? { partial_amount: options.partial_amount } : {}),
     })
   }
 

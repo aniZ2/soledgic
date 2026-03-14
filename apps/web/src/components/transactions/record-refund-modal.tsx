@@ -15,9 +15,36 @@ interface RecordRefundModalProps {
 }
 
 type RefundFrom = 'both' | 'platform_only' | 'creator_only'
+type RefundMode = 'ledger_only' | 'processor_refund'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
+}
+
+function formatErrorFromResponse(data: {
+  error?: string
+  error_code?: string
+  transaction_id?: string
+}): string {
+  const code = data.error_code || ''
+  const message = data.error || ''
+
+  switch (code) {
+    case 'duplicate_refund_reference':
+      return data.transaction_id
+        ? `This refund was already processed (transaction: ${data.transaction_id})`
+        : 'This refund was already processed'
+    case 'sale_already_reversed':
+      return 'This sale has already been reversed and cannot be refunded'
+    case 'sale_already_fully_refunded':
+      return 'This sale has already been fully refunded'
+    case 'refund_amount_exceeds_remaining':
+      return message || 'Refund amount exceeds the remaining refundable balance'
+    case 'missing_processor_payment_id':
+      return 'Processor Payment ID is required for processor refunds'
+    default:
+      return message || 'Failed to process refund'
+  }
 }
 
 export function RecordRefundModal({
@@ -40,6 +67,8 @@ export function RecordRefundModal({
   const [refundAmount, setRefundAmount] = useState('')
   const [reason, setReason] = useState('')
   const [refundFrom, setRefundFrom] = useState<RefundFrom>('both')
+  const [mode, setMode] = useState<RefundMode>('ledger_only')
+  const [processorPaymentId, setProcessorPaymentId] = useState('')
 
   const lookupSale = useCallback(async (ref: string) => {
     if (!ref.trim()) return
@@ -96,19 +125,34 @@ export function RecordRefundModal({
       return
     }
 
+    if (mode === 'processor_refund' && !processorPaymentId.trim()) {
+      setError('Processor Payment ID is required for processor refunds')
+      return
+    }
+
+    const idempotencyKey = crypto.randomUUID()
+
     setLoading(true)
     setError(null)
 
     try {
+      const body: Record<string, unknown> = {
+        sale_reference: saleReference.trim(),
+        amount: amountCents,
+        reason: reason.trim(),
+        refund_from: refundFrom,
+        idempotency_key: idempotencyKey,
+        mode,
+      }
+
+      if (mode === 'processor_refund') {
+        body.processor_payment_id = processorPaymentId.trim()
+      }
+
       const response = await callLedgerFunction('refunds', {
         ledgerId,
         method: 'POST',
-        body: {
-          sale_reference: saleReference.trim(),
-          amount: amountCents,
-          reason: reason.trim(),
-          refund_from: refundFrom,
-        },
+        body,
       })
 
       const data = await response.json()
@@ -117,7 +161,12 @@ export function RecordRefundModal({
         if (handleProtectedResponse(response, data, submitRefund)) {
           return
         }
-        throw new Error(data.error || 'Failed to process refund')
+        throw new Error(formatErrorFromResponse(data))
+      }
+
+      // The backend returns { success: false } with 200 for some conflict cases
+      if (data.success === false && data.error_code) {
+        throw new Error(formatErrorFromResponse(data))
       }
 
       setSuccess(true)
@@ -144,6 +193,8 @@ export function RecordRefundModal({
     setRefundAmount('')
     setReason('')
     setRefundFrom('both')
+    setMode('ledger_only')
+    setProcessorPaymentId('')
     setSaleInfo(null)
     setError(null)
   }
@@ -266,6 +317,56 @@ export function RecordRefundModal({
                 </select>
               </div>
 
+              {/* Mode Selector */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Refund Mode
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="refund_mode"
+                      value="ledger_only"
+                      checked={mode === 'ledger_only'}
+                      onChange={() => setMode('ledger_only')}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm text-foreground">Ledger Only</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="refund_mode"
+                      value="processor_refund"
+                      checked={mode === 'processor_refund'}
+                      onChange={() => setMode('processor_refund')}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm text-foreground">Processor Refund</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Processor Payment ID (only for processor_refund mode) */}
+              {mode === 'processor_refund' && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Processor Payment ID *
+                  </label>
+                  <input
+                    type="text"
+                    value={processorPaymentId}
+                    onChange={(e) => setProcessorPaymentId(e.target.value)}
+                    placeholder="e.g., TRxxxxxxxxxxxxxxxxxx"
+                    className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The payment processor transfer ID to refund against
+                  </p>
+                </div>
+              )}
+
               {error && (
                 <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-md text-red-600">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -276,7 +377,7 @@ export function RecordRefundModal({
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={loading || !saleReference.trim() || !reason.trim()}
+                  disabled={loading || !saleReference.trim() || !reason.trim() || (mode === 'processor_refund' && !processorPaymentId.trim())}
                   className="flex-1 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loading && <Loader2 className="w-4 h-4 animate-spin" />}

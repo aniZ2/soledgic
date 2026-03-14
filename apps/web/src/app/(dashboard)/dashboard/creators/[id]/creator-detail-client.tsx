@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2, CheckCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, DollarSign, TrendingUp, FileText, Wallet, Clock, Trash2, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { ProcessPayoutModal } from '@/components/payouts/process-payout-modal'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
@@ -53,6 +53,22 @@ interface TaxInfo {
   address_postal_code: string | null
 }
 
+interface TaxCalculation {
+  participant_id: string
+  tax_year: number
+  gross_payments: number
+  transaction_count: number
+  requires_1099: boolean
+  monthly_totals: Record<string, number>
+  threshold: number
+  linked_user_id: string | null
+  shared_tax_profile: {
+    status: string
+    legal_name: string | null
+    tax_id_last4: string | null
+  } | null
+}
+
 interface CreatorDetailClientProps {
   ledger: {
     id: string
@@ -96,8 +112,26 @@ export function CreatorDetailClient({
   const [releasingEntryId, setReleasingEntryId] = useState<string | null>(null)
   const [releaseError, setReleaseError] = useState<string | null>(null)
   const [showTaxForm, setShowTaxForm] = useState(false)
+  const [taxCalc, setTaxCalc] = useState<TaxCalculation | null>(null)
+  const [taxCalcLoading, setTaxCalcLoading] = useState(true)
   const { challenge, dismissChallenge, handleProtectedResponse, retryVerifiedAction } =
     useSensitiveActionGate()
+
+  useEffect(() => {
+    const currentYear = new Date().getFullYear()
+    const url = `/api/ledger-functions/tax/calculations/${creatorAccount.entity_id}?tax_year=${currentYear}`
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.success && data.calculation) {
+          setTaxCalc(data.calculation)
+        }
+      })
+      .catch(() => {
+        // Tax summary is best-effort; don't block the page
+      })
+      .finally(() => setTaxCalcLoading(false))
+  }, [creatorAccount.entity_id])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -292,6 +326,53 @@ export function CreatorDetailClient({
           </p>
         </div>
       </div>
+
+      {/* Tax Status */}
+      {!taxCalcLoading && taxCalc && (
+        <div className="bg-card border border-border rounded-lg p-6 mb-8">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2 mb-4">
+            <ShieldCheck className="w-5 h-5" />
+            Tax Status ({taxCalc.tax_year})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <dt className="text-sm text-muted-foreground">Requires 1099</dt>
+              <dd className="mt-1">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                    taxCalc.requires_1099
+                      ? 'bg-red-500/10 text-red-600'
+                      : 'bg-green-500/10 text-green-600'
+                  }`}
+                >
+                  {taxCalc.requires_1099 ? 'Yes' : 'No'}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">YTD Gross Earnings</dt>
+              <dd className="text-foreground font-medium mt-1">
+                {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+                  taxCalc.gross_payments,
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-muted-foreground">Backup Withholding</dt>
+              <dd className="mt-1">
+                {!hasTaxInfo ? (
+                  <span className="inline-flex items-center gap-1 text-yellow-600 text-sm">
+                    <AlertTriangle className="w-4 h-4" />
+                    Backup withholding (24%) active — no TIN on file
+                  </span>
+                ) : (
+                  <span className="text-green-600 text-sm">Not applicable</span>
+                )}
+              </dd>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tax Information */}
       <div className="bg-card border border-border rounded-lg p-6 mb-8">
