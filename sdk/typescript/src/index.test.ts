@@ -1303,4 +1303,117 @@ describe('Soledgic SDK', () => {
     expect(body.reason).toBe('Duplicate')
     expect(fn.mock.calls[0][0]).toContain('/reverse-transaction')
   })
+
+  it('reverseTransaction sends idempotency_key and partial_amount', async () => {
+    const fn = mockFetch({
+      success: true,
+      void_type: 'reversing_entry',
+      message: 'Transaction reversed with reversing entries',
+      reversal_id: 'rev_2',
+      original_transaction_id: 'txn_5',
+      reversed_amount: 50.00,
+      is_partial: true,
+      reversed_at: '2026-03-14T00:00:00Z',
+    })
+    const sdk = createClient(fn)
+    await sdk.reverseTransaction({
+      transactionId: 'txn_5',
+      reason: 'Partial refund',
+      partialAmount: 5000,
+      idempotencyKey: 'idem_123',
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.transaction_id).toBe('txn_5')
+    expect(body.partial_amount).toBe(5000)
+    expect(body.idempotency_key).toBe('idem_123')
+    expect(body.reason).toBe('Partial refund')
+  })
+
+  it('reverseTransaction maps snake_case response to camelCase', async () => {
+    const fn = mockFetch({
+      success: true,
+      void_type: 'reversing_entry',
+      message: 'Transaction reversed with reversing entries',
+      reversal_id: 'rev_3',
+      original_transaction_id: 'txn_6',
+      reversed_amount: 25.50,
+      is_partial: true,
+      reversed_at: '2026-03-14T12:00:00Z',
+      voided_at: null,
+      warning: 'This transaction was reconciled - bank matching may need review',
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.reverseTransaction({
+      transactionId: 'txn_6',
+      reason: 'Partial correction',
+      partialAmount: 2550,
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.voidType).toBe('reversing_entry')
+    expect(result.message).toBe('Transaction reversed with reversing entries')
+    expect(result.transactionId).toBe('txn_6')
+    expect(result.reversalId).toBe('rev_3')
+    expect(result.reversedAmount).toBe(25.50)
+    expect(result.isPartial).toBe(true)
+    expect(result.reversedAt).toBe('2026-03-14T12:00:00Z')
+    expect(result.voidedAt).toBeNull()
+    expect(result.warning).toBe('This transaction was reconciled - bank matching may need review')
+  })
+
+  it('reverseTransaction maps soft_delete response correctly', async () => {
+    const fn = mockFetch({
+      success: true,
+      void_type: 'soft_delete',
+      message: 'Transaction voided successfully',
+      transaction_id: 'txn_7',
+      reversal_id: null,
+      voided_at: '2026-03-14T10:00:00Z',
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.reverseTransaction({
+      transactionId: 'txn_7',
+      reason: 'Not needed',
+    })
+
+    expect(result.voidType).toBe('soft_delete')
+    expect(result.transactionId).toBe('txn_7')
+    expect(result.reversalId).toBeNull()
+    expect(result.voidedAt).toBe('2026-03-14T10:00:00Z')
+    expect(result.reversedAmount).toBeNull()
+    expect(result.isPartial).toBeNull()
+  })
+
+  // === CORRECT TAX DOCUMENT ===
+
+  it('correctTaxDocument sends params correctly', async () => {
+    const fn = mockFetch({ success: true, document: { id: 'doc_1', status: 'corrected' } })
+    const sdk = createClient(fn)
+    await sdk.correctTaxDocument('doc_1', {
+      reason: 'Wrong amount',
+      grossAmount: 150000,
+      federalWithholding: 3000,
+      stateWithholding: 1500,
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.reason).toBe('Wrong amount')
+    expect(body.gross_amount).toBe(150000)
+    expect(body.federal_withholding).toBe(3000)
+    expect(body.state_withholding).toBe(1500)
+    expect(fn.mock.calls[0][0]).toContain('/tax/documents/doc_1/correct')
+  })
+
+  // === DELIVER TAX DOCUMENT COPY B ===
+
+  it('deliverTaxDocumentCopyB sends tax_year', async () => {
+    const fn = mockFetch({ success: true, delivered: 5 })
+    const sdk = createClient(fn)
+    await sdk.deliverTaxDocumentCopyB(2025)
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.tax_year).toBe(2025)
+    expect(fn.mock.calls[0][0]).toContain('/tax/documents/deliver-copy-b')
+  })
 })

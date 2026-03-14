@@ -370,6 +370,8 @@ export interface ReverseTransactionRequest {
   transactionId: string
   reason: string
   partialAmount?: number
+  idempotencyKey?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface CreatePeriodRequest {
@@ -609,6 +611,130 @@ export interface SendBreachAlertRequest {
   channel?: 'slack' | 'email' | 'webhook'
 }
 
+// === INVOICE TYPES ===
+
+export interface InvoiceLineItem {
+  description: string
+  quantity: number
+  unitPrice: number
+  amount?: number
+}
+
+export interface CreateInvoiceRequest {
+  customerName: string
+  customerEmail?: string
+  customerId?: string
+  customerAddress?: {
+    line1?: string
+    line2?: string
+    city?: string
+    state?: string
+    postalCode?: string
+    country?: string
+  }
+  lineItems: InvoiceLineItem[]
+  dueDate?: string
+  notes?: string
+  terms?: string
+  referenceId?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RecordInvoicePaymentRequest {
+  amount: number
+  paymentMethod?: string
+  paymentDate?: string
+  referenceId?: string
+  notes?: string
+}
+
+export interface PayBillRequest {
+  billTransactionId?: string
+  amount: number
+  vendorName?: string
+  referenceId?: string
+  paymentMethod?: string
+  paymentDate?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface CreateBudgetRequest {
+  name: string
+  categoryCode?: string
+  budgetAmount: number
+  budgetPeriod: 'weekly' | 'monthly' | 'quarterly' | 'annual'
+  alertAtPercentage?: number
+}
+
+export interface CreateRecurringRequest {
+  name: string
+  merchantName: string
+  categoryCode: string
+  amount: number
+  recurrenceInterval: 'weekly' | 'monthly' | 'quarterly' | 'annual'
+  recurrenceDay?: number
+  startDate: string
+  endDate?: string
+  businessPurpose: string
+  isVariableAmount?: boolean
+}
+
+export interface CreateContractorRequest {
+  name: string
+  email?: string
+  companyName?: string
+}
+
+export interface RecordContractorPaymentRequest {
+  contractorId: string
+  amount: number
+  paymentDate: string
+  paymentMethod?: string
+  paymentReference?: string
+  description?: string
+}
+
+export interface CreateBankAccountRequest {
+  bankName: string
+  accountName: string
+  accountType: 'checking' | 'savings' | 'credit_card' | 'other'
+  accountLastFour?: string
+}
+
+export interface SubmitTaxInfoRequest {
+  participantId: string
+  legalName: string
+  taxIdType: 'ssn' | 'ein' | 'itin'
+  taxIdLast4: string
+  businessType: 'individual' | 'sole_proprietor' | 'llc' | 'corporation' | 'partnership'
+  address?: {
+    line1?: string
+    line2?: string
+    city?: string
+    state?: string
+    postalCode?: string
+    country?: string
+  }
+  certify: boolean
+}
+
+export interface ImportBankStatementLine {
+  transactionDate: string
+  postDate?: string
+  description: string
+  amount: number
+  referenceNumber?: string
+  checkNumber?: string
+  merchantName?: string
+  categoryHint?: string
+}
+
+export interface ImportBankStatementRequest {
+  bankAccountId: string
+  lines: ImportBankStatementLine[]
+  autoMatch?: boolean
+}
+
 // === RESPONSE TYPES ===
 
 export interface SaleResponse {
@@ -638,12 +764,15 @@ export interface CheckoutBreakdown {
 
 export interface ReverseResponse {
   success: boolean
-  voidType: 'soft_delete' | 'reversing_entry'
+  voidType: string
   message: string
   transactionId: string
-  reversingTransactionId?: string
-  voidedAt: string
-  warning?: string
+  reversalId: string | null
+  reversedAmount: number | null
+  isPartial: boolean | null
+  voidedAt: string | null
+  reversedAt: string | null
+  warning: string | null
 }
 
 export interface Period {
@@ -1818,11 +1947,25 @@ export class Soledgic {
   // === REVERSALS & CORRECTIONS ===
 
   async reverseTransaction(req: ReverseTransactionRequest): Promise<ReverseResponse> {
-    return this.request('reverse-transaction', {
+    const response = await this.request<any>('reverse-transaction', {
       transaction_id: req.transactionId,
       reason: req.reason,
       partial_amount: req.partialAmount,
+      idempotency_key: req.idempotencyKey,
+      metadata: req.metadata,
     })
+    return {
+      success: response.success,
+      voidType: response.void_type,
+      message: response.message,
+      transactionId: response.transaction_id ?? response.original_transaction_id ?? req.transactionId,
+      reversalId: response.reversal_id ?? null,
+      reversedAmount: response.reversed_amount ?? null,
+      isPartial: response.is_partial ?? null,
+      voidedAt: response.voided_at ?? null,
+      reversedAt: response.reversed_at ?? null,
+      warning: response.warning ?? null,
+    }
   }
 
   // === PERIOD MANAGEMENT ===
@@ -3603,6 +3746,215 @@ export class Soledgic {
         lastError: refund.last_error ?? null,
       })),
     }
+  }
+
+  // === INVOICES ===
+
+  async createInvoice(req: CreateInvoiceRequest) {
+    return this.request<any>('invoices', {
+      customer_name: req.customerName,
+      customer_email: req.customerEmail,
+      customer_id: req.customerId,
+      customer_address: req.customerAddress ? {
+        line1: req.customerAddress.line1,
+        line2: req.customerAddress.line2,
+        city: req.customerAddress.city,
+        state: req.customerAddress.state,
+        postal_code: req.customerAddress.postalCode,
+        country: req.customerAddress.country,
+      } : undefined,
+      line_items: req.lineItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        amount: item.amount ?? Math.round(item.quantity * item.unitPrice),
+      })),
+      due_date: req.dueDate,
+      notes: req.notes,
+      terms: req.terms,
+      reference_id: req.referenceId,
+      metadata: req.metadata,
+    })
+  }
+
+  async listInvoices(options?: { status?: string; customerId?: string; limit?: number; offset?: number }) {
+    return this.requestGet<any>('invoices', {
+      status: options?.status,
+      customer_id: options?.customerId,
+      limit: options?.limit,
+      offset: options?.offset,
+    })
+  }
+
+  async getInvoice(invoiceId: string) {
+    return this.requestGet<any>(`invoices/${invoiceId}`)
+  }
+
+  async sendInvoice(invoiceId: string) {
+    return this.request<any>(`invoices/${invoiceId}/send`, {})
+  }
+
+  async recordInvoicePayment(invoiceId: string, req: RecordInvoicePaymentRequest) {
+    return this.request<any>(`invoices/${invoiceId}/record-payment`, {
+      amount: req.amount,
+      payment_method: req.paymentMethod,
+      payment_date: req.paymentDate,
+      reference_id: req.referenceId,
+      notes: req.notes,
+    })
+  }
+
+  async voidInvoice(invoiceId: string, reason?: string) {
+    return this.request<any>(`invoices/${invoiceId}/void`, { reason })
+  }
+
+  // === PAY BILL ===
+
+  async payBill(req: PayBillRequest) {
+    return this.request<any>('pay-bill', {
+      bill_transaction_id: req.billTransactionId,
+      amount: req.amount,
+      vendor_name: req.vendorName,
+      reference_id: req.referenceId,
+      payment_method: req.paymentMethod,
+      payment_date: req.paymentDate,
+      metadata: req.metadata,
+    })
+  }
+
+  // === BUDGETS ===
+
+  async createBudget(req: CreateBudgetRequest) {
+    return this.request<any>('manage-budgets', {
+      name: req.name,
+      category_code: req.categoryCode,
+      budget_amount: req.budgetAmount,
+      budget_period: req.budgetPeriod,
+      alert_at_percentage: req.alertAtPercentage,
+    })
+  }
+
+  async listBudgets() {
+    return this.requestGet<any>('manage-budgets')
+  }
+
+  // === RECURRING EXPENSES ===
+
+  async createRecurring(req: CreateRecurringRequest) {
+    return this.request<any>('manage-recurring', {
+      name: req.name,
+      merchant_name: req.merchantName,
+      category_code: req.categoryCode,
+      amount: req.amount,
+      recurrence_interval: req.recurrenceInterval,
+      recurrence_day: req.recurrenceDay,
+      start_date: req.startDate,
+      end_date: req.endDate,
+      business_purpose: req.businessPurpose,
+      is_variable_amount: req.isVariableAmount,
+    })
+  }
+
+  async listRecurring() {
+    return this.requestGet<any>('manage-recurring')
+  }
+
+  async getDueRecurring(days?: number) {
+    return this.requestGet<any>('manage-recurring/due', { days })
+  }
+
+  // === CONTRACTORS ===
+
+  async createContractor(req: CreateContractorRequest) {
+    return this.request<any>('manage-contractors', {
+      name: req.name,
+      email: req.email,
+      company_name: req.companyName,
+    })
+  }
+
+  async listContractors() {
+    return this.requestGet<any>('manage-contractors')
+  }
+
+  async recordContractorPayment(req: RecordContractorPaymentRequest) {
+    return this.request<any>('manage-contractors/payment', {
+      contractor_id: req.contractorId,
+      amount: req.amount,
+      payment_date: req.paymentDate,
+      payment_method: req.paymentMethod,
+      payment_reference: req.paymentReference,
+      description: req.description,
+    })
+  }
+
+  // === BANK ACCOUNTS ===
+
+  async createBankAccount(req: CreateBankAccountRequest) {
+    return this.request<any>('manage-bank-accounts', {
+      bank_name: req.bankName,
+      account_name: req.accountName,
+      account_type: req.accountType,
+      account_last_four: req.accountLastFour,
+    })
+  }
+
+  async listBankAccounts() {
+    return this.requestGet<any>('manage-bank-accounts')
+  }
+
+  // === LEDGER LISTING ===
+
+  async listLedgers() {
+    return this.requestGet<any>('list-ledgers')
+  }
+
+  // === DELETE CREATOR ===
+
+  async deleteCreator(creatorId: string) {
+    return this.request<any>('delete-creator', {
+      creator_id: creatorId,
+    })
+  }
+
+  // === TAX INFO ===
+
+  async submitTaxInfo(req: SubmitTaxInfoRequest) {
+    return this.request<any>('submit-tax-info', {
+      participant_id: req.participantId,
+      legal_name: req.legalName,
+      tax_id_type: req.taxIdType,
+      tax_id_last4: req.taxIdLast4,
+      business_type: req.businessType,
+      address: req.address ? {
+        line1: req.address.line1,
+        line2: req.address.line2,
+        city: req.address.city,
+        state: req.address.state,
+        postal_code: req.address.postalCode,
+        country: req.address.country,
+      } : undefined,
+      certify: req.certify,
+    })
+  }
+
+  // === BANK STATEMENT IMPORT ===
+
+  async importBankStatement(req: ImportBankStatementRequest) {
+    return this.request<any>('import-bank-statement', {
+      bank_account_id: req.bankAccountId,
+      lines: req.lines.map(line => ({
+        transaction_date: line.transactionDate,
+        post_date: line.postDate,
+        description: line.description,
+        amount: line.amount,
+        reference_number: line.referenceNumber,
+        check_number: line.checkNumber,
+        merchant_name: line.merchantName,
+        category_hint: line.categoryHint,
+      })),
+      auto_match: req.autoMatch,
+    })
   }
 }
 
