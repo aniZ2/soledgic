@@ -49,6 +49,17 @@ export class SoledgicTestClient {
 
     const data = await res.json()
 
+    // Retry on transient auth failures (401) under load — DB pool exhaustion
+    // can cause the API key lookup to fail momentarily. Safe in tests because
+    // genuinely wrong credentials would fail every earlier test first.
+    if (res.status === 401) {
+      const remaining = deadline - Date.now()
+      if (remaining > 3000) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        return this.request(endpoint, body, deadline)
+      }
+    }
+
     // Retry on rate limit (429) only if we have budget remaining
     if (res.status === 429) {
       const remaining = deadline - Date.now()

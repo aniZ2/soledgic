@@ -8,6 +8,10 @@ This directory contains test data and scripts for Soledgic development.
 - `api-keys.env.example` - Template for local test API keys
 - `test-api.sh` - Bash script to test API endpoints
 
+`scripts/run-soledgic-mcp.sh` also looks for `test-data/api-keys.env` by
+default, so the same untracked file can back both local API testing and MCP
+tooling.
+
 ## Usage
 
 ```bash

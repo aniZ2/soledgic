@@ -129,6 +129,166 @@ Deno.test('recordRefundResponse: returns structured invalid_original_sale_refere
   assertEquals(result.body.error_code, 'invalid_original_sale_reference')
 })
 
+Deno.test('recordRefundResponse: allows refunding remaining balance after a reversed refund', async () => {
+  let transactionCall = 0
+  let reversalLookupCall = 0
+  let refundRpcArgs: Record<string, unknown> | null = null
+
+  const supabase = {
+    from(table: string) {
+      if (table === 'transactions') {
+        transactionCall++
+
+        if (transactionCall === 1) {
+          return {
+            select() {
+              return this
+            },
+            eq() {
+              return this
+            },
+            single() {
+              return Promise.resolve({
+                data: {
+                  id: 'sale_txn_1',
+                  amount: 100,
+                  currency: 'USD',
+                  status: 'reversed',
+                  reference_id: 'sale_1',
+                  metadata: {},
+                  reversed_by: 'refund_txn_1',
+                },
+                error: null,
+              })
+            },
+          }
+        }
+
+        if (transactionCall === 2) {
+          return {
+            select() {
+              return this
+            },
+            eq() {
+              return this
+            },
+            maybeSingle() {
+              reversalLookupCall++
+              return Promise.resolve({
+                data: {
+                  transaction_type: 'refund',
+                },
+                error: null,
+              })
+            },
+          }
+        }
+
+        if (transactionCall === 3) {
+          return {
+            select() {
+              return this
+            },
+            eq() {
+              return this
+            },
+            not() {
+              return Promise.resolve({
+                data: [
+                  {
+                    id: 'refund_txn_1',
+                    amount: 100,
+                  },
+                ],
+                error: null,
+              })
+            },
+          }
+        }
+
+        if (transactionCall === 4) {
+          return {
+            select() {
+              return this
+            },
+            eq() {
+              return this
+            },
+            in() {
+              return this
+            },
+            not() {
+              return Promise.resolve({
+                data: [
+                  {
+                    reverses: 'refund_txn_1',
+                    amount: 100,
+                  },
+                ],
+                error: null,
+              })
+            },
+          }
+        }
+      }
+
+      if (table === 'audit_log') {
+        return {
+          insert() {
+            return Promise.resolve({ error: null })
+          },
+        }
+      }
+
+      throw new Error(`Unexpected table access in refund-reversal test: ${table}#${transactionCall}`)
+    },
+    rpc(name: string, args: Record<string, unknown>) {
+      if (name === 'record_refund_atomic_v2') {
+        refundRpcArgs = args
+        return Promise.resolve({
+          data: {
+            out_transaction_id: 'refund_txn_2',
+            out_refunded_cents: 2000,
+            out_from_creator_cents: 1600,
+            out_from_platform_cents: 400,
+            out_is_full_refund: false,
+            out_status: 'created',
+          },
+          error: null,
+        })
+      }
+
+      if (name === 'queue_webhook') {
+        return Promise.resolve({ data: null, error: null })
+      }
+
+      throw new Error(`Unexpected RPC call in refund-reversal test: ${name}`)
+    },
+  } as any
+
+  const result = await recordRefundResponse(req, supabase, ledger, {
+    original_sale_reference: 'sale_1',
+    amount: 2000,
+    reason: 'Retry refund after reversal',
+    mode: 'ledger_only',
+  }, requestId)
+  const body = result.body as {
+    success: boolean
+    refund: {
+      transaction_id: string
+      refunded_amount: number
+    }
+  }
+
+  assertEquals(result.status, 200)
+  assertEquals(body.success, true)
+  assertEquals(body.refund.transaction_id, 'refund_txn_2')
+  assertEquals(body.refund.refunded_amount, 20)
+  assertEquals(reversalLookupCall, 1)
+  assertEquals(refundRpcArgs?.['p_original_tx_id'], 'sale_txn_1')
+  assertEquals(refundRpcArgs?.['p_refund_amount'], 2000)
+})
+
 Deno.test('listRefundsResponse: maps refunds and supports sale filters', async () => {
   let queryState: Record<string, unknown> = {}
   let transactionCalls = 0
@@ -364,9 +524,55 @@ Deno.test('listRefundsResponse: includes pending processor refunds in the public
   assertEquals(body.refunds[0].last_error, 'temporary ledger error')
 })
 
-Deno.test('recordRefundResponse: returns a pending repair refund when processor refund succeeds but ledger write fails', async () => {
+Deno.test('recordRefundResponse: requires processor_payment_id for processor refunds', async () => {
+  let transactionCall = 0
+  const supabase = {
+    from(table: string) {
+      if (table === 'transactions') {
+        transactionCall++
+        if (transactionCall === 1) {
+          return {
+            select() { return this },
+            eq() { return this },
+            single() {
+              return Promise.resolve({
+                data: {
+                  id: 'sale_txn_1', amount: 100, currency: 'USD',
+                  status: 'completed', reference_id: 'sale_1',
+                  metadata: {}, reversed_by: null,
+                },
+                error: null,
+              })
+            },
+          }
+        }
+        if (transactionCall === 2) {
+          return {
+            select() { return this },
+            eq() { return this },
+            not() { return Promise.resolve({ data: [], error: null }) },
+          }
+        }
+      }
+      throw new Error(`Unexpected table access: ${table}`)
+    },
+    rpc() { throw new Error('Should not reach RPC') },
+  } as any
+
+  const result = await recordRefundResponse(req, supabase, ledger, {
+    original_sale_reference: 'sale_1',
+    amount: 3000,
+    reason: 'Customer request',
+    mode: 'processor_refund',
+  }, requestId)
+
+  assertEquals(result.status, 400)
+  assertEquals(result.body.error_code, 'missing_processor_payment_id')
+})
+
+Deno.test('recordRefundResponse: voids reserved ledger entry when processor refund fails', async () => {
   const originalFetch = globalThis.fetch
-  let pendingUpsertPayload: { reference_id?: string; status?: string } | null = null
+  let voidedTxId: string | null = null
 
   Deno.env.set('PROCESSOR_BASE_URL', 'https://processor.example.com')
   Deno.env.set('PROCESSOR_USERNAME', 'processor_user')
@@ -376,68 +582,66 @@ Deno.test('recordRefundResponse: returns a pending repair refund when processor 
 
   globalThis.fetch = ((() =>
     Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ id: 'rf_live_123', state: 'SUCCEEDED', amount: 3000 }),
+      ok: false,
+      status: 422,
+      json: () => Promise.resolve({ error: 'insufficient_funds' }),
+      text: () => Promise.resolve('{"error":"insufficient_funds"}'),
     })) as unknown) as typeof fetch
 
   try {
+    let transactionCall = 0
     const supabase = {
       from(table: string) {
         if (table === 'transactions') {
-          return {
-            select() {
-              return this
-            },
-            eq() {
-              return this
-            },
-            in() {
-              return Promise.resolve({ data: [], error: null })
-            },
-            single() {
-              return Promise.resolve({
-                data: {
-                  id: 'sale_txn_1',
-                  amount: 100,
-                  currency: 'USD',
-                  status: 'completed',
-                  reference_id: 'sale_1',
-                  metadata: {},
-                },
-                error: null,
-              })
-            },
+          transactionCall++
+          if (transactionCall === 1) {
+            return {
+              select() { return this },
+              eq() { return this },
+              single() {
+                return Promise.resolve({
+                  data: {
+                    id: 'sale_txn_1', amount: 100, currency: 'USD',
+                    status: 'completed', reference_id: 'sale_1',
+                    metadata: {}, reversed_by: null,
+                  },
+                  error: null,
+                })
+              },
+            }
+          }
+          if (transactionCall === 2) {
+            return {
+              select() { return this },
+              eq() { return this },
+              not() { return Promise.resolve({ data: [], error: null }) },
+            }
           }
         }
-
-        if (table === 'pending_processor_refunds') {
-          return {
-            upsert(payload: { reference_id?: string; status?: string }) {
-              pendingUpsertPayload = payload
-              return Promise.resolve({ error: null })
-            },
-          }
-        }
-
         if (table === 'audit_log') {
-          return {
-            insert() {
-              return Promise.resolve({ error: null })
-            },
-          }
+          return { insert() { return Promise.resolve({ error: null }) } }
         }
-
-        throw new Error(`Unexpected table access: ${table}`)
+        throw new Error(`Unexpected table: ${table}#${transactionCall}`)
       },
-      rpc(name: string) {
+      rpc(name: string, args: Record<string, unknown>) {
         if (name === 'record_refund_atomic_v2') {
           return Promise.resolve({
-            data: null,
-            error: { message: 'ledger write failed after processor success' },
+            data: {
+              out_transaction_id: 'refund_reserved_1',
+              out_refunded_cents: 3000,
+              out_from_creator_cents: 2400,
+              out_from_platform_cents: 600,
+              out_is_full_refund: false,
+              out_status: 'created',
+            },
+            error: null,
           })
         }
-
-        throw new Error(`Unexpected RPC call: ${name}`)
+        if (name === 'void_transaction_atomic') {
+          voidedTxId = args.p_transaction_id as string
+          return Promise.resolve({ data: args.p_transaction_id, error: null })
+        }
+        throw new Error(`Unexpected RPC: ${name}`)
       },
     } as any
 
@@ -449,30 +653,9 @@ Deno.test('recordRefundResponse: returns a pending repair refund when processor 
       processor_payment_id: 'pi_123',
     }, requestId)
 
-    const body = result.body as {
-      success: boolean
-      warning_code: string
-      refund: {
-        transaction_id: string | null
-        reference_id: string | null
-        sale_reference: string | null
-        status: string
-        repair_pending: boolean
-        external_refund_id: string | null
-      }
-    }
-
-    assertEquals(result.status, 202)
-    assertEquals(body.success, true)
-    assertEquals(body.warning_code, 'processor_refund_pending_repair')
-    assertEquals(body.refund.transaction_id, null)
-    assertEquals(body.refund.sale_reference, 'sale_1')
-    assertEquals(body.refund.status, 'pending_repair')
-    assertEquals(body.refund.repair_pending, true)
-    assertEquals(body.refund.external_refund_id, 'rf_live_123')
-    const upsertPayload = pendingUpsertPayload as { reference_id?: string; status?: string } | null
-    assertEquals(upsertPayload?.reference_id, 'rf_live_123')
-    assertEquals(upsertPayload?.status, 'pending')
+    assertEquals(result.status, 502)
+    assertEquals(result.body.error_code, 'processor_refund_failed')
+    assertEquals(voidedTxId, 'refund_reserved_1')
   } finally {
     globalThis.fetch = originalFetch
     Deno.env.delete('PROCESSOR_BASE_URL')

@@ -54,10 +54,43 @@ interface PendingProcessorRefundRow {
   created_at: string | null
 }
 
+interface RefundAmountRow {
+  id: string
+  amount?: unknown
+}
+
+interface RefundReversalAmountRow {
+  reverses?: unknown
+  amount?: unknown
+}
+
 function centsFromMajor(amount: unknown): number {
   const numeric = Number(amount)
   if (!Number.isFinite(numeric)) return 0
   return Math.round(numeric * 100)
+}
+
+function calculateNetRefundedCents(
+  refunds: RefundAmountRow[],
+  reversals: RefundReversalAmountRow[],
+): number {
+  const reversedByRefundId = new Map<string, number>()
+
+  for (const reversal of reversals) {
+    const refundId = typeof reversal.reverses === 'string' ? reversal.reverses : null
+    if (!refundId) continue
+
+    reversedByRefundId.set(
+      refundId,
+      (reversedByRefundId.get(refundId) || 0) + centsFromMajor(reversal.amount),
+    )
+  }
+
+  return refunds.reduce((sum, refund) => {
+    const refundCents = centsFromMajor(refund.amount)
+    const reversedCents = reversedByRefundId.get(refund.id) || 0
+    return sum + Math.max(0, refundCents - reversedCents)
+  }, 0)
 }
 
 async function buildDeterministicRefundReferenceId(
@@ -305,7 +338,7 @@ export async function recordRefundResponse(
 
   const { data: originalSale, error: saleError } = await supabase
     .from('transactions')
-    .select('id, amount, currency, status, reference_id, metadata')
+    .select('id, amount, currency, status, reference_id, metadata, reversed_by')
     .eq('ledger_id', ledger.id)
     .eq('reference_id', originalRef)
     .eq('transaction_type', 'sale')
@@ -316,12 +349,35 @@ export async function recordRefundResponse(
   }
 
   if (originalSale.status === 'reversed') {
-    return resourceOk({
-      success: false,
-      error: 'Sale already refunded/reversed',
-      error_code: 'sale_already_reversed',
-      original_transaction_id: originalSale.id,
-    }, 409)
+    const reversedById = typeof originalSale.reversed_by === 'string' ? originalSale.reversed_by : null
+    if (!reversedById) {
+      return resourceOk({
+        success: false,
+        error: 'Sale already refunded/reversed',
+        error_code: 'sale_already_reversed',
+        original_transaction_id: originalSale.id,
+      }, 409)
+    }
+
+    const { data: reversedByTx, error: reversedByError } = await supabase
+      .from('transactions')
+      .select('transaction_type')
+      .eq('ledger_id', ledger.id)
+      .eq('id', reversedById)
+      .maybeSingle()
+
+    if (reversedByError) {
+      return resourceError('Failed to evaluate sale reversal state', 500, {}, 'sale_reversal_state_failed')
+    }
+
+    if (reversedByTx?.transaction_type !== 'refund') {
+      return resourceOk({
+        success: false,
+        error: 'Sale already refunded/reversed',
+        error_code: 'sale_already_reversed',
+        original_transaction_id: originalSale.id,
+      }, 409)
+    }
   }
 
   const originalAmountCents = centsFromMajor(originalSale.amount)
@@ -331,19 +387,39 @@ export async function recordRefundResponse(
 
   const { data: existingRefunds, error: refundsError } = await supabase
     .from('transactions')
-    .select('amount')
+    .select('id, amount')
     .eq('ledger_id', ledger.id)
     .eq('transaction_type', 'refund')
     .eq('reverses', originalSale.id)
-    .in('status', ['completed', 'reversed'])
+    .not('status', 'in', '("voided","draft")')
 
   if (refundsError) {
     return resourceError('Failed to evaluate refundable balance', 500, {}, 'refundable_balance_evaluation_failed')
   }
 
-  const alreadyRefundedCents = (existingRefunds || []).reduce((sum, row) => {
-    return sum + centsFromMajor((row as { amount?: unknown }).amount)
-  }, 0)
+  let alreadyRefundedCents = 0
+  const refundIds = (existingRefunds || [])
+    .map((row) => String((row as { id?: unknown }).id || ''))
+    .filter(Boolean)
+
+  if (refundIds.length > 0) {
+    const { data: refundReversals, error: reversalsError } = await supabase
+      .from('transactions')
+      .select('reverses, amount')
+      .eq('ledger_id', ledger.id)
+      .eq('transaction_type', 'reversal')
+      .in('reverses', refundIds)
+      .not('status', 'in', '("voided","reversed","draft")')
+
+    if (reversalsError) {
+      return resourceError('Failed to evaluate refundable balance', 500, {}, 'refundable_balance_evaluation_failed')
+    }
+
+    alreadyRefundedCents = calculateNetRefundedCents(
+      (existingRefunds || []) as RefundAmountRow[],
+      (refundReversals || []) as RefundReversalAmountRow[],
+    )
+  }
 
   const remainingRefundableCents = Math.max(0, originalAmountCents - alreadyRefundedCents)
   if (remainingRefundableCents <= 0) {
@@ -369,6 +445,10 @@ export async function recordRefundResponse(
     )
   }
 
+  const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+    ? body.metadata
+    : {}
+
   let refundRefId: string
   if (externalRefundId) {
     refundRefId = externalRefundId
@@ -379,14 +459,89 @@ export async function recordRefundResponse(
   }
 
   if (executeProcessorRefund) {
+    if (!processorPaymentId) {
+      return resourceError(
+        'processor_payment_id is required for processor refunds',
+        400,
+        {},
+        'missing_processor_payment_id',
+      )
+    }
+
+    // Reserve refund capacity with a DB lock BEFORE calling the processor.
+    // This prevents two concurrent processor refunds from both succeeding
+    // when only one can be booked.
+    const { data: capacityCheck, error: capacityError } = await supabase.rpc('record_refund_atomic_v2', {
+      p_ledger_id: ledger.id,
+      p_reference_id: refundRefId,
+      p_original_tx_id: originalSale.id,
+      p_refund_amount: effectiveRefundCents,
+      p_reason: reason,
+      p_refund_from: refundFrom,
+      p_external_refund_id: externalRefundId,
+      p_metadata: {
+        ...metadata,
+        processor_refund_executed: true,
+        processor_payment_id: processorPaymentId,
+        processor_refund_pending: true,
+      },
+      p_entry_method: 'processor',
+    })
+
+    if (capacityError) {
+      if (parseDuplicateReferenceError(capacityError)) {
+        const { data: existingTx } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('ledger_id', ledger.id)
+          .eq('reference_id', refundRefId)
+          .maybeSingle()
+
+        return resourceOk({
+          success: false,
+          error: 'Duplicate refund reference',
+          error_code: 'duplicate_refund_reference',
+          transaction_id: existingTx?.id || null,
+          idempotent: true,
+        }, 409)
+      }
+
+      const txMessage = String(capacityError.message || '')
+      if (
+        txMessage.includes('No refundable amount remaining') ||
+        txMessage.includes('exceeds remaining refundable amount') ||
+        txMessage.includes('already reversed')
+      ) {
+        return resourceError(txMessage, 409, {}, 'refund_conflict')
+      }
+
+      console.error(`[${requestId}] Failed to reserve refund capacity:`, capacityError)
+      return resourceError('Failed to reserve refund capacity', 500, {}, 'refund_reserve_failed')
+    }
+
+    const reservedRow = (Array.isArray(capacityCheck) ? capacityCheck[0] : capacityCheck) as AtomicRefundResult | null
+    if (!reservedRow?.out_transaction_id) {
+      return resourceError('Refund capacity reservation failed', 500, {}, 'refund_reserve_failed')
+    }
+
+    if (reservedRow.out_status === 'duplicate') {
+      return resourceOk({
+        success: false,
+        error: 'Duplicate refund reference',
+        error_code: 'duplicate_refund_reference',
+        transaction_id: reservedRow.out_transaction_id,
+        idempotent: true,
+      }, 409)
+    }
+
+    // Ledger entry is now booked. Call the processor.
     const provider = getPaymentProvider('card')
-    const paymentId = processorPaymentId || originalRef
     const processorIdempotencyId = idempotencyKey
       ? `refund_${idempotencyKey}`
       : await buildDeterministicRefundReferenceId(originalSale.id, effectiveRefundCents, refundFrom, reason)
 
     const refundResult = await provider.refund({
-      payment_intent_id: paymentId,
+      payment_intent_id: processorPaymentId,
       amount: effectiveRefundCents,
       idempotency_id: processorIdempotencyId,
       metadata: {
@@ -396,17 +551,95 @@ export async function recordRefundResponse(
     })
 
     if (!refundResult.success) {
+      // Processor failed — void the reserved ledger entry so capacity is freed
+      console.error(`[${requestId}] Processor refund failed after ledger booking — voiding reservation`)
+      await supabase.rpc('void_transaction_atomic', {
+        p_ledger_id: ledger.id,
+        p_transaction_id: reservedRow.out_transaction_id,
+        p_reason: `Processor refund failed: ${refundResult.error || 'unknown'}`,
+      }).then(({ error }: any) => {
+        if (error) console.error(`[${requestId}] Failed to void reserved refund:`, error)
+      })
+
       return resourceError(refundResult.error || 'Processor refund failed', 502, {}, 'processor_refund_failed')
     }
 
     const providerRefundId = refundResult.refund_id ? validateId(refundResult.refund_id, 255) : null
-    if (refundResult.refund_id && !providerRefundId) {
-      return resourceError('Processor returned invalid refund ID', 502, {}, 'invalid_processor_refund_id')
-    }
+
+    // Update the reserved transaction with the processor's refund ID
     if (providerRefundId) {
       externalRefundId = providerRefundId
-      refundRefId = providerRefundId
+      await supabase
+        .from('transactions')
+        .update({
+          metadata: {
+            ...metadata,
+            processor_refund_executed: true,
+            processor_payment_id: processorPaymentId,
+            external_refund_id: providerRefundId,
+          },
+        })
+        .eq('id', reservedRow.out_transaction_id)
     }
+
+    const fromCreatorCents = Number(reservedRow.out_from_creator_cents || 0)
+    const fromPlatformCents = Number(reservedRow.out_from_platform_cents || 0)
+    const refundedCents = Number(reservedRow.out_refunded_cents || effectiveRefundCents)
+
+    createAuditLogAsync(supabase, req, {
+      ledger_id: ledger.id,
+      action: 'record_refund',
+      entity_type: 'transaction',
+      entity_id: reservedRow.out_transaction_id,
+      actor_type: 'api',
+      request_body: sanitizeForAudit({
+        original_sale_reference: originalRef,
+        refund_amount_cents: refundedCents,
+        refund_from: refundFrom,
+        reason,
+        execute_processor_refund: true,
+        processor_payment_id: processorPaymentId,
+      }),
+      response_status: 200,
+      risk_score: 20,
+    }, requestId)
+
+    Promise.resolve(
+      supabase.rpc('queue_webhook', {
+        p_ledger_id: ledger.id,
+        p_event_type: 'refund.created',
+        p_payload: {
+          event: 'refund.created',
+          data: {
+            transaction_id: reservedRow.out_transaction_id,
+            original_sale_reference: originalRef,
+            refunded_amount: refundedCents / 100,
+            from_creator: fromCreatorCents / 100,
+            from_platform: fromPlatformCents / 100,
+            reason,
+            created_at: new Date().toISOString(),
+          },
+        },
+      }),
+    ).then(({ error }: any) => {
+      if (error) {
+        console.error(`[${requestId}] Failed to queue refund webhook:`, error)
+      }
+    })
+
+    return resourceOk({
+      success: true,
+      refund: {
+        id: reservedRow.out_transaction_id,
+        transaction_id: reservedRow.out_transaction_id,
+        refunded_amount: refundedCents / 100,
+        breakdown: {
+          from_creator: fromCreatorCents / 100,
+          from_platform: fromPlatformCents / 100,
+        },
+        is_full_refund: Boolean(reservedRow.out_is_full_refund),
+      },
+    })
   }
 
   refundRefId = validateId(refundRefId, 255) || ''
@@ -414,10 +647,7 @@ export async function recordRefundResponse(
     return resourceError('Could not derive a valid refund reference ID', 500, {}, 'invalid_refund_reference_id')
   }
 
-  const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-    ? body.metadata
-    : {}
-  const refundEntryMethod = executeProcessorRefund ? 'processor' : 'manual'
+  const refundEntryMethod = 'manual'
 
   const { data: atomicResult, error: txError } = await supabase.rpc('record_refund_atomic_v2', {
     p_ledger_id: ledger.id,
@@ -429,8 +659,7 @@ export async function recordRefundResponse(
     p_external_refund_id: externalRefundId,
     p_metadata: {
       ...metadata,
-      processor_refund_executed: executeProcessorRefund,
-      processor_payment_id: executeProcessorRefund ? (processorPaymentId || originalRef) : null,
+      processor_refund_executed: false,
     },
     p_entry_method: refundEntryMethod,
   })
@@ -467,67 +696,6 @@ export async function recordRefundResponse(
     }
 
     console.error(`[${requestId}] Failed to create refund transaction:`, txError)
-
-    if (executeProcessorRefund) {
-      console.error(`[${requestId}] PROCESSOR REFUND SUCCEEDED but ledger write failed — storing pending_processor_refund for repair`)
-      await supabase.from('pending_processor_refunds').upsert(
-        {
-          ledger_id: ledger.id,
-          reference_id: refundRefId,
-          original_transaction_id: originalSale.id,
-          refund_amount: effectiveRefundCents,
-          reason,
-          refund_from: refundFrom,
-          external_refund_id: externalRefundId,
-          processor_payment_id: processorPaymentId || originalRef,
-          metadata: { ...metadata, processor_refund_executed: true },
-          status: 'pending',
-          error_message: String(txError.message || '').slice(0, 500),
-        },
-        { onConflict: 'ledger_id,reference_id' },
-      ).then(({ error }) => {
-        if (error) console.error(`[${requestId}] Failed to store pending_processor_refund:`, error)
-      })
-
-      createAuditLogAsync(supabase, req, {
-        ledger_id: ledger.id,
-        action: 'refund_ledger_write_failed',
-        entity_type: 'transaction',
-        actor_type: 'system',
-        request_body: sanitizeForAudit({
-          reference_id: refundRefId,
-          original_sale_reference: originalRef,
-          refund_amount_cents: effectiveRefundCents,
-          external_refund_id: externalRefundId,
-          error: String(txError.message || '').slice(0, 200),
-        }),
-        response_status: 500,
-        risk_score: 80,
-      }, requestId)
-
-      return resourceOk({
-        success: true,
-        warning: 'Processor refund succeeded but ledger booking failed. This will be automatically repaired.',
-        warning_code: 'processor_refund_pending_repair',
-        refund: {
-          id: refundRefId,
-          transaction_id: null,
-          reference_id: refundRefId,
-          sale_reference: originalRef,
-          refunded_amount: effectiveRefundCents / 100,
-          currency: originalSale.currency ? String(originalSale.currency) : 'USD',
-          status: 'pending_repair',
-          reason,
-          refund_from: refundFrom,
-          external_refund_id: externalRefundId,
-          created_at: new Date().toISOString(),
-          breakdown: null,
-          is_full_refund: null,
-          repair_pending: true,
-        },
-      }, 202)
-    }
-
     return resourceError('Failed to create refund transaction', 500, {}, 'refund_create_failed')
   }
 

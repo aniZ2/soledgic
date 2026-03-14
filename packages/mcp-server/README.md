@@ -10,6 +10,12 @@ npm install
 npm run build
 ```
 
+Or launch it via the repo wrapper:
+
+```bash
+./scripts/run-soledgic-mcp.sh
+```
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
@@ -21,7 +27,19 @@ npm run build
 | `SOLEDGIC_ALLOWED_TOOLS` | No | all | Comma-separated tool allowlist |
 | `SOLEDGIC_ACTOR` | No | `mcp-server` | Actor name for audit log |
 
-**API key must be set as an environment variable — never in config files.**
+**API key must be set as an environment variable or an untracked local env file loaded by the wrapper script — never inline in agent config files.**
+
+## Wrapper Script
+
+`scripts/run-soledgic-mcp.sh` is the recommended launcher for Codex and Claude.
+It:
+
+- loads `SOLEDGIC_*` settings from the current shell first
+- optionally loads an env file from `SOLEDGIC_MCP_ENV_FILE`
+- falls back to `test-data/api-keys.env` when present
+- defaults to read-only mode unless `SOLEDGIC_ALLOW_WRITES=true` is set explicitly
+
+Run `./scripts/run-soledgic-mcp.sh --help` for the full contract.
 
 ## Security Model
 
@@ -46,23 +64,38 @@ Register in `.claude/claude_mcp_config.json`:
 {
   "mcpServers": {
     "soledgic": {
-      "command": "node",
-      "args": ["packages/mcp-server/dist/index.js"],
+      "command": "/Users/osifo/Desktop/soledgic/scripts/run-soledgic-mcp.sh",
       "env": {
-        "SOLEDGIC_API_KEY": "${SOLEDGIC_API_KEY}",
-        "SOLEDGIC_BASE_URL": "https://api.soledgic.com/v1"
+        "SOLEDGIC_MCP_ENV_FILE": "/Users/osifo/Desktop/soledgic/test-data/api-keys.env",
+        "SOLEDGIC_ALLOWED_TOOLS": "get_balance,get_transactions,create_checkout,create_creator",
+        "SOLEDGIC_ACTOR": "claude"
       }
     }
   }
 }
 ```
 
+The env file should stay untracked. Do not inline live or test API keys in
+`claude_mcp_config.json`.
+
+## Codex Integration
+
+Register the same wrapper command in your Codex config:
+
+```toml
+[mcp_servers.soledgic]
+command = "/Users/osifo/Desktop/soledgic/scripts/run-soledgic-mcp.sh"
+```
+
+Then provide secrets through your shell environment or
+`/Users/osifo/Desktop/soledgic/test-data/api-keys.env`.
+
 ### Read-only mode (safest)
 
 ```json
 {
   "env": {
-    "SOLEDGIC_API_KEY": "${SOLEDGIC_API_KEY}"
+    "SOLEDGIC_MCP_ENV_FILE": "/Users/osifo/Desktop/soledgic/test-data/api-keys.env"
   }
 }
 ```
@@ -72,7 +105,7 @@ Register in `.claude/claude_mcp_config.json`:
 ```json
 {
   "env": {
-    "SOLEDGIC_API_KEY": "${SOLEDGIC_API_KEY}",
+    "SOLEDGIC_MCP_ENV_FILE": "/Users/osifo/Desktop/soledgic/test-data/api-keys.env",
     "SOLEDGIC_ALLOW_WRITES": "true"
   }
 }
@@ -83,7 +116,7 @@ Register in `.claude/claude_mcp_config.json`:
 ```json
 {
   "env": {
-    "SOLEDGIC_API_KEY": "${SOLEDGIC_API_KEY}",
+    "SOLEDGIC_MCP_ENV_FILE": "/Users/osifo/Desktop/soledgic/test-data/api-keys.env",
     "SOLEDGIC_ALLOW_WRITES": "true",
     "SOLEDGIC_ALLOW_LIVE_WRITES": "true"
   }
@@ -95,7 +128,7 @@ Register in `.claude/claude_mcp_config.json`:
 ```json
 {
   "env": {
-    "SOLEDGIC_API_KEY": "${SOLEDGIC_API_KEY}",
+    "SOLEDGIC_MCP_ENV_FILE": "/Users/osifo/Desktop/soledgic/test-data/api-keys.env",
     "SOLEDGIC_ALLOW_WRITES": "true",
     "SOLEDGIC_ALLOWED_TOOLS": "get_balance,get_transactions,record_sale,get_all_balances"
   }

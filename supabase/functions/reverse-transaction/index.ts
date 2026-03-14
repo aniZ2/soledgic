@@ -22,7 +22,85 @@ interface ReversalRequest {
   transaction_id: string
   reason: string
   partial_amount?: number
+  idempotency_key?: string
   metadata?: Record<string, any>
+}
+
+function centsFromMajor(amount: unknown): number {
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.round(numeric * 100)
+}
+
+async function syncSaleRefundStateAfterRefundReversal(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  refundTransaction: { reverses?: string | null },
+): Promise<void> {
+  const originalSaleId =
+    typeof refundTransaction.reverses === 'string' && refundTransaction.reverses.length > 0
+      ? refundTransaction.reverses
+      : null
+
+  if (!originalSaleId) {
+    return
+  }
+
+  const { data: originalSale, error: saleError } = await supabase
+    .from('transactions')
+    .select('id, amount, status, reversed_by')
+    .eq('ledger_id', ledgerId)
+    .eq('id', originalSaleId)
+    .eq('transaction_type', 'sale')
+    .maybeSingle()
+
+  if (saleError || !originalSale || originalSale.status !== 'reversed') {
+    return
+  }
+
+  const reversedById = typeof originalSale.reversed_by === 'string' ? originalSale.reversed_by : null
+  if (!reversedById) {
+    return
+  }
+
+  const { data: reversedByTx, error: reversedByError } = await supabase
+    .from('transactions')
+    .select('transaction_type')
+    .eq('ledger_id', ledgerId)
+    .eq('id', reversedById)
+    .maybeSingle()
+
+  if (reversedByError || reversedByTx?.transaction_type !== 'refund') {
+    return
+  }
+
+  const { data: netRefundedData, error: netRefundedError } = await supabase.rpc('get_net_refunded_cents', {
+    p_ledger_id: ledgerId,
+    p_original_tx_id: originalSaleId,
+  })
+
+  if (netRefundedError) {
+    console.error('Failed to recompute refund state after refund reversal:', netRefundedError)
+    return
+  }
+
+  const originalAmountCents = centsFromMajor(originalSale.amount)
+  const netRefundedCents = Number(netRefundedData ?? 0)
+  if (!Number.isFinite(netRefundedCents) || netRefundedCents >= originalAmountCents) {
+    return
+  }
+
+  const { error: reopenError } = await supabase
+    .from('transactions')
+    .update({
+      status: 'completed',
+      reversed_by: null,
+    })
+    .eq('id', originalSaleId)
+
+  if (reopenError) {
+    console.error('Failed to reopen sale after refund reversal:', reopenError)
+  }
 }
 
 const handler = createHandler(
@@ -52,6 +130,12 @@ const handler = createHandler(
       }
     }
 
+    // Validate optional idempotency_key
+    const idempotencyKey = body.idempotency_key ? validateId(body.idempotency_key, 120) : null
+    if (body.idempotency_key && !idempotencyKey) {
+      return errorResponse('Invalid idempotency_key', 400, req)
+    }
+
     // Get original transaction with entries
     const { data: originalTx, error: txError } = await supabase
       .from('transactions')
@@ -66,8 +150,8 @@ const handler = createHandler(
 
     // Check if already voided/reversed
     if (originalTx.status === 'reversed' || originalTx.status === 'voided') {
-      return jsonResponse({ 
-        success: false, 
+      return jsonResponse({
+        success: false,
         error: `Transaction already ${originalTx.status}`,
         reversal_id: originalTx.reversed_by
       }, 409, req)
@@ -86,20 +170,20 @@ const handler = createHandler(
         .single()
 
       if (lockedPeriod) {
-        return jsonResponse({ 
-          success: false, 
+        return jsonResponse({
+          success: false,
           error: `Cannot modify transaction in a ${lockedPeriod.status} period`,
-          period: { 
-            start: lockedPeriod.period_start, 
-            end: lockedPeriod.period_end, 
-            status: lockedPeriod.status 
+          period: {
+            start: lockedPeriod.period_start,
+            end: lockedPeriod.period_end,
+            status: lockedPeriod.status
           }
         }, 403, req)
       }
     }
 
     // Determine transaction state
-    const isReconciled = originalTx.metadata?.reconciled === true || 
+    const isReconciled = originalTx.metadata?.reconciled === true ||
                          originalTx.metadata?.bank_match_id != null ||
                          originalTx.status === 'reconciled'
 
@@ -109,22 +193,30 @@ const handler = createHandler(
     // DRAFT STATE: Soft delete (mark as voided)
     // ============================================
     if (!isReconciled && !partialAmountCents) {
-      const { error: updateError } = await supabase
-        .from('transactions')
-        .update({
-          status: 'voided',
-          metadata: {
-            ...originalTx.metadata,
-            voided_at: now,
-            void_reason: reason,
-            void_type: 'soft_delete'
-          }
-        })
-        .eq('id', transactionId)
+      const { data: voidTxId, error: voidError } = await supabase.rpc('void_transaction_atomic', {
+        p_ledger_id: ledger.id,
+        p_transaction_id: transactionId,
+        p_reason: reason,
+      })
 
-      if (updateError) {
-        console.error('Failed to void transaction:', updateError)
+      if (voidError) {
+        const voidMessage = String(voidError.message || '')
+        if (voidMessage.includes('already voided') || voidMessage.includes('already reversed')) {
+          return jsonResponse({
+            success: false,
+            error: voidMessage,
+          }, 409, req)
+        }
+        if (voidMessage.includes('reconciled')) {
+          return errorResponse('Transaction was reconciled concurrently — use reversing entry instead', 409, req)
+        }
+        console.error('Failed to void transaction:', voidError)
         return errorResponse('Failed to void transaction', 500, req)
+      }
+
+      // Sync sale state if we just voided a refund
+      if (originalTx.transaction_type === 'refund') {
+        await syncSaleRefundStateAfterRefundReversal(supabase, ledger.id, originalTx)
       }
 
       // Audit log with IP
@@ -143,6 +235,7 @@ const handler = createHandler(
         void_type: 'soft_delete',
         message: 'Transaction voided successfully',
         transaction_id: transactionId,
+        reversal_id: voidTxId || null,
         voided_at: now
       }, 200, req)
     }
@@ -151,8 +244,9 @@ const handler = createHandler(
     // RECONCILED STATE: Create reversing entries
     // ============================================
     const originalAmount = Number(originalTx.amount)
+    const originalAmountCents = centsFromMajor(originalTx.amount)
     let reversalAmount = originalAmount
-    
+
     if (partialAmountCents) {
       reversalAmount = partialAmountCents / 100
       if (reversalAmount > originalAmount) {
@@ -160,7 +254,49 @@ const handler = createHandler(
       }
     }
 
+    // Compute cumulative already-reversed amount to prevent over-reversal
+    const { data: existingReversals, error: existingReversalsError } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('ledger_id', ledger.id)
+      .eq('transaction_type', 'reversal')
+      .eq('reverses', transactionId)
+      .not('status', 'in', '("voided","reversed","draft")')
+
+    if (existingReversalsError) {
+      console.error('Failed to evaluate existing reversals:', existingReversalsError)
+      return errorResponse('Failed to evaluate reversal capacity', 500, req)
+    }
+
+    const alreadyReversedCents = (existingReversals || []).reduce(
+      (sum: number, row: { amount?: unknown }) => sum + centsFromMajor(row.amount),
+      0,
+    )
+    const remainingReversibleCents = Math.max(0, originalAmountCents - alreadyReversedCents)
+
+    if (remainingReversibleCents <= 0) {
+      return jsonResponse({
+        success: false,
+        error: 'Transaction already fully reversed',
+      }, 409, req)
+    }
+
+    const reversalAmountCents = partialAmountCents ?? remainingReversibleCents
+    if (reversalAmountCents > remainingReversibleCents) {
+      return errorResponse(
+        `Reversal amount (${(reversalAmountCents / 100).toFixed(2)}) exceeds remaining reversible amount (${(remainingReversibleCents / 100).toFixed(2)})`,
+        409,
+        req,
+      )
+    }
+
+    reversalAmount = reversalAmountCents / 100
     const reversalRatio = reversalAmount / originalAmount
+
+    // Build deterministic reference_id for idempotency
+    const reversalRefId = idempotencyKey
+      ? `reversal_${idempotencyKey}`
+      : `reversal_${transactionId}_${reversalAmountCents}`
 
     // Create reversal transaction
     const { data: reversalTx, error: reversalError } = await supabase
@@ -168,7 +304,7 @@ const handler = createHandler(
       .insert({
         ledger_id: ledger.id,
         transaction_type: 'reversal',
-        reference_id: `reversal_${transactionId}_${Date.now()}`,
+        reference_id: reversalRefId,
         reference_type: 'reversal',
         description: `Reversal: ${reason}`,
         amount: reversalAmount,
@@ -187,6 +323,24 @@ const handler = createHandler(
       .single()
 
     if (reversalError) {
+      // Handle duplicate reference_id (idempotent retry)
+      const errMsg = String(reversalError.message || '').toLowerCase()
+      if (reversalError.code === '23505' || errMsg.includes('unique') || errMsg.includes('duplicate')) {
+        const { data: existingReversal } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('ledger_id', ledger.id)
+          .eq('reference_id', reversalRefId)
+          .maybeSingle()
+
+        return jsonResponse({
+          success: false,
+          error: 'Duplicate reversal reference',
+          error_code: 'duplicate_reversal_reference',
+          reversal_id: existingReversal?.id || null,
+          idempotent: true,
+        }, 409, req)
+      }
       console.error('Failed to create reversal:', reversalError)
       return errorResponse('Failed to create reversal', 500, req)
     }
@@ -201,11 +355,12 @@ const handler = createHandler(
 
     await supabase.from('entries').insert(reversalEntries)
 
-    // Update original transaction status
-    if (reversalRatio === 1) {
+    // Update original transaction status if fully reversed
+    const totalReversedCents = alreadyReversedCents + reversalAmountCents
+    if (totalReversedCents >= originalAmountCents) {
       await supabase
         .from('transactions')
-        .update({ 
+        .update({
           status: 'reversed',
           reversed_by: reversalTx.id,
           metadata: {
@@ -217,6 +372,10 @@ const handler = createHandler(
         .eq('id', transactionId)
     }
 
+    if (originalTx.transaction_type === 'refund') {
+      await syncSaleRefundStateAfterRefundReversal(supabase, ledger.id, originalTx)
+    }
+
     // Audit log with IP
     await supabase.from('audit_log').insert({
       ledger_id: ledger.id,
@@ -225,8 +384,8 @@ const handler = createHandler(
       entity_id: reversalTx.id,
       actor_type: 'api',
       ip_address: getClientIp(req),
-      request_body: { 
-        reason: reason, 
+      request_body: {
+        reason: reason,
         void_type: 'reversing_entry',
         is_partial: reversalRatio < 1,
         was_reconciled: isReconciled

@@ -63,7 +63,7 @@ export const GetProfitLossSchema = z.object({
   breakdown: z
     .boolean()
     .optional()
-    .describe('Include expense breakdown'),
+    .describe('Include monthly breakdown'),
   start_date: z
     .string()
     .optional()

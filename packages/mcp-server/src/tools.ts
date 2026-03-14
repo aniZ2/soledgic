@@ -235,7 +235,7 @@ const TOOLS: ToolDef[] = [
     description:
       'Generate a profit & loss statement. Filter by year, month, quarter, or date range.',
     inputSchema: GetProfitLossSchema,
-    method: 'POST',
+    method: 'GET',
     endpoint: 'profit-loss',
     mutating: false,
     amountLimitCents: 0,
@@ -549,6 +549,10 @@ export function registerTools(server: Server) {
         > = {}
         for (const [k, v] of Object.entries(args)) {
           if (v !== undefined && k !== 'confirm' && k !== 'idempotency_key') {
+            if (tool.name === 'get_profit_loss' && k === 'breakdown') {
+              queryParams[k] = v === true ? 'monthly' : undefined
+              continue
+            }
             queryParams[k] = v as string | number | boolean
           }
         }
