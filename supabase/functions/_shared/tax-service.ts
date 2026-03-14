@@ -296,22 +296,29 @@ export async function getTaxSummaryResponse(
     return resourceError('participant_id is invalid', 400, {}, 'invalid_participant_id')
   }
 
-  let accountsQuery = supabase
-    .from('accounts')
-    .select('id, entity_id')
-    .eq('ledger_id', ledger.id)
-    .eq('account_type', 'creator_balance')
-    .not('entity_id', 'is', null)
+  const { data: rpcRows, error: rpcError } = await supabase.rpc('compute_tax_year_summaries', {
+    p_ledger_id: ledger.id,
+    p_tax_year: taxYear,
+  })
 
-  if (normalizedParticipantId) {
-    accountsQuery = accountsQuery.eq('entity_id', normalizedParticipantId)
+  if (rpcError) {
+    console.error('getTaxSummaryResponse RPC error:', rpcError)
+    return resourceError('Failed to compute tax summaries', 500, {}, 'tax_summary_rpc_failed')
   }
 
-  const { data: accounts, error: accountsError } = await accountsQuery
+  let rows = (rpcRows || []) as Array<{
+    entity_id: string
+    gross_earnings: number
+    refunds_issued: number
+    net_earnings: number
+    total_paid_out: number
+    requires_1099: boolean
+    linked_user_id: string | null
+    has_tax_profile: boolean
+  }>
 
-  if (accountsError) {
-    console.error('getTaxSummaryResponse accounts error:', accountsError)
-    return resourceError('Failed to load participant tax accounts', 500, {}, 'tax_summary_accounts_failed')
+  if (normalizedParticipantId) {
+    rows = rows.filter((r) => r.entity_id === normalizedParticipantId)
   }
 
   const summaries: Array<Record<string, unknown>> = []
@@ -321,73 +328,25 @@ export async function getTaxSummaryResponse(
   let totalPaid = 0
   let participantsRequiring1099 = 0
 
-  for (const account of accounts || []) {
-    const { data: salesEntries } = await supabase
-      .from('entries')
-      .select('amount, transaction:transactions!inner(created_at, transaction_type, status)')
-      .eq('account_id', account.id)
-      .eq('entry_type', 'credit')
-
-    const grossEarnings = (salesEntries || [])
-      .filter((entry: any) => {
-        const txYear = new Date(entry.transaction.created_at).getFullYear()
-        return txYear === taxYear &&
-          entry.transaction.transaction_type === 'sale' &&
-          entry.transaction.status === 'completed'
-      })
-      .reduce((sum: number, entry: any) => sum + Number(entry.amount), 0)
-
-    const { data: debitEntries } = await supabase
-      .from('entries')
-      .select('amount, transaction:transactions!inner(created_at, transaction_type, status)')
-      .eq('account_id', account.id)
-      .eq('entry_type', 'debit')
-
-    const refundsIssued = (debitEntries || [])
-      .filter((entry: any) => {
-        const txYear = new Date(entry.transaction.created_at).getFullYear()
-        return txYear === taxYear &&
-          entry.transaction.transaction_type === 'refund' &&
-          entry.transaction.status === 'completed'
-      })
-      .reduce((sum: number, entry: any) => sum + Number(entry.amount), 0)
-
-    const payoutsTotal = (debitEntries || [])
-      .filter((entry: any) => {
-        const txYear = new Date(entry.transaction.created_at).getFullYear()
-        return txYear === taxYear &&
-          entry.transaction.transaction_type === 'payout' &&
-          entry.transaction.status === 'completed'
-      })
-      .reduce((sum: number, entry: any) => sum + Number(entry.amount), 0)
-
-    const netEarnings = grossEarnings - refundsIssued
-    const requires1099 = netEarnings >= 600
-
-    await supabase.from('tax_year_summaries').upsert({
-      ledger_id: ledger.id,
-      entity_id: account.entity_id,
-      tax_year: taxYear,
-      gross_earnings: grossEarnings,
-      refunds_issued: refundsIssued,
-      net_earnings: netEarnings,
-      total_paid_out: payoutsTotal,
-      requires_1099: requires1099,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'ledger_id,entity_id,tax_year,is_corrected' })
-
-    const linkedUserId = await getLinkedUserIdForParticipant(supabase, ledger.id, account.entity_id)
-    const taxProfile = await getSharedTaxProfileSummary(supabase, linkedUserId)
+  for (const row of rows) {
+    const grossEarnings = Number(row.gross_earnings)
+    const refundsIssued = Number(row.refunds_issued)
+    const netEarnings = Number(row.net_earnings)
+    const payoutsTotal = Number(row.total_paid_out)
 
     if (grossEarnings > 0 || payoutsTotal > 0) {
+      const taxProfile = row.has_tax_profile
+        ? await getSharedTaxProfileSummary(supabase, row.linked_user_id)
+        : null
+
       summaries.push({
-        participant_id: account.entity_id,
-        linked_user_id: linkedUserId,
+        participant_id: row.entity_id,
+        linked_user_id: row.linked_user_id,
         gross_earnings: grossEarnings,
         refunds_issued: refundsIssued,
         net_earnings: netEarnings,
         total_paid_out: payoutsTotal,
-        requires_1099: requires1099,
+        requires_1099: row.requires_1099,
         shared_tax_profile: taxProfile,
       })
 
@@ -395,7 +354,7 @@ export async function getTaxSummaryResponse(
       totalRefunds += refundsIssued
       totalNet += netEarnings
       totalPaid += payoutsTotal
-      if (requires1099) participantsRequiring1099 += 1
+      if (row.requires_1099) participantsRequiring1099 += 1
     }
   }
 
@@ -519,5 +478,271 @@ export async function exportTaxDocumentsResponse(
       'Content-Type': 'text/csv',
       'Content-Disposition': `attachment; filename="1099_export_${taxYear}.csv"`,
     },
+  })
+}
+
+export interface MarkFiledBulkInput {
+  tax_year?: number
+}
+
+export async function markTaxDocumentsFiledBulkResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: MarkFiledBulkInput,
+  requestId: string,
+): Promise<ResourceResult> {
+  const taxYear = normalizeTaxYear(body.tax_year)
+
+  const { data: updatedDocuments, error } = await supabase
+    .from('tax_documents')
+    .update({
+      status: 'filed',
+      filed_at: new Date().toISOString(),
+    })
+    .eq('ledger_id', ledger.id)
+    .eq('tax_year', taxYear)
+    .eq('status', 'exported')
+    .select('id, tax_year, status')
+
+  if (error) {
+    console.error('markTaxDocumentsFiledBulkResponse error:', error)
+    return resourceError('Failed to mark tax documents as filed', 500, {}, 'tax_documents_mark_filed_failed')
+  }
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'mark_tax_documents_filed_bulk',
+    entity_type: 'tax_documents',
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      tax_year: taxYear,
+      count: updatedDocuments?.length || 0,
+    }),
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    message: 'Documents marked as filed',
+    tax_year: taxYear,
+    count: updatedDocuments?.length || 0,
+  })
+}
+
+export interface GeneratePdfInput {
+  document_id?: string
+  copy_type?: 'a' | 'b' | '1' | '2'
+}
+
+export interface GeneratePdfBatchInput {
+  tax_year?: number
+  copy_type?: 'a' | 'b' | '1' | '2'
+}
+
+export async function generateTaxDocumentPdfResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  documentIdRaw: string,
+  body: GeneratePdfInput,
+  requestId: string,
+): Promise<ResourceResult> {
+  const documentId = validateId(documentIdRaw, 100)
+  if (!documentId) {
+    return resourceError('document_id is invalid', 400, {}, 'invalid_document_id')
+  }
+
+  const { data: doc, error: docError } = await supabase
+    .from('tax_documents')
+    .select('*')
+    .eq('id', documentId)
+    .eq('ledger_id', ledger.id)
+    .single()
+
+  if (docError || !doc) {
+    return resourceError('Document not found', 404, {}, 'tax_document_not_found')
+  }
+
+  const copyType = body.copy_type || doc.copy_type || 'b'
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceKey) {
+    return resourceError('Service configuration error', 500, {}, 'service_config_error')
+  }
+
+  const pdfRes = await fetch(`${supabaseUrl}/functions/v1/generate-pdf`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      report_type: '1099_nec_form',
+      ledger_id: ledger.id,
+      tax_year: doc.tax_year,
+      gross_amount: Number(doc.gross_amount),
+      federal_withholding: Number(doc.federal_withholding || 0),
+      state_withholding: Number(doc.state_withholding || 0),
+      recipient_id: doc.recipient_id,
+      copy_type: copyType,
+    }),
+  })
+
+  const pdfResult = await pdfRes.json()
+  if (!pdfResult.success || !pdfResult.data) {
+    return resourceError('PDF generation failed', 500, {}, 'pdf_generation_failed')
+  }
+
+  // Decode base64 and upload to Supabase Storage
+  const pdfBytes = Uint8Array.from(atob(pdfResult.data), (c) => c.charCodeAt(0))
+  const storagePath = `${ledger.id}/${doc.tax_year}/${doc.id}_copy_${copyType}.pdf`
+
+  const { error: uploadError } = await supabase.storage
+    .from('tax-documents')
+    .upload(storagePath, pdfBytes, {
+      contentType: 'application/pdf',
+      upsert: true,
+    })
+
+  if (uploadError) {
+    return resourceError('Failed to store PDF', 500, {}, 'pdf_upload_failed')
+  }
+
+  // Update tax_documents record
+  await supabase
+    .from('tax_documents')
+    .update({
+      pdf_path: storagePath,
+      pdf_generated_at: new Date().toISOString(),
+      copy_type: copyType,
+    })
+    .eq('id', documentId)
+
+  // Generate signed URL for download (1 hour expiry)
+  const { data: signedUrl } = await supabase.storage
+    .from('tax-documents')
+    .createSignedUrl(storagePath, 3600)
+
+  return resourceOk({
+    success: true,
+    data: {
+      document_id: documentId,
+      pdf_path: storagePath,
+      pdf_generated_at: new Date().toISOString(),
+      copy_type: copyType,
+      download_url: signedUrl?.signedUrl || null,
+    },
+  })
+}
+
+export async function generateTaxDocumentPdfBatchResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: GeneratePdfBatchInput,
+  requestId: string,
+): Promise<ResourceResult> {
+  const taxYear = normalizeTaxYear(body.tax_year)
+  const copyType = body.copy_type || 'b'
+
+  const { data: docs, error: docsError } = await supabase
+    .from('tax_documents')
+    .select('*')
+    .eq('ledger_id', ledger.id)
+    .eq('tax_year', taxYear)
+
+  if (docsError) {
+    return resourceError('Failed to fetch documents', 500, {}, 'tax_documents_fetch_failed')
+  }
+
+  if (!docs || docs.length === 0) {
+    return resourceOk({
+      success: true,
+      data: { generated: 0, failed: 0, tax_year: taxYear },
+    })
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceKey) {
+    return resourceError('Service configuration error', 500, {}, 'service_config_error')
+  }
+
+  let generated = 0
+  let failed = 0
+
+  for (const doc of docs) {
+    try {
+      const pdfRes = await fetch(`${supabaseUrl}/functions/v1/generate-pdf`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          report_type: '1099_nec_form',
+          ledger_id: ledger.id,
+          tax_year: doc.tax_year,
+          gross_amount: Number(doc.gross_amount),
+          federal_withholding: Number(doc.federal_withholding || 0),
+          state_withholding: Number(doc.state_withholding || 0),
+          recipient_id: doc.recipient_id,
+          copy_type: copyType,
+        }),
+      })
+
+      const pdfResult = await pdfRes.json()
+      if (!pdfResult.success || !pdfResult.data) {
+        failed++
+        continue
+      }
+
+      const pdfBytes = Uint8Array.from(atob(pdfResult.data), (c) => c.charCodeAt(0))
+      const storagePath = `${ledger.id}/${doc.tax_year}/${doc.id}_copy_${copyType}.pdf`
+
+      const { error: uploadError } = await supabase.storage
+        .from('tax-documents')
+        .upload(storagePath, pdfBytes, {
+          contentType: 'application/pdf',
+          upsert: true,
+        })
+
+      if (uploadError) {
+        failed++
+        continue
+      }
+
+      await supabase
+        .from('tax_documents')
+        .update({
+          pdf_path: storagePath,
+          pdf_generated_at: new Date().toISOString(),
+          copy_type: copyType,
+        })
+        .eq('id', doc.id)
+
+      generated++
+    } catch {
+      failed++
+    }
+  }
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'generate_1099_pdf_batch',
+    entity_type: 'tax_documents',
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      tax_year: taxYear,
+      copy_type: copyType,
+      generated,
+      failed,
+    }),
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    data: { tax_year: taxYear, copy_type: copyType, generated, failed },
   })
 }

@@ -3684,6 +3684,9 @@ components:
         partial_amount:
           type: "integer"
           description: "Partial reversal amount in cents"
+        idempotency_key:
+          type: "string"
+          description: "Unique key to prevent duplicate reversals"
         metadata:
           type: "object"
           additionalProperties: true
@@ -4118,6 +4121,7 @@ components:
             - "processor_refund"
         processor_payment_id:
           type: "string"
+          description: "Processor payment ID to refund (required when mode is processor_refund)"
         metadata:
           type: "object"
           additionalProperties: true
@@ -4284,14 +4288,49 @@ components:
         - $ref: "#/components/schemas/SuccessEnvelope"
         - type: "object"
           properties:
-            reversal_id:
+            void_type:
               type: "string"
+              enum:
+                - "soft_delete"
+                - "reversing_entry"
+              description: "Whether the transaction was soft-deleted or reversed via entries"
+            reversal_id:
+              type:
+                - "string"
+                - "null"
               format: "uuid"
+              description: "ID of the reversal transaction (null for some soft deletes)"
             original_transaction_id:
               type: "string"
               format: "uuid"
+              description: "ID of the original transaction that was reversed"
             reversed_amount:
-              type: "integer"
+              type:
+                - "number"
+                - "null"
+              description: "Reversed amount in major currency units (present for reversing entries)"
+            is_partial:
+              type:
+                - "boolean"
+                - "null"
+              description: "Whether this was a partial reversal"
+            voided_at:
+              type:
+                - "string"
+                - "null"
+              format: "date-time"
+              description: "Timestamp when the transaction was voided (soft delete path)"
+            reversed_at:
+              type:
+                - "string"
+                - "null"
+              format: "date-time"
+              description: "Timestamp when the reversing entries were created"
+            warning:
+              type:
+                - "string"
+                - "null"
+              description: "Warning message (e.g. when reversing a reconciled transaction)"
     TransactionEntry:
       type: "object"
       properties:

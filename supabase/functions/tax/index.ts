@@ -13,10 +13,13 @@ import {
   calculateParticipantTaxResponse,
   exportTaxDocumentsResponse,
   generateTaxDocumentsResponse,
+  generateTaxDocumentPdfResponse,
+  generateTaxDocumentPdfBatchResponse,
   getTaxDocumentResponse,
   getTaxSummaryResponse,
   listTaxDocumentsResponse,
   markTaxDocumentFiledResponse,
+  markTaxDocumentsFiledBulkResponse,
 } from '../_shared/tax-service.ts'
 
 const handler = createHandler(
@@ -59,6 +62,17 @@ const handler = createHandler(
       return errorResponse('Method not allowed', 405, req, requestId)
     }
 
+    // POST /tax/documents/mark-filed (bulk — marks all exported for the year)
+    if (segments.length === 2 && segments[0] === 'documents' && segments[1] === 'mark-filed') {
+      if (req.method !== 'POST') {
+        return errorResponse('Method not allowed', 405, req, requestId)
+      }
+
+      const payload = asJsonObject(body) || {}
+      const result = await markTaxDocumentsFiledBulkResponse(req, supabase, ledger, payload, requestId)
+      return respondWithResult(req, requestId, result)
+    }
+
     if (segments.length === 2 && segments[0] === 'documents' && segments[1] === 'generate') {
       if (req.method !== 'POST') {
         return errorResponse('Method not allowed', 405, req, requestId)
@@ -88,6 +102,32 @@ const handler = createHandler(
       }
 
       const result = await markTaxDocumentFiledResponse(req, supabase, ledger, segments[1], requestId)
+      return respondWithResult(req, requestId, result)
+    }
+
+    // POST /tax/documents/pdf/batch
+    if (segments.length === 3 && segments[0] === 'documents' && segments[1] === 'pdf' && segments[2] === 'batch') {
+      if (req.method !== 'POST') {
+        return errorResponse('Method not allowed', 405, req, requestId)
+      }
+
+      const payload = asJsonObject(body)
+      if (!payload) {
+        return errorResponse('Invalid JSON body', 400, req, requestId)
+      }
+
+      const result = await generateTaxDocumentPdfBatchResponse(req, supabase, ledger, payload, requestId)
+      return respondWithResult(req, requestId, result)
+    }
+
+    // POST /tax/documents/{id}/pdf
+    if (segments.length === 3 && segments[0] === 'documents' && segments[2] === 'pdf') {
+      if (req.method !== 'POST') {
+        return errorResponse('Method not allowed', 405, req, requestId)
+      }
+
+      const payload = asJsonObject(body) || {}
+      const result = await generateTaxDocumentPdfResponse(req, supabase, ledger, segments[1], payload, requestId)
       return respondWithResult(req, requestId, result)
     }
 

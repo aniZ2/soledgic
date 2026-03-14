@@ -285,7 +285,7 @@ const TREASURY_RESOURCE_ENDPOINTS: ApiEndpointDoc[] = [
     parameters: [
       { in: 'query', name: 'sale_reference', type: 'string', required: false },
       { in: 'query', name: 'limit', type: 'number', required: false },
-      { in: 'body', name: 'sale_reference', type: 'string', required: true },
+      { in: 'body', name: 'original_sale_reference', type: 'string', required: true },
       { in: 'body', name: 'reason', type: 'string', required: true },
       { in: 'body', name: 'amount', type: 'number', required: false },
       { in: 'body', name: 'refund_from', type: "'both' | 'platform_only' | 'creator_only'", required: false },
@@ -2384,6 +2384,12 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
         "in": "body",
         "name": "partial_amount",
         "type": "number",
+        "required": false
+      },
+      {
+        "in": "body",
+        "name": "idempotency_key",
+        "type": "string",
         "required": false
       },
       {

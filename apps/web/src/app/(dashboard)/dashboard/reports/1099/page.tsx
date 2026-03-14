@@ -110,15 +110,15 @@ export default function TaxDocumentsPage() {
     setGenerating(true)
 
     try {
-      const res = await callLedgerFunction('tax-documents', {
+      const res = await callLedgerFunction('tax/documents/generate', {
         ledgerId,
         method: 'POST',
-        body: { action: 'generate_all', tax_year: taxYear },
+        body: { tax_year: taxYear },
       })
 
       const result = await res.json()
       if (result.success) {
-        toast.success('Documents generated', `${result.data.created} created. ${result.data.skipped} below $600 threshold.`)
+        toast.success('Documents generated', `${result.generation.created} created. ${result.generation.skipped} below $600 threshold.`)
         loadData()
       } else {
         toast.error('Generation failed', result.error)
@@ -135,10 +135,10 @@ export default function TaxDocumentsPage() {
     setExporting(true)
 
     try {
-      const res = await callLedgerFunction('tax-documents', {
+      const res = await callLedgerFunction('tax/documents/export', {
         ledgerId,
-        method: 'POST',
-        body: { action: 'export', tax_year: taxYear, format: 'csv' },
+        method: 'GET',
+        query: { tax_year: taxYear, format: 'csv' },
       })
 
       if (res.ok) {
@@ -168,10 +168,10 @@ export default function TaxDocumentsPage() {
     if (!ledgerId) return
 
     try {
-      const res = await callLedgerFunction('tax-documents', {
+      const res = await callLedgerFunction('tax/documents/mark-filed', {
         ledgerId,
         method: 'POST',
-        body: { action: 'mark_filed', tax_year: taxYear },
+        body: { tax_year: taxYear },
       })
 
       const result = await res.json()
@@ -190,10 +190,10 @@ export default function TaxDocumentsPage() {
     setGeneratingPdf(documentId)
 
     try {
-      const res = await callLedgerFunction('tax-documents', {
+      const res = await callLedgerFunction(`tax/documents/${documentId}/pdf`, {
         ledgerId,
         method: 'POST',
-        body: { action: 'generate_pdf', document_id: documentId, copy_type: copyType },
+        body: { copy_type: copyType },
       })
 
       const result = await res.json()
@@ -220,10 +220,10 @@ export default function TaxDocumentsPage() {
     setGeneratingAllPdfs(true)
 
     try {
-      const res = await callLedgerFunction('tax-documents', {
+      const res = await callLedgerFunction('tax/documents/pdf/batch', {
         ledgerId,
         method: 'POST',
-        body: { action: 'generate_pdf_batch', tax_year: taxYear, copy_type: copyType },
+        body: { tax_year: taxYear, copy_type: copyType },
       })
 
       const result = await res.json()
