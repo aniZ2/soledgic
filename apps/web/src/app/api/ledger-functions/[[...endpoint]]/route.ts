@@ -37,6 +37,13 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'fraud',
   'compliance',
   'bank-aggregator',
+  'invoices',
+  'configure-alerts',
+  'manage-budgets',
+  'manage-recurring',
+  'manage-splits',
+  'manage-contractors',
+  'manage-bank-accounts',
 ])
 
 const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
@@ -50,6 +57,9 @@ const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
   'send-statements',
   'delete-creator',
   'bank-aggregator',
+  'configure-alerts',
+  'fraud',
+  'manage-contractors',
 ])
 
 const STEP_UP_ENDPOINT_ROOTS = new Set([
@@ -65,6 +75,7 @@ const STEP_UP_ENDPOINT_ROOTS = new Set([
   'record-income',
   'record-transfer',
   'record-adjustment',
+  'configure-alerts',
 ])
 
 function getSensitiveActionLabel(
@@ -103,6 +114,8 @@ function getSensitiveActionLabel(
         return 'record internal transfers'
       case 'record-adjustment':
         return 'record journal adjustments'
+      case 'configure-alerts':
+        return 'manage alert configurations'
       default:
         return 'perform this sensitive action'
     }

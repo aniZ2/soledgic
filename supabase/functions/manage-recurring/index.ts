@@ -4,16 +4,16 @@
 // GET /manage-recurring/due - Get upcoming due expenses
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   validateAmount
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface CreateRecurringRequest {
   name: string
@@ -30,26 +30,17 @@ interface CreateRecurringRequest {
 
 const VALID_INTERVALS = ['weekly', 'monthly', 'quarterly', 'annual']
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'manage-recurring', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
-    }
-
-    if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     const url = new URL(req.url)
@@ -82,7 +73,7 @@ Deno.serve(async (req) => {
         })),
         total_upcoming: Math.round(totalUpcoming * 100) / 100,
         count: upcoming?.length || 0
-      }, 200, req)
+      }, 200, req, requestId)
     }
 
     // GET - List all recurring expenses
@@ -121,13 +112,11 @@ Deno.serve(async (req) => {
           total_monthly: Math.round((totalAnnual / 12) * 100) / 100,
           total_annual: Math.round(totalAnnual * 100) / 100
         }
-      }, 200, req)
+      }, 200, req, requestId)
     }
 
     // POST - Create recurring expense template
     if (req.method === 'POST') {
-      const body: CreateRecurringRequest = await req.json()
-
       const name = validateString(body.name, 200)
       const merchantName = validateString(body.merchant_name, 200)
       const categoryCode = validateId(body.category_code, 50)
@@ -135,17 +124,17 @@ Deno.serve(async (req) => {
       const businessPurpose = validateString(body.business_purpose, 500)
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/
 
-      if (!name) return errorResponse('Invalid or missing name', 400, req)
-      if (!merchantName) return errorResponse('Invalid or missing merchant_name', 400, req)
-      if (!categoryCode) return errorResponse('Invalid or missing category_code', 400, req)
-      if (amount === null || amount <= 0) return errorResponse('Invalid amount', 400, req)
+      if (!name) return errorResponse('Invalid or missing name', 400, req, requestId)
+      if (!merchantName) return errorResponse('Invalid or missing merchant_name', 400, req, requestId)
+      if (!categoryCode) return errorResponse('Invalid or missing category_code', 400, req, requestId)
+      if (amount === null || amount <= 0) return errorResponse('Invalid amount', 400, req, requestId)
       if (!body.recurrence_interval || !VALID_INTERVALS.includes(body.recurrence_interval)) {
-        return errorResponse(`Invalid recurrence_interval: must be ${VALID_INTERVALS.join(', ')}`, 400, req)
+        return errorResponse(`Invalid recurrence_interval: must be ${VALID_INTERVALS.join(', ')}`, 400, req, requestId)
       }
       if (!body.start_date || !dateRegex.test(body.start_date)) {
-        return errorResponse('Invalid start_date: must be YYYY-MM-DD', 400, req)
+        return errorResponse('Invalid start_date: must be YYYY-MM-DD', 400, req, requestId)
       }
-      if (!businessPurpose) return errorResponse('Invalid or missing business_purpose', 400, req)
+      if (!businessPurpose) return errorResponse('Invalid or missing business_purpose', 400, req, requestId)
 
       const { data: category } = await supabase
         .from('expense_categories')
@@ -155,7 +144,7 @@ Deno.serve(async (req) => {
         .single()
 
       if (!category) {
-        return errorResponse(`Invalid category: ${categoryCode}`, 400, req)
+        return errorResponse(`Invalid category: ${categoryCode}`, 400, req, requestId)
       }
 
       const startDate = new Date(body.start_date)
@@ -182,7 +171,7 @@ Deno.serve(async (req) => {
 
       if (createError) {
         console.error('Create error:', createError)
-        return errorResponse('Failed to create recurring expense', 500, req)
+        return errorResponse('Failed to create recurring expense', 500, req, requestId)
       }
 
       return jsonResponse({
@@ -191,13 +180,11 @@ Deno.serve(async (req) => {
           ...template,
           amount: Math.round(template.amount * 100) / 100
         }
-      }, 201, req)
+      }, 201, req, requestId)
     }
 
-    return errorResponse('Method not allowed', 405, req)
-
-  } catch (error: any) {
-    console.error('Error managing recurring expenses:', error)
-    return errorResponse('Internal server error', 500, req)
+    return errorResponse('Method not allowed', 405, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

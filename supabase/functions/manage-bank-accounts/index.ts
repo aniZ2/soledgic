@@ -3,16 +3,16 @@
 // GET /manage-bank-accounts - List bank accounts
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateString,
   validateId,
   getClientIp
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface CreateBankAccountRequest {
   bank_name: string
@@ -23,26 +23,17 @@ interface CreateBankAccountRequest {
 
 const VALID_ACCOUNT_TYPES = ['checking', 'savings', 'credit_card', 'other']
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'manage-bank-accounts', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
-    }
-
-    if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (req.method === 'GET') {
@@ -54,23 +45,21 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error('Error fetching bank accounts:', error)
-        return errorResponse('Failed to fetch bank accounts', 500, req)
+        return errorResponse('Failed to fetch bank accounts', 500, req, requestId)
       }
 
-      return jsonResponse({ success: true, bank_accounts: accounts }, 200, req)
+      return jsonResponse({ success: true, bank_accounts: accounts }, 200, req, requestId)
     }
 
     if (req.method === 'POST') {
-      const body: CreateBankAccountRequest = await req.json()
-
       const bankName = validateString(body.bank_name, 200)
       const accountName = validateString(body.account_name, 200)
 
-      if (!bankName) return errorResponse('Invalid or missing bank_name', 400, req)
-      if (!accountName) return errorResponse('Invalid or missing account_name', 400, req)
+      if (!bankName) return errorResponse('Invalid or missing bank_name', 400, req, requestId)
+      if (!accountName) return errorResponse('Invalid or missing account_name', 400, req, requestId)
 
       if (!body.account_type || !VALID_ACCOUNT_TYPES.includes(body.account_type)) {
-        return errorResponse(`account_type must be one of: ${VALID_ACCOUNT_TYPES.join(', ')}`, 400, req)
+        return errorResponse(`account_type must be one of: ${VALID_ACCOUNT_TYPES.join(', ')}`, 400, req, requestId)
       }
 
       // Validate last four (if provided)
@@ -91,7 +80,7 @@ Deno.serve(async (req) => {
 
       if (createError) {
         console.error('Failed to create bank account:', createError)
-        return errorResponse('Failed to create bank account', 500, req)
+        return errorResponse('Failed to create bank account', 500, req, requestId)
       }
 
       // If credit card, create a corresponding ledger account
@@ -121,13 +110,11 @@ Deno.serve(async (req) => {
         request_body: { bank_name: bankName, account_type: body.account_type }
       }).then(() => {}).catch(() => {})
 
-      return jsonResponse({ success: true, bank_account: bankAccount }, 201, req)
+      return jsonResponse({ success: true, bank_account: bankAccount }, 201, req, requestId)
     }
 
-    return errorResponse('Method not allowed', 405, req)
-
-  } catch (error: any) {
-    console.error('Error managing bank accounts:', error)
-    return errorResponse('Internal server error', 500, req)
+    return errorResponse('Method not allowed', 405, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

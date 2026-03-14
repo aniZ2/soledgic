@@ -3,16 +3,16 @@
 // GET /manage-budgets - List budgets with current status
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   validateAmount
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface CreateBudgetRequest {
   name: string
@@ -24,26 +24,17 @@ interface CreateBudgetRequest {
 
 const VALID_PERIODS = ['weekly', 'monthly', 'quarterly', 'annual']
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'manage-budgets', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
-    }
-
-    if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     // GET - List budgets with current period spending
@@ -132,26 +123,24 @@ Deno.serve(async (req) => {
           over_budget_count: budgetsWithSpending.filter(b => b.status === 'over').length,
           warning_count: budgetsWithSpending.filter(b => b.status === 'warning').length
         }
-      }, 200, req)
+      }, 200, req, requestId)
     }
 
     // POST - Create budget
     if (req.method === 'POST') {
-      const body: CreateBudgetRequest = await req.json()
-
       const name = validateString(body.name, 200)
       const amount = validateAmount(body.budget_amount)
 
-      if (!name) return errorResponse('Invalid or missing name', 400, req)
-      if (amount === null || amount <= 0) return errorResponse('Invalid budget_amount', 400, req)
+      if (!name) return errorResponse('Invalid or missing name', 400, req, requestId)
+      if (amount === null || amount <= 0) return errorResponse('Invalid budget_amount', 400, req, requestId)
       if (!body.budget_period || !VALID_PERIODS.includes(body.budget_period)) {
-        return errorResponse(`Invalid budget_period: must be ${VALID_PERIODS.join(', ')}`, 400, req)
+        return errorResponse(`Invalid budget_period: must be ${VALID_PERIODS.join(', ')}`, 400, req, requestId)
       }
 
       let categoryId = null
       if (body.category_code) {
         const categoryCode = validateId(body.category_code, 50)
-        if (!categoryCode) return errorResponse('Invalid category_code', 400, req)
+        if (!categoryCode) return errorResponse('Invalid category_code', 400, req, requestId)
 
         const { data: category } = await supabase
           .from('expense_categories')
@@ -160,12 +149,12 @@ Deno.serve(async (req) => {
           .eq('code', categoryCode)
           .single()
 
-        if (!category) return errorResponse(`Invalid category: ${categoryCode}`, 400, req)
+        if (!category) return errorResponse(`Invalid category: ${categoryCode}`, 400, req, requestId)
         categoryId = category.id
       }
 
-      const alertPercentage = body.alert_at_percentage 
-        ? Math.min(Math.max(body.alert_at_percentage, 1), 100) 
+      const alertPercentage = body.alert_at_percentage
+        ? Math.min(Math.max(body.alert_at_percentage, 1), 100)
         : 80
 
       const { data: budget, error: createError } = await supabase
@@ -184,19 +173,17 @@ Deno.serve(async (req) => {
 
       if (createError) {
         console.error('Create error:', createError)
-        return errorResponse('Failed to create budget', 500, req)
+        return errorResponse('Failed to create budget', 500, req, requestId)
       }
 
       return jsonResponse({
         success: true,
         budget: { ...budget, budget_amount: Math.round(budget.budget_amount * 100) / 100 }
-      }, 201, req)
+      }, 201, req, requestId)
     }
 
-    return errorResponse('Method not allowed', 405, req)
-
-  } catch (error: any) {
-    console.error('Error managing budgets:', error)
-    return errorResponse('Internal server error', 500, req)
+    return errorResponse('Method not allowed', 405, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

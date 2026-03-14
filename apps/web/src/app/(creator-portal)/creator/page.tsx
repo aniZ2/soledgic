@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowDownRight, ArrowUpRight, DollarSign, Wallet, CheckCircle2 } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, DollarSign, Wallet, CheckCircle2, Lock, FileText, AlertTriangle } from 'lucide-react'
 
 interface ConnectedAccountRow {
   ledger_id: string
@@ -113,6 +113,72 @@ export default async function CreatorDashboardPage() {
     .eq('creator_email', creatorEmail)
     .eq('status', 'completed')
 
+  // Query held funds for this creator across connected accounts
+  let totalHeldFunds = 0
+  for (const account of connectedAccountRows) {
+    const { data: holdEntries } = await supabase
+      .from('entries')
+      .select('amount')
+      .eq('account_id', (
+        await supabase
+          .from('accounts')
+          .select('id')
+          .eq('ledger_id', account.ledger_id)
+          .eq('account_type', 'creator_hold')
+          .eq('entity_id', account.entity_id)
+          .maybeSingle()
+      ).data?.id ?? '')
+      .eq('entry_type', 'debit')
+
+    if (holdEntries) {
+      for (const entry of holdEntries) {
+        totalHeldFunds += Number(entry.amount)
+      }
+    }
+  }
+
+  // Query backup withholding amount
+  let withholdingAmount = 0
+  for (const account of connectedAccountRows) {
+    const { data: withholdingAccount } = await supabase
+      .from('accounts')
+      .select('balance')
+      .eq('ledger_id', account.ledger_id)
+      .eq('account_type', 'backup_withholding')
+      .eq('entity_id', account.entity_id)
+      .maybeSingle()
+
+    if (withholdingAccount) {
+      withholdingAmount += Number(withholdingAccount.balance)
+    }
+  }
+
+  // Query 1099 status for current tax year
+  const taxYear = new Date().getFullYear()
+  const IRS_THRESHOLD = 60000 // $600 in cents
+  const taxStatus = totalCredits >= IRS_THRESHOLD
+    ? 'above_threshold'
+    : totalCredits >= IRS_THRESHOLD * 0.8
+      ? 'approaching'
+      : 'below_threshold'
+
+  // Check for existing tax documents
+  let taxDocStatus: string | null = null
+  for (const account of connectedAccountRows) {
+    const { data: taxDoc } = await supabase
+      .from('tax_documents')
+      .select('status')
+      .eq('recipient_id', account.entity_id)
+      .eq('tax_year', taxYear - 1)
+      .order('created_at', { ascending: false })
+      .maybeSingle()
+
+    if (taxDoc) {
+      taxDocStatus = taxDoc.status
+      break
+    }
+  }
+
   const availableBalance = totalCredits - totalDebits
 
   const formatCurrency = (cents: number) =>
@@ -170,6 +236,82 @@ export default async function CreatorDashboardPage() {
           <p className="text-2xl font-bold text-foreground">{payoutsCompleted ?? 0}</p>
         </div>
       </div>
+
+      {/* Held Funds, Withholding & 1099 Status */}
+      {(totalHeldFunds > 0 || withholdingAmount > 0 || taxStatus !== 'below_threshold' || taxDocStatus) && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Held Funds */}
+          {totalHeldFunds > 0 && (
+            <div className="bg-card border border-border rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                  <Lock className="w-5 h-5 text-amber-500" />
+                </div>
+                <p className="text-sm text-muted-foreground">Held Funds</p>
+              </div>
+              <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalHeldFunds)}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Funds held pending release conditions
+              </p>
+            </div>
+          )}
+
+          {/* Backup Withholding */}
+          {withholdingAmount > 0 && (
+            <div className="bg-card border border-border rounded-lg p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                </div>
+                <p className="text-sm text-muted-foreground">Backup Withholding</p>
+              </div>
+              <p className="text-2xl font-bold text-red-600">{formatCurrency(withholdingAmount)}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Withheld for tax purposes
+              </p>
+            </div>
+          )}
+
+          {/* 1099 Status */}
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-indigo-500/10 rounded-lg flex items-center justify-center">
+                <FileText className="w-5 h-5 text-indigo-500" />
+              </div>
+              <p className="text-sm text-muted-foreground">1099 Status</p>
+            </div>
+            {taxDocStatus ? (
+              <>
+                <p className="text-lg font-bold text-foreground capitalize">{taxDocStatus}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {taxYear - 1} tax document
+                </p>
+              </>
+            ) : taxStatus === 'above_threshold' ? (
+              <>
+                <p className="text-lg font-bold text-green-600">Above $600</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  You will receive a 1099-NEC for {taxYear}
+                </p>
+              </>
+            ) : taxStatus === 'approaching' ? (
+              <>
+                <p className="text-lg font-bold text-amber-600">Approaching $600</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatCurrency(IRS_THRESHOLD - totalCredits)} remaining to threshold
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-bold text-muted-foreground">Below threshold</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Under $600 reporting threshold
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

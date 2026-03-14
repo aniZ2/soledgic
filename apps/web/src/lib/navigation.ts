@@ -14,6 +14,14 @@ import {
   Bell,
   Shield,
   ShieldCheck,
+  ShieldAlert,
+  BellRing,
+  PiggyBank,
+  Repeat,
+  Percent,
+  Landmark,
+  HandCoins,
+  HardHat,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -41,8 +49,10 @@ export const dashboardNavigation: NavSection[] = [
     items: [
       { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
       { name: 'Creators', href: '/dashboard/creators', icon: Users },
+      { name: 'Contractors', href: '/dashboard/contractors', icon: HardHat },
       { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
       { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
+      { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
     ],
   },
   {
@@ -50,6 +60,7 @@ export const dashboardNavigation: NavSection[] = [
     items: [
       { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
       { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
+      { name: 'Holds', href: '/dashboard/holds', icon: HandCoins },
       { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },
       { name: 'Reports', href: '/dashboard/reports', icon: FileText },
       { name: 'Compliance', href: '/dashboard/compliance', icon: ShieldCheck },
@@ -60,6 +71,12 @@ export const dashboardNavigation: NavSection[] = [
     items: [
       { name: 'Billing', href: '/billing', icon: CreditCard },
       { name: 'Audit Log', href: '/settings/audit-log', icon: Shield },
+      { name: 'Alerts', href: '/settings/alerts', icon: BellRing },
+      { name: 'Fraud Policies', href: '/settings/fraud-policies', icon: ShieldAlert },
+      { name: 'Budgets', href: '/settings/budgets', icon: PiggyBank },
+      { name: 'Recurring', href: '/settings/recurring', icon: Repeat },
+      { name: 'Splits', href: '/settings/splits', icon: Percent },
+      { name: 'Bank Accounts', href: '/settings/bank-accounts', icon: Landmark },
       { name: 'Notifications', href: '/settings/notifications', icon: Bell },
       { name: 'Settings', href: '/settings', icon: Settings },
     ],

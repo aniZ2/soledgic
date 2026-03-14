@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, Clock, Calendar } from 'lucide-react'
+import { FileText, Clock, Calendar, CheckCircle, AlertCircle, FileOutput } from 'lucide-react'
 
 interface ConnectedAccountRow {
   ledger_id: string
@@ -21,6 +21,16 @@ interface StatementPeriod {
 interface StatementView extends StatementPeriod {
   ledger_name: string
   entity_id: string
+}
+
+interface TaxDocumentRow {
+  id: string
+  document_type: string
+  tax_year: number
+  gross_amount: number
+  status: string
+  created_at: string
+  ledger_name: string
 }
 
 export default async function CreatorStatementsPage() {
@@ -69,6 +79,30 @@ export default async function CreatorStatementsPage() {
       }
     }
   }
+
+  // Fetch tax documents for this creator across connected accounts
+  const taxDocuments: TaxDocumentRow[] = []
+  for (const account of connectedAccountRows) {
+    const { data: docs } = await supabase
+      .from('tax_documents')
+      .select('id, document_type, tax_year, gross_amount, status, created_at')
+      .eq('recipient_id', account.entity_id)
+      .neq('status', 'superseded')
+      .order('tax_year', { ascending: false })
+      .limit(10)
+
+    if (docs) {
+      for (const doc of docs) {
+        taxDocuments.push({
+          ...(doc as { id: string; document_type: string; tax_year: number; gross_amount: number; status: string; created_at: string }),
+          ledger_name: account.ledger?.business_name || 'Unknown',
+        })
+      }
+    }
+  }
+
+  const formatCurrency = (cents: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
 
   // Generate synthetic monthly statements if no periods exist
   const months = []
@@ -135,30 +169,73 @@ export default async function CreatorStatementsPage() {
 
       {/* Tax Documents */}
       <div className="bg-card border border-border rounded-lg mt-8">
-        <div className="px-6 py-4 border-b border-border">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Tax Documents</h2>
+          <Link
+            href="/creator/settings#tax"
+            className="text-sm text-primary hover:underline"
+          >
+            Manage tax info
+          </Link>
         </div>
 
-        <div className="p-6">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-amber-500" />
-            </div>
-            <div>
-              <p className="font-medium text-foreground">1099-NEC Forms</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                1099-NEC forms will be available in January for the previous tax year,
-                if your earnings exceed the IRS reporting threshold.
-              </p>
-              <Link
-                href="/creator/settings#tax"
-                className="text-sm text-primary hover:underline mt-2 inline-block"
+        {taxDocuments.length > 0 ? (
+          <div className="divide-y divide-border">
+            {taxDocuments.map((doc) => (
+              <div
+                key={doc.id}
+                className="px-6 py-4 flex items-center justify-between hover:bg-accent/50 transition-colors"
               >
-                Manage your tax information
-              </Link>
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                    <FileOutput className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {doc.document_type} &mdash; {doc.tax_year}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {doc.ledger_name} &bull; Gross: {formatCurrency(Number(doc.gross_amount))}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {doc.status === 'filed' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-green-500/10 text-green-700 dark:text-green-400">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Filed
+                    </span>
+                  ) : doc.status === 'exported' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                      <FileOutput className="w-3.5 h-3.5" />
+                      Exported
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Calculated
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">1099-NEC Forms</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  1099-NEC forms will be available in January for the previous tax year,
+                  if your earnings exceed the IRS reporting threshold ($600).
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

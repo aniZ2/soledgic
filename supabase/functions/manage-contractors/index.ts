@@ -4,18 +4,18 @@
 // POST /manage-contractors/payment - Record payment
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   validateEmail,
   validateAmount,
   getClientIp
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface CreateContractorRequest {
   name: string
@@ -32,26 +32,17 @@ interface RecordPaymentRequest {
   description?: string
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'manage-contractors', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
-    }
-
-    if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     const url = new URL(req.url)
@@ -67,13 +58,13 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error('Error fetching contractors:', error)
-        return errorResponse('Failed to fetch contractors', 500, req)
+        return errorResponse('Failed to fetch contractors', 500, req, requestId)
       }
 
       const currentYear = new Date().getFullYear()
 
-      return jsonResponse({ 
-        success: true, 
+      return jsonResponse({
+        success: true,
         contractors: contractors?.map(c => ({
           ...c,
           ytd_payments: Math.round(c.ytd_payments * 100) / 100,
@@ -86,25 +77,23 @@ Deno.serve(async (req) => {
           threshold_amount: 600,
           message: 'Contractors paid $600+ require 1099-NEC'
         }
-      }, 200, req)
+      }, 200, req, requestId)
     }
 
     // POST /payment - Record contractor payment
     if (req.method === 'POST' && isPayment) {
-      const body: RecordPaymentRequest = await req.json()
-
       const contractorId = validateId(body.contractor_id, 100)
       const amount = validateAmount(body.amount)
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/
 
       if (!contractorId) {
-        return errorResponse('Invalid contractor_id', 400, req)
+        return errorResponse('Invalid contractor_id', 400, req, requestId)
       }
       if (amount === null || amount <= 0) {
-        return errorResponse('Invalid amount: must be positive integer (cents)', 400, req)
+        return errorResponse('Invalid amount: must be positive integer (cents)', 400, req, requestId)
       }
       if (!body.payment_date || !dateRegex.test(body.payment_date)) {
-        return errorResponse('Invalid payment_date: must be YYYY-MM-DD', 400, req)
+        return errorResponse('Invalid payment_date: must be YYYY-MM-DD', 400, req, requestId)
       }
 
       const { data: contractor } = await supabase
@@ -115,7 +104,7 @@ Deno.serve(async (req) => {
         .single()
 
       if (!contractor) {
-        return errorResponse('Contractor not found', 404, req)
+        return errorResponse('Contractor not found', 404, req, requestId)
       }
 
       const paymentAmount = amount / 100
@@ -138,7 +127,7 @@ Deno.serve(async (req) => {
 
       if (paymentError) {
         console.error('Payment error:', paymentError)
-        return errorResponse('Failed to record payment', 500, req)
+        return errorResponse('Failed to record payment', 500, req, requestId)
       }
 
       const { data: updatedContractor } = await supabase
@@ -166,16 +155,14 @@ Deno.serve(async (req) => {
         ytd_total: updatedContractor?.ytd_payments,
         needs_1099: updatedContractor?.needs_1099,
         warning: updatedContractor?.needs_1099 ? 'Contractor has exceeded $600 threshold - 1099-NEC required' : undefined
-      }, 200, req)
+      }, 200, req, requestId)
     }
 
     // POST - Create contractor
     if (req.method === 'POST') {
-      const body: CreateContractorRequest = await req.json()
-
       const name = validateString(body.name, 200)
       if (!name) {
-        return errorResponse('Invalid or missing name', 400, req)
+        return errorResponse('Invalid or missing name', 400, req, requestId)
       }
 
       const email = body.email ? validateEmail(body.email) : null
@@ -194,19 +181,17 @@ Deno.serve(async (req) => {
 
       if (createError) {
         if (createError.code === '23505') {
-          return jsonResponse({ success: false, error: 'Contractor with this email already exists' }, 409, req)
+          return jsonResponse({ success: false, error: 'Contractor with this email already exists' }, 409, req, requestId)
         }
         console.error('Create error:', createError)
-        return errorResponse('Failed to create contractor', 500, req)
+        return errorResponse('Failed to create contractor', 500, req, requestId)
       }
 
-      return jsonResponse({ success: true, contractor }, 201, req)
+      return jsonResponse({ success: true, contractor }, 201, req, requestId)
     }
 
-    return errorResponse('Method not allowed', 405, req)
-
-  } catch (error: any) {
-    console.error('Error managing contractors:', error)
-    return errorResponse('Internal server error', 500, req)
+    return errorResponse('Method not allowed', 405, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

@@ -1416,4 +1416,533 @@ describe('Soledgic SDK', () => {
     expect(body.tax_year).toBe(2025)
     expect(fn.mock.calls[0][0]).toContain('/tax/documents/deliver-copy-b')
   })
+
+  // === GROUP 1: INVOICE METHODS ===
+
+  it('createInvoice sends line_items and customer_name', async () => {
+    const fn = mockFetch({ success: true, invoice_id: 'inv_1', transaction_id: 'txn_inv1' })
+    const sdk = createClient(fn)
+    await sdk.createInvoice({
+      customerName: 'Acme Corp',
+      customerEmail: 'billing@acme.com',
+      lineItems: [
+        { description: 'Consulting', quantity: 2, unitPrice: 5000 },
+        { description: 'Setup fee', quantity: 1, unitPrice: 2500 },
+      ],
+      dueDate: '2026-04-01',
+      notes: 'Net 30',
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/invoices')
+    expect(opts.method).toBe('POST')
+    const body = JSON.parse(opts.body)
+    expect(body.customer_name).toBe('Acme Corp')
+    expect(body.customer_email).toBe('billing@acme.com')
+    expect(body.line_items).toHaveLength(2)
+    expect(body.line_items[0].description).toBe('Consulting')
+    expect(body.line_items[0].quantity).toBe(2)
+    expect(body.line_items[0].unit_price).toBe(5000)
+    expect(body.line_items[1].description).toBe('Setup fee')
+    expect(body.due_date).toBe('2026-04-01')
+    expect(body.notes).toBe('Net 30')
+  })
+
+  it('createInvoice computes amount from quantity * unitPrice', async () => {
+    const fn = mockFetch({ success: true, invoice_id: 'inv_2' })
+    const sdk = createClient(fn)
+    await sdk.createInvoice({
+      customerName: 'Test',
+      lineItems: [{ description: 'Item', quantity: 3, unitPrice: 1000 }],
+    })
+
+    const body = JSON.parse(fn.mock.calls[0][1].body)
+    expect(body.line_items[0].amount).toBe(3000)
+  })
+
+  it('listInvoices sends query params via GET', async () => {
+    const fn = mockFetch({ success: true, invoices: [], count: 0 })
+    const sdk = createClient(fn)
+    await sdk.listInvoices({ status: 'sent', customerId: 'cust_1', limit: 10, offset: 5 })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/invoices')
+    expect(String(url)).toContain('status=sent')
+    expect(String(url)).toContain('customer_id=cust_1')
+    expect(String(url)).toContain('limit=10')
+    expect(String(url)).toContain('offset=5')
+  })
+
+  it('sendInvoice calls the correct endpoint path', async () => {
+    const fn = mockFetch({ success: true, message: 'Invoice sent' })
+    const sdk = createClient(fn)
+    await sdk.sendInvoice('inv_42')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/invoices/inv_42/send')
+    expect(opts.method).toBe('POST')
+  })
+
+  it('recordInvoicePayment sends amount and payment_method', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_pay1' })
+    const sdk = createClient(fn)
+    await sdk.recordInvoicePayment('inv_42', {
+      amount: 7500,
+      paymentMethod: 'bank_transfer',
+      paymentDate: '2026-03-10',
+      referenceId: 'ref_pay1',
+      notes: 'Partial payment',
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/invoices/inv_42/record-payment')
+    const body = JSON.parse(opts.body)
+    expect(body.amount).toBe(7500)
+    expect(body.payment_method).toBe('bank_transfer')
+    expect(body.payment_date).toBe('2026-03-10')
+    expect(body.reference_id).toBe('ref_pay1')
+    expect(body.notes).toBe('Partial payment')
+  })
+
+  it('voidInvoice calls the correct endpoint', async () => {
+    const fn = mockFetch({ success: true })
+    const sdk = createClient(fn)
+    await sdk.voidInvoice('inv_42', 'Customer cancelled')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/invoices/inv_42/void')
+    expect(opts.method).toBe('POST')
+    const body = JSON.parse(opts.body)
+    expect(body.reason).toBe('Customer cancelled')
+  })
+
+  // === GROUP 2: FINANCIAL OPERATIONS ===
+
+  it('payBill sends bill_transaction_id and amount', async () => {
+    const fn = mockFetch({ success: true, transaction_id: 'txn_pb1' })
+    const sdk = createClient(fn)
+    await sdk.payBill({
+      billTransactionId: 'bill_1',
+      amount: 15000,
+      vendorName: 'AWS',
+      paymentMethod: 'ach',
+      referenceId: 'ref_pb1',
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/pay-bill')
+    const body = JSON.parse(opts.body)
+    expect(body.bill_transaction_id).toBe('bill_1')
+    expect(body.amount).toBe(15000)
+    expect(body.vendor_name).toBe('AWS')
+    expect(body.payment_method).toBe('ach')
+    expect(body.reference_id).toBe('ref_pb1')
+  })
+
+  it('createBudget sends category_code and budget_amount', async () => {
+    const fn = mockFetch({ success: true, budget_id: 'bgt_1' })
+    const sdk = createClient(fn)
+    await sdk.createBudget({
+      name: 'Marketing',
+      categoryCode: 'marketing',
+      budgetAmount: 500000,
+      budgetPeriod: 'monthly',
+      alertAtPercentage: 80,
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/manage-budgets')
+    const body = JSON.parse(opts.body)
+    expect(body.name).toBe('Marketing')
+    expect(body.category_code).toBe('marketing')
+    expect(body.budget_amount).toBe(500000)
+    expect(body.budget_period).toBe('monthly')
+    expect(body.alert_at_percentage).toBe(80)
+  })
+
+  it('listBudgets uses GET', async () => {
+    const fn = mockFetch({ success: true, budgets: [] })
+    const sdk = createClient(fn)
+    await sdk.listBudgets()
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/manage-budgets')
+  })
+
+  it('createRecurring sends frequency and amount', async () => {
+    const fn = mockFetch({ success: true, recurring_id: 'rec_1' })
+    const sdk = createClient(fn)
+    await sdk.createRecurring({
+      name: 'AWS Hosting',
+      merchantName: 'Amazon Web Services',
+      categoryCode: 'hosting',
+      amount: 25000,
+      recurrenceInterval: 'monthly',
+      recurrenceDay: 1,
+      startDate: '2026-01-01',
+      endDate: '2026-12-31',
+      businessPurpose: 'Cloud hosting',
+      isVariableAmount: true,
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/manage-recurring')
+    const body = JSON.parse(opts.body)
+    expect(body.name).toBe('AWS Hosting')
+    expect(body.merchant_name).toBe('Amazon Web Services')
+    expect(body.category_code).toBe('hosting')
+    expect(body.amount).toBe(25000)
+    expect(body.recurrence_interval).toBe('monthly')
+    expect(body.recurrence_day).toBe(1)
+    expect(body.start_date).toBe('2026-01-01')
+    expect(body.end_date).toBe('2026-12-31')
+    expect(body.business_purpose).toBe('Cloud hosting')
+    expect(body.is_variable_amount).toBe(true)
+  })
+
+  it('listRecurring uses GET', async () => {
+    const fn = mockFetch({ success: true, recurring: [] })
+    const sdk = createClient(fn)
+    await sdk.listRecurring()
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/manage-recurring')
+  })
+
+  // === GROUP 3: TAX METHODS ===
+
+  it('generateAllTaxDocuments sends tax_year and maps response', async () => {
+    const fn = mockFetch({
+      success: true,
+      generation: {
+        tax_year: 2025,
+        created: 10,
+        skipped: 2,
+        total_amount: 1200000,
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.generateAllTaxDocuments(2025)
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/tax/documents/generate')
+    const body = JSON.parse(opts.body)
+    expect(body.tax_year).toBe(2025)
+    expect(result.success).toBe(true)
+    expect(result.generation.taxYear).toBe(2025)
+    expect(result.generation.created).toBe(10)
+    expect(result.generation.skipped).toBe(2)
+    expect(result.generation.totalAmount).toBe(1200000)
+  })
+
+  it('listTaxDocuments uses GET with tax_year query param and maps response', async () => {
+    const fn = mockFetch({
+      success: true,
+      tax_year: 2025,
+      summary: {
+        total_documents: 15,
+        total_amount: 2500000,
+        by_status: { calculated: 10, exported: 3, filed: 2 },
+      },
+      documents: [{ id: 'doc_1' }],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listTaxDocuments(2025)
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/tax/documents')
+    expect(String(url)).toContain('tax_year=2025')
+    expect(result.taxYear).toBe(2025)
+    expect(result.summary.totalDocuments).toBe(15)
+    expect(result.summary.totalAmount).toBe(2500000)
+    expect(result.summary.byStatus.calculated).toBe(10)
+    expect(result.summary.byStatus.exported).toBe(3)
+    expect(result.summary.byStatus.filed).toBe(2)
+    expect(result.documents).toHaveLength(1)
+  })
+
+  it('markTaxDocumentFiled calls correct endpoint path', async () => {
+    const fn = mockFetch({
+      success: true,
+      document: { id: 'doc_99', tax_year: 2025, status: 'filed' },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.markTaxDocumentFiled('doc_99')
+
+    const [url] = fn.mock.calls[0]
+    expect(url).toContain('/tax/documents/doc_99/mark-filed')
+    expect(result.document.id).toBe('doc_99')
+    expect(result.document.status).toBe('filed')
+  })
+
+  it('markTaxDocumentsFiledBulk sends tax_year', async () => {
+    const fn = mockFetch({ success: true, updated: 8 })
+    const sdk = createClient(fn)
+    await sdk.markTaxDocumentsFiledBulk(2025)
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/tax/documents/mark-filed')
+    const body = JSON.parse(opts.body)
+    expect(body.tax_year).toBe(2025)
+  })
+
+  it('generateTaxDocumentPdf sends document_id in path', async () => {
+    const fn = mockFetch({ success: true, pdf_url: 'https://example.com/doc_55.pdf' })
+    const sdk = createClient(fn)
+    await sdk.generateTaxDocumentPdf('doc_55', 'copy_b')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/tax/documents/doc_55/pdf')
+    const body = JSON.parse(opts.body)
+    expect(body.copy_type).toBe('copy_b')
+  })
+
+  it('generateTaxDocumentPdfBatch sends tax_year and copy_type', async () => {
+    const fn = mockFetch({ success: true, count: 10, batch_id: 'batch_1' })
+    const sdk = createClient(fn)
+    await sdk.generateTaxDocumentPdfBatch(2025, 'copy_a')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/tax/documents/pdf/batch')
+    const body = JSON.parse(opts.body)
+    expect(body.tax_year).toBe(2025)
+    expect(body.copy_type).toBe('copy_a')
+  })
+
+  // === GROUP 4: CONTRACTOR AND BANK METHODS ===
+
+  it('createContractor sends name and email', async () => {
+    const fn = mockFetch({ success: true, contractor_id: 'ctr_1' })
+    const sdk = createClient(fn)
+    await sdk.createContractor({
+      name: 'Jane Developer',
+      email: 'jane@example.com',
+      companyName: 'Dev LLC',
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/manage-contractors')
+    const body = JSON.parse(opts.body)
+    expect(body.name).toBe('Jane Developer')
+    expect(body.email).toBe('jane@example.com')
+    expect(body.company_name).toBe('Dev LLC')
+  })
+
+  it('listContractors uses GET', async () => {
+    const fn = mockFetch({ success: true, contractors: [] })
+    const sdk = createClient(fn)
+    await sdk.listContractors()
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/manage-contractors')
+  })
+
+  it('recordContractorPayment sends contractor_id and amount', async () => {
+    const fn = mockFetch({ success: true, payment_id: 'cpay_1' })
+    const sdk = createClient(fn)
+    await sdk.recordContractorPayment({
+      contractorId: 'ctr_1',
+      amount: 250000,
+      paymentDate: '2026-03-01',
+      paymentMethod: 'ach',
+      paymentReference: 'ref_cp1',
+      description: 'March development work',
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/manage-contractors/payment')
+    const body = JSON.parse(opts.body)
+    expect(body.contractor_id).toBe('ctr_1')
+    expect(body.amount).toBe(250000)
+    expect(body.payment_date).toBe('2026-03-01')
+    expect(body.payment_method).toBe('ach')
+    expect(body.payment_reference).toBe('ref_cp1')
+    expect(body.description).toBe('March development work')
+  })
+
+  it('createBankAccount sends account_name and account_type', async () => {
+    const fn = mockFetch({ success: true, bank_account_id: 'ba_1' })
+    const sdk = createClient(fn)
+    await sdk.createBankAccount({
+      bankName: 'Chase',
+      accountName: 'Business Checking',
+      accountType: 'checking',
+      accountLastFour: '4321',
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/manage-bank-accounts')
+    const body = JSON.parse(opts.body)
+    expect(body.bank_name).toBe('Chase')
+    expect(body.account_name).toBe('Business Checking')
+    expect(body.account_type).toBe('checking')
+    expect(body.account_last_four).toBe('4321')
+  })
+
+  it('listBankAccounts uses GET', async () => {
+    const fn = mockFetch({ success: true, bank_accounts: [] })
+    const sdk = createClient(fn)
+    await sdk.listBankAccounts()
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/manage-bank-accounts')
+  })
+
+  // === GROUP 5: OTHER MISSING ===
+
+  it('deleteCreator sends creator_id', async () => {
+    const fn = mockFetch({ success: true, deleted: true })
+    const sdk = createClient(fn)
+    await sdk.deleteCreator('creator_99')
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/delete-creator')
+    expect(opts.method).toBe('POST')
+    const body = JSON.parse(opts.body)
+    expect(body.creator_id).toBe('creator_99')
+  })
+
+  it('submitTaxInfo sends legal_name, tax_id_type, and tax_id_last4', async () => {
+    const fn = mockFetch({ success: true, tax_info_id: 'ti_1' })
+    const sdk = createClient(fn)
+    await sdk.submitTaxInfo({
+      participantId: 'p_1',
+      legalName: 'Jane Doe',
+      taxIdType: 'ssn',
+      taxIdLast4: '1234',
+      businessType: 'individual',
+      address: {
+        line1: '123 Main St',
+        city: 'San Francisco',
+        state: 'CA',
+        postalCode: '94102',
+        country: 'US',
+      },
+      certify: true,
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/submit-tax-info')
+    const body = JSON.parse(opts.body)
+    expect(body.participant_id).toBe('p_1')
+    expect(body.legal_name).toBe('Jane Doe')
+    expect(body.tax_id_type).toBe('ssn')
+    expect(body.tax_id_last4).toBe('1234')
+    expect(body.business_type).toBe('individual')
+    expect(body.certify).toBe(true)
+    expect(body.address.line1).toBe('123 Main St')
+    expect(body.address.postal_code).toBe('94102')
+  })
+
+  it('listLedgers uses GET on the correct endpoint', async () => {
+    const fn = mockFetch({ success: true, ledgers: [] })
+    const sdk = createClient(fn)
+    await sdk.listLedgers()
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/list-ledgers')
+  })
+
+  it('importBankStatement sends lines array with snake_case fields', async () => {
+    const fn = mockFetch({ success: true, imported: 2, matched: 1 })
+    const sdk = createClient(fn)
+    await sdk.importBankStatement({
+      bankAccountId: 'ba_1',
+      lines: [
+        {
+          transactionDate: '2026-03-01',
+          description: 'AWS Payment',
+          amount: -15000,
+          referenceNumber: 'REF001',
+          merchantName: 'Amazon',
+          categoryHint: 'hosting',
+        },
+        {
+          transactionDate: '2026-03-02',
+          postDate: '2026-03-03',
+          description: 'Client Payment',
+          amount: 50000,
+          checkNumber: '1234',
+        },
+      ],
+      autoMatch: true,
+    })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(url).toContain('/import-bank-statement')
+    const body = JSON.parse(opts.body)
+    expect(body.bank_account_id).toBe('ba_1')
+    expect(body.auto_match).toBe(true)
+    expect(body.lines).toHaveLength(2)
+    expect(body.lines[0].transaction_date).toBe('2026-03-01')
+    expect(body.lines[0].description).toBe('AWS Payment')
+    expect(body.lines[0].amount).toBe(-15000)
+    expect(body.lines[0].reference_number).toBe('REF001')
+    expect(body.lines[0].merchant_name).toBe('Amazon')
+    expect(body.lines[0].category_hint).toBe('hosting')
+    expect(body.lines[1].post_date).toBe('2026-03-03')
+    expect(body.lines[1].check_number).toBe('1234')
+  })
+
+  it('listComplianceAccessPatterns sends hours param and maps response', async () => {
+    const fn = mockFetch({
+      success: true,
+      window_hours: 48,
+      count: 1,
+      patterns: [
+        {
+          ip_address: '192.168.1.1',
+          hour: '2026-03-14T10:00:00Z',
+          request_count: 50,
+          unique_actions: 3,
+          actions: ['record-sale', 'list-periods', 'get-runway'],
+          max_risk_score: 2,
+          failed_auths: 0,
+        },
+      ],
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.listComplianceAccessPatterns({ hours: 48, limit: 100 })
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/compliance/access-patterns')
+    expect(String(url)).toContain('hours=48')
+    expect(String(url)).toContain('limit=100')
+    expect(result.windowHours).toBe(48)
+    expect(result.count).toBe(1)
+    expect(result.patterns[0].ipAddress).toBe('192.168.1.1')
+    expect(result.patterns[0].requestCount).toBe(50)
+    expect(result.patterns[0].uniqueActions).toBe(3)
+    expect(result.patterns[0].actions).toEqual(['record-sale', 'list-periods', 'get-runway'])
+    expect(result.patterns[0].maxRiskScore).toBe(2)
+    expect(result.patterns[0].failedAuths).toBe(0)
+  })
+
+  it('getHoldSummary uses GET on holds/summary endpoint', async () => {
+    const fn = mockFetch({
+      success: true,
+      summary: {
+        total_held: 50000,
+        total_count: 5,
+        ready_for_release: 2,
+      },
+    })
+    const sdk = createClient(fn)
+    const result = await sdk.getHoldSummary()
+
+    const [url, opts] = fn.mock.calls[0]
+    expect(opts.method).toBe('GET')
+    expect(String(url)).toContain('/holds/summary')
+    expect(result.success).toBe(true)
+    expect(result.summary.total_held).toBe(50000)
+    expect(result.summary.total_count).toBe(5)
+  })
 })
