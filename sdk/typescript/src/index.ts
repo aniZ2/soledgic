@@ -3040,6 +3040,41 @@ export class Soledgic {
     }
   }
 
+  async markTaxDocumentsFiledBulk(taxYear: number) {
+    return this.request<any>('tax/documents/mark-filed', { tax_year: taxYear })
+  }
+
+  async correctTaxDocument(documentId: string, params: {
+    reason: string
+    grossAmount?: number
+    federalWithholding?: number
+    stateWithholding?: number
+  }) {
+    return this.request<any>(`tax/documents/${documentId}/correct`, {
+      reason: params.reason,
+      gross_amount: params.grossAmount,
+      federal_withholding: params.federalWithholding,
+      state_withholding: params.stateWithholding,
+    })
+  }
+
+  async deliverTaxDocumentCopyB(taxYear: number) {
+    return this.request<any>('tax/documents/deliver-copy-b', { tax_year: taxYear })
+  }
+
+  async generateTaxDocumentPdf(documentId: string, copyType?: string) {
+    return this.request<any>(`tax/documents/${documentId}/pdf`, {
+      copy_type: copyType,
+    })
+  }
+
+  async generateTaxDocumentPdfBatch(taxYear: number, copyType?: string) {
+    return this.request<any>('tax/documents/pdf/batch', {
+      tax_year: taxYear,
+      copy_type: copyType,
+    })
+  }
+
   // === COMPLIANCE MONITORING ===
 
   async getComplianceOverview(options?: { days?: number; hours?: number }): Promise<ComplianceOverviewResponse> {
