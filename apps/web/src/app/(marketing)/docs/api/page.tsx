@@ -99,14 +99,12 @@ const ENDPOINT_CATEGORIES: Record<string, string> = {
   'webhooks': 'Webhooks',
   'configure-alerts': 'Webhooks',
 
-  'tax-documents': 'Tax',
   'tax-documents-v2': 'Tax',
   'tax-documents-generate': 'Tax',
   'tax-documents-export': 'Tax',
   'tax-document-detail': 'Tax',
   'tax-document-mark-filed': 'Tax',
   'tax-calculation': 'Tax',
-  'generate-tax-summary': 'Tax',
   'tax-summary': 'Tax',
   'submit-tax-info': 'Tax',
 

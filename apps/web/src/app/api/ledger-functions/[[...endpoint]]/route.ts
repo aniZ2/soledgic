@@ -19,7 +19,6 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'webhooks',
   'import-transactions',
   'submit-tax-info',
-  'tax-documents',
   'tax',
   'send-statements',
   'profit-loss',

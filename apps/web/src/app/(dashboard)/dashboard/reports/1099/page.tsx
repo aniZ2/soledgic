@@ -6,7 +6,7 @@ import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provi
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import Link from 'next/link'
-import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info } from 'lucide-react'
+import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info, Send } from 'lucide-react'
 import { useToast } from '@/components/notifications/toast-provider'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 
@@ -48,7 +48,8 @@ export default function TaxDocumentsPage() {
   const [copyType, setCopyType] = useState<'a' | 'b' | '1' | '2'>('b')
   const [taxYear, setTaxYear] = useState(new Date().getFullYear() - 1)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
-  const [confirmAction, setConfirmAction] = useState<'mark-filed' | 'generate-all-pdfs' | null>(null)
+  const [sendingCopyB, setSendingCopyB] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'mark-filed' | 'generate-all-pdfs' | 'send-copy-b' | null>(null)
   const toast = useToast()
 
   const loadData = useCallback(async () => {
@@ -240,6 +241,37 @@ export default function TaxDocumentsPage() {
     }
   }
 
+  const sendCopyB = () => {
+    setConfirmAction('send-copy-b')
+  }
+
+  const confirmSendCopyB = async () => {
+    if (!ledgerId) return
+    setConfirmAction(null)
+    setSendingCopyB(true)
+
+    try {
+      const res = await callLedgerFunction('tax/documents/deliver-copy-b', {
+        ledgerId,
+        method: 'POST',
+        body: { tax_year: taxYear },
+      })
+
+      const result = await res.json()
+      if (result.success) {
+        const d = result.delivery
+        toast.success('Copy B delivery complete', `${d.sent} sent, ${d.failed} failed, ${d.skipped} skipped (no email or already sent).`)
+        loadData()
+      } else {
+        toast.error('Copy B delivery failed', result.error)
+      }
+    } catch {
+      toast.error('Failed to send Copy B emails')
+    } finally {
+      setSendingCopyB(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'calculated':
@@ -375,6 +407,15 @@ export default function TaxDocumentsPage() {
           </button>
         </div>
 
+        <button
+          onClick={sendCopyB}
+          disabled={sendingCopyB || documents.length === 0}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+        >
+          <Send className="w-4 h-4" />
+          {sendingCopyB ? 'Sending...' : 'Send Copy B'}
+        </button>
+
         {stats && stats.exported > 0 && (
           <button
             onClick={markAllFiled}
@@ -488,6 +529,15 @@ export default function TaxDocumentsPage() {
         title="Generate All PDFs"
         message={`Generate 1099-NEC draft PDFs for all ${documents.length} documents?`}
         confirmLabel="Generate PDFs"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'send-copy-b'}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={confirmSendCopyB}
+        title="Send Copy B to Recipients"
+        message={`Email 1099-NEC Copy B PDFs to all recipients with $600+ in gross payments for ${taxYear}? Recipients without an email on file will be skipped. Previously sent documents will not be re-sent.`}
+        confirmLabel="Send Copy B"
       />
     </div>
   )

@@ -13,10 +13,12 @@ import {
   calculateParticipantTaxResponse,
   exportTaxDocumentsResponse,
   generateTaxDocumentsResponse,
+  deliverTaxDocumentCopyBResponse,
   generateTaxDocumentPdfResponse,
   generateTaxDocumentPdfBatchResponse,
   getTaxDocumentResponse,
   getTaxSummaryResponse,
+  issueCorrectedTaxDocumentResponse,
   listTaxDocumentsResponse,
   markTaxDocumentFiledResponse,
   markTaxDocumentsFiledBulkResponse,
@@ -73,6 +75,17 @@ const handler = createHandler(
       return respondWithResult(req, requestId, result)
     }
 
+    // POST /tax/documents/deliver-copy-b
+    if (segments.length === 2 && segments[0] === 'documents' && segments[1] === 'deliver-copy-b') {
+      if (req.method !== 'POST') {
+        return errorResponse('Method not allowed', 405, req, requestId)
+      }
+
+      const payload = asJsonObject(body) || {}
+      const result = await deliverTaxDocumentCopyBResponse(req, supabase, ledger, payload, requestId)
+      return respondWithResult(req, requestId, result)
+    }
+
     if (segments.length === 2 && segments[0] === 'documents' && segments[1] === 'generate') {
       if (req.method !== 'POST') {
         return errorResponse('Method not allowed', 405, req, requestId)
@@ -93,6 +106,21 @@ const handler = createHandler(
       }
 
       const result = await getTaxDocumentResponse(req, supabase, ledger, segments[1], requestId)
+      return respondWithResult(req, requestId, result)
+    }
+
+    // POST /tax/documents/{id}/correct — issue a corrected 1099
+    if (segments.length === 3 && segments[0] === 'documents' && segments[2] === 'correct') {
+      if (req.method !== 'POST') {
+        return errorResponse('Method not allowed', 405, req, requestId)
+      }
+
+      const payload = asJsonObject(body)
+      if (!payload) {
+        return errorResponse('Invalid JSON body', 400, req, requestId)
+      }
+
+      const result = await issueCorrectedTaxDocumentResponse(req, supabase, ledger, segments[1], payload, requestId)
       return respondWithResult(req, requestId, result)
     }
 

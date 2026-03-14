@@ -529,6 +529,246 @@ export async function markTaxDocumentsFiledBulkResponse(
   })
 }
 
+export interface DeliverCopyBInput {
+  tax_year?: number
+}
+
+export async function deliverTaxDocumentCopyBResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  body: DeliverCopyBInput,
+  requestId: string,
+): Promise<ResourceResult> {
+  const taxYear = normalizeTaxYear(body.tax_year)
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const resendApiKey = Deno.env.get('RESEND_API_KEY')
+  const fromEmail = Deno.env.get('FROM_EMAIL')
+
+  if (!supabaseUrl || !serviceKey) {
+    return resourceError('Service configuration error', 500, {}, 'service_config_error')
+  }
+
+  if (!resendApiKey || !fromEmail) {
+    return resourceError('Email configuration missing (RESEND_API_KEY / FROM_EMAIL)', 500, {}, 'email_config_error')
+  }
+
+  // Fetch all tax documents for the ledger/year that meet the 1099 threshold
+  const { data: documents, error: docsError } = await supabase
+    .from('tax_documents')
+    .select('*')
+    .eq('ledger_id', ledger.id)
+    .eq('tax_year', taxYear)
+    .gte('gross_amount', 600)
+
+  if (docsError) {
+    console.error('deliverTaxDocumentCopyBResponse fetch error:', docsError)
+    return resourceError('Failed to fetch tax documents', 500, {}, 'tax_documents_fetch_failed')
+  }
+
+  if (!documents || documents.length === 0) {
+    return resourceOk({
+      success: true,
+      tax_year: taxYear,
+      delivery: { sent: 0, failed: 0, skipped: 0 },
+    })
+  }
+
+  // Fetch ledger business name for email template
+  const { data: ledgerData } = await supabase
+    .from('ledgers')
+    .select('business_name')
+    .eq('id', ledger.id)
+    .single()
+
+  const businessName = ledgerData?.business_name || 'Platform'
+
+  let sent = 0
+  let failed = 0
+  let skipped = 0
+
+  for (const doc of documents) {
+    try {
+      // Already delivered — skip
+      if (doc.metadata?.copy_b_sent_at) {
+        skipped++
+        continue
+      }
+
+      // Look up creator email via participant_identity_links → user profile or account metadata
+      const recipientId = doc.recipient_id
+      let recipientEmail: string | null = null
+      let recipientName: string | null = null
+
+      // Try participant_identity_links → auth.users email
+      const linkedUserId = await getLinkedUserIdForParticipant(supabase, ledger.id, recipientId)
+      if (linkedUserId) {
+        // Check shared_tax_profiles for email (tax submissions may have contact email)
+        const { data: taxProfile } = await supabase
+          .from('shared_tax_profiles')
+          .select('legal_name')
+          .eq('user_id', linkedUserId)
+          .maybeSingle()
+
+        if (taxProfile?.legal_name) {
+          recipientName = taxProfile.legal_name
+        }
+
+        // Look up user email from auth
+        const { data: userData } = await supabase.auth.admin.getUserById(linkedUserId)
+        if (userData?.user?.email) {
+          recipientEmail = userData.user.email
+        }
+      }
+
+      // Fallback: check account metadata for email
+      if (!recipientEmail) {
+        const { data: account } = await supabase
+          .from('accounts')
+          .select('name, metadata')
+          .eq('ledger_id', ledger.id)
+          .eq('entity_id', recipientId)
+          .eq('account_type', 'creator_balance')
+          .maybeSingle()
+
+        if (account?.metadata?.email) {
+          recipientEmail = account.metadata.email
+        }
+        if (!recipientName && account?.name) {
+          recipientName = account.name
+        }
+      }
+
+      if (!recipientEmail) {
+        skipped++
+        continue
+      }
+
+      // Generate Copy B PDF via internal generate-pdf call
+      const pdfRes = await fetch(`${supabaseUrl}/functions/v1/generate-pdf`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          report_type: '1099_nec_form',
+          ledger_id: ledger.id,
+          tax_year: doc.tax_year,
+          gross_amount: Number(doc.gross_amount),
+          federal_withholding: Number(doc.federal_withholding || 0),
+          state_withholding: Number(doc.state_withholding || 0),
+          recipient_id: doc.recipient_id,
+          copy_type: 'b',
+        }),
+      })
+
+      const pdfResult = await pdfRes.json()
+      if (!pdfResult.success || !pdfResult.data) {
+        console.error(`Copy B PDF generation failed for doc ${doc.id}`)
+        failed++
+        continue
+      }
+
+      // Send email via Resend (following send-statements pattern)
+      const subject = `Your ${taxYear} Form 1099-NEC from ${businessName}`
+      const textBody = [
+        `Hello${recipientName ? ` ${recipientName}` : ''},`,
+        '',
+        `Attached is your Form 1099-NEC (Copy B) for tax year ${taxYear} from ${businessName}.`,
+        '',
+        'This form reports the nonemployee compensation you received during the tax year.',
+        'Please retain this copy for your tax records.',
+        '',
+        'If you have questions about the amounts reported, please contact us.',
+        '',
+        `Best regards,`,
+        businessName,
+      ].join('\n')
+
+      const emailRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: recipientEmail,
+          subject,
+          text: textBody,
+          attachments: [{
+            content: pdfResult.data,
+            filename: pdfResult.filename || `1099_nec_${taxYear}_copy_b.pdf`,
+          }],
+        }),
+      })
+
+      const emailData = await emailRes.json()
+
+      if (!emailRes.ok) {
+        console.error(`Copy B email failed for doc ${doc.id}:`, emailData.message)
+        failed++
+        continue
+      }
+
+      // Mark document with copy_b_sent_at timestamp in metadata
+      const existingMetadata = doc.metadata || {}
+      await supabase
+        .from('tax_documents')
+        .update({
+          metadata: {
+            ...existingMetadata,
+            copy_b_sent_at: new Date().toISOString(),
+            copy_b_email: recipientEmail,
+            copy_b_message_id: emailData.id,
+          },
+        })
+        .eq('id', doc.id)
+
+      // Log to email_log (fire-and-forget like send-statements)
+      Promise.resolve(
+        supabase.from('email_log').insert({
+          ledger_id: ledger.id,
+          creator_id: recipientId,
+          email_type: '1099_copy_b',
+          recipient_email: recipientEmail,
+          subject,
+          status: 'sent',
+          message_id: emailData.id,
+          period_year: taxYear,
+        }),
+      ).then(() => {}).catch(() => {})
+
+      sent++
+    } catch (err) {
+      console.error(`Copy B delivery error for doc ${doc.id}:`, err)
+      failed++
+    }
+  }
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'deliver_1099_copy_b',
+    entity_type: 'tax_documents',
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      tax_year: taxYear,
+      sent,
+      failed,
+      skipped,
+    }),
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    tax_year: taxYear,
+    delivery: { sent, failed, skipped },
+  })
+}
+
 export interface GeneratePdfInput {
   document_id?: string
   copy_type?: 'a' | 'b' | '1' | '2'
@@ -744,5 +984,135 @@ export async function generateTaxDocumentPdfBatchResponse(
   return resourceOk({
     success: true,
     data: { tax_year: taxYear, copy_type: copyType, generated, failed },
+  })
+}
+
+export async function issueCorrectedTaxDocumentResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  documentIdRaw: string,
+  body: Record<string, unknown>,
+  requestId: string,
+): Promise<ResourceResult> {
+  const documentId = validateId(documentIdRaw, 100)
+  if (!documentId) {
+    return resourceError('Invalid document_id', 400, {}, 'invalid_document_id')
+  }
+
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+  if (!reason) {
+    return resourceError('reason is required for corrections', 400, {}, 'missing_correction_reason')
+  }
+
+  const { data: original, error: fetchError } = await supabase
+    .from('tax_documents')
+    .select('*')
+    .eq('ledger_id', ledger.id)
+    .eq('id', documentId)
+    .single()
+
+  if (fetchError || !original) {
+    return resourceError('Tax document not found', 404, {}, 'tax_document_not_found')
+  }
+
+  const correctedGross = typeof body.gross_amount === 'number'
+    ? body.gross_amount
+    : Number(original.gross_amount)
+  const correctedFederal = typeof body.federal_withholding === 'number'
+    ? body.federal_withholding
+    : (original.federal_withholding != null ? Number(original.federal_withholding) : null)
+  const correctedState = typeof body.state_withholding === 'number'
+    ? body.state_withholding
+    : (original.state_withholding != null ? Number(original.state_withholding) : null)
+
+  const { data: corrected, error: insertError } = await supabase
+    .from('tax_documents')
+    .insert({
+      ledger_id: ledger.id,
+      document_type: original.document_type,
+      tax_year: original.tax_year,
+      recipient_type: original.recipient_type,
+      recipient_id: original.recipient_id,
+      gross_amount: correctedGross,
+      federal_withholding: correctedFederal,
+      state_withholding: correctedState,
+      transaction_count: original.transaction_count,
+      monthly_amounts: original.monthly_amounts,
+      status: 'calculated',
+      copy_type: original.copy_type,
+      metadata: {
+        ...(original.metadata && typeof original.metadata === 'object' ? original.metadata : {}),
+        is_correction: true,
+        corrects_document_id: original.id,
+        correction_reason: reason,
+        original_gross_amount: Number(original.gross_amount),
+      },
+    })
+    .select('id')
+    .single()
+
+  if (insertError) {
+    console.error('issueCorrectedTaxDocumentResponse insert error:', insertError)
+    return resourceError('Failed to create corrected document', 500, {}, 'correction_create_failed')
+  }
+
+  await supabase
+    .from('tax_documents')
+    .update({
+      status: 'superseded',
+      metadata: {
+        ...(original.metadata && typeof original.metadata === 'object' ? original.metadata : {}),
+        superseded_by: corrected.id,
+        superseded_at: new Date().toISOString(),
+      },
+    })
+    .eq('id', original.id)
+
+  if (correctedGross !== Number(original.gross_amount)) {
+    await supabase.from('tax_year_summaries').upsert({
+      ledger_id: ledger.id,
+      entity_id: original.recipient_id,
+      tax_year: original.tax_year,
+      gross_earnings: correctedGross,
+      refunds_issued: 0,
+      net_earnings: correctedGross,
+      total_paid_out: 0,
+      requires_1099: correctedGross >= 600,
+      is_corrected: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'ledger_id,entity_id,tax_year,is_corrected' })
+  }
+
+  createAuditLogAsync(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'issue_corrected_1099',
+    entity_type: 'tax_document',
+    entity_id: corrected.id,
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      original_document_id: original.id,
+      corrected_document_id: corrected.id,
+      reason,
+      original_gross: Number(original.gross_amount),
+      corrected_gross: correctedGross,
+    }),
+    response_status: 200,
+    risk_score: 30,
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    correction: {
+      id: corrected.id,
+      original_document_id: original.id,
+      recipient_id: original.recipient_id,
+      tax_year: original.tax_year,
+      gross_amount: correctedGross,
+      federal_withholding: correctedFederal,
+      state_withholding: correctedState,
+      reason,
+      status: 'calculated',
+    },
   })
 }
