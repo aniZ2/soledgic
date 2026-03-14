@@ -122,13 +122,15 @@ const refund = await soledgic.createRefund({
 
 const compliance = await soledgic.getComplianceOverview({ days: 30, hours: 24 });
 const unmatched = await soledgic.listUnmatchedTransactions();
-const summary = await soledgic.generateTaxSummary(2025);
+const taxDocs = await soledgic.listTaxDocuments(2025);
+const taxCalc = await soledgic.calculateTaxForParticipant('creator_456', 2025);
 
 console.log({
   fraudSignal: evaluation.evaluation.signal,
   highRiskEvents: compliance.overview.highRiskEvents,
   unmatchedCount: unmatched.unmatchedCount,
-  participantsRequiring1099: summary.totals.participantsRequiring1099,
+  taxDocuments: taxDocs.documents.length,
+  requires1099: taxCalc.calculation.requires1099,
 });`}
           </pre>
         </div>

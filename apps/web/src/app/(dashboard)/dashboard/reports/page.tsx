@@ -86,8 +86,8 @@ export default async function ReportsPage() {
     .from('accounting_periods')
     .select('*')
     .eq('ledger_id', ledger.id)
-    .order('year', { ascending: false })
-    .order('month', { ascending: false })
+    .order('fiscal_year', { ascending: false })
+    .order('period_number', { ascending: false })
     .limit(12)
 
   return (
@@ -140,7 +140,7 @@ export default async function ReportsPage() {
               <div key={period.id} className="px-6 py-4 flex items-center justify-between">
                 <div>
                   <p className="font-medium text-foreground">
-                    {new Date(period.year, period.month - 1).toLocaleDateString('en-US', {
+                    {new Date(period.fiscal_year, period.period_number - 1).toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                     })}
@@ -160,12 +160,13 @@ export default async function ReportsPage() {
                     {period.status}
                   </span>
                   {period.status === 'closed' && (
-                    <Link
-                      href={`/dashboard/reports/period/${period.id}`}
-                      className="text-sm text-primary hover:underline"
+                    <span
+                      title="Frozen reports can be retrieved via the API: POST /frozen-statements { action: 'get', period_id: '...' }"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground"
                     >
-                      View Frozen Report
-                    </Link>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      Frozen
+                    </span>
                   )}
                 </div>
               </div>
@@ -181,7 +182,7 @@ export default async function ReportsPage() {
           All reports can also be generated programmatically via the API:
         </p>
         <code className="text-sm bg-background border border-border px-4 py-2 rounded block overflow-x-auto">
-          POST /generate-report &#123; &quot;report_type&quot;: &quot;trial_balance&quot; &#125;
+          POST https://api.soledgic.com/v1/generate-report &#123; &quot;report_type&quot;: &quot;trial_balance&quot;, &quot;ledger_id&quot;: &quot;...&quot; &#125;
         </code>
       </div>
     </div>

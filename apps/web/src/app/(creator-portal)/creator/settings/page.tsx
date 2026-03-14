@@ -203,6 +203,23 @@ export default function CreatorSettingsPage() {
           </>
         )}
       </div>
+
+      {/* Tax Information */}
+      <div id="tax" className="mt-6 rounded-lg border border-border bg-card p-6">
+        <h2 className="text-lg font-semibold text-foreground">Tax Information</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          We need your tax information (W-9) on file to issue 1099-NEC forms at year-end.
+        </p>
+        <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4">
+          <p className="text-sm text-muted-foreground">
+            Tax info status:{' '}
+            <span className="font-medium text-foreground">Not yet submitted</span>
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Contact the platform operator to submit your W-9 information.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

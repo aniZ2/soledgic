@@ -30,6 +30,7 @@ export default function CreatorStatementsPage() {
   const activeLedgerGroupId = useActiveLedgerGroupId()
   const [creators, setCreators] = useState<Creator[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
@@ -100,7 +101,10 @@ export default function CreatorStatementsPage() {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      void loadData()
+      loadData().catch((err) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to load creator data')
+        setLoading(false)
+      })
     }, 0)
     return () => clearTimeout(timeoutId)
   }, [loadData])
@@ -227,12 +231,35 @@ export default function CreatorStatementsPage() {
     { value: 12, label: 'December' },
   ]
 
-  const years = [2025, 2024, 2023, 2022]
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-xl mx-auto py-12 text-center">
+        <p className="text-destructive font-medium mb-2">Failed to load creator statements</p>
+        <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+        <button
+          onClick={() => {
+            setLoadError(null)
+            setLoading(true)
+            loadData().catch((err) => {
+              setLoadError(err instanceof Error ? err.message : 'Failed to load creator data')
+              setLoading(false)
+            })
+          }}
+          className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Retry
+        </button>
       </div>
     )
   }

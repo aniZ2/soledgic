@@ -913,33 +913,6 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     ]
   },
   {
-    "endpoint": "generate-tax-summary",
-    "title": "Generate Tax Summary",
-    "path": "/v1/generate-tax-summary",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": true,
-    "description": "Generate Tax Summary",
-    "source": "supabase/functions/generate-tax-summary/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "tax_year",
-        "type": "number",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": false
-      }
-    ]
-  },
-  {
     "endpoint": "get-runway",
     "title": "Get Runway",
     "path": "/v1/get-runway",
@@ -2618,51 +2591,6 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
     "description": "Submit Tax Info",
     "source": "supabase/functions/submit-tax-info/index.ts",
     "parameters": []
-  },
-  {
-    "endpoint": "tax-documents",
-    "title": "Tax Documents",
-    "path": "/v1/tax-documents",
-    "methods": [
-      "POST"
-    ],
-    "auth": "API key",
-    "internal": false,
-    "deprecated": true,
-    "description": "Tax Documents",
-    "source": "supabase/functions/tax-documents/index.ts",
-    "parameters": [
-      {
-        "in": "body",
-        "name": "action",
-        "type": "'calculate' | 'generate_all' | 'list' | 'get' | 'export' | 'mark_filed'",
-        "required": true
-      },
-      {
-        "in": "body",
-        "name": "tax_year",
-        "type": "number",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "creator_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "document_id",
-        "type": "string",
-        "required": false
-      },
-      {
-        "in": "body",
-        "name": "format",
-        "type": "'csv' | 'json'",
-        "required": false
-      }
-    ]
   },
   {
     "endpoint": "test-cleanup",

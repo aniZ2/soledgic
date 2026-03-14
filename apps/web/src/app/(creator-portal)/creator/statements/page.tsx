@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, Download, Calendar } from 'lucide-react'
+import { FileText, Clock, Calendar } from 'lucide-react'
 
 interface ConnectedAccountRow {
   ledger_id: string
@@ -113,20 +113,20 @@ export default async function CreatorStatementsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Link
-                  href={`/api/creator/statements/${month.year}/${month.monthNum}/pdf`}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+                <span
+                  title="Statement downloads are coming soon"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed opacity-60"
                 >
-                  <Download className="w-4 h-4" />
+                  <Clock className="w-4 h-4" />
                   PDF
-                </Link>
-                <Link
-                  href={`/api/creator/statements/${month.year}/${month.monthNum}/csv`}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-foreground hover:bg-accent transition-colors"
+                </span>
+                <span
+                  title="Statement downloads are coming soon"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed opacity-60"
                 >
-                  <Download className="w-4 h-4" />
+                  <Clock className="w-4 h-4" />
                   CSV
-                </Link>
+                </span>
               </div>
             </div>
           ))}
@@ -145,16 +145,16 @@ export default async function CreatorStatementsPage() {
               <Calendar className="w-5 h-5 text-amber-500" />
             </div>
             <div>
-              <p className="font-medium text-foreground">1099-K Forms</p>
+              <p className="font-medium text-foreground">1099-NEC Forms</p>
               <p className="text-sm text-muted-foreground mt-1">
-                1099-K forms will be available in January for the previous tax year,
+                1099-NEC forms will be available in January for the previous tax year,
                 if your earnings exceed the IRS reporting threshold.
               </p>
               <Link
                 href="/creator/settings#tax"
                 className="text-sm text-primary hover:underline mt-2 inline-block"
               >
-                Update your tax information
+                Manage your tax information
               </Link>
             </div>
           </div>
