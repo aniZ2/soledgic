@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, Clock, Calendar, CheckCircle, AlertCircle, FileOutput } from 'lucide-react'
+import { FileText, Download, Calendar, CheckCircle, AlertCircle, FileOutput } from 'lucide-react'
 
 interface ConnectedAccountRow {
   ledger_id: string
@@ -147,20 +147,22 @@ export default async function CreatorStatementsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span
-                  title="Statement downloads are coming soon"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed opacity-60"
+                <a
+                  href={`/api/creator/statements/${month.year}/${month.monthNum}/pdf`}
+                  download
+                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-foreground hover:bg-accent hover:border-primary/50 transition-colors"
                 >
-                  <Clock className="w-4 h-4" />
+                  <Download className="w-4 h-4" />
                   PDF
-                </span>
-                <span
-                  title="Statement downloads are coming soon"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-muted-foreground cursor-not-allowed opacity-60"
+                </a>
+                <a
+                  href={`/api/creator/statements/${month.year}/${month.monthNum}/csv`}
+                  download
+                  className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-md text-sm text-foreground hover:bg-accent hover:border-primary/50 transition-colors"
                 >
-                  <Clock className="w-4 h-4" />
+                  <Download className="w-4 h-4" />
                   CSV
-                </span>
+                </a>
               </div>
             </div>
           ))}

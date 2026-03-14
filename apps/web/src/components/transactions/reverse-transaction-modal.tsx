@@ -5,6 +5,7 @@ import { X, Loader2, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react'
 import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import type { ReversalResponse } from '@/lib/api-types'
 
 interface ReverseTransactionModalProps {
   isOpen: boolean
@@ -84,7 +85,7 @@ export function ReverseTransactionModal({
         },
       })
 
-      const data = await response.json()
+      const data: ReversalResponse = await response.json()
 
       if (!response.ok) {
         // Check for step-up auth challenge

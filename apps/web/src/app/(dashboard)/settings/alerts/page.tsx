@@ -7,7 +7,7 @@ import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { useToast } from '@/components/notifications/toast-provider'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
-import { Bell, Plus, Trash2, Play, Loader2, AlertCircle, Slack, Mail, Globe } from 'lucide-react'
+import { Bell, Plus, Trash2, Play, Loader2, Slack, Mail, Globe } from 'lucide-react'
 
 type AlertType = 'breach_risk' | 'projection_created' | 'instrument_invalidated'
 type ChannelType = 'slack' | 'email' | 'webhook'

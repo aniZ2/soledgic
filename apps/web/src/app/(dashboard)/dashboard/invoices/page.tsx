@@ -5,6 +5,16 @@ import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import type {
+  Invoice,
+  InvoiceDetail,
+  InvoiceLineItem,
+  InvoicePayment,
+  ListInvoicesResponse,
+  CreateInvoiceResponse,
+  RecordPaymentResponse,
+  ApiResponse,
+} from '@/lib/api-types'
 import {
   Plus,
   RefreshCw,
@@ -18,35 +28,6 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/components/notifications/toast-provider'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface InvoiceLineItem {
-  description: string
-  quantity: number
-  unit_price: number
-  amount: number
-}
-
-interface Invoice {
-  id: string
-  invoice_number: string
-  customer_name: string
-  customer_email: string | null
-  line_items: InvoiceLineItem[]
-  subtotal: number
-  total_amount: number
-  amount_paid: number
-  amount_due: number
-  currency: string
-  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'voided'
-  issue_date: string
-  due_date: string
-  notes: string | null
-  created_at: string
-}
 
 interface CreateLineItem {
   description: string
@@ -125,7 +106,7 @@ export default function InvoicesPage() {
   // View detail modal
   const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null)
   const [viewLoading, setViewLoading] = useState(false)
-  const [viewDetail, setViewDetail] = useState<(Invoice & { payments?: any[] }) | null>(null)
+  const [viewDetail, setViewDetail] = useState<InvoiceDetail | null>(null)
 
   // Void confirm
   const [voidInvoice, setVoidInvoice] = useState<Invoice | null>(null)
@@ -173,7 +154,7 @@ export default function InvoicesPage() {
         query,
       })
 
-      const result = await res.json()
+      const result: ListInvoicesResponse = await res.json()
       if (result.success) {
         setInvoices(result.data || [])
       } else {
@@ -225,8 +206,8 @@ export default function InvoicesPage() {
         },
       })
 
-      const result = await res.json()
-      if (result.success) {
+      const result: CreateInvoiceResponse = await res.json()
+      if (result.success && result.data) {
         toast.success('Invoice created', `Invoice ${result.data.invoice_number}`)
         setShowCreateModal(false)
         resetCreateForm()
@@ -252,7 +233,7 @@ export default function InvoicesPage() {
         body: {},
       })
 
-      const result = await res.json()
+      const result: ApiResponse = await res.json()
       if (result.success) {
         toast.success('Invoice sent', `${invoice.invoice_number} sent successfully`)
         loadData()
@@ -288,7 +269,7 @@ export default function InvoicesPage() {
         },
       })
 
-      const result = await res.json()
+      const result: RecordPaymentResponse = await res.json()
       if (result.success) {
         toast.success('Payment recorded', result.message || 'Payment recorded successfully')
         setPaymentInvoice(null)
@@ -314,7 +295,7 @@ export default function InvoicesPage() {
         body: {},
       })
 
-      const result = await res.json()
+      const result: ApiResponse = await res.json()
       if (result.success) {
         toast.success('Invoice voided', `${voidInvoice.invoice_number} has been voided`)
         setVoidInvoice(null)
@@ -338,8 +319,8 @@ export default function InvoicesPage() {
         method: 'GET',
       })
 
-      const result = await res.json()
-      if (result.success) {
+      const result: ApiResponse<InvoiceDetail> = await res.json()
+      if (result.success && result.data) {
         setViewDetail(result.data)
       } else {
         toast.error('Failed to load invoice details', result.error)
@@ -861,7 +842,7 @@ export default function InvoicesPage() {
                   <div>
                     <h3 className="text-sm font-medium text-foreground mb-2">Payments</h3>
                     <div className="space-y-2">
-                      {viewDetail.payments.map((p: any) => (
+                      {viewDetail.payments.map((p) => (
                         <div key={p.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 text-sm">
                           <div>
                             <span className="font-medium">{formatCents(p.amount)}</span>

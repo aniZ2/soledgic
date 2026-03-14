@@ -7,7 +7,19 @@ interface LedgerFunctionOptions {
   query?: Record<string, string | number | boolean | null | undefined>
 }
 
-export async function callLedgerFunction(
+/**
+ * Call a Soledgic ledger edge function through the Next.js API proxy.
+ *
+ * The generic parameter `T` is intentionally unused in the return type --
+ * the function still returns a raw `Response` so callers can inspect status
+ * codes before parsing. Use `T` at the call-site with `.json()` casts:
+ *
+ * ```ts
+ * const res = await callLedgerFunction<RefundResponse>('refunds', opts)
+ * const data: RefundResponse = await res.json()
+ * ```
+ */
+export async function callLedgerFunction<T = unknown>(
   endpoint: string,
   options: LedgerFunctionOptions
 ): Promise<Response> {

@@ -5,6 +5,7 @@ import { X, Loader2, AlertCircle, CheckCircle, RotateCcw, Search } from 'lucide-
 import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import type { RefundResponse } from '@/lib/api-types'
 
 interface RecordRefundModalProps {
   isOpen: boolean
@@ -155,7 +156,7 @@ export function RecordRefundModal({
         body,
       })
 
-      const data = await response.json()
+      const data: RefundResponse = await response.json()
 
       if (!response.ok) {
         if (handleProtectedResponse(response, data, submitRefund)) {

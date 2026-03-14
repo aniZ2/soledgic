@@ -5,44 +5,16 @@ import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import type {
+  ComplianceOverview,
+  AccessPattern,
+  SecuritySummaryEntry,
+  ComplianceOverviewResponse,
+  AccessPatternsResponse,
+  SecuritySummaryResponse,
+} from '@/lib/api-types'
 import Link from 'next/link'
 import { ArrowLeft, Shield, RefreshCw, AlertTriangle } from 'lucide-react'
-
-interface OverviewData {
-  window_days: number
-  access_window_hours: number
-  total_events: number
-  unique_ips: number
-  unique_actors: number
-  high_risk_events: number
-  critical_risk_events: number
-  failed_auth_events: number
-  payouts_failed: number
-  refunds_recorded: number
-  dispute_events: number
-}
-
-interface AccessPattern {
-  ip_address: string
-  hour: string
-  request_count: number
-  unique_actions: number
-  actions: string[]
-  max_risk_score: number
-  failed_auths: number
-}
-
-interface SecuritySummaryEntry {
-  date: string
-  action: string
-  event_count: number
-  unique_ips: number
-  unique_actors: number
-  avg_risk_score: number
-  max_risk_score: number
-  high_risk_count: number
-  critical_risk_count: number
-}
 
 export default function ComplianceDashboardPage() {
   const livemode = useLivemode()
@@ -52,7 +24,7 @@ export default function ComplianceDashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [overview, setOverview] = useState<OverviewData | null>(null)
+  const [overview, setOverview] = useState<ComplianceOverview | null>(null)
   const [accessPatterns, setAccessPatterns] = useState<AccessPattern[]>([])
   const [securitySummary, setSecuritySummary] = useState<SecuritySummaryEntry[]>([])
 
@@ -108,13 +80,13 @@ export default function ComplianceDashboardPage() {
         }),
       ])
 
-      const [overviewData, patternsData, summaryData] = await Promise.all([
+      const [overviewData, patternsData, summaryData]: [ComplianceOverviewResponse, AccessPatternsResponse, SecuritySummaryResponse] = await Promise.all([
         overviewRes.json(),
         patternsRes.json(),
         summaryRes.json(),
       ])
 
-      if (overviewData.success) {
+      if (overviewData.success && overviewData.overview) {
         setOverview(overviewData.overview)
       } else {
         setError(overviewData.error || 'Failed to load compliance overview')

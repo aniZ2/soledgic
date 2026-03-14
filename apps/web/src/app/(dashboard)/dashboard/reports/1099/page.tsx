@@ -5,43 +5,25 @@ import { createClient } from '@/lib/supabase/client'
 import { useLivemode, useActiveLedgerGroupId } from '@/components/livemode-provider'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { callLedgerFunction } from '@/lib/ledger-functions-client'
+import type {
+  TaxDocument,
+  TaxSummary,
+  TaxGenerateResponse,
+  TaxPdfResponse,
+  TaxBatchPdfResponse,
+  TaxDeliverCopyBResponse,
+} from '@/lib/api-types'
 import Link from 'next/link'
 import { ArrowLeft, FileText, Download, RefreshCw, CheckCircle, Info, Send, FileEdit } from 'lucide-react'
 import { useToast } from '@/components/notifications/toast-provider'
 import { ConfirmDialog } from '@/components/settings/confirm-dialog'
 import { CorrectTaxDocumentModal } from '@/components/tax/correct-tax-document-modal'
 
-interface TaxDocument {
-  id: string
-  document_type: string
-  tax_year: number
-  recipient_id: string
-  recipient_type: string
-  gross_amount: number
-  transaction_count: number
-  monthly_amounts: Record<string, number>
-  status: string
-  created_at: string
-  exported_at: string | null
-  pdf_path: string | null
-  pdf_generated_at: string | null
-  copy_type: string | null
-  metadata: Record<string, unknown> | null
-}
-
-interface Stats {
-  total: number
-  calculated: number
-  exported: number
-  filed: number
-  total_amount: number
-}
-
 export default function TaxDocumentsPage() {
   const livemode = useLivemode()
   const activeLedgerGroupId = useActiveLedgerGroupId()
   const [documents, setDocuments] = useState<TaxDocument[]>([])
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [stats, setStats] = useState<TaxSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -120,8 +102,8 @@ export default function TaxDocumentsPage() {
         body: { tax_year: taxYear },
       })
 
-      const result = await res.json()
-      if (result.success) {
+      const result: TaxGenerateResponse = await res.json()
+      if (result.success && result.generation) {
         toast.success('Documents generated', `${result.generation.created} created. ${result.generation.skipped} below $600 threshold.`)
         loadData()
       } else {
@@ -200,8 +182,8 @@ export default function TaxDocumentsPage() {
         body: { copy_type: copyType },
       })
 
-      const result = await res.json()
-      if (result.success && result.data.download_url) {
+      const result: TaxPdfResponse = await res.json()
+      if (result.success && result.data?.download_url) {
         window.open(result.data.download_url, '_blank')
         loadData()
       } else {
@@ -230,8 +212,8 @@ export default function TaxDocumentsPage() {
         body: { tax_year: taxYear, copy_type: copyType },
       })
 
-      const result = await res.json()
-      if (result.success) {
+      const result: TaxBatchPdfResponse = await res.json()
+      if (result.success && result.data) {
         toast.success('PDFs generated', `${result.data.generated} created. ${result.data.failed} failed.`)
         loadData()
       } else {
@@ -260,8 +242,8 @@ export default function TaxDocumentsPage() {
         body: { tax_year: taxYear },
       })
 
-      const result = await res.json()
-      if (result.success) {
+      const result: TaxDeliverCopyBResponse = await res.json()
+      if (result.success && result.delivery) {
         const d = result.delivery
         toast.success('Copy B delivery complete', `${d.sent} sent, ${d.failed} failed, ${d.skipped} skipped (no email or already sent).`)
         loadData()
