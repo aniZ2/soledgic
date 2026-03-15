@@ -4,3 +4,6 @@ echo "Running pre-push security gate..."
 
 echo "Validating repo index..."
 node scripts/validate-repo-index.mjs
+
+echo "Checking architecture health..."
+node scripts/graph-health.mjs --enforce

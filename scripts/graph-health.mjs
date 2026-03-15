@@ -383,7 +383,74 @@ if (cycles.length === 0 && godServices.length === 0 && couplingRatio < 2.5 && do
 }
 
 console.log(`\n  \x1b[1mOverall Grade: \x1b[${gradeColor}m${grade}\x1b[0m`)
+
+// ── Enforcement (--enforce flag for CI) ─────────────────────────────
+
+const enforce = process.argv.includes('--enforce')
+const violations = []
+
+// Hard limits — these fail CI immediately
+if (cycles.length > 0) {
+  violations.push({ level: 'FAIL', msg: `Circular dependencies detected: ${cycles.length} cycle(s)` })
+}
+if (godServices.length > 0) {
+  violations.push({ level: 'FAIL', msg: `God-service(s) detected: ${godServices.map(([f]) => f).join(', ')}` })
+}
+if (couplingRatio >= 4) {
+  violations.push({ level: 'FAIL', msg: `Coupling ratio ${couplingRatio.toFixed(2)} exceeds hard limit (4.0)` })
+}
+if (depthMetrics.max > 12) {
+  violations.push({ level: 'FAIL', msg: `Max dependency depth ${depthMetrics.max} exceeds hard limit (12)` })
+}
+
+// Soft limits — these warn in CI
+if (domainHdr >= 0.40) {
+  violations.push({ level: 'WARN', msg: `Domain HDR ${domainHdrPct}% exceeds soft limit (40%)` })
+} else if (domainHdr >= 0.35) {
+  violations.push({ level: 'WARN', msg: `Domain HDR ${domainHdrPct}% approaching danger zone (35%+)` })
+}
+if (couplingRatio >= 2.5) {
+  violations.push({ level: 'WARN', msg: `Coupling ratio ${couplingRatio.toFixed(2)} exceeds soft limit (2.5)` })
+}
+if (depthMetrics.max > 7) {
+  violations.push({ level: 'WARN', msg: `Max dependency depth ${depthMetrics.max} exceeds soft limit (7)` })
+}
+
+// Baseline drift — warn if metrics degraded significantly
+if (existsSync(BASELINE_PATH)) {
+  const bl = JSON.parse(readFileSync(BASELINE_PATH, 'utf-8'))
+  if (couplingRatio > (bl.couplingRatio || 0) * 1.3) {
+    violations.push({ level: 'WARN', msg: `Coupling increased >30% from baseline (${bl.couplingRatio.toFixed(2)} → ${couplingRatio.toFixed(2)})` })
+  }
+  if (domainHdr > ((bl.domainHdr || bl.hdr || 0) * 1.3)) {
+    violations.push({ level: 'WARN', msg: `Domain HDR increased >30% from baseline` })
+  }
+  if (depthMetrics.max > (bl.maxDepth || 0) + 3) {
+    violations.push({ level: 'WARN', msg: `Max depth increased by ${depthMetrics.max - (bl.maxDepth || 0)} from baseline` })
+  }
+}
+
+const fails = violations.filter((v) => v.level === 'FAIL')
+const warns = violations.filter((v) => v.level === 'WARN')
+
+if (violations.length > 0) {
+  console.log(`\n  \x1b[1mArchitecture Violations:\x1b[0m`)
+  for (const v of fails) {
+    console.log(`    \x1b[31m✗ FAIL: ${v.msg}\x1b[0m`)
+  }
+  for (const v of warns) {
+    console.log(`    \x1b[33m! WARN: ${v.msg}\x1b[0m`)
+  }
+} else {
+  console.log(`\n  \x1b[32m✓ No architecture violations\x1b[0m`)
+}
+
 console.log()
+
+if (enforce && fails.length > 0) {
+  console.error(`\x1b[31mArchitecture enforcement failed with ${fails.length} violation(s)\x1b[0m\n`)
+  process.exit(1)
+}
 
 // ── Save baseline ───────────────────────────────────────────────────
 

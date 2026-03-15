@@ -226,6 +226,8 @@ jobs:
         run: npm test
       - name: Validate repo index
         run: npm run validate:index
+      - name: Architecture health enforcement
+        run: npm run graph:health -- --enforce
 
   # ============================================================================
   # Security Gate (unified pre-deploy checks)
