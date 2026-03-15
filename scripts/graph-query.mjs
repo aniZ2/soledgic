@@ -14,6 +14,7 @@
  *   node scripts/graph-query.mjs blast SVC_REFUND_ENGINE
  *   node scripts/graph-query.mjs path SVC_CHECKOUT_ORCHESTRATOR EXT_FINIX
  *   node scripts/graph-query.mjs search payout
+ *   node scripts/graph-query.mjs table processor_transactions
  *   node scripts/graph-query.mjs summary
  *   node scripts/graph-query.mjs critical-paths
  *   node scripts/graph-query.mjs invariants
@@ -21,7 +22,7 @@
  * npm script:  npm run graph:query -- node SVC_REFUND_ENGINE
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 
 const INDEX_PATH = join(
@@ -506,6 +507,93 @@ function cmdEntryPoints() {
   return parseEntryPoints()
 }
 
+function cmdTable(tableName) {
+  if (!tableName) return { error: 'Usage: table <table_name>' }
+
+  const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
+  const writers = []
+  const readers = []
+  const rpcRefs = []
+
+  // Scan .ts files for .from('tableName') with method chain context
+  function scanDir(dir) {
+    if (!existsSync(dir)) return
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name)
+      if (entry.isDirectory() && !entry.name.startsWith('node_modules') && !entry.name.startsWith('__tests__')) {
+        scanDir(fullPath)
+      } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
+        const content = readFileSync(fullPath, 'utf-8')
+        const relPath = fullPath.replace(ROOT + '/', '')
+
+        // Check for .from('tableName') references
+        const fromRegex = new RegExp(`\\.from\\(\\s*['"]${tableName}['"]\\s*\\)`, 'g')
+        if (!fromRegex.test(content)) return
+
+        // Determine read vs write by looking at method chains after .from()
+        const lines = content.split('\n')
+        let isWriter = false
+        let isReader = false
+        for (const line of lines) {
+          if (!line.includes(tableName)) continue
+          if (/\.(insert|upsert|update|delete)\s*\(/.test(line) || /\.(insert|upsert|update|delete)\s*$/.test(line)) {
+            isWriter = true
+          }
+          if (/\.select\s*\(/.test(line)) {
+            isReader = true
+          }
+        }
+
+        // If we found .from() but no clear method, check surrounding context
+        if (!isWriter && !isReader) {
+          // Look at the 5 lines after each .from() for the method
+          for (let i = 0; i < lines.length; i++) {
+            if (!lines[i].includes(`.from('${tableName}'`) && !lines[i].includes(`.from("${tableName}"`)) continue
+            const context = lines.slice(i, i + 6).join('\n')
+            if (/\.(insert|upsert|update|delete)\s*\(/.test(context)) isWriter = true
+            if (/\.select\s*\(/.test(context)) isReader = true
+          }
+        }
+
+        if (isWriter) writers.push(relPath)
+        if (isReader) readers.push(relPath)
+        if (!isWriter && !isReader) readers.push(relPath) // default to reader
+      }
+    }
+  }
+
+  scanDir(join(ROOT, 'supabase/functions'))
+  scanDir(join(ROOT, 'apps/web/src'))
+
+  // Check RPC references in migrations
+  const migrationsDir = join(ROOT, 'supabase/migrations')
+  if (existsSync(migrationsDir)) {
+    for (const f of readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'))) {
+      const sql = readFileSync(join(migrationsDir, f), 'utf-8')
+      // Find functions that reference this table
+      const funcRegex = /CREATE OR REPLACE FUNCTION\s+(?:public\.)?(\w+)/gi
+      let funcMatch
+      while ((funcMatch = funcRegex.exec(sql)) !== null) {
+        const funcName = funcMatch[1]
+        const funcStart = funcMatch.index
+        const funcEnd = sql.indexOf('$function$;', funcStart + 100)
+        if (funcEnd === -1) continue
+        const funcBody = sql.slice(funcStart, funcEnd)
+        if (funcBody.includes(tableName)) {
+          rpcRefs.push(funcName)
+        }
+      }
+    }
+  }
+
+  return {
+    table: tableName,
+    writers: [...new Set(writers)],
+    readers: [...new Set(readers)],
+    rpc_references: [...new Set(rpcRefs)],
+  }
+}
+
 function cmdBoundaries() {
   const boundariesPath = join(
     new URL('..', import.meta.url).pathname.replace(/\/$/, ''),
@@ -537,6 +625,7 @@ Commands:
   dependents      <id>         What depends on <id>?
   risk            <id>         Risk level, critical paths, invariants
   tables          <id>         Tables read/written by <id>
+  table           <name>       Reverse lookup: who reads/writes this table?
   blast           <id>         Transitive blast radius (composite risk)
   path            <from> <to>  Is there a dependency path?
   search          <term>       Fuzzy search across all nodes
@@ -572,6 +661,8 @@ switch (cmd) {
     output(cmdRisk(args[1])); break
   case 'tables':
     output(cmdTables(args[1])); break
+  case 'table':
+    output(cmdTable(args[1])); break
   case 'blast':
     output(cmdBlast(args[1])); break
   case 'path':
