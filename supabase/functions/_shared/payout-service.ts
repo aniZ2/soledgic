@@ -170,6 +170,9 @@ export async function processPayoutResponse(
   }, requestId)
 
   if (rpcError) {
+    if (rpcError.message?.includes('Idempotency conflict')) {
+      return resourceError(rpcError.message, 409, {}, 'idempotency_conflict')
+    }
     console.error('Payout RPC error:', rpcError)
     return resourceError('Failed to process payout', 500, {}, 'payout_processing_failed')
   }

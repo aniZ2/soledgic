@@ -692,6 +692,10 @@ export async function recordRefundResponse(
       return resourceError(txMessage, 409, {}, 'refund_conflict')
     }
 
+    if (txMessage.includes('Idempotency conflict')) {
+      return resourceError(txMessage, 409, {}, 'idempotency_conflict')
+    }
+
     if (txMessage.includes('Invalid refund_from') || txMessage.includes('must be positive')) {
       return resourceError(txMessage, 400, {}, 'invalid_refund_request')
     }

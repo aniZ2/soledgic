@@ -27,7 +27,7 @@ const OPS_MONITOR_FILE = path.join(
 );
 const HEALTH_CHECK_FILE = path.join(
   MIGRATIONS_DIR,
-  "20260314_health_check_cron.sql"
+  "00000000000000_v1_baseline.sql"
 );
 const SECURITY_ALERTS_FILE = path.join(
   FUNCTIONS_DIR,

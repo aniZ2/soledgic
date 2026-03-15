@@ -134,6 +134,15 @@ const handler = createHandler(
         }, 409, req, requestId)
       }
 
+      // Handle idempotency conflict (same reference_id, different amount)
+      if (txError.message?.includes('Idempotency conflict')) {
+        return jsonResponse({
+          success: false,
+          error: txError.message,
+          idempotent: false
+        }, 409, req, requestId)
+      }
+
       // Handle uninitialized ledger (missing platform_revenue or cash accounts)
       if (txError.message?.includes('Platform accounts not initialized')) {
         return errorResponse(
