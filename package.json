@@ -17,6 +17,7 @@
     "test:stress": "vitest run --config vitest.stress.config.ts",
     "test:coverage": "vitest run --coverage",
     "graph:impact": "node scripts/graph-impact.mjs",
+    "graph:health": "node scripts/graph-health.mjs",
     "validate:env": "bash scripts/validate-env.sh",
     "security-gate": "bash scripts/security-gate.sh",
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",

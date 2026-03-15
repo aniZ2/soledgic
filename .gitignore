@@ -48,3 +48,4 @@ credentials.json
 service-account.json
 .vercel
 .env*.local
+.graph-health-baseline.json
