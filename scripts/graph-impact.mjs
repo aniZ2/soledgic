@@ -116,13 +116,13 @@ function parseEntryPoints() {
 }
 
 function extractField(body, field) {
-  const regex = new RegExp(`^${field}:\\s*(.+)`, 'mi')
+  const regex = new RegExp(`^\\s*${field}:\\s*(.+)`, 'mi')
   const match = body.match(regex)
   return match ? match[1].trim() : null
 }
 
 function extractList(body, field) {
-  const regex = new RegExp(`^${field}:\\s*(.+)`, 'mi')
+  const regex = new RegExp(`^\\s*${field}:\\s*(.+)`, 'mi')
   const match = body.match(regex)
   if (!match) return []
   return match[1].split(',').map((s) => s.trim()).filter(Boolean)
@@ -425,12 +425,42 @@ function blastRadius(query) {
     return false
   })
 
-  // Find threatened invariants
+  // Find threatened invariants — match by stable ID, RPC name, or service file
   const threatenedInvariants = invariants.filter((inv) => {
-    const text = `${inv.enforcedBy || ''} ${inv.verifiedBy || ''}`
-    if (text.includes(sourceId)) return true
-    for (const [id] of affected) {
-      if (text.includes(id)) return true
+    const text = `${inv.id} ${inv.description} ${inv.enforcedBy || ''} ${inv.verifiedBy || ''}`.toLowerCase()
+    // Check source node and all affected nodes
+    const checkIds = [sourceId, ...affected.keys()]
+    for (const id of checkIds) {
+      if (text.includes(id.toLowerCase())) return true
+      // Also check the human-readable RPC name (strip RPC_ prefix, lowercase, replace _ with _)
+      const rpcName = id.replace(/^RPC_/, '').toLowerCase()
+      if (rpcName !== id.toLowerCase() && text.includes(rpcName)) return true
+      // Check file basename
+      const node = nodes.get(id)
+      if (node?.file) {
+        const basename = node.file.split('/').pop().replace('.ts', '').toLowerCase()
+        if (text.includes(basename)) return true
+      }
+    }
+    // Also match by risk level — ledger invariants are threatened by CRITICAL_LEDGER changes
+    if (source.risk === 'CRITICAL_LEDGER') {
+      if (inv.id.includes('LEDGER_BALANCE') || inv.id.includes('DOUBLE_ENTRY')) return true
+    }
+    // Refund-specific
+    if (sourceId.includes('REFUND') || [...affected.keys()].some((k) => k.includes('REFUND'))) {
+      if (inv.id.includes('REFUND_CAP')) return true
+    }
+    // Reversal-specific
+    if (sourceId.includes('REVERSAL') || [...affected.keys()].some((k) => k.includes('REVERSAL') || k.includes('VOID'))) {
+      if (inv.id.includes('REVERSAL_CAP')) return true
+    }
+    // Payout-specific
+    if (sourceId.includes('PAYOUT') || [...affected.keys()].some((k) => k.includes('PAYOUT'))) {
+      if (inv.id.includes('NONNEGATIVE_BALANCE')) return true
+    }
+    // Idempotency — any financial service
+    if (source.risk === 'CRITICAL_LEDGER' && source.concurrency?.includes('idempotency')) {
+      if (inv.id.includes('IDEMPOTENCY')) return true
     }
     return false
   })
