@@ -214,6 +214,61 @@ function findCircularDeps() {
 
 const cycles = findCircularDeps()
 
+// ── Dependency depth analysis ───────────────────────────────────────
+
+function computeDepthMetrics() {
+  const adjList = new Map()
+  for (const { from, to } of edges) {
+    if (!adjList.has(from)) adjList.set(from, new Set())
+    adjList.get(from).add(to)
+  }
+
+  // Find leaf nodes (files with no outgoing local imports)
+  const allFromFiles = new Set(edges.map((e) => e.from))
+  const allToFiles = new Set(edges.map((e) => e.to))
+  const roots = [...allFromFiles].filter((f) => !allToFiles.has(f))
+
+  // BFS from each root to find max depth
+  const depths = new Map()
+  const deepestChains = []
+
+  for (const root of roots) {
+    const queue = [{ node: root, depth: 0, chain: [root] }]
+    const visited = new Set([root])
+
+    while (queue.length > 0) {
+      const { node, depth, chain } = queue.shift()
+      const current = depths.get(node) || 0
+      if (depth > current) depths.set(node, depth)
+
+      const neighbors = adjList.get(node) || new Set()
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor)
+          const newChain = [...chain, neighbor]
+          queue.push({ node: neighbor, depth: depth + 1, chain: newChain })
+          if (depth + 1 >= 4) {
+            deepestChains.push(newChain)
+          }
+        }
+      }
+    }
+  }
+
+  const allDepths = [...depths.values()]
+  if (allDepths.length === 0) return { max: 0, avg: 0, deepestChains: [] }
+
+  const maxDepth = Math.max(...allDepths)
+  const avgDepth = allDepths.reduce((s, d) => s + d, 0) / allDepths.length
+
+  // Sort chains by length, take top 3
+  deepestChains.sort((a, b) => b.length - a.length)
+
+  return { max: maxDepth, avg: avgDepth, deepestChains: deepestChains.slice(0, 3) }
+}
+
+const depthMetrics = computeDepthMetrics()
+
 // ── Print report ────────────────────────────────────────────────────
 
 console.log(`\n\x1b[1m╔══════════════════════════════════════════════════╗\x1b[0m`)
@@ -256,6 +311,19 @@ if (godServices.length === 0) {
   }
 }
 
+console.log(`\n  \x1b[1mDependency Depth:\x1b[0m`)
+const depthColor = depthMetrics.max <= 7 ? '32' : depthMetrics.max <= 12 ? '33' : '31'
+const depthLabel = depthMetrics.max <= 7 ? 'HEALTHY' : depthMetrics.max <= 12 ? 'DEEP' : 'DANGEROUSLY DEEP'
+console.log(`    Max depth:       \x1b[${depthColor}m${depthMetrics.max} (${depthLabel})\x1b[0m`)
+console.log(`    Avg depth:       ${depthMetrics.avg.toFixed(1)}`)
+if (depthMetrics.deepestChains.length > 0) {
+  console.log(`    Deepest chains:`)
+  for (const chain of depthMetrics.deepestChains) {
+    const shortChain = chain.map((f) => f.split('/').pop())
+    console.log(`      \x1b[90m${shortChain.join(' → ')} (depth ${chain.length - 1})\x1b[0m`)
+  }
+}
+
 console.log(`\n  \x1b[1mCircular Dependencies:\x1b[0m`)
 if (cycles.length === 0) {
   console.log(`    \x1b[32m0 cycles detected\x1b[0m`)
@@ -285,6 +353,7 @@ if (existsSync(BASELINE_PATH)) {
   console.log(delta(edgeCount, baseline.edges, 'Edges'))
   console.log(`    Coupling: ${baseline.couplingRatio.toFixed(2)} → ${couplingRatio.toFixed(2)}`)
   console.log(`    HDR (domain): ${((baseline.domainHdr || baseline.hdr) * 100).toFixed(1)}% → ${domainHdrPct}%`)
+  console.log(`    Max depth: ${baseline.maxDepth ?? '?'} → ${depthMetrics.max}`)
   console.log(`    Cycles:   ${baseline.cycles} → ${cycles.length}`)
 
   // Warn if trending badly
@@ -304,6 +373,7 @@ if (cycles.length > 0) { grade = 'C'; gradeColor = '33' }
 if (godServices.length > 0) { grade = 'C'; gradeColor = '33' }
 if (couplingRatio >= 4) { grade = 'D'; gradeColor = '31' }
 if (domainHdr >= 0.35) { grade = 'D'; gradeColor = '31' }
+if (depthMetrics.max > 12) { grade = 'D'; gradeColor = '31' }
 if (cycles.length === 0 && godServices.length === 0 && couplingRatio < 2.5 && domainHdr < 0.2) {
   grade = 'A'
   gradeColor = '32'
@@ -325,6 +395,8 @@ if (process.argv.includes('--save-baseline')) {
     couplingRatio,
     hdr,
     domainHdr,
+    maxDepth: depthMetrics.max,
+    avgDepth: depthMetrics.avg,
     cycles: cycles.length,
     topHubs: topHubs.map(([file, count]) => ({ file, count })),
   }
