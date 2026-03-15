@@ -516,14 +516,119 @@ function blastRadius(query) {
     }
   }
 
-  // Safety recommendation
-  console.log(`\n  \x1b[1mRecommendation:\x1b[0m`)
-  if (maxRisk >= 90) {
-    console.log(`    \x1b[31m■ HIGH RISK — Requires careful review, full test suite, staging validation\x1b[0m`)
-  } else if (maxRisk >= 60) {
-    console.log(`    \x1b[33m■ MODERATE RISK — Run affected tests, verify invariants\x1b[0m`)
-  } else {
-    console.log(`    \x1b[32m■ LOW RISK — Standard review and testing\x1b[0m`)
+  // ── Risk assessment ──────────────────────────────────────────────
+  // Test coverage: count nodes with tests vs total affected
+  const allNodes = [sourceId, ...affected.keys()]
+  let testedCount = 0
+  for (const id of allNodes) {
+    const node = nodes.get(id)
+    if (node?.testedBy && !node.testedBy.includes('no unit tests')) testedCount++
+  }
+  const coveragePct = allNodes.length > 0
+    ? Math.round((testedCount / allNodes.length) * 100)
+    : 0
+
+  // Has external calls?
+  const touchesExternal = allNodes.some((id) => {
+    const node = nodes.get(id)
+    return node?.external || node?.risk === 'CRITICAL_EXTERNAL'
+  })
+
+  // Composite risk score: weighted formula
+  const compositeRisk = Math.min(100, Math.round(
+    maxRisk * 0.35 +
+    Math.min(affected.size * 5, 30) +
+    affectedCritPaths.length * 8 +
+    threatenedInvariants.length * 5 +
+    (touchesExternal ? 10 : 0) +
+    ((100 - coveragePct) * 0.12),
+  ))
+
+  const riskGrade =
+    compositeRisk >= 80 ? 'CRITICAL' :
+    compositeRisk >= 60 ? 'HIGH' :
+    compositeRisk >= 35 ? 'MODERATE' :
+    'LOW'
+  const gradeColor =
+    compositeRisk >= 80 ? '31' :
+    compositeRisk >= 60 ? '33' :
+    compositeRisk >= 35 ? '33' :
+    '32'
+
+  console.log(`\n  \x1b[1m╭──────────────────────────────────────╮\x1b[0m`)
+  console.log(`  \x1b[1m│  RISK ASSESSMENT                     │\x1b[0m`)
+  console.log(`  \x1b[1m╰──────────────────────────────────────╯\x1b[0m`)
+  console.log(`    Affected nodes:    ${allNodes.length}`)
+  console.log(`    Critical paths:    ${affectedCritPaths.length}`)
+  console.log(`    Invariants at risk: ${threatenedInvariants.length}`)
+  console.log(`    External systems:  ${touchesExternal ? 'yes' : 'no'}`)
+  console.log(`    Test coverage:     ${coveragePct}%`)
+  console.log(`    \x1b[1mComposite Risk:    \x1b[${gradeColor}m${riskGrade} (${compositeRisk}/100)\x1b[0m`)
+
+  // Recommended workflow — concrete, ordered steps
+  console.log(`\n  \x1b[1mRecommended Workflow:\x1b[0m`)
+  let step = 1
+
+  // Always: run affected tests
+  if (affectedTests.size > 0) {
+    const testCommands = []
+    for (const t of affectedTests) {
+      if (t.includes('sdk/') || t.includes('index.test')) {
+        testCommands.push('npm test')
+      } else if (t.includes('_test.ts') || t.includes('__tests__')) {
+        testCommands.push('npm run test:unit')
+      }
+    }
+    const uniqueCmds = [...new Set(testCommands)]
+    for (const cmd of uniqueCmds) {
+      console.log(`    ${step}. \x1b[36m${cmd}\x1b[0m`)
+      step++
+    }
+  }
+
+  // If invariants threatened: run health check
+  if (threatenedInvariants.length > 0) {
+    const hasLedgerInvariant = threatenedInvariants.some(
+      (i) => i.id.includes('LEDGER_BALANCE') || i.id.includes('DOUBLE_ENTRY'),
+    )
+    if (hasLedgerInvariant) {
+      console.log(`    ${step}. \x1b[33mRun ledger health check (balance equation + double-entry)\x1b[0m`)
+      step++
+    }
+    const hasIdempotency = threatenedInvariants.some((i) => i.id.includes('IDEMPOTENCY'))
+    if (hasIdempotency) {
+      console.log(`    ${step}. \x1b[33mVerify idempotency with duplicate request test\x1b[0m`)
+      step++
+    }
+  }
+
+  // If touches webhooks: replay test
+  if (allNodes.some((id) => id.includes('WEBHOOK') || id.includes('webhook'))) {
+    console.log(`    ${step}. \x1b[33mTest webhook delivery with replay\x1b[0m`)
+    step++
+  }
+
+  // If touches external systems: staging validation
+  if (touchesExternal) {
+    console.log(`    ${step}. \x1b[31mValidate against sandbox/staging processor\x1b[0m`)
+    step++
+  }
+
+  // If critical paths affected: e2e
+  if (affectedCritPaths.length > 0) {
+    console.log(`    ${step}. \x1b[31mRun e2e tests: npm run test:e2e\x1b[0m`)
+    step++
+  }
+
+  // Always: validate index
+  console.log(`    ${step}. \x1b[90mnpm run validate:index\x1b[0m`)
+  step++
+
+  // High risk: extra steps
+  if (compositeRisk >= 60) {
+    console.log(`    ${step}. \x1b[31mDeploy to staging first, verify in Supabase dashboard\x1b[0m`)
+    step++
+    console.log(`    ${step}. \x1b[31mMonitor ops-monitor + Sentry for 30 min post-deploy\x1b[0m`)
   }
 
   console.log()
