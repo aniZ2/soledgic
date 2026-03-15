@@ -160,7 +160,7 @@ ORDER BY severity DESC, created_at DESC;
 ```sql
 -- Latest processor snapshot
 SELECT ledger_id, snapshot_at, available, pending
-FROM processor_balance_snapshots
+FROM -- processor_balance_snapshots (table not yet configured)
 WHERE ledger_id = 'LEDGER_UUID'
 ORDER BY snapshot_at DESC
 LIMIT 1;
@@ -247,15 +247,15 @@ WHERE ledger_id = 'LEDGER_UUID'
 
 ## C. Bank-to-Ledger Unmatched Transactions
 
-Bank aggregator transactions that cannot be automatically matched to ledger entries. Surfaced by health-check #5 (`bank_reconciliation_backlog`), which queries `bank_aggregator_transactions` where `match_status = 'unmatched'` and older than 7 days.
+Bank aggregator transactions that cannot be automatically matched to ledger entries. Surfaced by health-check #5 (`bank_reconciliation_backlog`), which queries `bank_transactions` where `reconciliation_status = 'unmatched'` and older than 7 days.
 
 ### 1. Find Stale Unmatched Transactions
 
 ```sql
 SELECT id, ledger_id, connection_id, amount, date,
        name, merchant_name, match_status, created_at
-FROM bank_aggregator_transactions
-WHERE match_status = 'unmatched'
+FROM bank_transactions
+WHERE reconciliation_status = 'unmatched'
   AND created_at < NOW() - INTERVAL '7 days'
 ORDER BY date DESC;
 ```
@@ -273,9 +273,9 @@ To batch-match all unmatched transactions for a ledger:
 
 ```sql
 SELECT bat.id, (auto_match_bank_aggregator_transaction(bat.id)).*
-FROM bank_aggregator_transactions bat
+FROM bank_transactions bat
 WHERE bat.ledger_id = 'LEDGER_UUID'
-  AND bat.match_status = 'unmatched'
+  AND bat.reconciliation_status = 'unmatched'
 ORDER BY bat.date;
 ```
 
@@ -302,7 +302,7 @@ ORDER BY t.created_at DESC;
 Then match them directly:
 
 ```sql
-UPDATE bank_aggregator_transactions
+UPDATE bank_transactions
 SET matched_transaction_id = 'LEDGER_TX_UUID',
     match_status = 'matched',
     match_confidence = 1.00
@@ -322,9 +322,9 @@ If the amount or date does not align with any ledger entry:
 ```sql
 -- Verify no stale unmatched transactions remain
 SELECT COUNT(*)
-FROM bank_aggregator_transactions
+FROM bank_transactions
 WHERE ledger_id = 'LEDGER_UUID'
-  AND match_status = 'unmatched'
+  AND reconciliation_status = 'unmatched'
   AND created_at < NOW() - INTERVAL '7 days';
 ```
 

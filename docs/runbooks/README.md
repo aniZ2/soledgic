@@ -142,7 +142,7 @@ WHERE status = 'failed'
   AND created_at > NOW() - INTERVAL '24 hours';
 
 -- Unmatched bank aggregator transactions (>7d)
-SELECT COUNT(*) FROM bank_aggregator_transactions
+SELECT COUNT(*) FROM bank_transactions
 WHERE match_status = 'unmatched'
   AND created_at < NOW() - INTERVAL '7 days';
 ```

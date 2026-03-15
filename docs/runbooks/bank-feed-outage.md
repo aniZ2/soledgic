@@ -2,7 +2,7 @@
 
 ## When to Use
 
-- `bank_aggregator_connections.status` is `error` or `disconnected`
+- `bank_connections.status` is `error` or `disconnected`
 - `last_sync_at` is older than expected (no new transactions syncing)
 - health-check #5 (bank_reconciliation_backlog) fails
 - Users report missing bank transactions in their dashboard
@@ -16,7 +16,7 @@
 
 ```sql
 SELECT ledger_id, institution_name, status, error_code, last_sync_at
-FROM bank_aggregator_connections
+FROM bank_connections
 WHERE status IN ('error', 'disconnected')
 ORDER BY updated_at DESC;
 ```
@@ -26,7 +26,7 @@ ORDER BY updated_at DESC;
 ```sql
 SELECT COUNT(*) AS unmatched_count,
        MIN(created_at) AS oldest_unmatched
-FROM bank_aggregator_transactions
+FROM bank_transactions
 WHERE match_status = 'unmatched'
   AND created_at < NOW() - INTERVAL '7 days';
 ```
@@ -43,7 +43,7 @@ WHERE match_status = 'unmatched'
 SELECT id, ledger_id, institution_name, status,
        error_code, error_message, last_sync_at, cursor,
        updated_at
-FROM bank_aggregator_connections
+FROM bank_connections
 WHERE status IN ('error', 'disconnected')
 ORDER BY updated_at DESC;
 ```
@@ -53,7 +53,7 @@ ORDER BY updated_at DESC;
 ```sql
 SELECT id, ledger_id, institution_name, status, last_sync_at,
        EXTRACT(EPOCH FROM (NOW() - last_sync_at)) / 3600 AS hours_since_sync
-FROM bank_aggregator_connections
+FROM bank_connections
 WHERE status = 'active'
   AND last_sync_at < NOW() - INTERVAL '24 hours'
 ORDER BY last_sync_at ASC;
@@ -63,7 +63,7 @@ ORDER BY last_sync_at ASC;
 
 ```sql
 SELECT id, institution_name, error_code, error_message, updated_at
-FROM bank_aggregator_connections
+FROM bank_connections
 WHERE error_code IS NOT NULL
 ORDER BY updated_at DESC
 LIMIT 20;
@@ -121,7 +121,7 @@ curl -X POST "$SUPABASE_URL/functions/v1/import-bank-statement" \
 
 Maximum 5000 lines per import. Set `auto_match: true` to automatically attempt matching by amount within a 3-day window.
 
-Note: The `import-bank-statement` function writes to `bank_statement_lines` (the manual import table). For automatic sync, transactions land in `bank_aggregator_transactions` instead.
+Note: The `import-bank-statement` function writes to `bank_statement_lines` (the manual import table). For automatic sync, transactions land in `bank_transactions` instead.
 
 ### 3. Verify Import
 
@@ -148,7 +148,7 @@ After re-authentication:
 
 ```sql
 SELECT id, status, last_sync_at, cursor, error_code
-FROM bank_aggregator_connections
+FROM bank_connections
 WHERE id = 'CONNECTION_UUID';
 ```
 
@@ -156,7 +156,7 @@ The `status` should return to `active` and `error_code` should be `NULL`.
 
 ### 3. Cursor-Based Sync Resumes
 
-The sync uses a cursor stored in `bank_aggregator_connections.cursor`. After reconnection, sync resumes from the last successful position — no duplicate transactions will be imported.
+The sync uses a cursor stored in `bank_connections.cursor`. After reconnection, sync resumes from the last successful position — no duplicate transactions will be imported.
 
 ---
 
@@ -168,7 +168,7 @@ After sync resumes or manual import completes, run the rule-based auto-matcher o
 
 ```sql
 SELECT bat.id, (auto_match_bank_aggregator_transaction(bat.id)).*
-FROM bank_aggregator_transactions bat
+FROM bank_transactions bat
 WHERE bat.ledger_id = 'LEDGER_UUID'
   AND bat.match_status = 'unmatched'
 ORDER BY bat.date;
@@ -191,7 +191,7 @@ Health-check #5 should pass once the unmatched backlog is cleared.
 ```sql
 -- Bank aggregator transactions (automatic sync)
 SELECT COUNT(*)
-FROM bank_aggregator_transactions
+FROM bank_transactions
 WHERE ledger_id = 'LEDGER_UUID'
   AND match_status = 'unmatched'
   AND created_at < NOW() - INTERVAL '7 days';

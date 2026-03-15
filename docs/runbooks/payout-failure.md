@@ -41,7 +41,7 @@ WHERE transaction_type = 'payout' AND status = 'failed'
 SELECT t.id, t.reference_id, t.amount, t.status, t.metadata, t.created_at,
        pt.processor_id, pt.status as processor_status, pt.raw_data
 FROM transactions t
-LEFT JOIN processor_transactions pt ON pt.transaction_id = t.id
+LEFT JOIN transactions pt ON pt.transaction_id = t.id
 WHERE t.type = 'payout'
   AND t.status = 'failed'
 ORDER BY t.created_at DESC
@@ -52,7 +52,7 @@ LIMIT 20;
 
 ```sql
 SELECT processor_id, status, raw_data, created_at
-FROM processor_transactions
+FROM transactions
 WHERE transaction_id = 'PAYOUT_TX_UUID'
 ORDER BY created_at DESC;
 ```
@@ -111,7 +111,7 @@ WHERE id = 'PAYOUT_TX_UUID';
 3. Record a processor transaction for audit trail:
 
 ```sql
-INSERT INTO processor_transactions (transaction_id, ledger_id, processor_id, status, raw_data)
+INSERT INTO transactions (transaction_id, ledger_id, processor_id, status, raw_data)
 SELECT id, ledger_id, 'MANUAL_' || id, 'succeeded',
        '{"manual": true, "operator": "your_name", "external_ref": "EXTERNAL_REF"}'::jsonb
 FROM transactions WHERE id = 'PAYOUT_TX_UUID';

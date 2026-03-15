@@ -11,7 +11,7 @@
 
 ## First 5 Minutes
 
-1. Confirm alert in ops-monitor output (`failed_processor_transactions_24h` or `failed_payouts_24h`)
+1. Confirm alert in ops-monitor output (`failed_transactions_24h` or `failed_payouts_24h`)
 2. Verify processor is actually down vs. credential/config issue:
 
 ```bash
@@ -25,7 +25,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 ```sql
 SELECT DISTINCT ledger_id, COUNT(*) AS failed_count
-FROM processor_transactions
+FROM transactions
 WHERE status = 'failed'
   AND created_at > NOW() - INTERVAL '1 hour'
 GROUP BY ledger_id
@@ -43,7 +43,7 @@ ORDER BY failed_count DESC;
 ```sql
 SELECT processor_id, processor_type, status, raw_data->>'failure_code' AS failure_code,
        raw_data->>'failure_message' AS failure_message, created_at
-FROM processor_transactions
+FROM transactions
 WHERE status = 'failed'
   AND created_at > NOW() - INTERVAL '1 hour'
 ORDER BY created_at DESC
@@ -55,7 +55,7 @@ LIMIT 30;
 ```sql
 SELECT COUNT(*) AS failures,
        raw_data->>'failure_message' AS message
-FROM processor_transactions
+FROM transactions
 WHERE status = 'failed'
   AND created_at > NOW() - INTERVAL '1 hour'
 GROUP BY raw_data->>'failure_message'
@@ -111,7 +111,7 @@ Check which ledgers have been impacted:
 
 ```sql
 SELECT DISTINCT ledger_id, COUNT(*) AS failed_count
-FROM processor_transactions
+FROM transactions
 WHERE status = 'failed'
   AND created_at > NOW() - INTERVAL '1 hour'
 GROUP BY ledger_id
@@ -216,7 +216,7 @@ WHERE id = 'PAYOUT_TX_UUID';
 ### 3. Record Processor Transaction for Audit Trail
 
 ```sql
-INSERT INTO processor_transactions (transaction_id, ledger_id, processor_id, processor_type, amount, status, raw_data)
+INSERT INTO transactions (transaction_id, ledger_id, processor_id, processor_type, amount, status, raw_data)
 SELECT id, ledger_id, 'MANUAL_' || id, 'payout', amount, 'succeeded',
        '{"manual": true, "operator": "YOUR_NAME", "external_ref": "EXTERNAL_REF"}'::jsonb
 FROM transactions WHERE id = 'PAYOUT_TX_UUID';
