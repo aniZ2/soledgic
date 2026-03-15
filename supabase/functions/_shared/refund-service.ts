@@ -1,6 +1,7 @@
+// SERVICE_ID: SVC_REFUND_ENGINE
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  createAuditLogAsync,
+  createAuditLog,
   LedgerContext,
   sanitizeForAudit,
   validateAmount,
@@ -586,7 +587,7 @@ export async function recordRefundResponse(
     const fromPlatformCents = Number(reservedRow.out_from_platform_cents || 0)
     const refundedCents = Number(reservedRow.out_refunded_cents || effectiveRefundCents)
 
-    createAuditLogAsync(supabase, req, {
+    await createAuditLog(supabase, req, {
       ledger_id: ledger.id,
       action: 'record_refund',
       entity_type: 'transaction',
@@ -718,7 +719,7 @@ export async function recordRefundResponse(
   const fromPlatformCents = Number(refundRow.out_from_platform_cents || 0)
   const refundedCents = Number(refundRow.out_refunded_cents || effectiveRefundCents)
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'record_refund',
     entity_type: 'transaction',

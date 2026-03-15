@@ -10,7 +10,7 @@ import {
   errorResponse, 
   LedgerContext,
   isProduction,
-  createAuditLogAsync
+  createAuditLog
 } from '../_shared/utils.ts'
 import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
@@ -580,7 +580,7 @@ async function executeSinglePayout(
     })
     .eq('id', payoutId)
 
-  createAuditLogAsync(
+  await createAuditLog(
     supabase,
     req,
     {
@@ -755,7 +755,7 @@ const handler = createHandler(
         }
 
         // Audit log for batch file generation (security-sensitive action)
-        createAuditLogAsync(
+        await createAuditLog(
           supabase,
           req,
           {

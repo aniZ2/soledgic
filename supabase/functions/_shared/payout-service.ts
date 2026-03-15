@@ -1,6 +1,7 @@
+// SERVICE_ID: SVC_PAYOUT_ENGINE
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  createAuditLogAsync,
+  createAuditLog,
   escapeHtml,
   LedgerContext,
   sanitizeForAudit,
@@ -240,7 +241,7 @@ export async function processPayoutResponse(
   const previousBalance = result.previous_balance!
   const newBalance = result.new_balance!
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'process_payout',
     entity_type: 'transaction',

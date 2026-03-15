@@ -1,6 +1,7 @@
+// SERVICE_ID: SVC_WALLET_ENGINE
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  createAuditLogAsync,
+  createAuditLog,
   LedgerContext,
   sanitizeForAudit,
   validateAmount,
@@ -414,7 +415,7 @@ export async function createWalletResponse(
     return resourceError('Failed to create wallet', 500, {}, 'wallet_create_failed')
   }
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'wallet_created',
     entity_type: 'account',
@@ -585,7 +586,7 @@ async function depositToUserWalletAccountResponse(
   const balance = Number(row?.out_wallet_balance ?? 0)
   const walletId = row?.out_wallet_account_id
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'wallet_deposit',
     entity_type: 'transaction',
@@ -665,7 +666,7 @@ async function withdrawFromUserWalletAccountResponse(
   const transactionId = row?.out_transaction_id
   const balance = Number(row?.out_wallet_balance ?? 0)
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'wallet_withdraw',
     entity_type: 'transaction',
@@ -902,7 +903,7 @@ export async function transferWalletFundsResponse(
   const fromBalance = Number(row?.out_from_balance ?? 0)
   const toBalance = Number(row?.out_to_balance ?? 0)
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'wallet_transfer',
     entity_type: 'transaction',

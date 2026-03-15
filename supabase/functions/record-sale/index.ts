@@ -11,7 +11,7 @@ import {
   validateId,
   validateString,
   LedgerContext,
-  createAuditLogAsync,
+  createAuditLog,
   sanitizeForAudit
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -156,7 +156,7 @@ const handler = createHandler(
     // AUDIT LOG
     // ========================================================================
     
-    createAuditLogAsync(supabase, req, {
+    await createAuditLog(supabase, req, {
       ledger_id: ledger.id,
       action: 'record_sale',
       entity_type: 'transaction',

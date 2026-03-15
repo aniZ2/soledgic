@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_COMPLIANCE_MONITOR
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { LedgerContext } from './utils.ts'
 import {

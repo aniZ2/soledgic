@@ -1,6 +1,7 @@
+// SERVICE_ID: SVC_CHECKOUT_ORCHESTRATOR
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  createAuditLogAsync,
+  createAuditLog,
   LedgerContext,
   sanitizeForAudit,
   validateAmount,
@@ -181,7 +182,7 @@ export async function createCheckoutResponse(
 
     const appUrl = (Deno.env.get('APP_URL') || Deno.env.get('NEXT_PUBLIC_APP_URL') || 'https://soledgic.com').replace(/\/+$/, '')
 
-    createAuditLogAsync(supabase, req, {
+    await createAuditLog(supabase, req, {
       ledger_id: ledger.id,
       action: 'checkout_session_created',
       entity_type: 'checkout_session',
@@ -363,7 +364,7 @@ export async function createCheckoutResponse(
     }
   }
 
-  createAuditLogAsync(supabase, req, {
+  await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'checkout_created',
     entity_type: 'payment_transfer',

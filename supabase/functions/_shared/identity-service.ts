@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_IDENTITY_ENGINE
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { LedgerContext } from './utils.ts'
 

@@ -8,7 +8,7 @@ import {
   errorResponse,
   validateId,
   LedgerContext,
-  createAuditLogAsync,
+  createAuditLog,
   sanitizeForAudit
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -49,7 +49,7 @@ const handler = createHandler(
     }
 
     // Audit log
-    createAuditLogAsync(supabase, req, {
+    await createAuditLog(supabase, req, {
       ledger_id: ledger.id,
       action: 'creator.deleted',
       resource_type: 'account',

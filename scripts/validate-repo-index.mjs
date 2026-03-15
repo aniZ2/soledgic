@@ -156,7 +156,26 @@ if (existsSync(sdkPath)) {
   }
 }
 
-// ── 8. Check stable IDs in index ────────────────────────────────────
+// ── 8. Check SERVICE_ID tags in source files ────────────────────────
+console.log('\nService Tags:')
+const serviceBlocks = index.match(/SERVICE: (SVC_\w+)\nFILE: (.+)/g) || []
+let taggedCount = 0
+for (const block of serviceBlocks) {
+  const [, svcId, filePath] = block.match(/SERVICE: (SVC_\w+)\nFILE: (.+)/)
+  const primaryFile = filePath.split(' + ')[0].trim()
+  const absPath = join(ROOT, primaryFile)
+  if (existsSync(absPath)) {
+    const head = readFileSync(absPath, 'utf-8').slice(0, 200)
+    if (head.includes(`SERVICE_ID: ${svcId}`)) {
+      taggedCount++
+    } else {
+      warn(`${filePath} missing "// SERVICE_ID: ${svcId}" comment`)
+    }
+  }
+}
+ok(`${taggedCount}/${serviceBlocks.length} services tagged in source`)
+
+// ── 9. Check stable IDs in index ────────────────────────────────────
 console.log('\nStable IDs:')
 const serviceIds = index.match(/SERVICE: (SVC_\w+)/g)?.length || 0
 const rpcIds = index.match(/RPC: (RPC_\w+)/g)?.length || 0

@@ -1,0 +1,152 @@
+{
+  "$schema": "Service boundary rules. Each entry declares which files may import a protected module. Prefix matching: 'supabase/functions/refunds/' matches any file in that directory.",
+  "boundaries": [
+    {
+      "id": "SVC_PAYMENT_PROVIDER",
+      "module": "supabase/functions/_shared/payment-provider.ts",
+      "allowed": [
+        "supabase/functions/_shared/checkout-service.ts",
+        "supabase/functions/_shared/refund-service.ts",
+        "supabase/functions/_shared/holds-service.ts",
+        "supabase/functions/execute-payout/",
+        "supabase/functions/bill-overages/"
+      ],
+      "reason": "Payment provider touches real money — only orchestration services may call it"
+    },
+    {
+      "id": "SVC_CHECKOUT_ORCHESTRATOR",
+      "module": "supabase/functions/_shared/checkout-service.ts",
+      "allowed": [
+        "supabase/functions/checkout-sessions/"
+      ],
+      "reason": "Checkout orchestration is a single entry point — no side-door charging"
+    },
+    {
+      "id": "SVC_REFUND_ENGINE",
+      "module": "supabase/functions/_shared/refund-service.ts",
+      "allowed": [
+        "supabase/functions/refunds/"
+      ],
+      "reason": "Refunds must go through the refund API — cap enforcement depends on it"
+    },
+    {
+      "id": "SVC_PAYOUT_ENGINE",
+      "module": "supabase/functions/_shared/payout-service.ts",
+      "allowed": [
+        "supabase/functions/payouts/"
+      ],
+      "reason": "Payout logic has negative-balance guards that must not be bypassed"
+    },
+    {
+      "id": "SVC_WALLET_ENGINE",
+      "module": "supabase/functions/_shared/wallet-service.ts",
+      "allowed": [
+        "supabase/functions/wallets/",
+        "supabase/functions/transfers/"
+      ],
+      "reason": "Wallet atomics enforce nonnegative balance — direct calls would bypass guards"
+    },
+    {
+      "id": "SVC_TAX_ENGINE",
+      "module": "supabase/functions/_shared/tax-service.ts",
+      "allowed": [
+        "supabase/functions/tax/"
+      ],
+      "reason": "Tax document generation has compliance implications — single entry point"
+    },
+    {
+      "id": "SVC_IDENTITY_ENGINE",
+      "module": "supabase/functions/_shared/identity-service.ts",
+      "allowed": [
+        "supabase/functions/_shared/participants-service.ts",
+        "supabase/functions/_shared/tax-service.ts",
+        "supabase/functions/submit-tax-info/"
+      ],
+      "reason": "Identity links are cross-ledger — mutations must go through known paths"
+    },
+    {
+      "id": "SVC_COMPLIANCE_MONITOR",
+      "module": "supabase/functions/_shared/compliance-service.ts",
+      "allowed": [
+        "supabase/functions/compliance/"
+      ],
+      "reason": "Compliance queries touch audit log — access should be auditable"
+    },
+    {
+      "id": "SVC_FRAUD_ENGINE",
+      "module": "supabase/functions/_shared/fraud-service.ts",
+      "allowed": [
+        "supabase/functions/fraud/"
+      ],
+      "reason": "Fraud evaluation writes risk_evaluations — single entry point"
+    },
+    {
+      "id": "SVC_HOLDS_ENGINE",
+      "module": "supabase/functions/_shared/holds-service.ts",
+      "allowed": [
+        "supabase/functions/holds/"
+      ],
+      "reason": "Hold/release touches escrow pipeline and payment provider"
+    },
+    {
+      "id": "SVC_RECONCILIATION_ENGINE",
+      "module": "supabase/functions/_shared/reconciliations-service.ts",
+      "allowed": [
+        "supabase/functions/reconciliations/",
+        "supabase/functions/reconcile/"
+      ],
+      "reason": "Reconciliation writes bank_matches and snapshots — must go through service layer"
+    },
+    {
+      "id": "SVC_PARTICIPANTS",
+      "module": "supabase/functions/_shared/participants-service.ts",
+      "allowed": [
+        "supabase/functions/participants/"
+      ],
+      "reason": "Participant creation links identity and accounts — single orchestration path"
+    },
+    {
+      "id": "SVC_WEBHOOK_SIGNING",
+      "module": "supabase/functions/_shared/webhook-signing.ts",
+      "allowed": [
+        "supabase/functions/webhooks/",
+        "supabase/functions/process-webhooks/"
+      ],
+      "reason": "Webhook signing uses secrets — limit exposure surface"
+    },
+    {
+      "id": "SVC_WEBHOOK_MANAGEMENT",
+      "module": "supabase/functions/_shared/webhook-management.ts",
+      "allowed": [
+        "supabase/functions/webhooks/"
+      ],
+      "reason": "Webhook endpoint management is admin-only"
+    },
+    {
+      "id": "SVC_PROCESSOR_WEBHOOK_ADAPTERS",
+      "module": "supabase/functions/_shared/processor-webhook-adapters.ts",
+      "allowed": [
+        "supabase/functions/process-processor-inbox/"
+      ],
+      "reason": "Processor webhook normalization only used by the inbox processor"
+    },
+    {
+      "id": "SVC_BANK_AGGREGATOR",
+      "module": "supabase/functions/_shared/bank-aggregator-provider.ts",
+      "allowed": [
+        "supabase/functions/bank-aggregator/",
+        "supabase/functions/bank-aggregator-webhooks/",
+        "supabase/functions/sync-bank-feeds/"
+      ],
+      "reason": "Bank aggregator holds Teller tokens — limit blast radius"
+    },
+    {
+      "id": "WEB_PROCESSOR",
+      "module": "apps/web/src/lib/processor.ts",
+      "allowed": [
+        "apps/web/src/app/api/"
+      ],
+      "reason": "Finix processor calls must stay in API routes — never in client components"
+    }
+  ]
+}

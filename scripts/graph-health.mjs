@@ -18,6 +18,7 @@ import { join, relative, dirname } from 'path'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
 const BASELINE_PATH = join(ROOT, '.graph-health-baseline.json')
+const BOUNDARIES_PATH = join(ROOT, '.service-boundaries.json')
 
 // ── Scan the codebase for imports ───────────────────────────────────
 
@@ -337,6 +338,52 @@ if (cycles.length === 0) {
   }
 }
 
+// ── Service boundary enforcement ────────────────────────────────────
+
+const boundaryViolations = []
+
+if (existsSync(BOUNDARIES_PATH)) {
+  const { boundaries } = JSON.parse(readFileSync(BOUNDARIES_PATH, 'utf-8'))
+
+  for (const boundary of boundaries) {
+    // Find all edges where the target is this protected module
+    const importers = edges.filter((e) => e.to === boundary.module)
+
+    for (const { from } of importers) {
+      // Check if the importer is in the allowed list (prefix matching)
+      const allowed = boundary.allowed.some((pattern) => {
+        if (pattern.endsWith('/')) return from.startsWith(pattern)
+        return from === pattern
+      })
+
+      if (!allowed) {
+        boundaryViolations.push({
+          file: from,
+          service: boundary.id,
+          module: boundary.module,
+          allowed: boundary.allowed,
+          reason: boundary.reason,
+        })
+      }
+    }
+  }
+
+  console.log(`\n  \x1b[1mService Boundary Enforcement:\x1b[0m`)
+  if (boundaryViolations.length === 0) {
+    console.log(`    \x1b[32m✓ ${boundaries.length} service boundaries intact\x1b[0m`)
+  } else {
+    console.log(`    \x1b[31m${boundaryViolations.length} boundary violation(s):\x1b[0m`)
+    for (const v of boundaryViolations) {
+      console.log(`\n      \x1b[31m${v.file}\x1b[0m`)
+      console.log(`        imports \x1b[33m${v.service}\x1b[0m (${v.module})`)
+      console.log(`        allowed: ${v.allowed.join(', ')}`)
+      console.log(`        \x1b[90m${v.reason}\x1b[0m`)
+    }
+  }
+} else {
+  console.log(`\n  \x1b[90mNo .service-boundaries.json — boundary enforcement skipped\x1b[0m`)
+}
+
 // ── Trend comparison ────────────────────────────────────────────────
 
 if (existsSync(BASELINE_PATH)) {
@@ -363,6 +410,36 @@ if (existsSync(BASELINE_PATH)) {
   if (domainHdr > (baseline.domainHdr || baseline.hdr) * 1.2) {
     console.log(`    \x1b[33m⚠  Domain hub concentration increased >20% — check for centralizing modules\x1b[0m`)
   }
+
+  // Per-hub growth report
+  if (baseline.hubCounts) {
+    const HUB_GROWTH_THRESHOLD = 3
+    const grownHubs = []
+    for (const [file, count] of importCounts) {
+      const prev = baseline.hubCounts[file] || 0
+      const delta = count - prev
+      if (delta >= HUB_GROWTH_THRESHOLD) {
+        grownHubs.push({ file, prev, current: count, delta })
+      }
+    }
+    // Also detect new hubs that didn't exist in baseline
+    const newHubs = [...importCounts.entries()]
+      .filter(([file, count]) => !(file in baseline.hubCounts) && count >= 3)
+      .map(([file, count]) => ({ file, prev: 0, current: count, delta: count }))
+
+    const allGrown = [...grownHubs, ...newHubs].sort((a, b) => b.delta - a.delta)
+    if (allGrown.length > 0) {
+      console.log(`\n  \x1b[1mHub Growth (≥${HUB_GROWTH_THRESHOLD} new importers since baseline):\x1b[0m`)
+      for (const h of allGrown) {
+        const isNew = h.prev === 0 ? ' \x1b[36m(NEW)\x1b[0m' : ''
+        console.log(`    \x1b[33m${h.file}\x1b[0m  ${h.prev} → ${h.current} (+${h.delta})${isNew}`)
+      }
+    } else {
+      console.log(`\n    \x1b[32m✓ No individual hub growth detected\x1b[0m`)
+    }
+  } else {
+    console.log(`\n    \x1b[90mNo per-hub baseline — run --save-baseline to enable hub growth tracking\x1b[0m`)
+  }
 }
 
 // ── Overall grade ───────────────────────────────────────────────────
@@ -374,10 +451,10 @@ if (godServices.length > 0) { grade = 'C'; gradeColor = '33' }
 if (couplingRatio >= 4) { grade = 'D'; gradeColor = '31' }
 if (domainHdr >= 0.35) { grade = 'D'; gradeColor = '31' }
 if (depthMetrics.max > 12) { grade = 'D'; gradeColor = '31' }
-if (cycles.length === 0 && godServices.length === 0 && couplingRatio < 2.5 && domainHdr < 0.2) {
+if (cycles.length === 0 && godServices.length === 0 && boundaryViolations.length === 0 && couplingRatio < 2.5 && domainHdr < 0.2) {
   grade = 'A'
   gradeColor = '32'
-} else if (cycles.length === 0 && godServices.length === 0) {
+} else if (cycles.length === 0 && godServices.length === 0 && boundaryViolations.length === 0) {
   grade = 'B'
   gradeColor = '32'
 }
@@ -401,6 +478,9 @@ if (couplingRatio >= 4) {
 }
 if (depthMetrics.max > 12) {
   violations.push({ level: 'FAIL', msg: `Max dependency depth ${depthMetrics.max} exceeds hard limit (12)` })
+}
+if (boundaryViolations.length > 0) {
+  violations.push({ level: 'FAIL', msg: `${boundaryViolations.length} service boundary violation(s): ${boundaryViolations.map((v) => `${v.file} → ${v.service}`).join('; ')}` })
 }
 
 // Soft limits — these warn in CI
@@ -427,6 +507,27 @@ if (existsSync(BASELINE_PATH)) {
   }
   if (depthMetrics.max > (bl.maxDepth || 0) + 3) {
     violations.push({ level: 'WARN', msg: `Max depth increased by ${depthMetrics.max - (bl.maxDepth || 0)} from baseline` })
+  }
+
+  // Per-hub growth detection
+  if (bl.hubCounts) {
+    const HUB_GROWTH_THRESHOLD = 3 // importers gained since baseline
+    const grownHubs = []
+    for (const [file, count] of importCounts) {
+      const prev = bl.hubCounts[file] || 0
+      const delta = count - prev
+      if (delta >= HUB_GROWTH_THRESHOLD) {
+        grownHubs.push({ file, prev, current: count, delta })
+      }
+    }
+    if (grownHubs.length > 0) {
+      for (const h of grownHubs) {
+        violations.push({
+          level: 'WARN',
+          msg: `Hub growth: ${h.file} gained ${h.delta} importers (${h.prev} → ${h.current})`,
+        })
+      }
+    }
   }
 }
 
@@ -466,6 +567,7 @@ if (process.argv.includes('--save-baseline')) {
     avgDepth: depthMetrics.avg,
     cycles: cycles.length,
     topHubs: topHubs.map(([file, count]) => ({ file, count })),
+    hubCounts: Object.fromEntries(importCounts),
   }
   writeFileSync(BASELINE_PATH, JSON.stringify(baseline, null, 2) + '\n')
   console.log(`  \x1b[32mBaseline saved to ${BASELINE_PATH}\x1b[0m\n`)

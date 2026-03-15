@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_WEBHOOK_PROCESSOR
 // Soledgic Edge Function: Process Webhooks
 // Called by cron to deliver pending webhooks
 // POST /process-webhooks (requires CRON_SECRET)

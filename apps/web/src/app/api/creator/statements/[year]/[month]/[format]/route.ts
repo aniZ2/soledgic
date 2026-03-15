@@ -76,12 +76,12 @@ export const GET = createApiHandler(
       id: string
       ledger_id: string
       entity_id: string
-      ledger: { business_name: string } | null
+      ledger: { business_name: string }[] | null
     }
 
     const ledgerId = account.ledger_id
     const creatorEntityId = account.entity_id
-    const businessName = account.ledger?.business_name || 'Platform'
+    const businessName = account.ledger?.[0]?.business_name || 'Platform'
 
     // Look up the creator's account record in the ledger
     const { data: creatorAccount } = await supabase

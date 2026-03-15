@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_REVERSAL_ENGINE
 // Soledgic Edge Function: Reverse Transaction
 // POST /reverse-transaction
 // Handles transaction deletion/reversal based on state:

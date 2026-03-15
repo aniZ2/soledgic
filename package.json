@@ -16,6 +16,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:stress": "vitest run --config vitest.stress.config.ts",
     "test:coverage": "vitest run --coverage",
+    "graph:query": "node scripts/graph-query.mjs",
     "graph:impact": "node scripts/graph-impact.mjs",
     "graph:health": "node scripts/graph-health.mjs",
     "graph:enforce": "node scripts/graph-health.mjs --enforce",

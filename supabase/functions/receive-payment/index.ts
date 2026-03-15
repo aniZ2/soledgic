@@ -10,7 +10,7 @@ import {
   validateId,
   validateString,
   validateAmount,
-  createAuditLogAsync,
+  createAuditLog,
   LedgerContext
 } from '../_shared/utils.ts'
 
@@ -98,7 +98,7 @@ const handler = createHandler(
     }
 
     // Audit log
-    createAuditLogAsync(supabase, req, {
+    await createAuditLog(supabase, req, {
       ledger_id: ledger.id,
       action: 'receive_payment',
       entity_type: 'transaction',

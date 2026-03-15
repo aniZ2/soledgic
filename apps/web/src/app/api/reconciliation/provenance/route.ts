@@ -10,6 +10,8 @@ export const GET = createApiHandler(
     const livemode = await getLivemode()
     const activeLedgerGroupId = await getActiveLedgerGroupId()
 
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')

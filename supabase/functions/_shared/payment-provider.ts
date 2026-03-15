@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_PAYMENT_PROVIDER
 // Soledgic: Payment Provider Abstraction
 // Shared interface for charge-side payment operations.
 //
