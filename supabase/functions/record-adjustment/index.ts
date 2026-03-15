@@ -3,17 +3,17 @@
 // Create CPA-style adjusting entries
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   validateAmount,
   getClientIp
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface AdjustmentEntry {
   account_type: string
@@ -32,50 +32,43 @@ interface RecordAdjustmentRequest {
   prepared_by: string
 }
 
-const VALID_ADJUSTMENT_TYPES = ['correction', 'reclassification', 'accrual', 'deferral', 
+const VALID_ADJUSTMENT_TYPES = ['correction', 'reclassification', 'accrual', 'deferral',
   'depreciation', 'write_off', 'year_end', 'opening_balance', 'other']
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'record-adjustment', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger is not active', 403, req, requestId)
     }
-
-    const body: RecordAdjustmentRequest = await req.json()
 
     // Validate required fields
     if (!body.adjustment_type || !VALID_ADJUSTMENT_TYPES.includes(body.adjustment_type)) {
-      return errorResponse(`Invalid adjustment_type. Must be one of: ${VALID_ADJUSTMENT_TYPES.join(', ')}`, 400, req)
+      return errorResponse(`Invalid adjustment_type. Must be one of: ${VALID_ADJUSTMENT_TYPES.join(', ')}`, 400, req, requestId)
     }
 
     const reason = validateString(body.reason, 1000)
     const preparedBy = validateString(body.prepared_by, 200)
 
     if (!reason) {
-      return errorResponse('Invalid or missing reason', 400, req)
+      return errorResponse('Invalid or missing reason', 400, req, requestId)
     }
     if (!preparedBy) {
-      return errorResponse('Invalid or missing prepared_by', 400, req)
+      return errorResponse('Invalid or missing prepared_by', 400, req, requestId)
     }
 
     if (!body.entries || !Array.isArray(body.entries) || body.entries.length < 2) {
-      return errorResponse('Adjustment must have at least 2 entries (debit and credit)', 400, req)
+      return errorResponse('Adjustment must have at least 2 entries (debit and credit)', 400, req, requestId)
     }
 
     // Validate entries balance
@@ -84,10 +77,10 @@ Deno.serve(async (req) => {
     for (const entry of body.entries) {
       const amount = validateAmount(entry.amount)
       if (amount === null || amount <= 0) {
-        return errorResponse('Invalid entry amount', 400, req)
+        return errorResponse('Invalid entry amount', 400, req, requestId)
       }
       if (!['debit', 'credit'].includes(entry.entry_type)) {
-        return errorResponse('Invalid entry_type: must be debit or credit', 400, req)
+        return errorResponse('Invalid entry_type: must be debit or credit', 400, req, requestId)
       }
       if (entry.entry_type === 'debit') {
         totalDebits += entry.amount
@@ -97,16 +90,16 @@ Deno.serve(async (req) => {
     }
 
     if (Math.abs(totalDebits - totalCredits) > 1) {
-      return jsonResponse({ 
-        success: false, 
+      return jsonResponse({
+        success: false,
         error: `Entries must balance`,
         details: { debits: totalDebits, credits: totalCredits }
-      }, 400, req)
+      }, 400, req, requestId)
     }
 
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-    const adjustmentDate = body.adjustment_date && dateRegex.test(body.adjustment_date) 
-      ? body.adjustment_date 
+    const adjustmentDate = body.adjustment_date && dateRegex.test(body.adjustment_date)
+      ? body.adjustment_date
       : new Date().toISOString().split('T')[0]
     const totalAmount = totalDebits / 100
 
@@ -136,7 +129,7 @@ Deno.serve(async (req) => {
 
     if (txError) {
       console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create adjustment transaction', 500, req)
+      return errorResponse('Failed to create adjustment transaction', 500, req, requestId)
     }
 
     // Create entries
@@ -144,7 +137,7 @@ Deno.serve(async (req) => {
     for (const entry of body.entries) {
       const accountType = validateId(entry.account_type, 50)
       if (!accountType) {
-        return errorResponse(`Invalid account_type: ${entry.account_type}`, 400, req)
+        return errorResponse(`Invalid account_type: ${entry.account_type}`, 400, req, requestId)
       }
 
       let accountQuery = supabase
@@ -156,7 +149,7 @@ Deno.serve(async (req) => {
       if (entry.entity_id) {
         const entityId = validateId(entry.entity_id, 100)
         if (!entityId) {
-          return errorResponse(`Invalid entity_id: ${entry.entity_id}`, 400, req)
+          return errorResponse(`Invalid entity_id: ${entry.entity_id}`, 400, req, requestId)
         }
         accountQuery = accountQuery.eq('entity_id', entityId)
       } else {
@@ -166,7 +159,7 @@ Deno.serve(async (req) => {
       const { data: account } = await accountQuery.single()
 
       if (!account) {
-        return errorResponse(`Account not found: ${accountType}${entry.entity_id ? ` (${entry.entity_id})` : ''}`, 400, req)
+        return errorResponse(`Account not found: ${accountType}${entry.entity_id ? ` (${entry.entity_id})` : ''}`, 400, req, requestId)
       }
 
       entryRecords.push({
@@ -204,10 +197,10 @@ Deno.serve(async (req) => {
       actor_type: 'api',
       ip_address: getClientIp(req),
       user_agent: req.headers.get('user-agent'),
-      request_body: { 
-        adjustment_type: body.adjustment_type, 
+      request_body: {
+        adjustment_type: body.adjustment_type,
         amount: totalAmount,
-        entries: body.entries.length 
+        entries: body.entries.length
       }
     }).then(() => {}).catch(() => {})
 
@@ -216,10 +209,8 @@ Deno.serve(async (req) => {
       transaction_id: transaction.id,
       adjustment_id: adjustment?.id,
       entries_created: entryRecords.length
-    }, 200, req)
-
-  } catch (error: any) {
-    console.error('Error recording adjustment:', error)
-    return errorResponse('Internal server error', 500, req)
+    }, 200, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

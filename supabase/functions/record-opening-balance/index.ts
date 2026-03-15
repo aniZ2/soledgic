@@ -3,16 +3,16 @@
 // Set initial balances when starting a ledger mid-year
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   getClientIp
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface OpeningBalanceEntry {
   account_type: string
@@ -29,42 +29,35 @@ interface RecordOpeningBalanceRequest {
 
 const VALID_SOURCES = ['manual', 'imported', 'migrated', 'year_start']
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'record-opening-balance', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger is not active', 403, req, requestId)
     }
-
-    const body: RecordOpeningBalanceRequest = await req.json()
 
     // Validate required fields
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/
     if (!body.as_of_date || !dateRegex.test(body.as_of_date)) {
-      return errorResponse('Invalid as_of_date: must be YYYY-MM-DD format', 400, req)
+      return errorResponse('Invalid as_of_date: must be YYYY-MM-DD format', 400, req, requestId)
     }
 
     if (!body.source || !VALID_SOURCES.includes(body.source)) {
-      return errorResponse(`Invalid source: must be one of ${VALID_SOURCES.join(', ')}`, 400, req)
+      return errorResponse(`Invalid source: must be one of ${VALID_SOURCES.join(', ')}`, 400, req, requestId)
     }
 
     if (!body.balances || !Array.isArray(body.balances) || body.balances.length === 0) {
-      return errorResponse('balances must be a non-empty array', 400, req)
+      return errorResponse('balances must be a non-empty array', 400, req, requestId)
     }
 
     // Check if opening balances already exist
@@ -75,7 +68,7 @@ Deno.serve(async (req) => {
       .single()
 
     if (existing) {
-      return jsonResponse({ success: false, error: 'Opening balances already recorded for this ledger' }, 409, req)
+      return jsonResponse({ success: false, error: 'Opening balances already recorded for this ledger' }, 409, req, requestId)
     }
 
     // Calculate totals
@@ -89,11 +82,11 @@ Deno.serve(async (req) => {
 
     for (const bal of body.balances) {
       if (typeof bal.balance !== 'number') {
-        return errorResponse('Each balance must be a number (cents)', 400, req)
+        return errorResponse('Each balance must be a number (cents)', 400, req, requestId)
       }
       const accountType = validateId(bal.account_type, 50)
       if (!accountType) {
-        return errorResponse(`Invalid account_type: ${bal.account_type}`, 400, req)
+        return errorResponse(`Invalid account_type: ${bal.account_type}`, 400, req, requestId)
       }
 
       const amount = bal.balance / 100
@@ -109,11 +102,11 @@ Deno.serve(async (req) => {
     // Verify accounting equation
     const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity))
     if (difference > 0.01) {
-      return jsonResponse({ 
-        success: false, 
+      return jsonResponse({
+        success: false,
         error: `Opening balances don't balance`,
         details: { totalAssets, totalLiabilities, totalEquity, difference }
-      }, 400, req)
+      }, 400, req, requestId)
     }
 
     // Create transaction
@@ -139,7 +132,7 @@ Deno.serve(async (req) => {
 
     if (txError) {
       console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create opening balance transaction', 500, req)
+      return errorResponse('Failed to create opening balance transaction', 500, req, requestId)
     }
 
     // Create entries
@@ -155,7 +148,7 @@ Deno.serve(async (req) => {
       if (bal.entity_id) {
         const entityId = validateId(bal.entity_id, 100)
         if (!entityId) {
-          return errorResponse(`Invalid entity_id: ${bal.entity_id}`, 400, req)
+          return errorResponse(`Invalid entity_id: ${bal.entity_id}`, 400, req, requestId)
         }
         accountQuery = accountQuery.eq('entity_id', entityId)
       } else {
@@ -182,7 +175,7 @@ Deno.serve(async (req) => {
       }
 
       if (!account) {
-        return errorResponse(`Account not found: ${accountType}`, 400, req)
+        return errorResponse(`Account not found: ${accountType}`, 400, req, requestId)
       }
 
       const amount = Math.abs(bal.balance / 100)
@@ -235,10 +228,8 @@ Deno.serve(async (req) => {
         total_equity: totalEquity,
         accounts_set: body.balances.length
       }
-    }, 200, req)
-
-  } catch (error: any) {
-    console.error('Error recording opening balances:', error)
-    return errorResponse('Internal server error', 500, req)
+    }, 200, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

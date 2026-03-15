@@ -3,51 +3,44 @@
 // Move money between accounts (tax reserve, owner draw, etc.)
 // SECURITY HARDENED VERSION
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateAmount,
   validateString,
   getClientIp
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface RecordTransferRequest {
   from_account_type: string
   to_account_type: string
   amount: number
-  transfer_type: 'tax_reserve' | 'payout_reserve' | 'owner_draw' | 
+  transfer_type: 'tax_reserve' | 'payout_reserve' | 'owner_draw' |
                  'owner_contribution' | 'operating' | 'savings' | 'investment' | 'other'
   description?: string
   reference_id?: string
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'record-transfer', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger is not active', 403, req, requestId)
     }
-
-    const body: RecordTransferRequest = await req.json()
 
     // Validate inputs
     const fromAccountType = validateId(body.from_account_type, 50)
@@ -56,13 +49,13 @@ Deno.serve(async (req) => {
     const transferType = validateId(body.transfer_type, 30)
 
     if (!fromAccountType || !toAccountType) {
-      return errorResponse('Invalid account types', 400, req)
+      return errorResponse('Invalid account types', 400, req, requestId)
     }
     if (amount === null || amount <= 0) {
-      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req)
+      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req, requestId)
     }
     if (!transferType) {
-      return errorResponse('Invalid transfer_type', 400, req)
+      return errorResponse('Invalid transfer_type', 400, req, requestId)
     }
 
     const description = body.description ? validateString(body.description, 500) : null
@@ -78,7 +71,7 @@ Deno.serve(async (req) => {
       .single()
 
     if (fromError || !fromAccount) {
-      return errorResponse(`From account not found: ${fromAccountType}`, 400, req)
+      return errorResponse(`From account not found: ${fromAccountType}`, 400, req, requestId)
     }
 
     // Get or create to account
@@ -118,14 +111,14 @@ Deno.serve(async (req) => {
 
       if (createError) {
         console.error('Failed to create account:', createError)
-        return errorResponse('Failed to create destination account', 500, req)
+        return errorResponse('Failed to create destination account', 500, req, requestId)
       }
       toAccount = newAccount
     }
 
     const transferAmount = amount / 100
 
-    // Create transfer transaction (entry_method: 'manual' — internal bookkeeping move)
+    // Create transfer transaction (entry_method: 'manual' -- internal bookkeeping move)
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
       .insert({
@@ -149,7 +142,7 @@ Deno.serve(async (req) => {
 
     if (txError) {
       console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create transfer transaction', 500, req)
+      return errorResponse('Failed to create transfer transaction', 500, req, requestId)
     }
 
     // Create entries
@@ -186,8 +179,8 @@ Deno.serve(async (req) => {
       actor_type: 'api',
       ip_address: getClientIp(req),
       user_agent: req.headers.get('user-agent'),
-      request_body: { 
-        amount: transferAmount, 
+      request_body: {
+        amount: transferAmount,
         type: transferType,
         from: fromAccountType,
         to: toAccountType
@@ -201,10 +194,8 @@ Deno.serve(async (req) => {
       amount: transferAmount,
       from_account: fromAccount.name,
       to_account: toAccount.name
-    }, 200, req)
-
-  } catch (error: any) {
-    console.error('Error recording transfer:', error)
-    return errorResponse('Internal server error', 500, req)
+    }, 200, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

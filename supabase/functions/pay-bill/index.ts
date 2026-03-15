@@ -3,17 +3,17 @@
 // Records payment of a bill (reduces A/P, reduces Cash)
 // SECURITY HARDENED VERSION - Uses atomic database function
 
-import { 
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+import {
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   validateAmount,
   getClientIp
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface PayBillRequest {
   bill_transaction_id?: string
@@ -25,33 +25,26 @@ interface PayBillRequest {
   metadata?: Record<string, any>
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'pay-bill', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger is not active', 403, req, requestId)
     }
-
-    const body: PayBillRequest = await req.json()
 
     const amount = validateAmount(body.amount)
     if (amount === null || amount <= 0) {
-      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req)
+      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req, requestId)
     }
 
     const billTxId = body.bill_transaction_id ? validateId(body.bill_transaction_id, 100) : null
@@ -71,12 +64,12 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error('Failed to record bill payment:', error)
-      return errorResponse('Failed to create payment', 500, req)
+      return errorResponse('Failed to create payment', 500, req, requestId)
     }
 
     const row = result?.[0] || result
     if (!row?.success) {
-      return errorResponse(row?.message || 'Failed to record payment', 400, req)
+      return errorResponse(row?.message || 'Failed to record payment', 400, req, requestId)
     }
 
     // Audit log
@@ -95,10 +88,8 @@ Deno.serve(async (req) => {
       success: true,
       transaction_id: row.transaction_id,
       amount: row.amount_dollars
-    }, 200, req)
-
-  } catch (error: any) {
-    console.error('Error paying bill:', error)
-    return errorResponse('Internal server error', 500, req)
+    }, 200, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

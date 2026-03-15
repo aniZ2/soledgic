@@ -4,11 +4,10 @@
 // SECURITY HARDENED VERSION
 
 import {
-  getCorsHeaders,
-  getSupabaseClient,
-  validateApiKey,
+  createHandler,
   jsonResponse,
   errorResponse,
+  LedgerContext,
   validateId,
   validateString,
   validateAmount,
@@ -16,6 +15,7 @@ import {
   getClientIp,
   logSecurityEvent
 } from '../_shared/utils.ts'
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface RecordBillRequest {
   amount: number
@@ -58,29 +58,22 @@ interface ProjectionMatch {
   currency: string
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: getCorsHeaders(req) })
-  }
-
-  try {
-    const apiKey = req.headers.get('x-api-key')
-    if (!apiKey) {
-      return errorResponse('Missing API key', 401, req)
-    }
-
-    const supabase = getSupabaseClient()
-    const ledger = await validateApiKey(supabase, apiKey)
-
+const handler = createHandler(
+  { endpoint: 'record-bill', requireAuth: true, rateLimit: true },
+  async (
+    req: Request,
+    supabase: SupabaseClient,
+    ledger: LedgerContext | null,
+    body: any,
+    { requestId }: { requestId: string }
+  ) => {
     if (!ledger) {
-      return errorResponse('Invalid API key', 401, req)
+      return errorResponse('Ledger not found', 401, req, requestId)
     }
 
     if (ledger.status !== 'active') {
-      return errorResponse('Ledger is not active', 403, req)
+      return errorResponse('Ledger is not active', 403, req, requestId)
     }
-
-    const body: RecordBillRequest = await req.json()
 
     // Validate required fields
     const amount = validateAmount(body.amount)
@@ -88,13 +81,13 @@ Deno.serve(async (req) => {
     const vendorName = validateString(body.vendor_name, 200)
 
     if (amount === null || amount <= 0) {
-      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req)
+      return errorResponse('Invalid amount: must be positive integer (cents)', 400, req, requestId)
     }
     if (!description) {
-      return errorResponse('Invalid or missing description', 400, req)
+      return errorResponse('Invalid or missing description', 400, req, requestId)
     }
     if (!vendorName) {
-      return errorResponse('Invalid or missing vendor_name', 400, req)
+      return errorResponse('Invalid or missing vendor_name', 400, req, requestId)
     }
 
     const amountInDollars = amount / 100
@@ -141,7 +134,7 @@ Deno.serve(async (req) => {
     }
 
     if (!expenseAccount) {
-      return errorResponse('Expense account not found', 500, req)
+      return errorResponse('Expense account not found', 500, req, requestId)
     }
 
     // Get expense category if provided
@@ -175,7 +168,7 @@ Deno.serve(async (req) => {
     if (body.risk_evaluation_id) {
       const evaluationId = validateUUID(body.risk_evaluation_id)
       if (!evaluationId) {
-        return errorResponse('Invalid risk_evaluation_id: must be valid UUID', 400, req)
+        return errorResponse('Invalid risk_evaluation_id: must be valid UUID', 400, req, requestId)
       }
 
       // Load the evaluation (purely for audit linkage)
@@ -220,7 +213,7 @@ Deno.serve(async (req) => {
     if (body.authorizing_instrument_id) {
       const instrumentId = validateUUID(body.authorizing_instrument_id)
       if (!instrumentId) {
-        return errorResponse('Invalid authorizing_instrument_id: must be valid UUID', 400, req)
+        return errorResponse('Invalid authorizing_instrument_id: must be valid UUID', 400, req, requestId)
       }
 
       // Load the instrument
@@ -232,7 +225,7 @@ Deno.serve(async (req) => {
         .single()
 
       if (instrumentError || !instrumentData) {
-        return errorResponse('Authorizing instrument not found', 404, req)
+        return errorResponse('Authorizing instrument not found', 404, req, requestId)
       }
 
       instrument = instrumentData as AuthorizingInstrument
@@ -320,14 +313,14 @@ Deno.serve(async (req) => {
 
     if (txError) {
       console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create bill', 500, req)
+      return errorResponse('Failed to create bill', 500, req, requestId)
     }
 
     // Create entries (double-entry integrity preserved - instrument validation has no effect here)
     let entries = []
     if (isPaid) {
       if (!cashAccount) {
-        return errorResponse('Cash account not found', 500, req)
+        return errorResponse('Cash account not found', 500, req, requestId)
       }
       entries = [
         { transaction_id: transaction.id, account_id: expenseAccount.id, entry_type: 'debit', amount: amountInDollars },
@@ -335,7 +328,7 @@ Deno.serve(async (req) => {
       ]
     } else {
       if (!apAccount) {
-        return errorResponse('Accounts Payable account not found', 500, req)
+        return errorResponse('Accounts Payable account not found', 500, req, requestId)
       }
       entries = [
         { transaction_id: transaction.id, account_id: expenseAccount.id, entry_type: 'debit', amount: amountInDollars },
@@ -466,10 +459,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    return jsonResponse(response, 200, req)
-
-  } catch (error: any) {
-    console.error('Error recording bill:', error)
-    return errorResponse('Internal server error', 500, req)
+    return jsonResponse(response, 200, req, requestId)
   }
-})
+)
+
+Deno.serve(handler)

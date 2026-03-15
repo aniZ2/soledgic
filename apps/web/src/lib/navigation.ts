@@ -52,7 +52,7 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'Contractors', href: '/dashboard/contractors', icon: HardHat },
       { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
       { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
-      { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
+      { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
     ],
   },
   {
