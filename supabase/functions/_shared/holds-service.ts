@@ -174,27 +174,7 @@ async function fetchConnectedAccountMap(supabase: SupabaseClient, ledgerId: stri
     .eq('entity_type', 'creator')
     .eq('is_active', true)
 
-  if (!connectedError) {
-    for (const row of connectedRows || []) {
-      if (row?.entity_id && row?.processor_account_id) {
-        mapping.set(String(row.entity_id), String(row.processor_account_id))
-      }
-    }
-    return mapping
-  }
-
-  if (!isRelationMissing(connectedError)) {
-    return mapping
-  }
-
-  const { data: legacyRows } = await supabase
-    .from('processor_connected_accounts')
-    .select('entity_type, entity_id, processor_account_id, status')
-    .eq('ledger_id', ledgerId)
-    .eq('entity_type', 'creator')
-    .eq('status', 'active')
-
-  for (const row of legacyRows || []) {
+  for (const row of connectedRows || []) {
     if (row?.entity_id && row?.processor_account_id) {
       mapping.set(String(row.entity_id), String(row.processor_account_id))
     }

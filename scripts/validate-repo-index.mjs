@@ -156,7 +156,62 @@ if (existsSync(sdkPath)) {
   }
 }
 
-// ── 8. Check SERVICE_ID tags in source files ────────────────────────
+// ── 8. Check table references against migrations ────────────────────
+console.log('\nTable References:')
+
+// Collect all CREATE TABLE names from migrations
+const allMigrationSql = migrations
+  .map((f) => readFileSync(join(migrationsDir, f), 'utf-8'))
+  .join('\n')
+const createTableRegex = /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(?:public\.)?(\w+)/gi
+const tablesInMigrations = new Set()
+let ctMatch
+while ((ctMatch = createTableRegex.exec(allMigrationSql)) !== null) {
+  tablesInMigrations.add(ctMatch[1].toLowerCase())
+}
+
+// Collect all .from('table') references in edge function code
+const fromRegex = /\.from\(\s*['"](\w+)['"]\s*\)/g
+const tablesUsedInCode = new Map() // table -> [files]
+
+function scanDir(dir) {
+  if (!existsSync(dir)) return
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory() && !entry.name.startsWith('node_modules') && !entry.name.startsWith('__tests__')) {
+      scanDir(fullPath)
+    } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
+      const content = readFileSync(fullPath, 'utf-8')
+      let m
+      while ((m = fromRegex.exec(content)) !== null) {
+        const table = m[1].toLowerCase()
+        if (!tablesUsedInCode.has(table)) tablesUsedInCode.set(table, [])
+        tablesUsedInCode.get(table).push(fullPath.replace(ROOT + '/', ''))
+      }
+    }
+  }
+}
+
+scanDir(join(ROOT, 'supabase/functions'))
+scanDir(join(ROOT, 'apps/web/src'))
+
+// Known non-table .from() targets (Supabase storage, auth, etc.)
+const ignoredFromTargets = new Set([
+  'auth', 'storage', 'vault', 'secrets',
+  'tax-documents', // hyphenated = Supabase view/alias, not a raw table name
+])
+
+let ghostTables = 0
+for (const [table, files] of tablesUsedInCode) {
+  if (ignoredFromTargets.has(table)) continue
+  if (!tablesInMigrations.has(table)) {
+    warn(`Table "${table}" used in code but no CREATE TABLE in migrations (${files[0]})`)
+    ghostTables++
+  }
+}
+ok(`${tablesUsedInCode.size} tables referenced in code, ${ghostTables} missing from migrations`)
+
+// ── 9. Check SERVICE_ID tags in source files ────────────────────────
 console.log('\nService Tags:')
 const serviceBlocks = index.match(/SERVICE: (SVC_\w+)\nFILE: (.+)/g) || []
 let taggedCount = 0

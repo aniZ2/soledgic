@@ -114,12 +114,12 @@ export const POST = createApiHandler(
       .in('ledger_id', testLedgerIds)
     deleted.report_exports = reportCount ?? 0
 
-    // 9. Usage metrics tied to test ledgers
+    // 9. Usage records tied to test ledgers
     const { count: usageCount } = await supabase
-      .from('usage_metrics')
+      .from('usage_records')
       .delete({ count: 'exact' })
       .in('ledger_id', testLedgerIds)
-    deleted.usage_metrics = usageCount ?? 0
+    deleted.usage_records = usageCount ?? 0
 
     // Note: We do NOT delete the test ledgers themselves — they keep their
     // API keys and group pairing. We only wipe their data so developers

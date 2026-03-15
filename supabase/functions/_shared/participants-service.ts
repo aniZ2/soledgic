@@ -391,12 +391,13 @@ export async function getParticipantPayoutEligibilityResponse(
   const reachesThreshold = ytdEarnings >= 600 || availableBalance >= 600
 
   const { data: activeHolds } = await supabase
-    .from('payout_holds')
-    .select('hold_type, reason')
-    .eq('account_id', account.id)
-    .eq('status', 'active')
+    .from('held_funds')
+    .select('hold_reason, status')
+    .eq('ledger_id', ledger.id)
+    .eq('creator_id', participantId)
+    .eq('status', 'held')
 
-  const holdReasons = activeHolds?.map((hold) => hold.reason) || []
+  const holdReasons = activeHolds?.map((hold) => hold.hold_reason) || []
   if (activeHolds && activeHolds.length > 0) {
     issues.push(...holdReasons)
   }

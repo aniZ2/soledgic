@@ -423,16 +423,16 @@ const handler = createHandler(
 
     // Log blocked decisions as security events
     if (decision === 'blocked') {
-      await supabase.from('security_events').insert({
+      await supabase.from('security_alerts').insert({
         ledger_id: ledger.id,
-        event_type: 'authorization_blocked',
+        alert_type: 'authorization_blocked',
         severity: 'medium',
         details: {
           decision_id: authDecision.id,
           violations: violations,
           proposed_amount: body.amount
         },
-        ip_address: getClientIp(req)
+        source_ip: getClientIp(req)
       }).catch(() => {})  // Non-critical
     }
 

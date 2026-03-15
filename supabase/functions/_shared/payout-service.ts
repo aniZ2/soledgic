@@ -288,13 +288,14 @@ export async function processPayoutResponse(
   if (resendApiKey) {
     Promise.resolve(
       supabase
-        .from('creator_accounts')
-        .select('email, display_name')
+        .from('accounts')
+        .select('name, metadata')
         .eq('ledger_id', ledger.id)
-        .eq('creator_id', participantId)
+        .eq('account_type', 'creator_balance')
+        .eq('entity_id', participantId)
         .single(),
     ).then(async ({ data: creator }: any) => {
-      if (creator?.email) {
+      if (creator?.metadata?.email) {
         const formattedAmount = new Intl.NumberFormat('en-US', {
           style: 'currency',
           currency: 'USD',
