@@ -6,16 +6,16 @@
 -- 1. Rename columns on escrow_releases
 -- ============================================================================
 ALTER TABLE public.escrow_releases RENAME COLUMN stripe_transfer_id TO processor_transfer_id;
-ALTER TABLE public.escrow_releases RENAME COLUMN stripe_transfer_group TO processor_transfer_group;
-ALTER TABLE public.escrow_releases RENAME COLUMN stripe_error_code TO processor_error_code;
-ALTER TABLE public.escrow_releases RENAME COLUMN stripe_error_message TO processor_error_message;
+ALTER TABLE public.escrow_releases RENAME COLUMN stripe_transfer_group TO processor_transfer_group; -- @deprecated no code references transfer grouping
+ALTER TABLE public.escrow_releases RENAME COLUMN stripe_error_code TO processor_error_code; -- @deprecated no code references error code field
+ALTER TABLE public.escrow_releases RENAME COLUMN stripe_error_message TO processor_error_message; -- @deprecated no code references error message field
 ALTER TABLE public.escrow_releases RENAME COLUMN recipient_stripe_account TO recipient_processor_account;
 
 -- ============================================================================
 -- 2. Rename columns on release_queue
 -- ============================================================================
 ALTER TABLE public.release_queue RENAME COLUMN stripe_transfer_id TO processor_transfer_id;
-ALTER TABLE public.release_queue RENAME COLUMN stripe_error TO processor_error;
+ALTER TABLE public.release_queue RENAME COLUMN stripe_error TO processor_error; -- @deprecated no code references error field
 ALTER TABLE public.release_queue RENAME COLUMN recipient_stripe_account_id TO recipient_processor_account_id;
 
 -- ============================================================================

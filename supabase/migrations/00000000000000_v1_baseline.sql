@@ -21,7 +21,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
 CREATE TABLE IF NOT EXISTS public.accounting_periods (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
-  period_type text NOT NULL,
+  period_type text NOT NULL, -- @planned period type classification (monthly/quarterly/annual)
   period_start date NOT NULL,
   period_end date NOT NULL,
   fiscal_year integer NOT NULL,
@@ -29,10 +29,10 @@ CREATE TABLE IF NOT EXISTS public.accounting_periods (
   status text DEFAULT 'open'::text,
   closed_at timestamp with time zone,
   closed_by text,
-  close_notes text,
-  reopened_at timestamp with time zone,
-  reopened_by text,
-  reopen_reason text,
+  close_notes text, -- @planned period close workflow
+  reopened_at timestamp with time zone, -- @planned period reopen workflow
+  reopened_by text, -- @planned period reopen workflow
+  reopen_reason text, -- @planned period reopen workflow
   closing_trial_balance jsonb,
   closing_hash text,
   created_at timestamp with time zone DEFAULT now(),
@@ -63,11 +63,11 @@ CREATE TABLE IF NOT EXISTS public.adjustment_journals (
   reason text NOT NULL,
   supporting_documentation text,
   prepared_by text NOT NULL,
-  reviewed_by text,
-  reviewed_at timestamp with time zone,
+  reviewed_by text, -- @planned adjustment review workflow
+  reviewed_at timestamp with time zone, -- @planned adjustment review workflow
   adjustment_date date NOT NULL,
-  affects_period_start date,
-  affects_period_end date,
+  affects_period_start date, -- @planned multi-period adjustment tracking
+  affects_period_end date, -- @planned multi-period adjustment tracking
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS public.alert_configurations (
   config jsonb DEFAULT '{}'::jsonb NOT NULL,
   thresholds jsonb DEFAULT '{}'::jsonb,
   is_active boolean DEFAULT true,
-  last_triggered_at timestamp with time zone,
+  last_triggered_at timestamp with time zone, -- @planned alert trigger tracking
   trigger_count integer DEFAULT 0,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS public.alert_configurations (
 CREATE TABLE IF NOT EXISTS public.alert_history (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
-  alert_config_id uuid,
+  alert_config_id uuid, -- @planned link alerts to config rules
   alert_type text NOT NULL,
   channel text NOT NULL,
   payload jsonb NOT NULL,
@@ -128,13 +128,13 @@ CREATE TABLE IF NOT EXISTS public.api_keys (
   key_hash text NOT NULL,
   key_prefix text NOT NULL,
   scopes text[] DEFAULT ARRAY['read'::text] NOT NULL,
-  allowed_ips cidr[],
-  rate_limit_per_minute integer DEFAULT 60,
+  allowed_ips cidr[], -- @planned IP allowlist enforcement
+  rate_limit_per_minute integer DEFAULT 60, -- @planned per-key rate limiting
   expires_at timestamp with time zone,
   created_by uuid,
   created_at timestamp with time zone DEFAULT now(),
-  last_used_at timestamp with time zone,
-  last_used_ip inet,
+  last_used_at timestamp with time zone, -- @planned key usage analytics
+  last_used_ip inet, -- @planned key usage analytics
   revoked_at timestamp with time zone
 );
 
@@ -154,9 +154,9 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
   request_id text,
   duration_ms integer,
   risk_score integer DEFAULT 0,
-  session_id text,
-  geo_country text,
-  geo_region text,
+  session_id text, -- @planned session-based audit grouping
+  geo_country text, -- @planned geo enrichment for audit trail
+  geo_region text, -- @planned geo enrichment for audit trail
   seq_num bigint,
   prev_hash text,
   row_hash text
@@ -254,7 +254,7 @@ CREATE TABLE IF NOT EXISTS public.bank_statement_lines (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
   bank_account_id uuid NOT NULL,
-  bank_statement_id uuid,
+  bank_statement_id uuid, -- @planned link lines to uploaded statements
   transaction_date date NOT NULL,
   post_date date,
   description text NOT NULL,
@@ -274,6 +274,7 @@ CREATE TABLE IF NOT EXISTS public.bank_statement_lines (
   created_at timestamp with time zone DEFAULT now()
 );
 
+-- @planned statement upload and verification workflow
 CREATE TABLE IF NOT EXISTS public.bank_statements (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
@@ -367,13 +368,13 @@ CREATE TABLE IF NOT EXISTS public.budget_envelopes (
   category_id uuid,
   budget_amount numeric(14,2) NOT NULL,
   budget_period text NOT NULL,
-  allow_rollover boolean DEFAULT false,
-  rollover_amount numeric(14,2) DEFAULT 0,
+  allow_rollover boolean DEFAULT false, -- @planned budget rollover feature
+  rollover_amount numeric(14,2) DEFAULT 0, -- @planned budget rollover feature
   current_period_start date,
-  current_period_spent numeric(14,2) DEFAULT 0,
-  current_period_remaining numeric(14,2),
+  current_period_spent numeric(14,2) DEFAULT 0, -- @planned budget period tracking
+  current_period_remaining numeric(14,2), -- @planned budget period tracking
   alert_at_percentage integer DEFAULT 80,
-  alert_email text,
+  alert_email text, -- @planned budget alert notifications
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
@@ -421,16 +422,16 @@ CREATE TABLE IF NOT EXISTS public.connected_accounts (
   payouts_enabled boolean DEFAULT false,
   details_submitted boolean DEFAULT false,
   payout_schedule jsonb DEFAULT '{"interval": "manual"}'::jsonb,
-  payouts_paused boolean DEFAULT true,
+  payouts_paused boolean DEFAULT true, -- @planned payout pause/resume controls
   requirements_current jsonb DEFAULT '[]'::jsonb,
   requirements_past_due jsonb DEFAULT '[]'::jsonb,
   requirements_pending jsonb DEFAULT '[]'::jsonb,
-  default_bank_account_id text,
+  default_bank_account_id text, -- @planned default payout destination
   default_bank_last4 text,
   default_bank_name text,
   is_active boolean DEFAULT true,
   can_receive_transfers boolean DEFAULT false,
-  can_request_payouts boolean DEFAULT false,
+  can_request_payouts boolean DEFAULT false, -- @planned self-service payout requests
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   created_by uuid,
@@ -449,7 +450,7 @@ CREATE TABLE IF NOT EXISTS public.contractor_payments (
   payment_method text,
   payment_reference text,
   tax_year integer NOT NULL,
-  included_in_1099 boolean DEFAULT false,
+  included_in_1099 boolean DEFAULT false, -- @planned 1099 generation tracking
   description text,
   created_at timestamp with time zone DEFAULT now()
 );
@@ -463,13 +464,13 @@ CREATE TABLE IF NOT EXISTS public.contractors (
   stripe_account_id text,
   paypal_email text,
   w9_status text DEFAULT 'not_requested'::text,
-  w9_received_date date,
-  w9_expires_date date,
-  address_on_file boolean DEFAULT false,
+  w9_received_date date, -- @planned W-9 compliance tracking
+  w9_expires_date date, -- @planned W-9 compliance tracking
+  address_on_file boolean DEFAULT false, -- @planned contractor address verification
   ytd_payments numeric(14,2) DEFAULT 0,
   lifetime_payments numeric(14,2) DEFAULT 0,
   needs_1099 boolean DEFAULT false,
-  last_1099_year integer,
+  last_1099_year integer, -- @planned annual 1099 generation tracking
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
@@ -505,6 +506,7 @@ CREATE TABLE IF NOT EXISTS public.creator_tiers (
   updated_at timestamp with time zone DEFAULT now()
 );
 
+-- @planned user-configurable scheduled jobs
 CREATE TABLE IF NOT EXISTS public.cron_jobs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid,
@@ -521,6 +523,7 @@ CREATE TABLE IF NOT EXISTS public.cron_jobs (
   updated_at timestamp with time zone DEFAULT now()
 );
 
+-- @planned balance drift monitoring and alerting
 CREATE TABLE IF NOT EXISTS public.drift_alerts (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
@@ -540,14 +543,14 @@ CREATE TABLE IF NOT EXISTS public.email_log (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
   creator_id text,
-  email_type text NOT NULL,
-  recipient_email text NOT NULL,
+  email_type text NOT NULL, -- @planned email type categorization
+  recipient_email text NOT NULL, -- @planned email delivery tracking
   subject text NOT NULL,
   status text DEFAULT 'pending'::text NOT NULL,
-  message_id text,
+  message_id text, -- @planned email provider message tracking
   error text,
-  period_year integer,
-  period_month integer,
+  period_year integer, -- @planned periodic email reporting
+  period_month integer, -- @planned periodic email reporting
   created_at timestamp with time zone DEFAULT now(),
   sent_at timestamp with time zone,
   metadata jsonb DEFAULT '{}'::jsonb
@@ -585,10 +588,10 @@ CREATE TABLE IF NOT EXISTS public.escrow_releases (
   release_type text DEFAULT 'manual'::text,
   status text DEFAULT 'pending'::text,
   stripe_transfer_id text,
-  stripe_transfer_group text,
-  stripe_error_code text,
-  stripe_error_message text,
-  requested_at timestamp with time zone DEFAULT now(),
+  stripe_transfer_group text, -- @deprecated renamed to processor_transfer_group in 20260362
+  stripe_error_code text, -- @deprecated renamed to processor_error_code in 20260362
+  stripe_error_message text, -- @deprecated renamed to processor_error_message in 20260362
+  requested_at timestamp with time zone DEFAULT now(), -- @planned release request audit trail
   requested_by uuid,
   approved_at timestamp with time zone,
   approved_by uuid,
@@ -602,12 +605,12 @@ CREATE TABLE IF NOT EXISTS public.expense_attachments (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
   transaction_id uuid NOT NULL,
-  attachment_type text NOT NULL,
-  receipt_id uuid,
-  bank_statement_id uuid,
+  attachment_type text NOT NULL, -- @planned attachment categorization
+  receipt_id uuid, -- @planned receipt-to-expense linking
+  bank_statement_id uuid, -- @planned statement-to-expense linking
   file_url text,
   file_name text,
-  page_number integer,
+  page_number integer, -- @planned multi-page document reference
   notes text,
   created_at timestamp with time zone DEFAULT now()
 );
@@ -619,13 +622,13 @@ CREATE TABLE IF NOT EXISTS public.expense_categories (
   name text NOT NULL,
   description text,
   schedule_c_line integer,
-  irs_category text,
-  parent_id uuid,
-  requires_receipt boolean DEFAULT false,
+  irs_category text, -- @planned IRS Schedule C category mapping
+  parent_id uuid, -- @planned hierarchical category tree
+  requires_receipt boolean DEFAULT false, -- @planned receipt enforcement rules
   receipt_threshold numeric(10,2) DEFAULT 75,
   is_active boolean DEFAULT true,
-  is_mileage boolean DEFAULT false,
-  mileage_rate numeric(5,3),
+  is_mileage boolean DEFAULT false, -- @planned mileage expense categorization
+  mileage_rate numeric(5,3), -- @planned mileage expense categorization
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
 );
@@ -641,7 +644,7 @@ CREATE TABLE IF NOT EXISTS public.health_check_results (
   passed_checks integer DEFAULT 0,
   warning_checks integer DEFAULT 0,
   failed_checks integer DEFAULT 0,
-  alerts_sent boolean DEFAULT false,
+  alerts_sent boolean DEFAULT false, -- @planned health check alert delivery tracking
   created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -654,7 +657,7 @@ CREATE TABLE IF NOT EXISTS public.held_funds (
   held_amount numeric(14,2) NOT NULL,
   released_amount numeric(14,2) DEFAULT 0,
   status text DEFAULT 'held'::text,
-  held_at timestamp with time zone DEFAULT now(),
+  held_at timestamp with time zone DEFAULT now(), -- @planned hold timestamp tracking
   release_eligible_at timestamp with time zone,
   released_at timestamp with time zone,
   release_transaction_id uuid,
@@ -699,10 +702,10 @@ CREATE TABLE IF NOT EXISTS public.internal_transfers (
   currency text DEFAULT 'USD'::text,
   transfer_type text NOT NULL,
   description text,
-  scheduled_date date,
+  scheduled_date date, -- @planned scheduled transfer execution
   executed_at timestamp with time zone,
-  is_recurring boolean DEFAULT false,
-  recurrence_rule text,
+  is_recurring boolean DEFAULT false, -- @planned recurring transfer scheduling
+  recurrence_rule text, -- @planned recurring transfer scheduling
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -728,19 +731,19 @@ CREATE TABLE IF NOT EXISTS public.invoices (
   customer_id text,
   customer_address jsonb,
   line_items jsonb DEFAULT '[]'::jsonb NOT NULL,
-  subtotal bigint DEFAULT 0 NOT NULL,
-  tax_rate numeric(5,4) DEFAULT 0,
-  tax_amount bigint DEFAULT 0 NOT NULL,
-  discount_amount bigint DEFAULT 0 NOT NULL,
+  subtotal bigint DEFAULT 0 NOT NULL, -- @planned invoice line item subtotaling
+  tax_rate numeric(5,4) DEFAULT 0, -- @planned invoice tax calculation
+  tax_amount bigint DEFAULT 0 NOT NULL, -- @planned invoice tax calculation
+  discount_amount bigint DEFAULT 0 NOT NULL, -- @planned invoice discount support
   total_amount bigint DEFAULT 0 NOT NULL,
   amount_paid bigint DEFAULT 0 NOT NULL,
   amount_due bigint DEFAULT 0 NOT NULL,
   currency text DEFAULT 'USD'::text NOT NULL,
   status text DEFAULT 'draft'::text NOT NULL,
-  issue_date date DEFAULT CURRENT_DATE NOT NULL,
+  issue_date date DEFAULT CURRENT_DATE NOT NULL, -- @planned invoice issuance workflow
   due_date date,
   sent_at timestamp with time zone,
-  viewed_at timestamp with time zone,
+  viewed_at timestamp with time zone, -- @planned invoice view tracking
   paid_at timestamp with time zone,
   voided_at timestamp with time zone,
   void_reason text,
@@ -794,19 +797,19 @@ CREATE TABLE IF NOT EXISTS public.nacha_files (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
   file_name text NOT NULL,
-  storage_path text NOT NULL,
-  file_hash text NOT NULL,
-  file_size_bytes integer NOT NULL,
-  batch_count integer NOT NULL,
+  storage_path text NOT NULL, -- @planned NACHA file storage
+  file_hash text NOT NULL, -- @planned NACHA file integrity verification
+  file_size_bytes integer NOT NULL, -- @planned NACHA file metadata
+  batch_count integer NOT NULL, -- @planned NACHA batch tracking
   entry_count integer NOT NULL,
-  total_debit_amount numeric(14,2) NOT NULL,
-  total_credit_amount numeric(14,2) NOT NULL,
-  effective_date date NOT NULL,
-  generated_by uuid,
+  total_debit_amount numeric(14,2) NOT NULL, -- @planned NACHA file totals
+  total_credit_amount numeric(14,2) NOT NULL, -- @planned NACHA file totals
+  effective_date date NOT NULL, -- @planned NACHA effective date scheduling
+  generated_by uuid, -- @planned NACHA generation audit trail
   generated_at timestamp with time zone DEFAULT now(),
   expires_at timestamp with time zone NOT NULL,
-  downloaded_at timestamp with time zone,
-  downloaded_by uuid,
+  downloaded_at timestamp with time zone, -- @planned NACHA download tracking
+  downloaded_by uuid, -- @planned NACHA download audit trail
   request_id text,
   ip_address inet,
   user_agent text,
@@ -837,11 +840,11 @@ CREATE TABLE IF NOT EXISTS public.opening_balances (
   source text NOT NULL,
   source_description text,
   verified boolean DEFAULT false,
-  verified_by text,
+  verified_by text, -- @planned opening balance verification workflow
   verified_at timestamp with time zone,
-  total_assets numeric(14,2),
-  total_liabilities numeric(14,2),
-  total_equity numeric(14,2),
+  total_assets numeric(14,2), -- @planned opening balance summary
+  total_liabilities numeric(14,2), -- @planned opening balance summary
+  total_equity numeric(14,2), -- @planned opening balance summary
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -852,9 +855,9 @@ CREATE TABLE IF NOT EXISTS public.ops_monitor_runs (
   overall_status text NOT NULL,
   checks jsonb DEFAULT '[]'::jsonb NOT NULL,
   total_checks integer DEFAULT 0 NOT NULL,
-  ok_checks integer DEFAULT 0 NOT NULL,
+  ok_checks integer DEFAULT 0 NOT NULL, -- @planned ops monitor check breakdown
   warning_checks integer DEFAULT 0 NOT NULL,
-  critical_checks integer DEFAULT 0 NOT NULL,
+  critical_checks integer DEFAULT 0 NOT NULL, -- @planned ops monitor check breakdown
   alert_sent boolean DEFAULT false NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -868,7 +871,7 @@ CREATE TABLE IF NOT EXISTS public.organization_invitations (
   invited_by uuid NOT NULL,
   status text DEFAULT 'pending'::text,
   expires_at timestamp with time zone DEFAULT (now() + '7 days'::interval),
-  accepted_at timestamp with time zone,
+  accepted_at timestamp with time zone, -- @planned invitation acceptance tracking
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -890,8 +893,8 @@ CREATE TABLE IF NOT EXISTS public.organization_members (
   user_id uuid NOT NULL,
   role text DEFAULT 'member'::text NOT NULL,
   invited_by uuid,
-  invited_at timestamp with time zone DEFAULT now(),
-  accepted_at timestamp with time zone,
+  invited_at timestamp with time zone DEFAULT now(), -- @planned member invitation tracking
+  accepted_at timestamp with time zone, -- @planned member acceptance tracking
   status text DEFAULT 'pending'::text,
   created_at timestamp with time zone DEFAULT now()
 );
@@ -904,7 +907,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
   stripe_customer_id text,
   stripe_subscription_id text,
   plan text DEFAULT 'trial'::text NOT NULL,
-  plan_started_at timestamp with time zone DEFAULT now(),
+  plan_started_at timestamp with time zone DEFAULT now(), -- @planned billing period tracking
   trial_ends_at timestamp with time zone DEFAULT (now() + '14 days'::interval),
   max_ledgers integer DEFAULT 3,
   max_team_members integer DEFAULT 1,
@@ -914,15 +917,15 @@ CREATE TABLE IF NOT EXISTS public.organizations (
   status text DEFAULT 'active'::text,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
-  deleted_at timestamp with time zone,
+  deleted_at timestamp with time zone, -- @planned soft delete for organizations
   billing_email text,
-  logo_url text,
+  logo_url text, -- @planned organization branding
   settings jsonb DEFAULT '{}'::jsonb,
   stripe_default_payment_method_id text,
-  billing_address jsonb,
+  billing_address jsonb, -- @planned organization billing address
   tax_id text,
-  tax_exempt text DEFAULT 'none'::text,
-  display_currency text DEFAULT 'USD'::text,
+  tax_exempt text DEFAULT 'none'::text, -- @planned tax exemption handling
+  display_currency text DEFAULT 'USD'::text, -- @planned multi-currency display
   overage_team_member_price integer DEFAULT 2000,
   max_transactions_per_month integer DEFAULT 1000,
   overage_transaction_price integer DEFAULT 2
@@ -941,6 +944,7 @@ CREATE TABLE IF NOT EXISTS public.payment_methods (
   created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
+-- @planned multi-rail payout execution tracking
 CREATE TABLE IF NOT EXISTS public.payout_executions (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
@@ -981,16 +985,17 @@ CREATE TABLE IF NOT EXISTS public.payout_requests (
   stripe_arrival_date date,
   stripe_error_code text,
   stripe_error_message text,
-  requested_at timestamp with time zone DEFAULT now(),
+  requested_at timestamp with time zone DEFAULT now(), -- @planned payout request audit trail
   requested_by uuid,
-  reviewed_at timestamp with time zone,
-  reviewed_by uuid,
-  rejection_reason text,
+  reviewed_at timestamp with time zone, -- @planned payout approval workflow
+  reviewed_by uuid, -- @planned payout approval workflow
+  rejection_reason text, -- @planned payout rejection tracking
   executed_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
 );
 
+-- @planned batch payout scheduling
 CREATE TABLE IF NOT EXISTS public.payout_schedule_runs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   run_at timestamp with time zone DEFAULT now(),
@@ -1014,8 +1019,8 @@ CREATE TABLE IF NOT EXISTS public.payouts (
   initiated_at timestamp with time zone DEFAULT now(),
   processed_at timestamp with time zone,
   completed_at timestamp with time zone,
-  failed_at timestamp with time zone,
-  failure_reason text,
+  failed_at timestamp with time zone, -- @planned payout failure tracking
+  failure_reason text, -- @planned payout failure tracking
   metadata jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
@@ -1034,7 +1039,7 @@ CREATE TABLE IF NOT EXISTS public.pending_processor_refunds (
   metadata jsonb DEFAULT '{}'::jsonb,
   status text DEFAULT 'pending'::text NOT NULL,
   error_message text,
-  repaired_at timestamp with time zone,
+  repaired_at timestamp with time zone, -- @planned refund repair tracking
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -1122,8 +1127,8 @@ CREATE TABLE IF NOT EXISTS public.processor_webhook_inbox (
   livemode boolean,
   headers jsonb DEFAULT '{}'::jsonb NOT NULL,
   payload jsonb NOT NULL,
-  signature_valid boolean,
-  signature_error text,
+  signature_valid boolean, -- @planned webhook signature verification tracking
+  signature_error text, -- @planned webhook signature verification tracking
   status text DEFAULT 'pending'::text NOT NULL,
   attempts integer DEFAULT 0 NOT NULL,
   processed_at timestamp with time zone,
@@ -1138,7 +1143,7 @@ CREATE TABLE IF NOT EXISTS public.product_splits (
   product_name text,
   creator_percent numeric(5,2) NOT NULL,
   creator_overrides jsonb DEFAULT '{}'::jsonb,
-  effective_from timestamp with time zone DEFAULT now(),
+  effective_from timestamp with time zone DEFAULT now(), -- @planned split versioning with effective dates
   effective_until timestamp with time zone,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
@@ -1211,18 +1216,18 @@ CREATE TABLE IF NOT EXISTS public.receipts (
   file_url text NOT NULL,
   file_name text,
   file_size integer,
-  file_hash text,
+  file_hash text, -- @planned receipt deduplication
   mime_type text,
   merchant_name text,
   transaction_date date,
   total_amount numeric(14,2),
   currency text DEFAULT 'USD'::text,
-  ocr_processed boolean DEFAULT false,
-  ocr_confidence numeric(5,2),
-  ocr_raw_text text,
+  ocr_processed boolean DEFAULT false, -- @planned receipt OCR processing
+  ocr_confidence numeric(5,2), -- @planned receipt OCR processing
+  ocr_raw_text text, -- @planned receipt OCR processing
   status text DEFAULT 'uploaded'::text,
-  uploaded_at timestamp with time zone DEFAULT now(),
-  uploaded_via text,
+  uploaded_at timestamp with time zone DEFAULT now(), -- @planned receipt upload tracking
+  uploaded_via text, -- @planned receipt upload source tracking
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -1258,9 +1263,9 @@ CREATE TABLE IF NOT EXISTS public.reconciliation_records (
   payout_difference numeric(14,2) DEFAULT (actual_payouts - expected_payouts),
   status text DEFAULT 'pending'::text,
   discrepancy_notes text,
-  resolved_by text,
-  resolved_at timestamp with time zone,
-  external_report_ids jsonb DEFAULT '[]'::jsonb,
+  resolved_by text, -- @planned discrepancy resolution workflow
+  resolved_at timestamp with time zone, -- @planned discrepancy resolution workflow
+  external_report_ids jsonb DEFAULT '[]'::jsonb, -- @planned external report linking
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
 );
@@ -1333,12 +1338,12 @@ CREATE TABLE IF NOT EXISTS public.recurring_expense_templates (
   recurrence_day integer,
   start_date date NOT NULL,
   end_date date,
-  auto_create boolean DEFAULT false,
+  auto_create boolean DEFAULT false, -- @planned automatic recurring expense creation
   business_purpose text,
   is_active boolean DEFAULT true,
-  last_created_date date,
+  last_created_date date, -- @planned recurring expense scheduling
   next_due_date date,
-  total_occurrences integer DEFAULT 0,
+  total_occurrences integer DEFAULT 0, -- @planned recurring expense tracking
   total_amount_spent numeric(14,2) DEFAULT 0,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
@@ -1355,12 +1360,12 @@ CREATE TABLE IF NOT EXISTS public.release_queue (
   amount numeric(14,2) NOT NULL,
   currency text DEFAULT 'USD'::text,
   release_type text DEFAULT 'manual'::text,
-  scheduled_for timestamp with time zone,
+  scheduled_for timestamp with time zone, -- @planned scheduled release execution
   status text DEFAULT 'pending'::text,
   stripe_transfer_id text,
-  stripe_error text,
+  stripe_error text, -- @deprecated renamed to processor_error in 20260362
   requested_by uuid,
-  requested_at timestamp with time zone DEFAULT now(),
+  requested_at timestamp with time zone DEFAULT now(), -- @planned release request audit trail
   approved_by uuid,
   approved_at timestamp with time zone,
   executed_at timestamp with time zone,
@@ -1377,10 +1382,10 @@ CREATE TABLE IF NOT EXISTS public.report_exports (
   period_start date,
   period_end date,
   format text,
-  file_hash text,
+  file_hash text, -- @planned report file integrity verification
   row_count integer,
   requested_by text,
-  requested_at timestamp with time zone DEFAULT now(),
+  requested_at timestamp with time zone DEFAULT now(), -- @planned report generation audit trail
   completed_at timestamp with time zone,
   status text DEFAULT 'pending'::text,
   error_message text,
@@ -1397,13 +1402,13 @@ CREATE TABLE IF NOT EXISTS public.risk_evaluations (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
   idempotency_key text NOT NULL,
-  proposed_transaction jsonb NOT NULL,
+  proposed_transaction jsonb NOT NULL, -- @planned risk evaluation transaction context
   signal text NOT NULL,
   risk_factors jsonb DEFAULT '[]'::jsonb NOT NULL,
   valid_until timestamp with time zone DEFAULT (now() + '02:00:00'::interval) NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   acknowledged_at timestamp with time zone,
-  acknowledged_by text
+  acknowledged_by text -- @planned risk acknowledgment tracking
 );
 
 CREATE TABLE IF NOT EXISTS public.risk_policies (
@@ -1418,6 +1423,7 @@ CREATE TABLE IF NOT EXISTS public.risk_policies (
   updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
+-- @planned configurable risk scoring definitions
 CREATE TABLE IF NOT EXISTS public.risk_score_definitions (
   action text NOT NULL,
   base_score integer NOT NULL,
@@ -1428,17 +1434,17 @@ CREATE TABLE IF NOT EXISTS public.risk_score_definitions (
 CREATE TABLE IF NOT EXISTS public.runway_snapshots (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
-  snapshot_date date DEFAULT CURRENT_DATE NOT NULL,
+  snapshot_date date DEFAULT CURRENT_DATE NOT NULL, -- @planned runway analysis snapshots
   cash_balance numeric(14,2) NOT NULL,
   accounts_receivable numeric(14,2) DEFAULT 0,
   accounts_payable numeric(14,2) DEFAULT 0,
-  avg_monthly_revenue numeric(14,2),
-  avg_monthly_expenses numeric(14,2),
-  avg_monthly_burn numeric(14,2),
-  runway_months numeric(5,1),
-  projected_cash_3mo numeric(14,2),
-  projected_cash_6mo numeric(14,2),
-  projected_cash_12mo numeric(14,2),
+  avg_monthly_revenue numeric(14,2), -- @planned runway analysis metrics
+  avg_monthly_expenses numeric(14,2), -- @planned runway analysis metrics
+  avg_monthly_burn numeric(14,2), -- @planned runway analysis metrics
+  runway_months numeric(5,1), -- @planned runway analysis metrics
+  projected_cash_3mo numeric(14,2), -- @planned runway cash projections
+  projected_cash_6mo numeric(14,2), -- @planned runway cash projections
+  projected_cash_12mo numeric(14,2), -- @planned runway cash projections
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -1450,7 +1456,7 @@ CREATE TABLE IF NOT EXISTS public.security_alerts (
   description text,
   metadata jsonb DEFAULT '{}'::jsonb,
   acknowledged_at timestamp with time zone,
-  acknowledged_by uuid,
+  acknowledged_by uuid, -- @planned security alert acknowledgment
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -1605,12 +1611,12 @@ CREATE TABLE IF NOT EXISTS public.tax_documents (
   monthly_amounts jsonb,
   status text DEFAULT 'calculated'::text NOT NULL,
   exported_at timestamp with time zone,
-  exported_by uuid,
-  export_format text,
+  exported_by uuid, -- @planned tax document export audit trail
+  export_format text, -- @planned multi-format tax document export
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   pdf_path text,
-  pdf_generated_at timestamp with time zone,
+  pdf_generated_at timestamp with time zone, -- @planned tax document PDF generation
   copy_type text DEFAULT 'b'::text
 );
 
@@ -1628,19 +1634,19 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   reverses uuid,
   metadata jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone DEFAULT now(),
-  correction_type text,
-  correction_reason_code text,
-  correction_reason_detail text,
+  correction_type text, -- @planned transaction correction workflow
+  correction_reason_code text, -- @planned transaction correction workflow
+  correction_reason_detail text, -- @planned transaction correction workflow
   expense_category_id uuid,
   merchant_name text,
   business_purpose text,
-  is_billable boolean DEFAULT false,
-  client_id text,
-  is_recurring boolean DEFAULT false,
+  is_billable boolean DEFAULT false, -- @planned billable expense tracking
+  client_id text, -- @planned client-scoped expense tracking
+  is_recurring boolean DEFAULT false, -- @planned recurring transaction support
   recurrence_interval text,
   recurrence_day integer,
-  recurring_parent_id uuid,
-  next_occurrence_date date,
+  recurring_parent_id uuid, -- @planned recurring transaction chain
+  next_occurrence_date date, -- @planned recurring transaction scheduling
   authorizing_instrument_id uuid,
   projection_id uuid,
   entry_method text DEFAULT 'manual'::text
@@ -1649,17 +1655,17 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 CREATE TABLE IF NOT EXISTS public.trial_balance_snapshots (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   ledger_id uuid NOT NULL,
-  snapshot_type text NOT NULL,
-  snapshot_at timestamp with time zone DEFAULT now() NOT NULL,
+  snapshot_type text NOT NULL, -- @planned snapshot type classification (daily/period-end/ad-hoc)
+  snapshot_at timestamp with time zone DEFAULT now() NOT NULL, -- @planned snapshot timestamp tracking
   as_of_date date NOT NULL,
   balances jsonb NOT NULL,
   total_debits numeric(14,2) NOT NULL,
   total_credits numeric(14,2) NOT NULL,
   is_balanced boolean DEFAULT (total_debits = total_credits),
-  balance_hash text NOT NULL,
-  previous_snapshot_id uuid,
-  previous_hash text,
-  chain_valid boolean,
+  balance_hash text NOT NULL, -- @planned tamper-evident snapshot chain
+  previous_snapshot_id uuid, -- @planned tamper-evident snapshot chain
+  previous_hash text, -- @planned tamper-evident snapshot chain
+  chain_valid boolean, -- @planned tamper-evident snapshot chain
   created_at timestamp with time zone DEFAULT now()
 );
 
@@ -1684,7 +1690,7 @@ CREATE TABLE IF NOT EXISTS public.usage_records (
   period_end timestamp with time zone NOT NULL,
   stripe_usage_record_id text,
   synced_to_stripe_at timestamp with time zone,
-  recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+  recorded_at timestamp with time zone DEFAULT now() NOT NULL, -- @planned usage metering timestamp
   created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 

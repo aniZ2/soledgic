@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS public.bank_aggregator_transactions (
   ledger_id uuid NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
   connection_id uuid REFERENCES public.bank_aggregator_connections(id),
   bank_aggregator_transaction_id text,
-  bank_aggregator_account_id text,
+  bank_aggregator_account_id text, -- @planned multi-account bank feed sync
   amount numeric(14,2) NOT NULL,
   currency text DEFAULT 'USD',
   date date,
@@ -116,10 +116,10 @@ CREATE TABLE IF NOT EXISTS public.reconciliation_snapshots (
   period_end date,
   snapshot_data jsonb NOT NULL DEFAULT '{}',
   integrity_hash text,
-  matched_count integer DEFAULT 0,
-  unmatched_count integer DEFAULT 0,
-  matched_total numeric(14,2) DEFAULT 0,
-  unmatched_total numeric(14,2) DEFAULT 0,
+  matched_count integer DEFAULT 0, -- @planned reconciliation snapshot stats
+  unmatched_count integer DEFAULT 0, -- @planned reconciliation snapshot stats
+  matched_total numeric(14,2) DEFAULT 0, -- @planned reconciliation snapshot stats
+  unmatched_total numeric(14,2) DEFAULT 0, -- @planned reconciliation snapshot stats
   created_at timestamptz DEFAULT now() NOT NULL
 );
 
@@ -169,7 +169,7 @@ CREATE TABLE IF NOT EXISTS public.authorization_decisions (
   idempotency_key text NOT NULL,
   decision text NOT NULL,
   violated_policies jsonb DEFAULT '[]',
-  proposed_transaction jsonb DEFAULT '{}',
+  proposed_transaction jsonb DEFAULT '{}', -- @planned preflight auth transaction preview
   expires_at timestamptz,
   created_at timestamptz DEFAULT now() NOT NULL,
   CONSTRAINT uq_auth_decision_key UNIQUE (ledger_id, idempotency_key)

@@ -6,7 +6,7 @@
 -- 1. Create the missing tax_year_summaries table
 -- -----------------------------------------------
 -- Referenced by tax-service.ts, generate-tax-summary, and participants-service
--- but never had a CREATE TABLE migration.
+-- but was never created in a prior migration file.
 
 CREATE TABLE IF NOT EXISTS public.tax_year_summaries (
   id               uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS public.tax_year_summaries (
   net_earnings     numeric(14,2) NOT NULL DEFAULT 0,
   total_paid_out   numeric(14,2) NOT NULL DEFAULT 0,
   requires_1099    boolean NOT NULL DEFAULT false,
-  is_corrected     boolean NOT NULL DEFAULT false,
+  is_corrected     boolean NOT NULL DEFAULT false, -- @planned corrected 1099 tracking
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now()
 );

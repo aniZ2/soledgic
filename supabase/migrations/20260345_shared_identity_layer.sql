@@ -12,13 +12,13 @@ CREATE TABLE IF NOT EXISTS public.participant_identity_links (
   ledger_id uuid NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
   participant_id text NOT NULL,
   user_id uuid NOT NULL,
-  membership_id uuid REFERENCES public.organization_members(id) ON DELETE SET NULL,
+  membership_id uuid REFERENCES public.organization_members(id) ON DELETE SET NULL, -- @planned org member to participant binding
   link_source text NOT NULL DEFAULT 'manual',
   status text NOT NULL DEFAULT 'active',
-  is_primary boolean NOT NULL DEFAULT true,
+  is_primary boolean NOT NULL DEFAULT true, -- @planned multi-identity per participant
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   linked_at timestamptz NOT NULL DEFAULT now(),
-  unlinked_at timestamptz,
+  unlinked_at timestamptz, -- @planned identity unlink tracking
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT participant_identity_links_status_valid

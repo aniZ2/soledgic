@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.processor_transactions (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   ledger_id uuid NOT NULL REFERENCES public.ledgers(id) ON DELETE CASCADE,
   processor_id text NOT NULL,
-  processor_type text NOT NULL,
+  processor_type text NOT NULL, -- @planned multi-processor support
   amount numeric(14,2) NOT NULL,
   currency text NOT NULL DEFAULT 'USD',
   status text NOT NULL DEFAULT 'pending',

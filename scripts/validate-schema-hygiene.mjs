@@ -424,6 +424,17 @@ while ((m = renameColRe.exec(allMigrationSql)) !== null) {
     tableColumns.get(table).delete(oldCol)
     tableColumns.get(table).add(newCol)
   }
+  // Carry forward @planned/@deprecated annotation from old column to new name
+  if (annotatedColumns.has(`${table}.${oldCol}`)) {
+    annotatedColumns.delete(`${table}.${oldCol}`)
+    annotatedColumns.add(`${table}.${newCol}`)
+  }
+  // Also check for annotation on the RENAME line itself
+  const lineEnd = allMigrationSql.indexOf('\n', m.index)
+  const line = allMigrationSql.slice(m.index, lineEnd === -1 ? undefined : lineEnd)
+  if (/--\s*@(planned|deprecated|reserved)\b/i.test(line)) {
+    annotatedColumns.add(`${table}.${newCol}`)
+  }
 }
 
 // Process ALTER TABLE ... DROP COLUMN
