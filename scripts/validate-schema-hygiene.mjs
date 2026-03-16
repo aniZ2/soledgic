@@ -99,6 +99,52 @@ const migrationSqls = migrationFiles.map((f) => ({
 }))
 const allMigrationSql = migrationSqls.map((m) => m.sql).join('\n')
 
+// ── Extract SQL function / trigger / view bodies ─────────────────────
+// These are the sections of migration SQL that contain runtime logic
+// (as opposed to DDL like CREATE TABLE, ALTER TABLE, indexes, grants).
+// We look for content between $function$...$function$, $$...$$, and
+// CREATE VIEW ... AS SELECT blocks.
+
+function extractSqlFunctionBodies(sql) {
+  const bodies = []
+
+  // Match $function$...$function$ and $$...$$ delimited bodies
+  // These capture PL/pgSQL function and trigger bodies
+  const bodyRe = /\$(?:function|BODY)?\$([\s\S]*?)\$(?:function|BODY)?\$/gi
+  let bm
+  while ((bm = bodyRe.exec(sql)) !== null) {
+    bodies.push(bm[1])
+  }
+
+  // Match CREATE [OR REPLACE] VIEW ... AS <query> ending at next top-level statement
+  const viewRe = /CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+\S+\s+AS\s+([\s\S]*?)(?:;(?:\s*(?:CREATE|ALTER|DROP|GRANT|REVOKE|COMMENT|DO|INSERT|UPDATE|DELETE)\b))/gi
+  while ((bm = viewRe.exec(sql)) !== null) {
+    bodies.push(bm[1])
+  }
+
+  return bodies
+}
+
+const sqlFunctionBodies = extractSqlFunctionBodies(allMigrationSql)
+const allSqlBodiesText = sqlFunctionBodies.join('\n')
+
+// Helper: check if a table name appears in SQL function bodies
+// in a DML/query context (not just DDL). We look for common SQL
+// patterns: FROM table, JOIN table, INTO table, UPDATE table,
+// DELETE FROM table, variable declarations typed as table%ROWTYPE, etc.
+function isTableReferencedInSql(tableName) {
+  // Word-boundary check: the table name appears in SQL function bodies
+  // in a context that isn't just CREATE TABLE / ALTER TABLE / DROP TABLE
+  const re = new RegExp(`\\b${tableName}\\b`, 'i')
+  return re.test(allSqlBodiesText)
+}
+
+// Helper: check if a column name appears in SQL function bodies
+function isColumnReferencedInSql(colName) {
+  const re = new RegExp(`\\b${colName}\\b`, 'i')
+  return re.test(allSqlBodiesText)
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // 1. Dead Table Detection
 // ═══════════════════════════════════════════════════════════════════════
@@ -131,15 +177,40 @@ while ((m = fromRe.exec(allSourceText)) !== null) {
   tablesInCode.add(m[1].toLowerCase())
 }
 
-const deadTables = [...liveTables].filter((t) => !tablesInCode.has(t)).sort()
+const noTsRefTables = [...liveTables].filter((t) => !tablesInCode.has(t)).sort()
 
-if (deadTables.length === 0) {
+// Second pass: check if "dead" tables are actually used in SQL function bodies
+const deadTables = []
+const sqlOnlyTables = []
+for (const t of noTsRefTables) {
+  if (isTableReferencedInSql(t)) {
+    sqlOnlyTables.push(t)
+  } else {
+    deadTables.push(t)
+  }
+}
+
+if (sqlOnlyTables.length > 0) {
+  for (const t of sqlOnlyTables) {
+    console.log(`  \x1b[36mℹ INFO\x1b[0m  Table "${t}" has no .ts references but IS used in SQL functions/triggers/views`)
+  }
+}
+
+if (deadTables.length === 0 && sqlOnlyTables.length === 0) {
   ok(`All ${liveTables.size} live tables are referenced in code`)
+} else if (deadTables.length === 0) {
+  ok(`All tables with no .ts references are used in SQL functions (${sqlOnlyTables.length} SQL-only)`)
 } else {
   for (const t of deadTables) {
-    warn(`Table "${t}" exists in migrations but has zero code references`)
+    warn(`Table "${t}" exists in migrations but has zero references (code + SQL)`)
   }
-  console.log(`\n  \x1b[90m${deadTables.length} dead table(s) out of ${liveTables.size} live tables\x1b[0m`)
+}
+
+if (deadTables.length > 0 || sqlOnlyTables.length > 0) {
+  const parts = []
+  if (deadTables.length > 0) parts.push(`${deadTables.length} dead`)
+  if (sqlOnlyTables.length > 0) parts.push(`${sqlOnlyTables.length} SQL-only`)
+  console.log(`\n  \x1b[90m${parts.join(', ')} table(s) out of ${liveTables.size} live tables\x1b[0m`)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -211,16 +282,19 @@ while ((m = dropColRe.exec(allMigrationSql)) !== null) {
   }
 }
 
-// Only check columns for tables that ARE referenced in code
+// Only check columns for tables that ARE referenced in code (or SQL)
 const referencedTables = [...liveTables].filter((t) => tablesInCode.has(t))
 let deadColumnCount = 0
+let sqlOnlyColumnCount = 0
 const deadColumnsByTable = []
+const sqlOnlyColumnsByTable = []
 
 for (const table of referencedTables.sort()) {
   const cols = tableColumns.get(table)
   if (!cols || cols.size === 0) continue
 
   const deadCols = []
+  const sqlOnlyCols = []
   for (const col of cols) {
     // Skip very common / generic column names that produce false positives
     if (['id', 'created_at', 'updated_at'].includes(col)) continue
@@ -229,7 +303,12 @@ for (const table of referencedTables.sort()) {
     // Use word-boundary-ish check to avoid substring matches
     const colPattern = new RegExp(`['"\`.]${col}['"\`\\s,)\\]]|['"]${col}['"]`, 'i')
     if (!colPattern.test(allSourceText)) {
-      deadCols.push(col)
+      // No .ts reference — check SQL function bodies
+      if (isColumnReferencedInSql(col)) {
+        sqlOnlyCols.push(col)
+      } else {
+        deadCols.push(col)
+      }
     }
   }
 
@@ -237,17 +316,37 @@ for (const table of referencedTables.sort()) {
     deadColumnsByTable.push({ table, columns: deadCols.sort() })
     deadColumnCount += deadCols.length
   }
+  if (sqlOnlyCols.length > 0) {
+    sqlOnlyColumnsByTable.push({ table, columns: sqlOnlyCols.sort() })
+    sqlOnlyColumnCount += sqlOnlyCols.length
+  }
 }
 
-if (deadColumnCount === 0) {
+if (sqlOnlyColumnCount > 0) {
+  for (const { table, columns } of sqlOnlyColumnsByTable) {
+    for (const col of columns) {
+      console.log(`  \x1b[36mℹ INFO\x1b[0m  Column "${table}.${col}" has no .ts references but IS used in SQL functions`)
+    }
+  }
+}
+
+if (deadColumnCount === 0 && sqlOnlyColumnCount === 0) {
   ok('No potentially dead columns found on referenced tables')
+} else if (deadColumnCount === 0) {
+  ok(`All columns with no .ts references are used in SQL functions (${sqlOnlyColumnCount} SQL-only)`)
 } else {
   for (const { table, columns } of deadColumnsByTable) {
     for (const col of columns) {
-      warn(`Column "${table}.${col}" has zero code references (potentially dead)`)
+      warn(`Column "${table}.${col}" has zero references in code + SQL (potentially dead)`)
     }
   }
-  console.log(`\n  \x1b[90m${deadColumnCount} potentially dead column(s) across ${deadColumnsByTable.length} table(s)\x1b[0m`)
+}
+
+if (deadColumnCount > 0 || sqlOnlyColumnCount > 0) {
+  const parts = []
+  if (deadColumnCount > 0) parts.push(`${deadColumnCount} dead`)
+  if (sqlOnlyColumnCount > 0) parts.push(`${sqlOnlyColumnCount} SQL-only`)
+  console.log(`\n  \x1b[90m${parts.join(', ')} column(s) across ${deadColumnsByTable.length + sqlOnlyColumnsByTable.length} table(s)\x1b[0m`)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
