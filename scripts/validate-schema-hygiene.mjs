@@ -24,6 +24,9 @@ const MIGRATIONS_DIR = join(ROOT, 'supabase/migrations')
 const ENFORCE = process.argv.includes('--enforce')
 const LIVE_CHECK = process.argv.includes('--live')
 
+// Current year-month for annotation expiry checks (YYYY-MM)
+const NOW_YEAR_MONTH = new Date().toISOString().slice(0, 7) // e.g. "2026-03"
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 let errorCount = 0
@@ -59,6 +62,38 @@ const IGNORED_PREFIXES = ['auth.', 'storage.', 'vault.', 'extensions.', 'graphql
 function isIgnoredTable(name) {
   if (IGNORED_TABLES.has(name)) return true
   return IGNORED_PREFIXES.some((p) => name.startsWith(p))
+}
+
+// ── Annotation parsing ───────────────────────────────────────────────
+
+// Matches @planned, @deprecated, @reserved with optional (YYYY-MM) expiry
+const ANNOTATION_RE = /--\s*@(planned|deprecated|reserved)(?:\((\d{4}-\d{2})\))?\b/i
+
+/**
+ * Parse an annotation from text. Returns { tag, expiry } or null.
+ * tag: "planned" | "deprecated" | "reserved"
+ * expiry: "YYYY-MM" string or null (never expires)
+ */
+function parseAnnotation(text) {
+  const m = ANNOTATION_RE.exec(text)
+  if (!m) return null
+  return { tag: m[1].toLowerCase(), expiry: m[2] || null }
+}
+
+/**
+ * Check if an annotation is expired.
+ * Returns true if the annotation has an expiry date and the current month is past it.
+ */
+function isAnnotationExpired(annotation) {
+  if (!annotation || !annotation.expiry) return false
+  return NOW_YEAR_MONTH > annotation.expiry
+}
+
+/**
+ * Format an expired annotation message (without prefix — caller adds it via warn/error).
+ */
+function formatExpiredAnnotation(name, annotation) {
+  return `${name} annotation @${annotation.tag}(${annotation.expiry}) expired — review or drop`
 }
 
 // ── Live DB query (pg_stat_statements) ──────────────────────────────
@@ -271,7 +306,7 @@ heading('1. Dead Table Detection')
 // Tables with a preceding -- @planned or -- @deprecated comment are suppressed from warnings
 const createTableRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)/gi
 const createdTables = new Set()
-const annotatedTables = new Set()
+const annotatedTables = new Map() // table -> { tag, expiry }
 let m
 while ((m = createTableRe.exec(allMigrationSql)) !== null) {
   const name = m[1].toLowerCase()
@@ -279,8 +314,9 @@ while ((m = createTableRe.exec(allMigrationSql)) !== null) {
     createdTables.add(name)
     // Check for @planned/@deprecated annotation in the 200 chars before this match
     const preceding = allMigrationSql.slice(Math.max(0, m.index - 200), m.index)
-    if (/--\s*@(planned|deprecated|reserved)\b/i.test(preceding)) {
-      annotatedTables.add(name)
+    const ann = parseAnnotation(preceding)
+    if (ann) {
+      annotatedTables.set(name, ann)
     }
   }
 }
@@ -308,9 +344,13 @@ const noTsRefTables = [...liveTables].filter((t) => !tablesInCode.has(t)).sort()
 const deadTables = []
 const sqlOnlyTables = []
 const annotatedDeadTables = []
+const expiredAnnotatedTables = []
 for (const t of noTsRefTables) {
-  if (annotatedTables.has(t)) {
+  const ann = annotatedTables.get(t)
+  if (ann && !isAnnotationExpired(ann)) {
     annotatedDeadTables.push(t)
+  } else if (ann && isAnnotationExpired(ann)) {
+    expiredAnnotatedTables.push({ table: t, annotation: ann })
   } else if (isTableReferencedInSql(t)) {
     sqlOnlyTables.push(t)
   } else {
@@ -318,9 +358,17 @@ for (const t of noTsRefTables) {
   }
 }
 
+if (expiredAnnotatedTables.length > 0) {
+  for (const { table, annotation } of expiredAnnotatedTables) {
+    warn(formatExpiredAnnotation(`Table "${table}"`, annotation))
+  }
+}
+
 if (annotatedDeadTables.length > 0) {
   for (const t of annotatedDeadTables) {
-    console.log(`  \x1b[36mℹ INFO\x1b[0m  Table "${t}" has no references but is annotated @planned/@deprecated (suppressed)`)
+    const ann = annotatedTables.get(t)
+    const suffix = ann.expiry ? ` (expires ${ann.expiry})` : ''
+    console.log(`  \x1b[36mℹ INFO\x1b[0m  Table "${t}" has no references but is annotated @${ann.tag}${suffix} (suppressed)`)
   }
 }
 
@@ -371,7 +419,7 @@ heading('2. Dead Column Detection')
 // Parse column definitions between CREATE TABLE ... ( ... );
 // Columns annotated with -- @planned or -- @deprecated in the SQL are suppressed from warnings
 const tableColumns = new Map() // table -> Set<column>
-const annotatedColumns = new Set() // "table.column" entries with @planned or @deprecated comments
+const annotatedColumns = new Map() // "table.column" -> { tag, expiry }
 
 // Process CREATE TABLE blocks
 const createBlockRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)\s*\(([\s\S]*?)(?:\n\))/gi
@@ -395,9 +443,10 @@ while ((m = createBlockRe.exec(allMigrationSql)) !== null) {
     // Column name is the first word
     if (/^[a-z_][a-z0-9_]*$/i.test(firstWord)) {
       cols.add(firstWord)
-      // Check for @planned or @deprecated annotation in comment on this line
-      if (/--\s*@(planned|deprecated|reserved)\b/i.test(line)) {
-        annotatedColumns.add(`${tableName}.${firstWord}`)
+      // Check for @planned/@deprecated/@reserved annotation (with optional expiry) on this line
+      const colAnn = parseAnnotation(line)
+      if (colAnn) {
+        annotatedColumns.set(`${tableName}.${firstWord}`, colAnn)
       }
     }
   }
@@ -424,16 +473,18 @@ while ((m = renameColRe.exec(allMigrationSql)) !== null) {
     tableColumns.get(table).delete(oldCol)
     tableColumns.get(table).add(newCol)
   }
-  // Carry forward @planned/@deprecated annotation from old column to new name
+  // Carry forward @planned/@deprecated annotation (with expiry) from old column to new name
   if (annotatedColumns.has(`${table}.${oldCol}`)) {
+    const oldAnn = annotatedColumns.get(`${table}.${oldCol}`)
     annotatedColumns.delete(`${table}.${oldCol}`)
-    annotatedColumns.add(`${table}.${newCol}`)
+    annotatedColumns.set(`${table}.${newCol}`, oldAnn)
   }
-  // Also check for annotation on the RENAME line itself
+  // Also check for annotation on the RENAME line itself (overrides carried-forward)
   const lineEnd = allMigrationSql.indexOf('\n', m.index)
   const line = allMigrationSql.slice(m.index, lineEnd === -1 ? undefined : lineEnd)
-  if (/--\s*@(planned|deprecated|reserved)\b/i.test(line)) {
-    annotatedColumns.add(`${table}.${newCol}`)
+  const renameAnn = parseAnnotation(line)
+  if (renameAnn) {
+    annotatedColumns.set(`${table}.${newCol}`, renameAnn)
   }
 }
 
@@ -460,12 +511,19 @@ for (const table of referencedTables.sort()) {
 
   const deadCols = []
   const sqlOnlyCols = []
+  const expiredCols = [] // { col, annotation }
   for (const col of cols) {
     // Skip very common / generic column names that produce false positives
     if (['id', 'created_at', 'updated_at'].includes(col)) continue
 
-    // Skip columns annotated with @planned, @deprecated, or @reserved
-    if (annotatedColumns.has(`${table}.${col}`)) continue
+    // Check for annotation (with possible expiry)
+    const colKey = `${table}.${col}`
+    const ann = annotatedColumns.get(colKey)
+    if (ann && !isAnnotationExpired(ann)) continue // still valid, suppress
+    if (ann && isAnnotationExpired(ann)) {
+      expiredCols.push({ col, annotation: ann })
+      continue
+    }
 
     // Simple heuristic: does this column name appear ANYWHERE in any .ts file?
     // Use word-boundary-ish check to avoid substring matches
@@ -478,6 +536,11 @@ for (const table of referencedTables.sort()) {
         deadCols.push(col)
       }
     }
+  }
+
+  // Report expired annotations for this table
+  for (const { col, annotation } of expiredCols) {
+    warn(formatExpiredAnnotation(`Column "${table}.${col}"`, annotation))
   }
 
   if (deadCols.length > 0) {

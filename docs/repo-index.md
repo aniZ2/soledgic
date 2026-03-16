@@ -453,8 +453,6 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 ### Payments & Checkout
 - **checkout_sessions** — Hosted checkout state machine (pending → charged_pending_ledger → completed)
 - **connected_accounts** — Processor identity per creator (setup_state, processor_identity_id)
-- **payment_methods** — Stored payment instruments
-
 ### Participants & Identity
 - **participant_identity_links** — Maps participant_id to auth user_id across ledgers
 - **shared_tax_profiles** — W-9 data keyed by user_id (cross-ledger)
@@ -487,7 +485,6 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 ### Webhooks
 - **webhook_endpoints** — Registered webhook URLs with secrets
 - **webhook_deliveries** — Delivery attempts with status/retry
-- **webhook_events** — Event type definitions
 - **processor_webhook_inbox** — Inbound processor webhook queue
 
 ### Risk & Compliance
@@ -786,6 +783,11 @@ Cron → process-processor-inbox
 22. SVC_SPLIT_MANAGER           — manage-splits/index.ts
 23. SVC_RECURRING_MANAGER       — manage-recurring/index.ts
 24. SVC_BANK_ACCOUNT_MANAGER    — manage-bank-accounts/index.ts
+25. SVC_PDF_GENERATOR           — generate-pdf/index.ts
+26. SVC_STATEMENT_SENDER        — send-statements/index.ts
+27. SVC_IMPORT_ENGINE           — import-transactions/index.ts
+28. SVC_PREFLIGHT_AUTH          — preflight-authorization/index.ts
+29. SVC_FROZEN_STATEMENTS       — frozen-statements/index.ts
 ```
 
 ---
@@ -843,10 +845,10 @@ SERVICE: SVC_PAYMENT_PROVIDER
 FILE: supabase/functions/_shared/payment-provider.ts
 RISK: CRITICAL_EXTERNAL
 CALLS: EXT_FINIX (transfers, refunds, identities, settlements)
-CALLED_BY: SVC_CHECKOUT_ORCHESTRATOR, SVC_REFUND_ENGINE, SVC_PAYOUT_ENGINE (execute-payout), holds-service
+CALLED_BY: SVC_CHECKOUT_ORCHESTRATOR, SVC_REFUND_ENGINE, SVC_PAYOUT_ENGINE (execute-payout), holds-service, checkout-sessions/index.ts, refunds/index.ts, holds/index.ts
 ENV: PROCESSOR_BASE_URL, PROCESSOR_USERNAME, PROCESSOR_PASSWORD, PROCESSOR_MERCHANT_ID, PROCESSOR_APPLICATION_ID
 CONCURRENCY: idempotency_id on all Finix calls; Finix-Version header trim-then-fallback
-TESTED_BY: (no unit tests — integration only)
+TESTED_BY: payment-provider_test.ts (16 tests), sdk/index.test.ts (parameterized contract tests)
 CHANGE_IMPACT: ALL money movement — checkout, refund, payout execution, holds
 
 SERVICE: SVC_TAX_ENGINE
@@ -1295,28 +1297,28 @@ EXT_SUPABASE_STORAGE — File storage (receipts, PDFs, NACHA files)
 ```
 graph:health output:
   Files:            308
-  Dependency edges: 57
+  Dependency edges: 60
   Coupling ratio:   0.19 edges/file
   Status:           HEALTHY
 
 Hub Dependency Ratio (top 5):
-  _shared/utils.ts                          8 importers (14.0% of edges)
-  _shared/payment-provider.ts               5 importers (8.8% of edges)
-  (marketing)/docs/constants.ts             5 importers (8.8% of edges)
-  _shared/error-tracking.ts                 3 importers (5.3% of edges)
-  sdk/typescript/src/types.ts               3 importers (5.3% of edges)
+  _shared/utils.ts                          8 importers (13.3% of edges)
+  _shared/payment-provider.ts               8 importers (13.3% of edges)
+  (marketing)/docs/constants.ts             5 importers (8.3% of edges)
+  _shared/error-tracking.ts                 3 importers (5.0% of edges)
+  sdk/typescript/src/types.ts               3 importers (5.0% of edges)
 
-  HDR (all):    42.1% (includes infra hubs — expected high)
-  HDR (domain): 22.8% (CENTRALIZING — warning zone is 30%)
+  HDR (all):    45.0% (includes infra hubs — expected high)
+  HDR (domain): 26.7% (CENTRALIZING — warning zone is 30%)
 
 God-service detection: none
 ```
 
 ### Hub Concern: SVC_PAYMENT_PROVIDER (payment-provider.ts)
 
-5 importers (8.8% of edges). The file mixes exported **types** (7 interfaces + 1 type alias, ~90 lines) with the **runtime provider class + factory** (~350 lines). Consumers that only need types (e.g. for function signatures or test stubs) still pull in the full module.
+8 importers (13.3% of edges). **Boundary rule:** Payment provider touches real money — only orchestration services and their entry-point edge functions may import it. The file mixes exported **types** (7 interfaces + 1 type alias, ~90 lines) with the **runtime provider class + factory** (~350 lines). Consumers that only need types (e.g. for function signatures or test stubs) still pull in the full module.
 
-**Importers:** checkout-service.ts, refund-service.ts, execute-payout/index.ts, holds-service.ts, bill-overages/index.ts
+**Importers:** checkout-service.ts, refund-service.ts, execute-payout/index.ts, holds-service.ts, bill-overages/index.ts, checkout-sessions/index.ts, refunds/index.ts, holds/index.ts
 
 **Mitigation:** Extract the type-only exports (`PaymentProviderName`, `PaymentIntentParams`, `PaymentIntentResult`, `CaptureResult`, `RefundParams`, `RefundResult`, `PaymentStatus`, `ProcessorProviderConfig`, `PaymentProviderFactoryOptions`, `PaymentProvider` interface) into a separate `_shared/payment-types.ts`. Consumers that only need types import from `payment-types.ts`; only consumers that call `getPaymentProvider()` import from `payment-provider.ts`. This would reduce the hub's importer count and keep HDR (domain) well below 30%.
 
@@ -1402,33 +1404,55 @@ UI_ONLY — changes affect dashboard display only
 ## Test Coverage Map
 
 ```
-treasury-services_test.ts (Deno, 11 tests)
-  COVERS: SVC_REFUND_ENGINE (recordRefundResponse, listRefundsResponse),
-          SVC_CHECKOUT_ORCHESTRATOR (createCheckoutResponse),
-          SVC_PAYOUT_ENGINE (processPayoutResponse),
-          participants-service (createParticipantResponse),
-          holds-service (releaseHeldFundsResponse)
-
-sdk/index.test.ts (Vitest, 91 tests)
-  COVERS: SDK methods for refunds, reversals, sales, payouts, wallets,
+SDK tests (Vitest): 557 tests in sdk/typescript/src/index.test.ts
+  COVERS: All SDK methods — refunds, reversals, sales, payouts, wallets,
           invoices, budgets, recurring, contractors, bank accounts,
-          tax, compliance, fraud, webhooks, holds, ledgers
+          tax, compliance, fraud, webhooks, holds, ledgers,
+          parameterized contract tests against live API
 
-validators_test.ts (Deno, 39 tests) — input validation functions
-security_test.ts (Deno, 29 tests) — crypto, IP blocking, API key generation
-formatting_test.ts (Deno, 13 tests) — audit sanitization, request IDs
-error-tracking_test.ts (Deno, 14 tests) — PII scrubbing, stack parsing
-webhook-adapters_test.ts (Deno, 14 tests) — processor event normalization
-webhook-management_test.ts (Deno, 3 tests) — delivery normalization
-webhook-signing_test.ts (Deno, 3 tests) — HMAC signatures
-platform-ops-services_test.ts (Deno, 5 tests) — fraud, compliance, tax doc summaries
+Deno tests: 447 tests across 24 test files (supabase/functions/_shared/__tests__/)
+  treasury-services_test.ts (11 tests) — SVC_REFUND_ENGINE, SVC_CHECKOUT_ORCHESTRATOR, SVC_PAYOUT_ENGINE, participants, holds
+  checkout-payout-holds_test.ts (19 tests) — checkout/payout/holds orchestration
+  validators_test.ts (39 tests) — input validation functions
+  security_test.ts (29 tests) — crypto, IP blocking, API key generation
+  formatting_test.ts (13 tests) — audit sanitization, request IDs
+  error-tracking_test.ts (14 tests) — PII scrubbing, stack parsing
+  webhook-adapters_test.ts (14 tests) — processor event normalization
+  webhook-management_test.ts (3 tests) — delivery normalization
+  webhook-signing_test.ts (3 tests) — HMAC signatures
+  platform-ops-services_test.ts (5 tests) — fraud, compliance, tax doc summaries
+  payment-provider_test.ts (16 tests) — SVC_PAYMENT_PROVIDER unit tests
+  frozen-statements_test.ts (46 tests) — frozen statement generation/retrieval
+  import-transactions_test.ts (58 tests) — import engine parsing/validation
+  preflight-authorization_test.ts (31 tests) — preflight auth flows
+  send-statements_test.ts (28 tests) — statement email delivery
+  generate-pdf_test.ts (22 tests) — PDF generation
+  wallet-service_test.ts (19 tests) — wallet operations
+  fraud-service_test.ts (14 tests) — fraud evaluation
+  tax-service_test.ts (13 tests) — tax engine
+  reconciliations-service_test.ts (12 tests) — reconciliation matching
+  compliance-service_test.ts (11 tests) — compliance monitoring
+  participants-service_test.ts (11 tests) — participant management
+  identity-service_test.ts (10 tests) — identity engine
+  bank-aggregator-provider_test.ts (6 tests) — bank aggregator
+
+Web app tests (Vitest): 492 tests across 24 test files (apps/web/src/lib/)
+  api-handler.test.ts (141 tests), rate-limit.test.ts (69 tests),
+  middleware.test.ts (43 tests), fetch-with-csrf.test.ts (41 tests),
+  csrf.test.ts (29 tests), entitlements.test.ts (25 tests),
+  livemode-server.test.ts (20 tests), currencies.test.ts (19 tests),
+  processor.test.ts (18 tests), email.test.ts (15 tests),
+  sensitive-action-shared.test.ts (15 tests), navigation.test.ts (9 tests),
+  public-url.test.ts (8 tests), ledger-functions-client.test.ts (8 tests),
+  active-ledger.test.ts (7 tests), plans.test.ts (6 tests),
+  sensitive-action-server.test.ts (4 tests), billing-policy.test.ts (3 tests),
+  csrf-token.test.ts (3 tests), org-provisioning.test.ts (3 tests),
+  ecosystems.test.ts (2 tests), ecosystem-server.test.ts (2 tests),
+  identity.test.ts (1 test), identity-server.test.ts (1 test)
 
 UNTESTED (integration-only):
-  SVC_PAYMENT_PROVIDER (Finix adapter)
   SVC_CHECKOUT_ORCHESTRATOR (full flow)
   All cron functions
-  All PDF generation
-  Email delivery
 ```
 
 ---
@@ -1468,6 +1492,7 @@ SERVICE/RPC/ENTRYPOINT blocks remain accurate.
 | `run-soledgic-mcp.sh` | MCP server launcher |
 | `test-ecosystem-multi-platform.mjs` | Test ecosystem multi-platform compatibility |
 | `cleanup-ecosystem-multi-platform.mjs` | Clean up ecosystem test data |
+| `validate-schema-hygiene.mjs` | Dead table/column detection, vendor naming lint, RPC param verification, pg_stat_statements live check |
 
 ---
 
@@ -1492,7 +1517,7 @@ SERVICE/RPC/ENTRYPOINT blocks remain accurate.
 
 **Errors:** SoledgicError, ValidationError, AuthenticationError, NotFoundError, ConflictError
 
-**Tests:** 91 test cases (vitest, mocked fetch) — constructor validation, error handling, webhook signatures, request/response
+**Tests:** 557 test cases (vitest, mocked fetch) — constructor validation, error handling, webhook signatures, request/response, parameterized contract tests
 
 ---
 
@@ -1503,6 +1528,7 @@ SERVICE/RPC/ENTRYPOINT blocks remain accurate.
 | Workflow | Triggers | Jobs |
 |---|---|---|
 | `docs-validation.yml` | push (main), PRs | Checkout → Node 22 → Install deps → Generate OpenAPI → Build SDK → Compile docs example → Validate docs |
+| `test.yml` | push (main), PRs | 2 jobs: **unit-tests** (npm test + coverage + SDK isolated), **validation** (validate repo index + schema hygiene + architecture enforcement) |
 | `security.yml` | push (main), PRs, weekly (Sun 00:00) | 9 parallel jobs (see below) |
 
 **security.yml jobs:**
@@ -1554,6 +1580,12 @@ Version numbers are sequential Supabase IDs, not calendar dates.
 | 358 | `20260358_integrity_hardening.sql` | CHECK constraint on account_type, idempotency conflict detection, FOR SHARE→FOR UPDATE |
 | 359 | `20260359_fix_ghost_table_references.sql` | Fix health check + vault RPC ghost table refs, add missing bank_connections columns |
 | 360 | `20260360_create_processor_transactions.sql` | Create processor_transactions table, restore health check 6 |
+| 361 | `20260361_create_missing_tables.sql` | Create missing tables |
+| 362 | `20260362_rename_stripe_to_processor.sql` | Rename Stripe references to processor |
+| 363 | `20260363_drop_webhook_events.sql` | Drop webhook_events table |
+| 364 | `20260364_drop_stripe_remnants.sql` | Drop Stripe remnant objects |
+| 365 | `20260365_drop_superseded_tables.sql` | Drop superseded tables (payment_methods, etc.) |
+| 366 | `20260366_drop_dead_columns.sql` | Drop dead columns |
 
 ---
 
@@ -1566,6 +1598,7 @@ Version numbers are sequential Supabase IDs, not calendar dates.
 | `vitest.config.ts` | Unit tests: sdk/typescript + apps/web (30s timeout, 10s hooks) |
 | `vitest.e2e.config.ts` | E2E tests: tests/e2e/ (3min timeout, sequential, global setup) |
 | `vitest.stress.config.ts` | Stress tests: tests/stress/ (5min timeout, sequential, JSON output) |
+| `stryker.config.mjs` | Mutation testing configuration (StrykerJS) |
 | `vercel.json` | Vercel deployment config (`{ "version": 2 }`) |
 | `.graph-health-baseline.json` | Architecture health snapshot (309 files, 46 edges, HDR 0.5, 0 cycles) |
 | `supabase/config.toml` | Supabase local dev config |
