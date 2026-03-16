@@ -10,10 +10,7 @@ import { readdirSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
-const INDEX_PATH = join(
-  process.env.HOME,
-  '.claude/projects/-Users-osifo-Desktop-soledgic/memory/repo-index.md',
-)
+const INDEX_PATH = join(ROOT, 'docs/repo-index.md')
 
 let errors = 0
 let warnings = 0

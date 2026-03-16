@@ -25,10 +25,8 @@
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
 
-const INDEX_PATH = join(
-  process.env.HOME,
-  '.claude/projects/-Users-osifo-Desktop-soledgic/memory/repo-index.md',
-)
+const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
+const INDEX_PATH = join(ROOT, 'docs/repo-index.md')
 
 const index = readFileSync(INDEX_PATH, 'utf-8')
 
