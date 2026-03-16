@@ -1,4 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import {
+  isRecord,
+  parseCookieHeader,
+  mergeCookieEntries,
+  parsePendingAuthCookies,
+  getErrorDetails,
+} from './api-handler'
 
 // --- Mocks ---
 
@@ -279,6 +286,166 @@ describe('createApiHandler', () => {
       }),
       expect.objectContaining({ status: 500 })
     )
+  })
+})
+
+describe('isRecord', () => {
+  it('returns true for plain objects', () => {
+    expect(isRecord({})).toBe(true)
+    expect(isRecord({ a: 1 })).toBe(true)
+  })
+  it('returns false for null', () => {
+    expect(isRecord(null)).toBe(false)
+  })
+  it('returns false for primitives', () => {
+    expect(isRecord('string')).toBe(false)
+    expect(isRecord(42)).toBe(false)
+    expect(isRecord(undefined)).toBe(false)
+    expect(isRecord(true)).toBe(false)
+  })
+  it('returns true for arrays (they are objects)', () => {
+    expect(isRecord([])).toBe(true)
+  })
+})
+
+describe('parseCookieHeader', () => {
+  it('returns empty array for empty string', () => {
+    expect(parseCookieHeader('')).toEqual([])
+  })
+  it('parses single cookie', () => {
+    expect(parseCookieHeader('name=value')).toEqual([{ name: 'name', value: 'value' }])
+  })
+  it('parses multiple cookies', () => {
+    const result = parseCookieHeader('a=1; b=2; c=3')
+    expect(result).toHaveLength(3)
+    expect(result[0]).toEqual({ name: 'a', value: '1' })
+    expect(result[1]).toEqual({ name: 'b', value: '2' })
+    expect(result[2]).toEqual({ name: 'c', value: '3' })
+  })
+  it('handles cookies with = in value', () => {
+    const result = parseCookieHeader('token=abc=def=ghi')
+    expect(result[0]).toEqual({ name: 'token', value: 'abc=def=ghi' })
+  })
+  it('handles cookie with no value (no = sign)', () => {
+    const result = parseCookieHeader('flag')
+    expect(result[0]).toEqual({ name: 'flag', value: '' })
+  })
+  it('trims whitespace', () => {
+    const result = parseCookieHeader('  name  =  value  ')
+    expect(result[0].name).toBe('name')
+    expect(result[0].value).toBe('value')
+  })
+  it('filters out empty names', () => {
+    const result = parseCookieHeader('a=1; ; b=2')
+    expect(result.every(c => c.name.length > 0)).toBe(true)
+  })
+})
+
+describe('mergeCookieEntries', () => {
+  it('returns primary when no overlap', () => {
+    const result = mergeCookieEntries(
+      [{ name: 'a', value: '1' }],
+      [{ name: 'b', value: '2' }],
+    )
+    expect(result).toHaveLength(2)
+    expect(result.find(c => c.name === 'a')?.value).toBe('1')
+    expect(result.find(c => c.name === 'b')?.value).toBe('2')
+  })
+  it('primary wins on duplicate names', () => {
+    const result = mergeCookieEntries(
+      [{ name: 'x', value: 'primary' }],
+      [{ name: 'x', value: 'fallback' }],
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].value).toBe('primary')
+  })
+  it('handles empty arrays', () => {
+    expect(mergeCookieEntries([], [])).toEqual([])
+    expect(mergeCookieEntries([{ name: 'a', value: '1' }], [])).toHaveLength(1)
+    expect(mergeCookieEntries([], [{ name: 'b', value: '2' }])).toHaveLength(1)
+  })
+})
+
+describe('parsePendingAuthCookies', () => {
+  it('returns empty for non-array input', () => {
+    expect(parsePendingAuthCookies(null)).toEqual([])
+    expect(parsePendingAuthCookies('string')).toEqual([])
+    expect(parsePendingAuthCookies(42)).toEqual([])
+  })
+  it('parses valid cookie entries', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'session', value: 'abc123' },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('session')
+    expect(result[0].value).toBe('abc123')
+  })
+  it('skips entries missing name or value', () => {
+    const result = parsePendingAuthCookies([
+      { value: 'no-name' },
+      { name: 'no-value' },
+      { name: '', value: 'empty-name' },
+    ])
+    expect(result).toHaveLength(0)
+  })
+  it('parses cookie options', () => {
+    const result = parsePendingAuthCookies([
+      {
+        name: 'tok',
+        value: 'v',
+        options: {
+          domain: '.example.com',
+          path: '/',
+          maxAge: 3600,
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          priority: 'high',
+        },
+      },
+    ])
+    expect(result[0].options?.domain).toBe('.example.com')
+    expect(result[0].options?.path).toBe('/')
+    expect(result[0].options?.maxAge).toBe(3600)
+    expect(result[0].options?.httpOnly).toBe(true)
+    expect(result[0].options?.secure).toBe(true)
+    expect(result[0].options?.sameSite).toBe('lax')
+    expect(result[0].options?.priority).toBe('high')
+  })
+  it('ignores invalid option types', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'x', value: 'y', options: { domain: 123, httpOnly: 'yes' } },
+    ])
+    expect(result[0].options?.domain).toBeUndefined()
+    expect(result[0].options?.httpOnly).toBeUndefined()
+  })
+  it('skips non-record entries', () => {
+    const result = parsePendingAuthCookies([null, 'string', 42, { name: 'ok', value: 'v' }])
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('ok')
+  })
+})
+
+describe('getErrorDetails', () => {
+  it('extracts name and message from Error', () => {
+    const err = new TypeError('type mismatch')
+    const details = getErrorDetails(err)
+    expect(details.name).toBe('TypeError')
+    expect(details.message).toBe('type mismatch')
+  })
+  it('returns defaults for non-Error', () => {
+    expect(getErrorDetails('string error')).toEqual({
+      name: 'UnknownError',
+      message: 'An unexpected error occurred',
+    })
+    expect(getErrorDetails(null)).toEqual({
+      name: 'UnknownError',
+      message: 'An unexpected error occurred',
+    })
+    expect(getErrorDetails(42)).toEqual({
+      name: 'UnknownError',
+      message: 'An unexpected error occurred',
+    })
   })
 })
 

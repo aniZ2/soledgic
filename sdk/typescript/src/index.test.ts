@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Soledgic, SoledgicError } from './index'
+import { Soledgic, SoledgicError, ValidationError, AuthenticationError, NotFoundError, ConflictError } from './index'
 
 const BASE_URL = 'https://test.supabase.co/functions/v1'
 const API_KEY = 'test_api_key_for_unit_tests'
@@ -129,6 +129,93 @@ describe('Soledgic SDK', () => {
       expect(err).toBeInstanceOf(SoledgicError)
       expect((err as SoledgicError).code).toBe('invalid_participant_id')
     }
+  })
+
+  // === TYPED ERROR CLASSES ===
+
+  describe('typed error classes', () => {
+    it('ValidationError has status 400, correct name and default code', () => {
+      const err = new ValidationError('bad input', { field: 'amount' })
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect(err).toBeInstanceOf(ValidationError)
+      expect(err.status).toBe(400)
+      expect(err.name).toBe('ValidationError')
+      expect(err.code).toBe('VALIDATION_ERROR')
+      expect(err.message).toBe('bad input')
+      expect(err.details).toEqual({ field: 'amount' })
+    })
+
+    it('ValidationError accepts custom code', () => {
+      const err = new ValidationError('bad', undefined, 'CUSTOM_CODE')
+      expect(err.code).toBe('CUSTOM_CODE')
+    })
+
+    it('AuthenticationError has status 401 and default message', () => {
+      const err = new AuthenticationError()
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect(err).toBeInstanceOf(AuthenticationError)
+      expect(err.status).toBe(401)
+      expect(err.name).toBe('AuthenticationError')
+      expect(err.code).toBe('AUTHENTICATION_ERROR')
+      expect(err.message).toBe('Invalid API key')
+    })
+
+    it('AuthenticationError accepts custom message', () => {
+      const err = new AuthenticationError('Token expired')
+      expect(err.message).toBe('Token expired')
+      expect(err.status).toBe(401)
+    })
+
+    it('NotFoundError has status 404', () => {
+      const err = new NotFoundError('Resource missing', { id: '123' })
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect(err).toBeInstanceOf(NotFoundError)
+      expect(err.status).toBe(404)
+      expect(err.name).toBe('NotFoundError')
+      expect(err.code).toBe('NOT_FOUND')
+      expect(err.message).toBe('Resource missing')
+      expect(err.details).toEqual({ id: '123' })
+    })
+
+    it('ConflictError has status 409', () => {
+      const err = new ConflictError('Duplicate entry', { ref: 'abc' })
+      expect(err).toBeInstanceOf(SoledgicError)
+      expect(err).toBeInstanceOf(ConflictError)
+      expect(err.status).toBe(409)
+      expect(err.name).toBe('ConflictError')
+      expect(err.code).toBe('CONFLICT')
+      expect(err.message).toBe('Duplicate entry')
+      expect(err.details).toEqual({ ref: 'abc' })
+    })
+
+    it('SoledgicError preserves all constructor args', () => {
+      const err = new SoledgicError('fail', 503, { reason: 'timeout' }, 'SERVICE_UNAVAILABLE')
+      expect(err.status).toBe(503)
+      expect(err.name).toBe('SoledgicError')
+      expect(err.code).toBe('SERVICE_UNAVAILABLE')
+      expect(err.details).toEqual({ reason: 'timeout' })
+    })
+
+    it('throwTypedError maps status codes to correct error classes', async () => {
+      for (const [status, ErrorClass] of [
+        [400, ValidationError],
+        [401, AuthenticationError],
+        [404, NotFoundError],
+        [409, ConflictError],
+        [500, SoledgicError],
+        [502, SoledgicError],
+      ] as const) {
+        const fn = mockFetch({ error: 'test' }, status)
+        const sdk = createClient(fn)
+        try {
+          await sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 })
+          expect.unreachable(`should throw for status ${status}`)
+        } catch (err) {
+          expect(err).toBeInstanceOf(ErrorClass)
+          expect((err as SoledgicError).status).toBe(status)
+        }
+      }
+    })
   })
 
   // === RECORD SALE ===

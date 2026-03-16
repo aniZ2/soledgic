@@ -25,7 +25,7 @@ interface PendingAuthCookie {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
@@ -34,7 +34,7 @@ interface CookieEntry {
   value: string
 }
 
-function parseCookieHeader(rawCookie: string): CookieEntry[] {
+export function parseCookieHeader(rawCookie: string): CookieEntry[] {
   if (!rawCookie) return []
 
   return rawCookie
@@ -50,7 +50,7 @@ function parseCookieHeader(rawCookie: string): CookieEntry[] {
     .filter((cookie) => cookie.name.length > 0)
 }
 
-function mergeCookieEntries(primary: CookieEntry[], fallback: CookieEntry[]): CookieEntry[] {
+export function mergeCookieEntries(primary: CookieEntry[], fallback: CookieEntry[]): CookieEntry[] {
   const merged = new Map<string, string>()
 
   for (const cookie of primary) {
@@ -66,7 +66,7 @@ function mergeCookieEntries(primary: CookieEntry[], fallback: CookieEntry[]): Co
   return Array.from(merged.entries()).map(([name, value]) => ({ name, value }))
 }
 
-function parsePendingAuthCookies(cookiesToSet: unknown): PendingAuthCookie[] {
+export function parsePendingAuthCookies(cookiesToSet: unknown): PendingAuthCookie[] {
   if (!Array.isArray(cookiesToSet)) return []
 
   const parsed: PendingAuthCookie[] = []
@@ -99,7 +99,7 @@ function parsePendingAuthCookies(cookiesToSet: unknown): PendingAuthCookie[] {
   return parsed
 }
 
-function getErrorDetails(error: unknown): { name: string; message: string } {
+export function getErrorDetails(error: unknown): { name: string; message: string } {
   if (error instanceof Error) {
     return { name: error.name, message: error.message }
   }
