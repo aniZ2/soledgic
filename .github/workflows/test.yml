@@ -29,8 +29,36 @@ jobs:
       - name: Run unit tests (SDK + web)
         run: npm test
 
+      - name: Run coverage check (enforces thresholds)
+        run: npm run test:coverage
+
       - name: Install SDK dependencies
         run: cd sdk/typescript && npm ci
 
       - name: Run SDK tests (isolated)
         run: cd sdk/typescript && npm test
+
+  validation:
+    name: Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate repo index
+        run: npm run validate:index
+
+      - name: Validate schema hygiene
+        run: npm run validate:schema
+
+      - name: Architecture health check
+        run: npm run graph:enforce
