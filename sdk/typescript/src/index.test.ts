@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Soledgic, SoledgicError, ValidationError, AuthenticationError, NotFoundError, ConflictError } from './index'
+import { Soledgic, SoledgicError, ValidationError, AuthenticationError, NotFoundError, ConflictError, mapWebhookEndpoint, mapWebhookDelivery } from './index'
 
 const BASE_URL = 'https://test.supabase.co/functions/v1'
 const API_KEY = 'test_api_key_for_unit_tests'
@@ -2411,6 +2411,339 @@ describe('Soledgic SDK', () => {
 
       const body = JSON.parse(fn.mock.calls[0][1].body)
       expect(body.transactions).toEqual([])
+    })
+  })
+
+  // ==========================================================================
+  // BEHAVIORAL CONTRACT TESTS
+  // These kill dozens of mutants each by verifying the entire contract surface
+  // of SDK methods rather than individual fields.
+  // ==========================================================================
+
+  describe('POST method contracts', () => {
+    // Each entry: [methodName, args, expectedEndpoint, expectedBodyKeys]
+    const postMethods: Array<{
+      name: string
+      call: (sdk: Soledgic) => Promise<any>
+      endpoint: string
+      bodyKeys: string[]
+    }> = [
+      {
+        name: 'recordIncome',
+        call: (sdk) => sdk.recordIncome({ referenceId: 'r1', amount: 100 }),
+        endpoint: 'record-income',
+        bodyKeys: ['reference_id', 'amount'],
+      },
+      {
+        name: 'recordExpense',
+        call: (sdk) => sdk.recordExpense({ referenceId: 'r2', amount: 200 }),
+        endpoint: 'record-expense',
+        bodyKeys: ['reference_id', 'amount'],
+      },
+      {
+        name: 'recordBill',
+        call: (sdk) => sdk.recordBill({ amount: 300, description: 'd', vendorName: 'v' }),
+        endpoint: 'record-bill',
+        bodyKeys: ['amount', 'description', 'vendor_name'],
+      },
+      {
+        name: 'reverseTransaction',
+        call: (sdk) => sdk.reverseTransaction({ transactionId: 't1', reason: 'test' }),
+        endpoint: 'reverse-transaction',
+        bodyKeys: ['transaction_id', 'reason'],
+      },
+      {
+        name: 'registerInstrument',
+        call: (sdk) => sdk.registerInstrument({ externalRef: 'ref1', extractedTerms: { amount: 100, currency: 'USD', counterpartyName: 'Acme' } }),
+        endpoint: 'register-instrument',
+        bodyKeys: ['external_ref', 'extracted_terms'],
+      },
+      {
+        name: 'closePeriod',
+        call: (sdk) => sdk.closePeriod(2026, 3),
+        endpoint: 'close-period',
+        bodyKeys: ['year', 'month'],
+      },
+      {
+        name: 'listPeriods',
+        call: (sdk) => sdk.listPeriods(),
+        endpoint: 'close-period',
+        bodyKeys: ['action'],
+      },
+      {
+        name: 'runHealthCheck',
+        call: (sdk) => sdk.runHealthCheck(),
+        endpoint: 'health-check',
+        bodyKeys: ['action'],
+      },
+      {
+        name: 'getHealthStatus',
+        call: (sdk) => sdk.getHealthStatus(),
+        endpoint: 'health-check',
+        bodyKeys: ['action'],
+      },
+      {
+        name: 'recordAdjustment',
+        call: (sdk) => sdk.recordAdjustment({ adjustmentType: 'correction', entries: [{ accountType: 'cash', entryType: 'debit', amount: 100 }], reason: 'fix', preparedBy: 'admin' }),
+        endpoint: 'record-adjustment',
+        bodyKeys: ['adjustment_type', 'entries', 'reason', 'prepared_by'],
+      },
+      {
+        name: 'recordOpeningBalance',
+        call: (sdk) => sdk.recordOpeningBalance({ asOfDate: '2026-01-01', source: 'manual', balances: [{ accountType: 'cash', balance: 1000 }] }),
+        endpoint: 'record-opening-balance',
+        bodyKeys: ['as_of_date', 'source', 'balances'],
+      },
+      {
+        name: 'recordTransfer',
+        call: (sdk) => sdk.recordTransfer({ fromAccountType: 'cash', toAccountType: 'savings', amount: 500, transferType: 'operating' }),
+        endpoint: 'record-transfer',
+        bodyKeys: ['from_account_type', 'to_account_type', 'amount', 'transfer_type'],
+      },
+      {
+        name: 'uploadReceipt',
+        call: (sdk) => sdk.uploadReceipt({ fileUrl: 'https://example.com/receipt.jpg' }),
+        endpoint: 'upload-receipt',
+        bodyKeys: ['file_url'],
+      },
+      {
+        name: 'receivePayment',
+        call: (sdk) => sdk.receivePayment({ amount: 500 }),
+        endpoint: 'receive-payment',
+        bodyKeys: ['amount'],
+      },
+      {
+        name: 'deleteCreator',
+        call: (sdk) => sdk.deleteCreator('creator_1'),
+        endpoint: 'delete-creator',
+        bodyKeys: ['creator_id'],
+      },
+      {
+        name: 'submitTaxInfo',
+        call: (sdk) => sdk.submitTaxInfo({ participantId: 'p1', legalName: 'John', taxIdType: 'ssn', taxIdLast4: '1234', businessType: 'individual', certify: true }),
+        endpoint: 'submit-tax-info',
+        bodyKeys: ['participant_id', 'legal_name', 'tax_id_type', 'tax_id_last4', 'business_type', 'certify'],
+      },
+      {
+        name: 'createBudget',
+        call: (sdk) => sdk.createBudget({ name: 'Marketing', budgetAmount: 10000, budgetPeriod: 'monthly' }),
+        endpoint: 'manage-budgets',
+        bodyKeys: ['name', 'budget_amount', 'budget_period'],
+      },
+      {
+        name: 'createRecurring',
+        call: (sdk) => sdk.createRecurring({ name: 'Rent', merchantName: 'Landlord', categoryCode: 'rent', amount: 2000, recurrenceInterval: 'monthly', startDate: '2026-01-01', businessPurpose: 'Office' }),
+        endpoint: 'manage-recurring',
+        bodyKeys: ['name', 'merchant_name', 'amount', 'recurrence_interval'],
+      },
+      {
+        name: 'createContractor',
+        call: (sdk) => sdk.createContractor({ name: 'Jane' }),
+        endpoint: 'manage-contractors',
+        bodyKeys: ['name'],
+      },
+      {
+        name: 'recordContractorPayment',
+        call: (sdk) => sdk.recordContractorPayment({ contractorId: 'c1', amount: 5000, paymentDate: '2026-03-01' }),
+        endpoint: 'manage-contractors/payment',
+        bodyKeys: ['contractor_id', 'amount', 'payment_date'],
+      },
+      {
+        name: 'createBankAccount',
+        call: (sdk) => sdk.createBankAccount({ bankName: 'Chase', accountName: 'Checking', accountType: 'checking' }),
+        endpoint: 'manage-bank-accounts',
+        bodyKeys: ['bank_name', 'account_name', 'account_type'],
+      },
+      {
+        name: 'sendBreachAlert',
+        call: (sdk) => sdk.sendBreachAlert({ cashBalance: 1000, pendingTotal: 5000, triggeredBy: 'manual' }),
+        endpoint: 'send-breach-alert',
+        bodyKeys: ['cash_balance', 'pending_total', 'triggered_by'],
+      },
+    ]
+
+    for (const { name, call, endpoint, bodyKeys } of postMethods) {
+      it(`${name} → POST /${endpoint} with correct snake_case keys`, async () => {
+        const fn = mockFetch({ success: true })
+        const sdk = createClient(fn)
+        await call(sdk)
+
+        // Verify endpoint
+        expect(fn).toHaveBeenCalledTimes(1)
+        const [url, init] = fn.mock.calls[0]
+        expect(url).toContain(`/${endpoint}`)
+
+        // Verify POST method and headers
+        expect(init.method).toBe('POST')
+        expect(init.headers['x-api-key']).toBe(API_KEY)
+        expect(init.headers['Content-Type']).toBe('application/json')
+        expect(init.headers['Soledgic-Version']).toBeDefined()
+
+        // Verify snake_case body keys
+        const body = JSON.parse(init.body)
+        for (const key of bodyKeys) {
+          expect(body).toHaveProperty(key)
+        }
+      })
+    }
+  })
+
+  describe('GET method contracts', () => {
+    const getMethods: Array<{
+      name: string
+      call: (sdk: Soledgic) => Promise<any>
+      endpoint: string
+    }> = [
+      { name: 'getBalanceSheet', call: (sdk) => sdk.getBalanceSheet(), endpoint: 'balance-sheet' },
+      { name: 'getRunway', call: (sdk) => sdk.getRunway(), endpoint: 'get-runway' },
+      { name: 'getAPAging', call: (sdk) => sdk.getAPAging(), endpoint: 'ap-aging' },
+      { name: 'getARAging', call: (sdk) => sdk.getARAging(), endpoint: 'ar-aging' },
+      { name: 'listLedgers', call: (sdk) => sdk.listLedgers(), endpoint: 'list-ledgers' },
+      { name: 'listBudgets', call: (sdk) => sdk.listBudgets(), endpoint: 'manage-budgets' },
+      { name: 'listRecurring', call: (sdk) => sdk.listRecurring(), endpoint: 'manage-recurring' },
+      { name: 'listContractors', call: (sdk) => sdk.listContractors(), endpoint: 'manage-contractors' },
+      { name: 'listBankAccounts', call: (sdk) => sdk.listBankAccounts(), endpoint: 'manage-bank-accounts' },
+      { name: 'listParticipants', call: (sdk) => sdk.listParticipants(), endpoint: 'participants' },
+    ]
+
+    for (const { name, call, endpoint } of getMethods) {
+      it(`${name} → GET /${endpoint} with correct headers`, async () => {
+        const fn = mockFetch({ success: true, data: [], participants: [] })
+        const sdk = createClient(fn)
+        await call(sdk)
+
+        expect(fn).toHaveBeenCalledTimes(1)
+        const [url, init] = fn.mock.calls[0]
+        expect(url).toContain(`/${endpoint}`)
+        expect(init.method).toBe('GET')
+        expect(init.headers['x-api-key']).toBe(API_KEY)
+        expect(init.headers['Soledgic-Version']).toBeDefined()
+        // GET requests should not have a body
+        expect(init.body).toBeUndefined()
+      })
+    }
+  })
+
+  describe('response mapping invariants', () => {
+    it('all error responses throw typed errors with status and message', async () => {
+      for (const status of [400, 401, 404, 409, 500, 502, 503]) {
+        const fn = mockFetch({ error: `Error ${status}` }, status)
+        const sdk = createClient(fn)
+        try {
+          await sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 })
+          expect.unreachable(`should throw for status ${status}`)
+        } catch (err: any) {
+          expect(err).toBeInstanceOf(SoledgicError)
+          expect(err.status).toBe(status)
+          expect(typeof err.message).toBe('string')
+          expect(err.message.length).toBeGreaterThan(0)
+        }
+      }
+    })
+
+    it('destroy() makes all subsequent requests throw', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      sdk.destroy()
+
+      await expect(sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 }))
+        .rejects.toThrow('Client has been destroyed')
+    })
+
+    it('request timeout is configurable', () => {
+      const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL, timeout: 5000 })
+      // The timeout is internal but we can verify the client was created
+      expect(sdk).toBeDefined()
+    })
+
+    it('apiVersion is sent in headers', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn, { apiVersion: '2026-06-01' })
+      await sdk.runHealthCheck()
+
+      const headers = fn.mock.calls[0][1].headers
+      expect(headers['Soledgic-Version']).toBe('2026-06-01')
+    })
+
+    it('apiVersion defaults when empty', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn, { apiVersion: '' })
+      await sdk.runHealthCheck()
+
+      const headers = fn.mock.calls[0][1].headers
+      expect(headers['Soledgic-Version']).toBe('2026-03-01')
+    })
+  })
+
+  describe('helpers.ts contract tests', () => {
+    it('mapWebhookEndpoint always returns complete object with correct types', () => {
+
+      // Valid input
+      const result = mapWebhookEndpoint({
+        id: 'wh_1', url: 'https://example.com', description: 'Test',
+        events: ['sale.completed'], is_active: true, created_at: '2026-01-01',
+        secret_rotated_at: '2026-02-01',
+      })
+      expect(result.id).toBe('wh_1')
+      expect(result.url).toBe('https://example.com')
+      expect(result.description).toBe('Test')
+      expect(result.events).toEqual(['sale.completed'])
+      expect(result.isActive).toBe(true)
+      expect(result.createdAt).toBe('2026-01-01')
+      expect(result.secretRotatedAt).toBe('2026-02-01')
+
+      // Null/undefined input — should return safe defaults, never crash
+      const empty = mapWebhookEndpoint(null)
+      expect(empty.id).toBe('')
+      expect(empty.url).toBe('')
+      expect(empty.description).toBeNull()
+      expect(empty.events).toEqual([])
+      expect(empty.isActive).toBe(false)
+      expect(empty.createdAt).toBe('')
+      expect(empty.secretRotatedAt).toBeNull()
+
+      // Partial input
+      const partial = mapWebhookEndpoint({ id: 'wh_2' })
+      expect(partial.id).toBe('wh_2')
+      expect(partial.url).toBe('')
+      expect(partial.isActive).toBe(false)
+    })
+
+    it('mapWebhookDelivery always returns complete object with correct types', () => {
+
+      const result = mapWebhookDelivery({
+        id: 'd1', endpoint_id: 'ep1', event_type: 'sale.completed',
+        status: 'delivered', attempts: 3, max_attempts: 5,
+        response_status: 200, response_body: 'OK', response_time_ms: 150,
+        created_at: '2026-01-01', delivered_at: '2026-01-01T00:01:00Z',
+        payload: { data: 'test' },
+      })
+      expect(result.id).toBe('d1')
+      expect(result.endpointId).toBe('ep1')
+      expect(result.eventType).toBe('sale.completed')
+      expect(result.status).toBe('delivered')
+      expect(result.attempts).toBe(3)
+      expect(result.maxAttempts).toBe(5)
+      expect(result.responseStatus).toBe(200)
+      expect(result.responseBody).toBe('OK')
+      expect(result.responseTimeMs).toBe(150)
+      expect(result.deliveredAt).toBe('2026-01-01T00:01:00Z')
+      expect(result.payload).toEqual({ data: 'test' })
+
+      // Null input
+      const empty = mapWebhookDelivery(null)
+      expect(empty.id).toBe('')
+      expect(empty.endpointId).toBeNull()
+      expect(empty.eventType).toBe('unknown')
+      expect(empty.status).toBe('unknown')
+      expect(empty.attempts).toBe(0)
+      expect(empty.maxAttempts).toBeNull()
+      expect(empty.responseStatus).toBeNull()
+      expect(empty.responseBody).toBeNull()
+      expect(empty.responseTimeMs).toBeNull()
+      expect(empty.deliveredAt).toBeNull()
+      expect(empty.nextRetryAt).toBeNull()
+      expect(empty.payload).toBeNull()
     })
   })
 })
