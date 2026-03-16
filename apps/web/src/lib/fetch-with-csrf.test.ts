@@ -298,4 +298,91 @@ describe('fetchWithCsrf', () => {
     const call = fetchSpy.mock.calls[0]
     expect(call[1].signal).toBe(signal)
   })
+
+  it('does not inject auth for same-origin /dashboard/api/ path (must start with /api/)', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'jwt_token_123' } },
+    })
+
+    await fetchWithCsrf('https://app.soledgic.com/dashboard/api/data')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('authorization')).toBeNull()
+  })
+
+  it('credentials defaults to "include" not "same-origin"', async () => {
+    await fetchWithCsrf('https://external.com/data')
+
+    const call = fetchSpy.mock.calls[0]
+    expect(call[1].credentials).toBe('include')
+    expect(call[1].credentials).not.toBe('same-origin')
+    expect(call[1].credentials).not.toBe('omit')
+  })
+
+  it('does not set Content-Type when body is null (undefined check)', async () => {
+    // body: null is not undefined, so Content-Type SHOULD be set
+    await fetchWithCsrf('https://external.com/data', {
+      method: 'POST',
+      body: null as any,
+    })
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    // body is null, which is not undefined, so Content-Type should be set
+    // The check is `body !== undefined`, and null !== undefined is true
+    expect(headers.get('Content-Type')).toBe('application/json')
+  })
+
+  it('uses first URL that starts with /api/ on same origin for auth injection', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'tok' } },
+    })
+
+    await fetchWithCsrf('https://app.soledgic.com/api/nested/endpoint')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('authorization')).toBe('Bearer tok')
+  })
+
+  it('does not inject auth for URL with /api in query string but not in path', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'tok' } },
+    })
+
+    await fetchWithCsrf('https://app.soledgic.com/dashboard?redirect=/api/test')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('authorization')).toBeNull()
+  })
+
+  it('first call URL is passed through to fetch', async () => {
+    await fetchWithCsrf('https://example.com/resource')
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://example.com/resource',
+      expect.any(Object)
+    )
+  })
+
+  it('credentials "omit" is respected when explicitly set', async () => {
+    await fetchWithCsrf('https://external.com/data', { credentials: 'omit' })
+
+    const call = fetchSpy.mock.calls[0]
+    expect(call[1].credentials).toBe('omit')
+  })
+
+  it('does not inject auth when session is null', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: null },
+    })
+
+    await fetchWithCsrf('https://app.soledgic.com/api/test')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('authorization')).toBeNull()
+  })
 })

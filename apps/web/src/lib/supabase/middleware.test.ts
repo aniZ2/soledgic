@@ -383,4 +383,184 @@ describe('updateSession', () => {
     // Cookie mutations should NOT be propagated on error
     expect(mockNextResponseCookiesSet).not.toHaveBeenCalled()
   })
+
+  it('skips OPTIONS requests (non-GET, non-HEAD)', async () => {
+    const req = makeNextRequest('OPTIONS', [
+      { name: 'sb-testproject-auth-token', value: 'token' },
+    ])
+    await updateSession(req)
+    expect(mockGetUser).not.toHaveBeenCalled()
+  })
+
+  it('filters cookies by exact auth cookie base name', async () => {
+    // sb-testproject-auth-token-other should NOT match
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token-other', value: 'not-auth' },
+    ])
+    await updateSession(req)
+    // The filter checks name === base OR name.startsWith(base + '.')
+    // 'sb-testproject-auth-token-other' !== 'sb-testproject-auth-token'
+    // and does not start with 'sb-testproject-auth-token.'
+    expect(mockGetUser).not.toHaveBeenCalled()
+  })
+
+  it('matches chunked cookie with dot suffix (e.g. .2)', async () => {
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token.2', value: 'chunk-2' },
+    ])
+    await updateSession(req)
+    expect(mockGetUser).toHaveBeenCalled()
+  })
+
+  it('returns original response (no cookies set) when user exists but setAll not called', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user_1' } }, error: null })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'valid-token' },
+    ])
+    await updateSession(req)
+    // No cookie refresh happened, so no cookies should be set
+    expect(mockNextResponseCookiesSet).not.toHaveBeenCalled()
+  })
+
+  it('cookie with special characters in value is handled', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: 'tok=en+val/ue%20special', options: { httpOnly: true } },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'old' },
+    ])
+    await updateSession(req)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      'tok=en+val/ue%20special',
+      expect.objectContaining({ httpOnly: true })
+    )
+  })
+
+  it('getErrorCode returns null for non-object error', async () => {
+    // Trigger error path with a string error message to test getErrorCode fallback
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'some error' }, // no .code property
+    })
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'tok' },
+    ])
+    await updateSession(req)
+
+    // Should have logged with code: null (getErrorCode returns null for missing .code)
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Middleware auth refresh failed',
+      expect.objectContaining({ code: null })
+    )
+    consoleSpy.mockRestore()
+  })
+
+  it('getErrorCode extracts string code from error object', async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'rate limited', code: 'RATE_LIMITED' },
+    })
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'tok' },
+    ])
+    await updateSession(req)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Middleware auth refresh failed',
+      expect.objectContaining({ code: 'RATE_LIMITED' })
+    )
+    consoleSpy.mockRestore()
+  })
+
+  it('does not log when AUTH_DEBUG_LOGS is not true, even for non-session errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubEnv('AUTH_DEBUG_LOGS', '')
+
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Token expired' },
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'expired' },
+    ])
+    await updateSession(req)
+
+    expect(consoleSpy).not.toHaveBeenCalled()
+    consoleSpy.mockRestore()
+  })
+
+  it('handles empty cookies list from getAll', async () => {
+    const req = makeNextRequest('GET', [])
+    await updateSession(req)
+    expect(mockGetUser).not.toHaveBeenCalled()
+  })
+
+  it('request with both auth cookie and non-auth cookies processes auth', async () => {
+    const req = makeNextRequest('GET', [
+      { name: 'theme', value: 'dark' },
+      { name: 'sb-testproject-auth-token', value: 'token-value' },
+      { name: 'lang', value: 'en' },
+    ])
+    await updateSession(req)
+    expect(mockGetUser).toHaveBeenCalled()
+  })
+
+  it('cookie options without httpOnly defaults httpOnly to false', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: 'tok', options: { secure: true } },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'old' },
+    ])
+    await updateSession(req)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      'tok',
+      expect.objectContaining({ httpOnly: false, secure: true })
+    )
+  })
+
+  it('cookie options with undefined options object still defaults httpOnly to false', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: 'tok' },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'old' },
+    ])
+    await updateSession(req)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      'tok',
+      expect.objectContaining({ httpOnly: false })
+    )
+  })
 })

@@ -12,6 +12,7 @@ vi.mock('@supabase/ssr', () => ({
 }))
 
 import { checkRateLimit, getRateLimitKey, getRouteLimit, ROUTE_LIMITS } from './rate-limit'
+import { createServerClient } from '@supabase/ssr'
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('https://example.com/api/test', {
@@ -229,6 +230,88 @@ describe('checkRateLimit (in-memory fallback)', () => {
     expect(r3.allowed).toBe(false)
     expect(r3.remaining).toBe(0)
   })
+
+  it('boundary: count === requests is still allowed, count > requests is blocked', async () => {
+    const key = 'test-boundary-eq'
+    const endpoint = '/api/test-boundary-eq'
+    const config = { requests: 3, windowMs: 60000 }
+
+    // count=1, allowed (1 <= 3)
+    const r1 = await checkRateLimit(key, endpoint, config)
+    expect(r1.allowed).toBe(true)
+    expect(r1.remaining).toBe(2)
+
+    // count=2, allowed (2 <= 3)
+    const r2 = await checkRateLimit(key, endpoint, config)
+    expect(r2.allowed).toBe(true)
+    expect(r2.remaining).toBe(1)
+
+    // count=3, allowed (3 <= 3, NOT > 3)
+    const r3 = await checkRateLimit(key, endpoint, config)
+    expect(r3.allowed).toBe(true)
+    expect(r3.remaining).toBe(0)
+
+    // count=4, blocked (4 > 3)
+    const r4 = await checkRateLimit(key, endpoint, config)
+    expect(r4.allowed).toBe(false)
+    expect(r4.remaining).toBe(0)
+  })
+
+  it('remaining is exactly config.requests - entry.count', async () => {
+    const key = 'test-exact-remaining'
+    const endpoint = '/api/test-exact-remaining'
+    const config = { requests: 5, windowMs: 60000 }
+
+    const r1 = await checkRateLimit(key, endpoint, config) // count=1
+    expect(r1.remaining).toBe(4) // 5 - 1
+
+    const r2 = await checkRateLimit(key, endpoint, config) // count=2
+    expect(r2.remaining).toBe(3) // 5 - 2
+
+    const r3 = await checkRateLimit(key, endpoint, config) // count=3
+    expect(r3.remaining).toBe(2) // 5 - 3
+  })
+
+  it('resetAt on blocked response comes from original window, not recalculated', async () => {
+    const key = 'test-reset-stable'
+    const endpoint = '/api/test-reset-stable'
+    const config = { requests: 1, windowMs: 60000 }
+
+    const r1 = await checkRateLimit(key, endpoint, config)
+    const originalResetAt = r1.resetAt
+
+    const r2 = await checkRateLimit(key, endpoint, config)
+    expect(r2.resetAt).toBe(originalResetAt)
+
+    const r3 = await checkRateLimit(key, endpoint, config)
+    expect(r3.resetAt).toBe(originalResetAt)
+  })
+
+  it('new entry after expiration gets fresh resetAt', async () => {
+    const key = 'test-fresh-reset'
+    const endpoint = '/api/test-fresh-reset'
+    const config = { requests: 1, windowMs: 10 }
+
+    const r1 = await checkRateLimit(key, endpoint, config)
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const r2 = await checkRateLimit(key, endpoint, config)
+    expect(r2.allowed).toBe(true)
+    // resetAt should be different (fresh window)
+    expect(r2.resetAt).toBeGreaterThan(r1.resetAt)
+  })
+
+  it('store key is endpoint:key format', async () => {
+    // Test isolation: same key, different endpoints should be independent
+    const config = { requests: 1, windowMs: 60000 }
+
+    const r1 = await checkRateLimit('shared-key-x', '/ep-alpha', config)
+    expect(r1.allowed).toBe(true)
+
+    const r2 = await checkRateLimit('shared-key-x', '/ep-beta', config)
+    expect(r2.allowed).toBe(true) // different endpoint, independent bucket
+  })
 })
 
 describe('ROUTE_LIMITS values', () => {
@@ -279,5 +362,219 @@ describe('getRouteLimit with all route prefixes', () => {
     // /api/auth is an exact match — should return it directly
     const result = getRouteLimit('/api/auth')
     expect(result.requests).toBe(10)
+  })
+})
+
+describe('checkRateLimit (Supabase RPC path)', () => {
+  // To test the RPC path, we need a fresh module import with a working service client.
+  // We use dynamic import + module reset to get an isolated instance.
+
+  let mockRpc: ReturnType<typeof vi.fn>
+  let checkRateLimitWithRpc: typeof checkRateLimit
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    mockRpc = vi.fn()
+
+    // Reset the cached service client by re-importing the module
+    vi.resetModules()
+
+    // Re-mock with working service functions
+    vi.doMock('@/lib/supabase/service', () => ({
+      getServerSupabaseUrl: () => 'https://test.supabase.co',
+      getServerServiceKey: () => 'service-key',
+    }))
+
+    vi.doMock('@supabase/ssr', () => ({
+      createServerClient: vi.fn(() => ({
+        rpc: mockRpc,
+      })),
+    }))
+
+    const mod = await import('./rate-limit')
+    checkRateLimitWithRpc = mod.checkRateLimit
+  })
+
+  it('returns allowed=true when RPC returns allowed:true and blocked:false', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: 5, reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(true)
+    expect(result.remaining).toBe(5)
+    expect(result.resetAt).toBe(new Date('2026-06-01T00:00:00Z').getTime())
+  })
+
+  it('returns allowed=false when RPC returns blocked:true', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: 0, reset_at: '2026-06-01T00:00:00Z', blocked: true }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+  })
+
+  it('returns allowed=false when RPC returns allowed:false', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: false, remaining: 0, reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+  })
+
+  it('falls back to in-memory when RPC returns error in non-production', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'RPC failed' },
+    })
+
+    const result = await checkRateLimitWithRpc('rpc-error-key', '/api/rpc-error', { requests: 10, windowMs: 60000 })
+    // Should fall through to in-memory and allow the first request
+    expect(result.allowed).toBe(true)
+    expect(result.remaining).toBe(9)
+  })
+
+  it('fail-closed in production when RPC returns error', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'RPC failed' },
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('fail-closed in production when RPC returns malformed data', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    mockRpc.mockResolvedValue({
+      data: [{ unexpected: 'shape' }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('fail-closed in production when RPC throws an exception', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    mockRpc.mockRejectedValue(new Error('network error'))
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('falls back to in-memory when RPC throws in non-production', async () => {
+    mockRpc.mockRejectedValue(new Error('network error'))
+
+    const result = await checkRateLimitWithRpc('rpc-throw-key', '/api/rpc-throw', { requests: 5, windowMs: 60000 })
+    expect(result.allowed).toBe(true)
+    expect(result.remaining).toBe(4)
+  })
+
+  it('passes correct parameters to RPC', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: 9, reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    await checkRateLimitWithRpc('user:123', '/api/widgets', { requests: 50, windowMs: 120000 })
+    expect(mockRpc).toHaveBeenCalledWith('check_rate_limit_secure', {
+      p_key: 'user:123',
+      p_endpoint: '/api/widgets',
+      p_max_requests: 50,
+      p_window_seconds: 120, // Math.ceil(120000 / 1000)
+      p_fail_closed: false,
+    })
+  })
+
+  it('windowSeconds is at least 1 even for very small windowMs', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: 9, reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 100 })
+    expect(mockRpc).toHaveBeenCalledWith('check_rate_limit_secure', expect.objectContaining({
+      p_window_seconds: 1,
+    }))
+  })
+
+  it('uses Math.max(0, remaining) so remaining is never negative', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: -5, reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.remaining).toBe(0)
+    expect(result.remaining).not.toBe(-5)
+  })
+
+  it('sets remaining to 0 when not allowed (blocked)', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: false, remaining: 5, reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
+  })
+
+  it('uses fallback resetAt when RPC reset_at is not a valid date', async () => {
+    const before = Date.now()
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: 5, reset_at: 'invalid-date', blocked: false }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.resetAt).toBeGreaterThanOrEqual(before + 60000 - 10)
+  })
+
+  it('handles empty data array by falling through to in-memory in non-production', async () => {
+    mockRpc.mockResolvedValue({
+      data: [],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('empty-data-key', '/api/empty-data', { requests: 10, windowMs: 60000 })
+    // row is null, no error, not prod -> falls through to in-memory
+    expect(result.allowed).toBe(true)
+  })
+
+  it('handles data that is not an array by falling through', async () => {
+    mockRpc.mockResolvedValue({
+      data: { allowed: true },
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('non-array-key', '/api/non-array', { requests: 10, windowMs: 60000 })
+    // Array.isArray(data) is false, so row is null -> falls through
+    expect(result.allowed).toBe(true)
+  })
+
+  it('remaining defaults to 0 when row.remaining is not a number', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ allowed: true, remaining: 'five', reset_at: '2026-06-01T00:00:00Z', blocked: false }],
+      error: null,
+    })
+
+    const result = await checkRateLimitWithRpc('user:1', '/api/test', { requests: 10, windowMs: 60000 })
+    expect(result.remaining).toBe(0)
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { Soledgic, SoledgicError, ValidationError, AuthenticationError, NotFoundError, ConflictError, mapWebhookEndpoint, mapWebhookDelivery } from './index'
+import { Soledgic, SoledgicError, ValidationError, AuthenticationError, NotFoundError, ConflictError, mapWebhookEndpoint, mapWebhookDelivery, timingSafeEqual, webhookPayloadToString, isArrayBufferView, parseWebhookSignatureHeader, parseWebhookEvent, hmacHex, verifyWebhookSignature, resolveWebhookEndpointUrl } from './index'
 
 const BASE_URL = 'https://test.supabase.co/functions/v1'
 const API_KEY = 'test_api_key_for_unit_tests'
@@ -5538,6 +5538,1465 @@ describe('Soledgic SDK', () => {
       expect(result.participant.linkedUserId).toBeNull()
       expect(result.participant.displayName).toBe('NoLink')
       expect(result.participant.payoutPreferences).toEqual({})
+    })
+
+    // =========================================================================
+    // WAVE 2: Kill remaining survived mutants in webhooks.ts, helpers.ts, client.ts
+    // =========================================================================
+
+    // --- timingSafeEqual: XOR logic, loop bounds, length check ---
+
+    it('timingSafeEqual returns true for identical strings', () => {
+
+      expect(timingSafeEqual('abc', 'abc')).toBe(true)
+    })
+
+    it('timingSafeEqual returns false for different strings same length', () => {
+
+      expect(timingSafeEqual('abc', 'abd')).toBe(false)
+    })
+
+    it('timingSafeEqual returns false for different lengths', () => {
+
+      expect(timingSafeEqual('abc', 'ab')).toBe(false)
+      expect(timingSafeEqual('ab', 'abc')).toBe(false)
+    })
+
+    it('timingSafeEqual returns true for empty strings', () => {
+
+      expect(timingSafeEqual('', '')).toBe(true)
+    })
+
+    it('timingSafeEqual returns false for empty vs non-empty', () => {
+
+      expect(timingSafeEqual('', 'a')).toBe(false)
+      expect(timingSafeEqual('a', '')).toBe(false)
+    })
+
+    it('timingSafeEqual returns false for strings differing only in first char', () => {
+
+      expect(timingSafeEqual('xbc', 'abc')).toBe(false)
+    })
+
+    it('timingSafeEqual returns false for strings differing only in last char', () => {
+
+      expect(timingSafeEqual('abx', 'abc')).toBe(false)
+    })
+
+    it('timingSafeEqual single character match and mismatch', () => {
+
+      expect(timingSafeEqual('a', 'a')).toBe(true)
+      expect(timingSafeEqual('a', 'b')).toBe(false)
+    })
+
+    // --- webhookPayloadToString: type checks ---
+
+    it('webhookPayloadToString returns string input as-is', () => {
+
+      expect(webhookPayloadToString('hello')).toBe('hello')
+    })
+
+    it('webhookPayloadToString converts object to JSON', () => {
+
+      expect(webhookPayloadToString({ key: 'val' })).toBe('{"key":"val"}')
+    })
+
+    it('webhookPayloadToString decodes ArrayBuffer', () => {
+
+      const buffer = new TextEncoder().encode('test payload').buffer
+      expect(webhookPayloadToString(buffer)).toBe('test payload')
+    })
+
+    it('webhookPayloadToString decodes Uint8Array', () => {
+
+      const arr = new TextEncoder().encode('uint8 data')
+      expect(webhookPayloadToString(arr)).toBe('uint8 data')
+    })
+
+    it('webhookPayloadToString handles empty string', () => {
+
+      expect(webhookPayloadToString('')).toBe('')
+    })
+
+    it('webhookPayloadToString handles empty object', () => {
+
+      expect(webhookPayloadToString({})).toBe('{}')
+    })
+
+    // --- isArrayBufferView ---
+
+    it('isArrayBufferView returns true for Uint8Array', () => {
+
+      expect(isArrayBufferView(new Uint8Array([1, 2]))).toBe(true)
+    })
+
+    it('isArrayBufferView returns false for string', () => {
+
+      expect(isArrayBufferView('hello')).toBe(false)
+    })
+
+    it('isArrayBufferView returns false for null', () => {
+
+      expect(isArrayBufferView(null)).toBe(false)
+    })
+
+    it('isArrayBufferView returns false for plain object', () => {
+
+      expect(isArrayBufferView({ buffer: new ArrayBuffer(0) })).toBe(false)
+    })
+
+    // --- parseWebhookSignatureHeader: split parsing ---
+
+    it('parseWebhookSignatureHeader returns empty result for empty string', () => {
+
+      const result = parseWebhookSignatureHeader('')
+      expect(result.timestamp).toBeNull()
+      expect(result.v1Signatures).toEqual([])
+      expect(result.legacySignature).toBeNull()
+    })
+
+    it('parseWebhookSignatureHeader parses legacy sha256= prefix', () => {
+
+      const result = parseWebhookSignatureHeader('sha256=abcdef1234')
+      expect(result.timestamp).toBeNull()
+      expect(result.v1Signatures).toEqual([])
+      expect(result.legacySignature).toBe('abcdef1234')
+    })
+
+    it('parseWebhookSignatureHeader parses t= and v1= components', () => {
+
+      const result = parseWebhookSignatureHeader('t=1234567890,v1=sig1,v1=sig2')
+      expect(result.timestamp).toBe(1234567890)
+      expect(result.v1Signatures).toEqual(['sig1', 'sig2'])
+      expect(result.legacySignature).toBeNull()
+    })
+
+    it('parseWebhookSignatureHeader handles non-numeric timestamp', () => {
+
+      const result = parseWebhookSignatureHeader('t=notanumber,v1=sig1')
+      expect(result.timestamp).toBeNull()
+      expect(result.v1Signatures).toEqual(['sig1'])
+    })
+
+    it('parseWebhookSignatureHeader ignores parts without = separator', () => {
+
+      const result = parseWebhookSignatureHeader('t=100,noseparator,v1=sig')
+      expect(result.timestamp).toBe(100)
+      expect(result.v1Signatures).toEqual(['sig'])
+    })
+
+    it('parseWebhookSignatureHeader ignores unknown keys', () => {
+
+      const result = parseWebhookSignatureHeader('t=200,v2=unknown,v1=real')
+      expect(result.timestamp).toBe(200)
+      expect(result.v1Signatures).toEqual(['real'])
+    })
+
+    // --- parseWebhookEvent: type/event field extraction ---
+
+    it('parseWebhookEvent extracts type field', () => {
+
+      const result = parseWebhookEvent('{"type":"sale.completed","id":"evt_1","created_at":"2026-01-01","livemode":true,"data":{"amount":100}}')
+      expect(result.type).toBe('sale.completed')
+      expect(result.id).toBe('evt_1')
+      expect(result.createdAt).toBe('2026-01-01')
+      expect(result.livemode).toBe(true)
+      expect(result.data).toEqual({ amount: 100 })
+    })
+
+    it('parseWebhookEvent falls back to event field when type is missing', () => {
+
+      const result = parseWebhookEvent('{"event":"payment.received","id":"evt_2"}')
+      expect(result.type).toBe('payment.received')
+    })
+
+    it('parseWebhookEvent returns unknown when neither type nor event is string', () => {
+
+      const result = parseWebhookEvent('{"id":"evt_3"}')
+      expect(result.type).toBe('unknown')
+    })
+
+    it('parseWebhookEvent returns null for missing optional fields', () => {
+
+      const result = parseWebhookEvent('{"type":"test"}')
+      expect(result.id).toBeNull()
+      expect(result.createdAt).toBeNull()
+      expect(result.livemode).toBeNull()
+      expect(result.data).toBeNull()
+    })
+
+    it('parseWebhookEvent accepts object payload', () => {
+
+      const result = parseWebhookEvent({ type: 'obj.event', id: 'e4', data: { x: 1 } })
+      expect(result.type).toBe('obj.event')
+      expect(result.id).toBe('e4')
+      expect(result.data).toEqual({ x: 1 })
+    })
+
+    it('parseWebhookEvent returns raw parsed object', () => {
+
+      const result = parseWebhookEvent('{"type":"test","extra":"field"}')
+      expect(result.raw).toEqual({ type: 'test', extra: 'field' })
+    })
+
+    // --- verifyWebhookSignature: tolerance, toEpochSeconds, edge cases ---
+
+    it('verifyWebhookSignature returns false when timestamp is null', async () => {
+
+      const result = await verifyWebhookSignature('payload', 'invalid', 'secret')
+      expect(result).toBe(false)
+    })
+
+    it('verifyWebhookSignature returns false when no v1 signatures', async () => {
+
+      const result = await verifyWebhookSignature('payload', 't=1234567890', 'secret')
+      expect(result).toBe(false)
+    })
+
+    it('verifyWebhookSignature rejects expired timestamp', async () => {
+
+      const oldTimestamp = Math.floor(Date.now() / 1000) - 600 // 10 minutes ago
+      const sig = `t=${oldTimestamp},v1=fakesig`
+      const result = await verifyWebhookSignature('payload', sig, 'secret', { toleranceSeconds: 300 })
+      expect(result).toBe(false)
+    })
+
+    it('verifyWebhookSignature validates correct v1 signature', async () => {
+      const payload = '{"test":"data"}'
+      const secret = 'whsec_test_secret'
+      const timestamp = Math.floor(Date.now() / 1000)
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+
+      const result = await verifyWebhookSignature(payload, header, secret, { now: timestamp })
+      expect(result).toBe(true)
+    })
+
+    it('verifyWebhookSignature validates legacy sha256= signature', async () => {
+      const payload = 'legacy-payload'
+      const secret = 'test-secret'
+
+      const expected = await hmacHex(secret, payload)
+
+      const result = await verifyWebhookSignature(payload, `sha256=${expected}`, secret)
+      expect(result).toBe(true)
+    })
+
+    it('verifyWebhookSignature rejects wrong legacy signature', async () => {
+
+      const result = await verifyWebhookSignature('payload', 'sha256=wronghex', 'secret')
+      expect(result).toBe(false)
+    })
+
+    it('verifyWebhookSignature skips tolerance when set to 0', async () => {
+      const payload = 'test'
+      const secret = 'sec'
+      const timestamp = 1 // very old timestamp
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+
+      const result = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 0,
+        now: timestamp,
+      })
+      expect(result).toBe(true)
+    })
+
+    it('verifyWebhookSignature uses Date object for now option', async () => {
+      const payload = 'test-date'
+      const secret = 'sec-date'
+      const timestamp = Math.floor(Date.now() / 1000)
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+
+      const result = await verifyWebhookSignature(payload, header, secret, {
+        now: new Date(timestamp * 1000),
+      })
+      expect(result).toBe(true)
+    })
+
+    // --- resolveWebhookEndpointUrl: edge cases ---
+
+    it('resolveWebhookEndpointUrl returns string endpointUrl directly', () => {
+
+      expect(resolveWebhookEndpointUrl(undefined, 'https://hook.example.com')).toBe('https://hook.example.com')
+    })
+
+    it('resolveWebhookEndpointUrl extracts url from first array element', () => {
+
+      expect(resolveWebhookEndpointUrl([{ url: 'https://arr.example.com' }], undefined)).toBe('https://arr.example.com')
+    })
+
+    it('resolveWebhookEndpointUrl returns null for array with non-string url', () => {
+
+      expect(resolveWebhookEndpointUrl([{ url: 123 }], undefined)).toBeNull()
+    })
+
+    it('resolveWebhookEndpointUrl returns null for empty array', () => {
+
+      expect(resolveWebhookEndpointUrl([], undefined)).toBeNull()
+    })
+
+    it('resolveWebhookEndpointUrl extracts url from object', () => {
+
+      expect(resolveWebhookEndpointUrl({ url: 'https://obj.example.com' }, undefined)).toBe('https://obj.example.com')
+    })
+
+    it('resolveWebhookEndpointUrl returns null for object without url', () => {
+
+      expect(resolveWebhookEndpointUrl({ notUrl: 'x' }, undefined)).toBeNull()
+    })
+
+    it('resolveWebhookEndpointUrl returns null when both args are null', () => {
+
+      expect(resolveWebhookEndpointUrl(null, null)).toBeNull()
+    })
+
+    it('resolveWebhookEndpointUrl returns null for undefined', () => {
+
+      expect(resolveWebhookEndpointUrl(undefined, undefined)).toBeNull()
+    })
+
+    it('resolveWebhookEndpointUrl prefers endpointUrl string over array', () => {
+
+      expect(resolveWebhookEndpointUrl([{ url: 'https://arr.com' }], 'https://direct.com')).toBe('https://direct.com')
+    })
+
+    // --- mapWebhookDelivery endpointUrl resolution through resolveWebhookEndpointUrl ---
+
+    it('mapWebhookDelivery resolves endpointUrl from webhook_endpoints array', () => {
+      const result = mapWebhookDelivery({
+        id: 'd_arr',
+        webhook_endpoints: [{ url: 'https://from-array.com' }],
+        event_type: 'test',
+        status: 'pending',
+        created_at: '2026-01-01',
+      })
+      expect(result.endpointUrl).toBe('https://from-array.com')
+    })
+
+    it('mapWebhookDelivery resolves endpointUrl from endpoint_url string', () => {
+      const result = mapWebhookDelivery({
+        id: 'd_str',
+        endpoint_url: 'https://direct-url.com',
+        event_type: 'test',
+        status: 'pending',
+        created_at: '2026-01-01',
+      })
+      expect(result.endpointUrl).toBe('https://direct-url.com')
+    })
+
+    it('mapWebhookDelivery returns null endpointUrl when neither present', () => {
+      const result = mapWebhookDelivery({
+        id: 'd_none',
+        event_type: 'test',
+        status: 'pending',
+        created_at: '2026-01-01',
+      })
+      expect(result.endpointUrl).toBeNull()
+    })
+
+    it('mapWebhookDelivery nextRetryAt maps when present', () => {
+      const result = mapWebhookDelivery({
+        id: 'd_retry',
+        next_retry_at: '2026-03-20T12:00:00Z',
+        event_type: 'test',
+        status: 'failed',
+        created_at: '2026-01-01',
+      })
+      expect(result.nextRetryAt).toBe('2026-03-20T12:00:00Z')
+    })
+
+    // --- mapWebhookEndpoint: events array filtering ---
+
+    it('mapWebhookEndpoint filters non-string events', () => {
+      const result = mapWebhookEndpoint({
+        id: 'wh_filter',
+        events: ['valid.event', 123, null, 'another.event'],
+        created_at: '2026-01-01',
+      })
+      expect(result.events).toEqual(['valid.event', 'another.event'])
+    })
+
+    // --- client.ts: error code extraction from "code" field ---
+
+    it('error extracts code from code field when error_code missing', async () => {
+      const fn = mockFetch({ error: 'Conflict', code: 'duplicate_entry' }, 409)
+      const sdk = createClient(fn)
+      try {
+        await sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 })
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(ConflictError)
+        expect(err.code).toBe('duplicate_entry')
+      }
+    })
+
+    it('error prefers error_code over code', async () => {
+      const fn = mockFetch({ error: 'Bad', error_code: 'specific_code', code: 'generic_code' }, 400)
+      const sdk = createClient(fn)
+      try {
+        await sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 })
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(ValidationError)
+        expect(err.code).toBe('specific_code')
+      }
+    })
+
+    it('error code is undefined when neither error_code nor code is string', async () => {
+      const fn = mockFetch({ error: 'Server error', code: 42 }, 500)
+      const sdk = createClient(fn)
+      try {
+        await sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 })
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(SoledgicError)
+        expect(err.code).toBeUndefined()
+      }
+    })
+
+    // --- client.ts: request fallback error message ---
+
+    it('request uses fallback message when data.error is missing', async () => {
+      const fn = mockFetch({ detail: 'something' }, 422)
+      const sdk = createClient(fn)
+      try {
+        await sdk.recordSale({ referenceId: 'r', creatorId: 'c', amount: 100 })
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err.message).toBe('Request failed: 422')
+      }
+    })
+
+    it('requestGet uses fallback message when data.error is missing', async () => {
+      const fn = mockFetch({ detail: 'something' }, 503)
+      const sdk = createClient(fn)
+      try {
+        await sdk.getAPAging()
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err.message).toBe('Request failed: 503')
+      }
+    })
+
+    // --- client.ts: requestRaw non-JSON error body ---
+
+    it('requestRaw falls back to text when JSON parse fails on error', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: () => Promise.resolve('Service Unavailable'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+      try {
+        await sdk.exportReport({ reportType: 'summary', format: 'csv' })
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(SoledgicError)
+        expect(err.message).toBe('Service Unavailable')
+        expect(err.status).toBe(503)
+        expect(err.details).toEqual({ error: 'Service Unavailable' })
+      }
+    })
+
+    it('requestRaw uses parsed JSON error when available', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve('{"error":"Bad request body","error_code":"parse_error"}'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+      try {
+        await sdk.exportReport({ reportType: 'summary', format: 'csv' })
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(ValidationError)
+        expect(err.message).toBe('Bad request body')
+        expect(err.code).toBe('parse_error')
+      }
+    })
+
+    // --- client.ts: requestGetRaw non-JSON error body ---
+
+    it('requestGetRaw falls back to text when JSON parse fails on error', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: () => Promise.resolve('Bad Gateway from CDN'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+      try {
+        await sdk.exportTaxDocuments(2025, 'csv')
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err.message).toBe('Bad Gateway from CDN')
+        expect(err.status).toBe(502)
+      }
+    })
+
+    it('requestGetRaw uses parsed JSON error when available', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('{"error":"Unauthorized export"}'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+      try {
+        await sdk.exportTaxDocuments(2025, 'csv')
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(AuthenticationError)
+        expect(err.message).toBe('Unauthorized export')
+      }
+    })
+
+    // --- client.ts: requestDelete fallback error message ---
+
+    it('requestDelete uses fallback message when data.error missing', async () => {
+      const fn = mockFetch({ detail: 'not found' }, 404)
+      vi.stubGlobal('fetch', fn)
+      const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+      try {
+        await sdk.unmatchTransaction('txn_x')
+        expect.unreachable('should throw')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(NotFoundError)
+        expect(err.message).toBe('Request failed: 404')
+      }
+    })
+
+    // --- client.ts: reverseTransaction transactionId fallback chain ---
+
+    it('reverseTransaction falls back to original_transaction_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        void_type: 'void',
+        message: 'Done',
+        original_transaction_id: 'orig_tx',
+        // transaction_id missing
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.reverseTransaction({ transactionId: 'req_tx', reason: 'test' })
+
+      expect(result.transactionId).toBe('orig_tx')
+    })
+
+    it('reverseTransaction falls back to request transactionId when both are missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        void_type: 'void',
+        message: 'Done',
+        // both transaction_id and original_transaction_id missing
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.reverseTransaction({ transactionId: 'from_req', reason: 'test' })
+
+      expect(result.transactionId).toBe('from_req')
+    })
+
+    // --- client.ts: createCheckoutSession validation ---
+
+    it('createCheckoutSession throws when neither paymentMethodId nor successUrl', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await expect(() => sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+      } as any)).rejects.toThrow('Either paymentMethodId/sourceId or successUrl is required')
+    })
+
+    it('createCheckoutSession hasPaymentMethod is false when paymentMethodId is empty string', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await expect(sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: '',
+      } as any)).rejects.toThrow('Either paymentMethodId/sourceId or successUrl is required')
+    })
+
+    // --- client.ts: checkPayoutEligibility Boolean() and defaults ---
+
+    it('checkPayoutEligibility maps eligible false explicitly', async () => {
+      const fn = mockFetch({
+        success: true,
+        eligibility: {
+          participant_id: 'p_ineligible',
+          eligible: false,
+          available_balance: 0,
+          issues: ['No bank account'],
+          requirements: { bank_account: true },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.checkPayoutEligibility('p_ineligible')
+
+      expect(result.eligible).toBe(false)
+      expect(result.available_balance).toBe(0)
+      expect(result.issues).toEqual(['No bank account'])
+      expect(result.requirements).toEqual({ bank_account: true })
+    })
+
+    // --- client.ts: listParticipants null fallbacks ---
+
+    it('listParticipants maps all fields with null fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        participants: [
+          {
+            id: 'p_full',
+            linked_user_id: 'u_1',
+            name: 'Alice',
+            tier: 'gold',
+            ledger_balance: 10000,
+            held_amount: 500,
+            available_balance: 9500,
+          },
+          {
+            id: 'p_sparse',
+            // all nullable fields missing
+            ledger_balance: 0,
+            held_amount: 0,
+            available_balance: 0,
+          },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listParticipants()
+
+      expect(result.participants[0].linkedUserId).toBe('u_1')
+      expect(result.participants[0].name).toBe('Alice')
+      expect(result.participants[0].tier).toBe('gold')
+
+      expect(result.participants[1].linkedUserId).toBeNull()
+      expect(result.participants[1].name).toBeNull()
+      expect(result.participants[1].tier).toBeNull()
+    })
+
+    // --- client.ts: listRefunds full field mapping ---
+
+    it('listRefunds maps all fields with null fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        count: 2,
+        refunds: [
+          {
+            id: 'rf_1',
+            transaction_id: 'tx_rf1',
+            reference_id: 'ref_rf1',
+            sale_reference: 'sale_1',
+            refunded_amount: 5000,
+            currency: 'USD',
+            status: 'completed',
+            reason: 'Customer request',
+            refund_from: 'platform',
+            external_refund_id: 'ext_1',
+            created_at: '2026-03-10',
+            breakdown: { from_creator: 3000, from_platform: 2000 },
+            repair_pending: false,
+            last_error: null,
+          },
+          {
+            id: 'rf_2',
+            refunded_amount: 100,
+            currency: 'EUR',
+            status: 'pending',
+            // all nullable fields missing
+          },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listRefunds()
+
+      expect(result.count).toBe(2)
+      expect(result.refunds[0].transactionId).toBe('tx_rf1')
+      expect(result.refunds[0].referenceId).toBe('ref_rf1')
+      expect(result.refunds[0].saleReference).toBe('sale_1')
+      expect(result.refunds[0].reason).toBe('Customer request')
+      expect(result.refunds[0].refundFrom).toBe('platform')
+      expect(result.refunds[0].externalRefundId).toBe('ext_1')
+      expect(result.refunds[0].createdAt).toBe('2026-03-10')
+      expect(result.refunds[0].breakdown!.fromCreator).toBe(3000)
+      expect(result.refunds[0].breakdown!.fromPlatform).toBe(2000)
+      expect(result.refunds[0].repairPending).toBe(false)
+      expect(result.refunds[0].lastError).toBeNull()
+
+      expect(result.refunds[1].transactionId).toBeNull()
+      expect(result.refunds[1].referenceId).toBeNull()
+      expect(result.refunds[1].saleReference).toBeNull()
+      expect(result.refunds[1].reason).toBeNull()
+      expect(result.refunds[1].refundFrom).toBeNull()
+      expect(result.refunds[1].externalRefundId).toBeNull()
+      expect(result.refunds[1].createdAt).toBeNull()
+      expect(result.refunds[1].breakdown).toBeNull()
+      expect(result.refunds[1].repairPending).toBeNull()
+      expect(result.refunds[1].lastError).toBeNull()
+    })
+
+    it('listRefunds defaults count from array length when count missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        refunds: [{ id: 'r1', refunded_amount: 100, currency: 'USD', status: 'done' }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listRefunds()
+
+      expect(result.count).toBe(1)
+    })
+
+    it('listRefunds defaults to empty array when refunds key missing', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.listRefunds()
+
+      expect(result.refunds).toEqual([])
+      expect(result.count).toBe(0)
+    })
+
+    // --- client.ts: sendBreachAlert defaults ---
+
+    it('sendBreachAlert defaults alertsSent to 0 when missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        message: 'No configs',
+        // alerts_sent missing -> ?? 0
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.sendBreachAlert({
+        cashBalance: 100,
+        pendingTotal: 100,
+        shortfall: 0,
+        coverageRatio: 1,
+        triggeredBy: 'manual',
+      })
+
+      expect(result.alertsSent).toBe(0)
+      expect(result.results).toBeUndefined()
+    })
+
+    // --- client.ts: evaluateFraud exhaustive field mapping ---
+
+    it('evaluateFraud maps all fields including risk factors', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: true,
+        evaluation: {
+          id: 'eval_1',
+          signal: 'medium',
+          risk_factors: [
+            { policy_id: 'fp_1', policy_type: 'velocity', severity: 'soft', indicator: 'high_frequency' },
+          ],
+          valid_until: '2026-03-20',
+          created_at: '2026-03-16',
+          acknowledged_at: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.evaluateFraud({
+        idempotencyKey: 'ik_eval',
+        amount: 50000,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.cached).toBe(true)
+      expect(result.evaluation.id).toBe('eval_1')
+      expect(result.evaluation.signal).toBe('medium')
+      expect(result.evaluation.riskFactors).toHaveLength(1)
+      expect(result.evaluation.riskFactors[0].policyId).toBe('fp_1')
+      expect(result.evaluation.riskFactors[0].policyType).toBe('velocity')
+      expect(result.evaluation.riskFactors[0].severity).toBe('soft')
+      expect(result.evaluation.riskFactors[0].indicator).toBe('high_frequency')
+      expect(result.evaluation.validUntil).toBe('2026-03-20')
+      expect(result.evaluation.createdAt).toBe('2026-03-16')
+      expect(result.evaluation.acknowledgedAt).toBeNull()
+    })
+
+    it('evaluateFraud defaults risk_factors to empty array', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: false,
+        evaluation: {
+          id: 'eval_2',
+          signal: 'low',
+          // risk_factors missing -> || []
+          valid_until: null,
+          created_at: '2026-03-16',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.evaluateFraud({ idempotencyKey: 'ik_2', amount: 100 })
+
+      expect(result.evaluation.riskFactors).toEqual([])
+    })
+
+    // --- client.ts: preflightAuthorization violated_policies mapping ---
+
+    it('preflightAuthorization maps violated_policies with all fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: false,
+        message: 'reviewed',
+        decision: {
+          id: 'dec_pf',
+          decision: 'allowed',
+          violated_policies: [
+            { policy_id: 'p1', policy_type: 'budget', severity: 'soft', reason: 'near limit' },
+          ],
+          expires_at: '2026-04-01',
+          created_at: '2026-03-16',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.preflightAuthorization({
+        idempotencyKey: 'ik_pf',
+        amount: 1000,
+      })
+
+      expect(result.decision.violatedPolicies[0].policyId).toBe('p1')
+      expect(result.decision.violatedPolicies[0].policyType).toBe('budget')
+      expect(result.decision.violatedPolicies[0].severity).toBe('soft')
+      expect(result.decision.violatedPolicies[0].reason).toBe('near limit')
+      expect(result.decision.expiresAt).toBe('2026-04-01')
+      expect(result.decision.createdAt).toBe('2026-03-16')
+      expect(result.message).toBe('reviewed')
+    })
+
+    it('preflightAuthorization defaults violated_policies to empty array', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: false,
+        message: 'ok',
+        decision: {
+          id: 'dec_pf2',
+          decision: 'allowed',
+          // violated_policies missing -> || []
+          expires_at: null,
+          created_at: '2026-03-16',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.preflightAuthorization({ idempotencyKey: 'ik_pf2', amount: 100 })
+
+      expect(result.decision.violatedPolicies).toEqual([])
+    })
+
+    // --- client.ts: calculateTaxForParticipant with sharedTaxProfile present ---
+
+    it('calculateTaxForParticipant maps sharedTaxProfile with fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        calculation: {
+          participant_id: 'p_tax',
+          tax_year: 2025,
+          gross_payments: 80000,
+          transaction_count: 50,
+          requires_1099: true,
+          monthly_totals: {},
+          threshold: 600,
+          linked_user_id: 'u_tax',
+          shared_tax_profile: {
+            status: 'verified',
+            legal_name: 'Test Corp LLC',
+            tax_id_last4: '1234',
+          },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.calculateTaxForParticipant('p_tax', 2025)
+
+      expect(result.calculation.requires1099).toBe(true)
+      expect(result.calculation.linkedUserId).toBe('u_tax')
+      expect(result.calculation.sharedTaxProfile).not.toBeNull()
+      expect(result.calculation.sharedTaxProfile!.status).toBe('verified')
+      expect(result.calculation.sharedTaxProfile!.legalName).toBe('Test Corp LLC')
+      expect(result.calculation.sharedTaxProfile!.taxIdLast4).toBe('1234')
+    })
+
+    it('calculateTaxForParticipant sharedTaxProfile null fallbacks in fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        calculation: {
+          participant_id: 'p_tax2',
+          tax_year: 2025,
+          gross_payments: 100,
+          transaction_count: 1,
+          requires_1099: false,
+          threshold: 600,
+          shared_tax_profile: {
+            status: 'pending',
+            // legal_name missing -> null
+            // tax_id_last4 missing -> null
+          },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.calculateTaxForParticipant('p_tax2')
+
+      expect(result.calculation.sharedTaxProfile!.legalName).toBeNull()
+      expect(result.calculation.sharedTaxProfile!.taxIdLast4).toBeNull()
+    })
+
+    // --- client.ts: generateTaxSummary with sharedTaxProfile present ---
+
+    it('generateTaxSummary maps sharedTaxProfile with all fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        note: 'final',
+        summaries: [{
+          participant_id: 'p_1',
+          linked_user_id: 'u_1',
+          gross_earnings: 80000,
+          refunds_issued: 1000,
+          net_earnings: 79000,
+          total_paid_out: 79000,
+          requires_1099: true,
+          shared_tax_profile: {
+            status: 'verified',
+            legal_name: 'Big Corp',
+            tax_id_last4: '5678',
+          },
+        }],
+        totals: {
+          total_gross: 80000,
+          total_refunds: 1000,
+          total_net: 79000,
+          total_paid: 79000,
+          participants_requiring_1099: 1,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.generateTaxSummary(2025)
+
+      expect(result.summaries[0].requires1099).toBe(true)
+      expect(result.summaries[0].linkedUserId).toBe('u_1')
+      expect(result.summaries[0].sharedTaxProfile!.status).toBe('verified')
+      expect(result.summaries[0].sharedTaxProfile!.legalName).toBe('Big Corp')
+      expect(result.summaries[0].sharedTaxProfile!.taxIdLast4).toBe('5678')
+      expect(result.totals.participantsRequiring1099).toBe(1)
+    })
+
+    it('generateTaxSummary sharedTaxProfile null legalName and taxIdLast4', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        summaries: [{
+          participant_id: 'p_sp',
+          gross_earnings: 100,
+          refunds_issued: 0,
+          net_earnings: 100,
+          total_paid_out: 50,
+          requires_1099: false,
+          shared_tax_profile: {
+            status: 'pending',
+          },
+        }],
+        totals: {
+          total_gross: 100,
+          total_refunds: 0,
+          total_net: 100,
+          total_paid: 50,
+          participants_requiring_1099: 0,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.generateTaxSummary(2025)
+
+      expect(result.summaries[0].sharedTaxProfile!.legalName).toBeNull()
+      expect(result.summaries[0].sharedTaxProfile!.taxIdLast4).toBeNull()
+    })
+
+    // --- client.ts: createCheckoutSession Boolean(success) coercion ---
+
+    it('createCheckoutSession coerces success to boolean', async () => {
+      const fn = mockFetch({
+        success: 1, // truthy but not boolean
+        checkout_session: {
+          id: 'cs_bool',
+          mode: 'direct',
+          payment_id: 'pay_1',
+          status: 'completed',
+          requires_action: false,
+          amount: 1000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+      })
+
+      expect(result.success).toBe(true)
+      expect(typeof result.success).toBe('boolean')
+    })
+
+    // --- client.ts: createCheckoutSession mode defaults to direct ---
+
+    it('createCheckoutSession defaults mode to direct when not session', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_nomode',
+          // mode missing -> not 'session' -> defaults to 'direct'
+          payment_id: 'pay_1',
+          status: 'completed',
+          requires_action: false,
+          amount: 1000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+      })
+
+      expect(result.checkoutSession.mode).toBe('direct')
+    })
+
+    // --- client.ts: createCheckoutSession currency default chain ---
+
+    it('createCheckoutSession uses req.currency over USD default', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_cur',
+          mode: 'session',
+          status: 'pending',
+          requires_action: false,
+          amount: 2000,
+          // currency missing in response
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 2000,
+        participantId: 'p_1',
+        currency: 'GBP',
+        successUrl: 'https://example.com/ok',
+      })
+
+      expect(result.checkoutSession.currency).toBe('GBP')
+    })
+
+    // --- client.ts: createCheckoutSession id fallback chain ---
+
+    it('createCheckoutSession id falls back to payment_id then payment_intent_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          // id missing
+          payment_id: 'pay_fb',
+          status: 'completed',
+          requires_action: false,
+          amount: 500,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 500,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_fb',
+      })
+
+      expect(result.checkoutSession.id).toBe('pay_fb')
+    })
+
+    // --- client.ts: createWebhookEndpoint default events ---
+
+    it('createWebhookEndpoint sends default events [*]', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: { id: 'wh_def', url: 'https://example.com', events: ['*'], is_active: true, created_at: '' },
+      })
+      const sdk = createClient(fn)
+      await sdk.createWebhookEndpoint({ url: 'https://example.com' })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.events).toEqual(['*'])
+    })
+
+    // --- client.ts: rotateWebhookSecret mapping ---
+
+    it('rotateWebhookSecret maps secret and message', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: { secret: 'whsec_rotated' },
+        message: 'Secret rotated',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.rotateWebhookSecret('wh_rot')
+
+      expect(result.success).toBe(true)
+      expect(result.data.secret).toBe('whsec_rotated')
+      expect(result.message).toBe('Secret rotated')
+    })
+
+    it('rotateWebhookSecret returns null secret when missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {},
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.rotateWebhookSecret('wh_rot2')
+
+      expect(result.data.secret).toBeNull()
+      expect(result.message).toBeUndefined()
+    })
+
+    // --- client.ts: deleteWebhookEndpoint and retryWebhookDelivery ---
+
+    it('deleteWebhookEndpoint maps message', async () => {
+      const fn = mockFetch({ success: true, message: 'Deleted' })
+      const sdk = createClient(fn)
+      const result = await sdk.deleteWebhookEndpoint('wh_del')
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Deleted')
+    })
+
+    it('deleteWebhookEndpoint returns undefined message when missing', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.deleteWebhookEndpoint('wh_del2')
+
+      expect(result.message).toBeUndefined()
+    })
+
+    it('retryWebhookDelivery maps message', async () => {
+      const fn = mockFetch({ success: true, message: 'Retrying' })
+      const sdk = createClient(fn)
+      const result = await sdk.retryWebhookDelivery('d_retry')
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Retrying')
+    })
+
+    // --- client.ts: getWebhookDeliveries with non-array data ---
+
+    it('getWebhookDeliveries defaults to empty array when data is not array', async () => {
+      const fn = mockFetch({ success: true, data: null })
+      const sdk = createClient(fn)
+      const result = await sdk.getWebhookDeliveries()
+
+      expect(result.data).toEqual([])
+    })
+
+    // --- client.ts: listWebhookEndpoints with non-array data ---
+
+    it('listWebhookEndpoints defaults to empty array when data is not array', async () => {
+      const fn = mockFetch({ success: true, data: null })
+      const sdk = createClient(fn)
+      const result = await sdk.listWebhookEndpoints()
+
+      expect(result.data).toEqual([])
+    })
+
+    // --- client.ts: listComplianceAccessPatterns exhaustive ---
+
+    it('listComplianceAccessPatterns maps all pattern fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        window_hours: 24,
+        count: 1,
+        patterns: [{
+          ip_address: '192.168.1.1',
+          hour: '2026-03-16T10:00:00Z',
+          request_count: 100,
+          unique_actions: 5,
+          actions: ['record-sale', 'generate-report'],
+          max_risk_score: 30,
+          failed_auths: 2,
+        }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceAccessPatterns({ hours: 24, limit: 10 })
+
+      expect(result.windowHours).toBe(24)
+      expect(result.count).toBe(1)
+      expect(result.patterns[0].ipAddress).toBe('192.168.1.1')
+      expect(result.patterns[0].hour).toBe('2026-03-16T10:00:00Z')
+      expect(result.patterns[0].requestCount).toBe(100)
+      expect(result.patterns[0].uniqueActions).toBe(5)
+      expect(result.patterns[0].actions).toEqual(['record-sale', 'generate-report'])
+      expect(result.patterns[0].maxRiskScore).toBe(30)
+      expect(result.patterns[0].failedAuths).toBe(2)
+    })
+
+    it('listComplianceAccessPatterns defaults actions to empty array', async () => {
+      const fn = mockFetch({
+        success: true,
+        window_hours: 1,
+        count: 1,
+        patterns: [{
+          ip_address: '10.0.0.1',
+          hour: '2026-03-16T00:00:00Z',
+          request_count: 1,
+          unique_actions: 0,
+          // actions missing -> || []
+          max_risk_score: 0,
+          failed_auths: 0,
+        }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceAccessPatterns()
+
+      expect(result.patterns[0].actions).toEqual([])
+    })
+
+    // --- client.ts: createRefund with breakdown present ---
+
+    it('createRefund maps breakdown fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: {
+          id: 'rf_bd',
+          sale_reference: 'sale_bd',
+          refunded_amount: 5000,
+          currency: 'USD',
+          status: 'completed',
+          breakdown: { from_creator: 3500, from_platform: 1500 },
+          is_full_refund: true,
+          repair_pending: false,
+        },
+        warning: 'Balance low',
+        warning_code: 'low_balance',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createRefund({ saleReference: 'sale_bd', reason: 'test' })
+
+      expect(result.refund.breakdown).not.toBeNull()
+      expect(result.refund.breakdown!.fromCreator).toBe(3500)
+      expect(result.refund.breakdown!.fromPlatform).toBe(1500)
+      expect(result.refund.isFullRefund).toBe(true)
+      expect(result.refund.repairPending).toBe(false)
+      expect(result.warning).toBe('Balance low')
+      expect(result.warningCode).toBe('low_balance')
+    })
+
+    // --- client.ts: createRefund id falls back to transaction_id ---
+
+    it('createRefund id falls back to transaction_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: {
+          // id missing, reference_id missing
+          transaction_id: 'tx_fallback',
+          sale_reference: 'sale_3',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createRefund({ saleReference: 'sale_3', reason: 'test' })
+
+      expect(result.refund.id).toBe('tx_fallback')
+    })
+
+    // --- hmacHex: basic test ---
+
+    it('hmacHex produces consistent hex output', async () => {
+
+      const result = await hmacHex('secret', 'payload')
+      expect(typeof result).toBe('string')
+      expect(result).toMatch(/^[0-9a-f]{64}$/)
+
+      // Same inputs produce same output
+      const result2 = await hmacHex('secret', 'payload')
+      expect(result).toBe(result2)
+    })
+
+    it('hmacHex different payloads produce different results', async () => {
+
+      const a = await hmacHex('secret', 'payload-a')
+      const b = await hmacHex('secret', 'payload-b')
+      expect(a).not.toBe(b)
+    })
+
+    // --- client.ts: createPayout with full payout key ---
+
+    it('createPayout maps all payout fields when present', async () => {
+      const fn = mockFetch({
+        success: true,
+        payout: {
+          id: 'po_full',
+          transaction_id: 'tx_full',
+          gross_amount: 10000,
+          fees: 200,
+          net_amount: 9800,
+          previous_balance: 25000,
+          new_balance: 15200,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createPayout({ participantId: 'p_1', amount: 10000 })
+
+      expect(result.payout.id).toBe('po_full')
+      expect(result.payout.transactionId).toBe('tx_full')
+      expect(result.payout.grossAmount).toBe(10000)
+      expect(result.payout.fees).toBe(200)
+      expect(result.payout.netAmount).toBe(9800)
+      expect(result.payout.previousBalance).toBe(25000)
+      expect(result.payout.newBalance).toBe(15200)
+    })
+
+    // --- client.ts: createReconciliationSnapshot ---
+
+    it('createReconciliationSnapshot maps snapshot_id and integrity_hash', async () => {
+      const fn = mockFetch({
+        success: true,
+        snapshot: {
+          id: 'snap_new',
+          integrity_hash: 'hash_abc',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createReconciliationSnapshot({ periodId: 'period_1' })
+
+      expect(result.success).toBe(true)
+      expect(result.snapshot_id).toBe('snap_new')
+      expect(result.integrity_hash).toBe('hash_abc')
+    })
+
+    // --- client.ts: createCreator maps all fields ---
+
+    it('createCreator maps all response fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: {
+          id: 'c_1',
+          account_id: 'acct_c1',
+          display_name: 'Creator One',
+          email: 'c1@test.com',
+          default_split_percent: 80,
+          payout_preferences: { schedule: 'monthly' },
+          created_at: '2026-03-10',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCreator({
+        creatorId: 'c_1',
+        displayName: 'Creator One',
+        email: 'c1@test.com',
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.creator.id).toBe('c_1')
+      expect(result.creator.accountId).toBe('acct_c1')
+      expect(result.creator.displayName).toBe('Creator One')
+      expect(result.creator.email).toBe('c1@test.com')
+      expect(result.creator.defaultSplitPercent).toBe(80)
+      expect(result.creator.payoutPreferences).toEqual({ schedule: 'monthly' })
+      expect(result.creator.createdAt).toBe('2026-03-10')
+    })
+
+    it('createCreator defaults payoutPreferences to empty object', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: {
+          id: 'c_2',
+          account_id: 'acct_c2',
+          // payout_preferences missing -> || {}
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCreator({
+        creatorId: 'c_2',
+        displayName: 'C2',
+        email: 'c2@test.com',
+      })
+
+      expect(result.creator.payoutPreferences).toEqual({})
+    })
+
+    it('createCreator handles missing participant key', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.createCreator({
+        creatorId: 'c_3',
+        displayName: 'C3',
+        email: 'c3@test.com',
+      })
+
+      // participant is {} from || {}
+      expect(result.creator.id).toBeUndefined()
+      expect(result.creator.payoutPreferences).toEqual({})
+    })
+
+    // --- client.ts: generateAllTaxDocuments ---
+
+    it('generateAllTaxDocuments maps generation fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        generation: {
+          tax_year: 2025,
+          created: 10,
+          skipped: 2,
+          total_amount: 500000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.generateAllTaxDocuments(2025)
+
+      expect(result.generation.taxYear).toBe(2025)
+      expect(result.generation.created).toBe(10)
+      expect(result.generation.skipped).toBe(2)
+      expect(result.generation.totalAmount).toBe(500000)
+    })
+
+    // --- client.ts: markTaxDocumentFiled ---
+
+    it('markTaxDocumentFiled maps document fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        document: {
+          id: 'doc_filed',
+          tax_year: 2025,
+          status: 'filed',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.markTaxDocumentFiled('doc_filed')
+
+      expect(result.success).toBe(true)
+      expect(result.document.id).toBe('doc_filed')
+      expect(result.document.tax_year).toBe(2025)
+      expect(result.document.status).toBe('filed')
+    })
+
+    // --- client.ts: createLedger maps all fields ---
+
+    it('createLedger maps all response fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        ledger: {
+          id: 'ledger_1',
+          business_name: 'Test Biz',
+          ledger_mode: 'marketplace',
+          api_key: 'key_123',
+          status: 'active',
+          created_at: '2026-03-10',
+        },
+        warning: 'Demo mode',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createLedger({
+        businessName: 'Test Biz',
+        ownerEmail: 'owner@test.com',
+        ledgerMode: 'marketplace',
+      })
+
+      expect(result.ledger.id).toBe('ledger_1')
+      expect(result.ledger.businessName).toBe('Test Biz')
+      expect(result.ledger.ledgerMode).toBe('marketplace')
+      expect(result.ledger.apiKey).toBe('key_123')
+      expect(result.ledger.status).toBe('active')
+      expect(result.ledger.createdAt).toBe('2026-03-10')
+      expect(result.warning).toBe('Demo mode')
     })
   })
 })

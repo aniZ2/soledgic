@@ -584,6 +584,263 @@ describe('createApiHandler', () => {
       expect.objectContaining({ status: 500 })
     )
   })
+
+  it('requestId matches exact format req_ followed by 24 hex chars', async () => {
+    const innerHandler = vi.fn(async (_req: Request, ctx: { requestId: string }) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ id: ctx.requestId })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('GET'))
+    const ctx = innerHandler.mock.calls[0][1]
+    expect(ctx.requestId).toMatch(/^req_[0-9a-f]{24}$/)
+  })
+
+  it('injects X-Content-Type-Options and X-Frame-Options on 401 response', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'missing' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    const response = await handler(makeRequest())
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+  })
+
+  it('getClientIp uses x-real-ip when cf-connecting-ip is absent', async () => {
+    // Trigger error path so clientIp is used in audit log
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('test ip')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('POST', { 'x-real-ip': '10.20.30.40' }))
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ip_address: '10.20.30.40' })
+    )
+  })
+
+  it('getClientIp returns "unknown" when no IP headers present', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('test unknown ip')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('POST'))
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ip_address: 'unknown' })
+    )
+  })
+
+  it('getClientIp takes first IP from x-forwarded-for comma list', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('test forwarded')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('POST', { 'x-forwarded-for': '1.1.1.1, 2.2.2.2, 3.3.3.3' }))
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ip_address: '1.1.1.1' })
+    )
+  })
+
+  it('content-length parsing treats missing header as 0', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+      maxBodySize: 10,
+    })
+
+    // Request without content-length header (parsed as 0, which is <= 10)
+    const req = new Request('https://example.com/api/test', { method: 'GET' })
+    await handler(req)
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('bearer token fallback authenticates when cookie auth fails', async () => {
+    // First call (cookie auth) fails, second call (bearer) succeeds
+    mockGetUser
+      .mockResolvedValueOnce({ data: { user: null }, error: { message: 'no cookie' } })
+      .mockResolvedValueOnce({ data: { user: { id: 'bearer_user', email: 'bearer@test.com' } }, error: null })
+
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ userId: ctx.user?.id })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const req = makeRequest('POST', { 'authorization': 'Bearer my_jwt_token' })
+    await handler(req)
+    expect(innerHandler).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({
+        user: { id: 'bearer_user', email: 'bearer@test.com' },
+        accessToken: 'my_jwt_token',
+      })
+    )
+  })
+
+  it('sets accessToken to null when authenticated via cookies only', async () => {
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    expect(innerHandler).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({ accessToken: null })
+    )
+  })
+
+  it('does not call getReadonly for GET requests (read-only check skipped)', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('GET'))
+    // getReadonly should not be called for GET
+    expect(mockGetReadonly).not.toHaveBeenCalled()
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('includes debug info in 401 response when AUTH_DEBUG_LOGS is true', async () => {
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    await handler(makeRequest())
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: 'Unauthorized',
+        debug: expect.objectContaining({
+          auth_error: 'expired',
+          bearer_present: false,
+        }),
+      }),
+      expect.objectContaining({ status: 401 })
+    )
+    vi.stubEnv('AUTH_DEBUG_LOGS', '')
+  })
+
+  it('does not include debug info in 401 response when AUTH_DEBUG_LOGS is not set', async () => {
+    vi.stubEnv('AUTH_DEBUG_LOGS', '')
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    await handler(makeRequest())
+    const callArgs = mockJsonFn.mock.calls[0][0]
+    expect(callArgs.debug).toBeUndefined()
+  })
+
+  it('error handler logs error name in audit entry', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new TypeError('bad type')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'api_error',
+        request_body: expect.objectContaining({ error_type: 'TypeError' }),
+      })
+    )
+  })
+
+  it('error handler uses "UnknownError" for non-Error throws in audit', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw 'string error'
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request_body: expect.objectContaining({ error_type: 'UnknownError' }),
+      })
+    )
+  })
 })
 
 describe('isRecord', () => {
@@ -636,6 +893,56 @@ describe('parseCookieHeader', () => {
     const result = parseCookieHeader('a=1; ; b=2')
     expect(result.every(c => c.name.length > 0)).toBe(true)
   })
+
+  it('returns exactly 2 entries for "a=1; ; b=2" (empty name filtered)', () => {
+    const result = parseCookieHeader('a=1; ; b=2')
+    expect(result).toHaveLength(2)
+    expect(result[0].name).toBe('a')
+    expect(result[1].name).toBe('b')
+  })
+
+  it('handles cookie with empty value after =', () => {
+    const result = parseCookieHeader('name=')
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({ name: 'name', value: '' })
+  })
+
+  it('handles cookie with multiple = signs preserving all after first', () => {
+    const result = parseCookieHeader('base64=YWJj=ZGVm==')
+    expect(result[0].name).toBe('base64')
+    expect(result[0].value).toBe('YWJj=ZGVm==')
+  })
+
+  it('filters whitespace-only name segments', () => {
+    const result = parseCookieHeader('a=1;   ;b=2')
+    expect(result).toHaveLength(2)
+  })
+
+  it('indexOf returns correct index for first = only', () => {
+    // Validates that idx === -1 branch produces value: '' and idx > 0 branch slices correctly
+    const noEquals = parseCookieHeader('flagonly')
+    expect(noEquals[0].value).toBe('')
+    expect(noEquals[0].name).toBe('flagonly')
+
+    const withEquals = parseCookieHeader('k=v')
+    expect(withEquals[0].name).toBe('k')
+    expect(withEquals[0].value).toBe('v')
+  })
+
+  it('handles value with leading/trailing whitespace after =', () => {
+    const result = parseCookieHeader('tok=  spaces  ')
+    expect(result[0].value).toBe('spaces')
+  })
+
+  it('filters entry that is just whitespace (no name)', () => {
+    const result = parseCookieHeader('  ')
+    expect(result).toHaveLength(0)
+  })
+
+  it('handles = as first character (empty name)', () => {
+    const result = parseCookieHeader('=value')
+    expect(result).toHaveLength(0) // empty name filtered
+  })
 })
 
 describe('mergeCookieEntries', () => {
@@ -660,6 +967,49 @@ describe('mergeCookieEntries', () => {
     expect(mergeCookieEntries([], [])).toEqual([])
     expect(mergeCookieEntries([{ name: 'a', value: '1' }], [])).toHaveLength(1)
     expect(mergeCookieEntries([], [{ name: 'b', value: '2' }])).toHaveLength(1)
+  })
+
+  it('preserves insertion order: primary entries come before fallback entries', () => {
+    const result = mergeCookieEntries(
+      [{ name: 'first', value: '1' }, { name: 'second', value: '2' }],
+      [{ name: 'third', value: '3' }, { name: 'fourth', value: '4' }],
+    )
+    expect(result).toHaveLength(4)
+    expect(result[0].name).toBe('first')
+    expect(result[1].name).toBe('second')
+    expect(result[2].name).toBe('third')
+    expect(result[3].name).toBe('fourth')
+  })
+
+  it('does not add fallback entry when primary has same name', () => {
+    const result = mergeCookieEntries(
+      [{ name: 'x', value: 'primary' }],
+      [{ name: 'x', value: 'fallback' }, { name: 'y', value: 'only-in-fallback' }],
+    )
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual({ name: 'x', value: 'primary' })
+    expect(result[1]).toEqual({ name: 'y', value: 'only-in-fallback' })
+  })
+
+  it('returns exact cookie objects with name and value properties', () => {
+    const result = mergeCookieEntries(
+      [{ name: 'a', value: '1' }],
+      [{ name: 'b', value: '2' }],
+    )
+    expect(result).toEqual([
+      { name: 'a', value: '1' },
+      { name: 'b', value: '2' },
+    ])
+  })
+
+  it('merged map preserves last primary value when primary has duplicates', () => {
+    // Maps overwrite on set, so last primary entry with same name wins
+    const result = mergeCookieEntries(
+      [{ name: 'dup', value: 'first' }, { name: 'dup', value: 'second' }],
+      [],
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].value).toBe('second')
   })
 })
 
@@ -886,6 +1236,41 @@ describe('parsePendingAuthCookies', () => {
     ])
     expect(result[0].options).toBeUndefined()
   })
+
+  it('distinguishes !name (empty string) from value === null', () => {
+    // name='' is falsy so !name is true -> skipped
+    // value is null (explicitly null) -> skipped via value === null
+    const result = parsePendingAuthCookies([
+      { name: '', value: 'v' },      // skipped: !name is true
+      { name: 'a', value: null },     // skipped: value === null
+      { name: 'b', value: 'ok' },     // kept
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('b')
+  })
+
+  it('keeps entry with name and empty string value (value !== null)', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'clear', value: '' },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].value).toBe('')
+  })
+
+  it('handles options with array value for options field (array is object)', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: [1, 2, 3] },
+    ])
+    // Arrays pass isRecord but have no string domain/path etc
+    expect(result[0].options).toBeDefined()
+  })
+
+  it('excludes non-string path in options', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { path: 123 } },
+    ])
+    expect(result[0].options?.path).toBeUndefined()
+  })
 })
 
 describe('getErrorDetails', () => {
@@ -905,6 +1290,34 @@ describe('getErrorDetails', () => {
       message: 'An unexpected error occurred',
     })
     expect(getErrorDetails(42)).toEqual({
+      name: 'UnknownError',
+      message: 'An unexpected error occurred',
+    })
+  })
+
+  it('extracts name from base Error', () => {
+    const err = new Error('base error')
+    const details = getErrorDetails(err)
+    expect(details.name).toBe('Error')
+    expect(details.message).toBe('base error')
+  })
+
+  it('extracts name from RangeError', () => {
+    const err = new RangeError('out of range')
+    const details = getErrorDetails(err)
+    expect(details.name).toBe('RangeError')
+    expect(details.message).toBe('out of range')
+  })
+
+  it('returns defaults for undefined', () => {
+    expect(getErrorDetails(undefined)).toEqual({
+      name: 'UnknownError',
+      message: 'An unexpected error occurred',
+    })
+  })
+
+  it('returns defaults for object that is not an Error instance', () => {
+    expect(getErrorDetails({ name: 'Fake', message: 'not real' })).toEqual({
       name: 'UnknownError',
       message: 'An unexpected error occurred',
     })
