@@ -35,10 +35,14 @@ describe('getPlanConfig', () => {
 })
 
 describe('PLANS', () => {
-  it('pro plan has overage pricing fields', () => {
+  it('pro plan has unlimited limits while billing is pending', () => {
     const pro = PLANS['pro']
-    expect(pro.overage_ledger_price_monthly).toBe(2000)
-    expect(pro.overage_team_member_price_monthly).toBe(2000)
-    expect(pro.overage_transaction_price).toBe(2)
+    expect(pro.max_ledgers).toBe(-1)
+    expect(pro.max_team_members).toBe(-1)
+    expect(pro.max_transactions_per_month).toBe(-1)
+    expect(pro.price_monthly).toBe(0)
+    expect(pro.overage_ledger_price_monthly).toBeUndefined()
+    expect(pro.overage_team_member_price_monthly).toBeUndefined()
+    expect(pro.overage_transaction_price).toBeUndefined()
   })
 })

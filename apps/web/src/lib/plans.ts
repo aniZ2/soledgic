@@ -53,25 +53,20 @@ export const FUTURE_PRICING_SUGGESTION: Record<string, PlanConfig> = {
 }
 
 // Active plans shown to customers today.
+// All limits set to -1 (unlimited) while billing integration is pending.
 export const PLANS: Record<string, PlanConfig> = {
   pro: {
     name: 'Free',
     price_monthly: 0,
-    max_ledgers: 1,
-    max_team_members: 1,
-    max_transactions_per_month: 1000,
-    overage_ledger_price_monthly: 2000,
-    overage_team_member_price_monthly: 2000,
-    overage_transaction_price: 2,
+    max_ledgers: -1,
+    max_team_members: -1,
+    max_transactions_per_month: -1,
     features: [
       'Payment processing',
       'Core finance features',
-      '1 ledger included',
-      '1 team member included',
-      '1,000 transactions/month included',
-      '$20/month per additional ledger',
-      '$20/month per additional team member',
-      '$0.02 per additional transaction',
+      'Unlimited ledgers',
+      'Unlimited team members',
+      'Unlimited transactions',
       'API access',
       'Receipts & reconciliation',
       'Email support',

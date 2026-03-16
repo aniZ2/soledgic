@@ -257,9 +257,9 @@ async function ensureOwnerMembership(organizationId: string, userId: string) {
     if ((orgUsage.current_member_count || 0) !== normalizedCount) {
       updates.current_member_count = normalizedCount
     }
-    // Keep included-member limits stable for overage billing.
-    if (!orgUsage.max_team_members || orgUsage.max_team_members < 1) {
-      updates.max_team_members = 1
+    // Ensure unlimited defaults while billing is pending.
+    if (!orgUsage.max_team_members || orgUsage.max_team_members === 0) {
+      updates.max_team_members = -1
     }
 
     if (Object.keys(updates).length > 0) {
