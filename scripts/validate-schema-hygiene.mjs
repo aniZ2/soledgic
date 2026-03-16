@@ -152,12 +152,21 @@ function isColumnReferencedInSql(colName) {
 heading('1. Dead Table Detection')
 
 // Parse CREATE TABLE statements
+// Tables with a preceding -- @planned or -- @deprecated comment are suppressed from warnings
 const createTableRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)/gi
 const createdTables = new Set()
+const annotatedTables = new Set()
 let m
 while ((m = createTableRe.exec(allMigrationSql)) !== null) {
   const name = m[1].toLowerCase()
-  if (!isIgnoredTable(name)) createdTables.add(name)
+  if (!isIgnoredTable(name)) {
+    createdTables.add(name)
+    // Check for @planned/@deprecated annotation in the 200 chars before this match
+    const preceding = allMigrationSql.slice(Math.max(0, m.index - 200), m.index)
+    if (/--\s*@(planned|deprecated|reserved)\b/i.test(preceding)) {
+      annotatedTables.add(name)
+    }
+  }
 }
 
 // Parse DROP TABLE statements
@@ -182,11 +191,20 @@ const noTsRefTables = [...liveTables].filter((t) => !tablesInCode.has(t)).sort()
 // Second pass: check if "dead" tables are actually used in SQL function bodies
 const deadTables = []
 const sqlOnlyTables = []
+const annotatedDeadTables = []
 for (const t of noTsRefTables) {
-  if (isTableReferencedInSql(t)) {
+  if (annotatedTables.has(t)) {
+    annotatedDeadTables.push(t)
+  } else if (isTableReferencedInSql(t)) {
     sqlOnlyTables.push(t)
   } else {
     deadTables.push(t)
+  }
+}
+
+if (annotatedDeadTables.length > 0) {
+  for (const t of annotatedDeadTables) {
+    console.log(`  \x1b[36mℹ INFO\x1b[0m  Table "${t}" has no references but is annotated @planned/@deprecated (suppressed)`)
   }
 }
 
@@ -221,7 +239,9 @@ heading('2. Dead Column Detection')
 
 // Build table -> columns map from CREATE TABLE blocks
 // Parse column definitions between CREATE TABLE ... ( ... );
+// Columns annotated with -- @planned or -- @deprecated in the SQL are suppressed from warnings
 const tableColumns = new Map() // table -> Set<column>
+const annotatedColumns = new Set() // "table.column" entries with @planned or @deprecated comments
 
 // Process CREATE TABLE blocks
 const createBlockRe = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?(\w+)\s*\(([\s\S]*?)(?:\n\))/gi
@@ -245,6 +265,10 @@ while ((m = createBlockRe.exec(allMigrationSql)) !== null) {
     // Column name is the first word
     if (/^[a-z_][a-z0-9_]*$/i.test(firstWord)) {
       cols.add(firstWord)
+      // Check for @planned or @deprecated annotation in comment on this line
+      if (/--\s*@(planned|deprecated|reserved)\b/i.test(line)) {
+        annotatedColumns.add(`${tableName}.${firstWord}`)
+      }
     }
   }
 
@@ -298,6 +322,9 @@ for (const table of referencedTables.sort()) {
   for (const col of cols) {
     // Skip very common / generic column names that produce false positives
     if (['id', 'created_at', 'updated_at'].includes(col)) continue
+
+    // Skip columns annotated with @planned, @deprecated, or @reserved
+    if (annotatedColumns.has(`${table}.${col}`)) continue
 
     // Simple heuristic: does this column name appear ANYWHERE in any .ts file?
     // Use word-boundary-ish check to avoid substring matches
