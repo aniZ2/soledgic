@@ -2918,6 +2918,248 @@ describe('Soledgic SDK', () => {
       const headers = fn.mock.calls[0][1].headers
       expect(headers['Soledgic-Version']).toBe('2026-03-01')
     })
+
+    it('reverseTransaction maps all snake_case fields to camelCase', async () => {
+      const fn = mockFetch({
+        success: true, void_type: 'full', message: 'Reversed',
+        transaction_id: 'tx_1', reversal_id: 'rev_1', reversed_amount: 5000,
+        is_partial: false, voided_at: '2026-01-01', reversed_at: '2026-01-02',
+        warning: 'balance low',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.reverseTransaction({ transactionId: 'tx_1', reason: 'test' })
+
+      expect(result.success).toBe(true)
+      expect(result.voidType).toBe('full')
+      expect(result.message).toBe('Reversed')
+      expect(result.transactionId).toBe('tx_1')
+      expect(result.reversalId).toBe('rev_1')
+      expect(result.reversedAmount).toBe(5000)
+      expect(result.isPartial).toBe(false)
+      expect(result.voidedAt).toBe('2026-01-01')
+      expect(result.reversedAt).toBe('2026-01-02')
+      expect(result.warning).toBe('balance low')
+    })
+
+    it('reverseTransaction returns null for missing optional fields', async () => {
+      const fn = mockFetch({ success: true, void_type: 'void', message: 'Done' })
+      const sdk = createClient(fn)
+      const result = await sdk.reverseTransaction({ transactionId: 'tx_2', reason: 'err' })
+
+      expect(result.reversalId).toBeNull()
+      expect(result.reversedAmount).toBeNull()
+      expect(result.isPartial).toBeNull()
+      expect(result.voidedAt).toBeNull()
+      expect(result.reversedAt).toBeNull()
+      expect(result.warning).toBeNull()
+    })
+
+    it('projectIntent maps all response fields', async () => {
+      const fn = mockFetch({
+        success: true, instrument_id: 'inst_1', external_ref: 'ref_1',
+        cadence: 'monthly', projections_created: 6, projections_requested: 12,
+        duplicates_skipped: 0, date_range: { from: '2026-01', to: '2026-06' },
+        projected_dates: ['2026-01-15', '2026-02-15'],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.projectIntent({ authorizingInstrumentId: 'inst_1', untilDate: '2026-12-31' })
+
+      expect(result.instrumentId).toBe('inst_1')
+      expect(result.externalRef).toBe('ref_1')
+      expect(result.cadence).toBe('monthly')
+      expect(result.projectionsCreated).toBe(6)
+      expect(result.projectionsRequested).toBe(12)
+      expect(result.duplicatesSkipped).toBe(0)
+      expect(result.dateRange.from).toBe('2026-01')
+      expect(result.projectedDates).toHaveLength(2)
+    })
+
+    it('releaseFunds maps nested release object', async () => {
+      const fn = mockFetch({
+        success: true,
+        release: { id: 'rel_1', hold_id: 'h_1', executed: true, transfer_id: 'tr_1', transfer_status: 'completed', amount: 5000, currency: 'USD' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.releaseFunds('entry_1')
+
+      expect(result.success).toBe(true)
+      expect(result.release_id).toBe('rel_1')
+      expect(result.entry_id).toBe('h_1')
+      expect(result.executed).toBe(true)
+      expect(result.transfer_id).toBe('tr_1')
+      expect(result.transfer_status).toBe('completed')
+      expect(result.amount).toBe(5000)
+      expect(result.currency).toBe('USD')
+    })
+
+    it('releaseFunds returns nulls when release is empty', async () => {
+      const fn = mockFetch({ success: true, release: {} })
+      const sdk = createClient(fn)
+      const result = await sdk.releaseFunds('entry_2', false)
+
+      expect(result.release_id).toBeNull()
+      expect(result.executed).toBe(false)
+      expect(result.transfer_id).toBeNull()
+      expect(result.amount).toBeNull()
+    })
+
+    it('checkPayoutEligibility maps eligibility fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        eligibility: { participant_id: 'p_1', eligible: true, available_balance: 10000, issues: [], requirements: {} },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.checkPayoutEligibility('p_1')
+
+      expect(result.creator_id).toBe('p_1')
+      expect(result.eligible).toBe(true)
+      expect(result.available_balance).toBe(10000)
+      expect(result.issues).toEqual([])
+    })
+
+    it('checkPayoutEligibility defaults when eligibility is null', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.checkPayoutEligibility('p_2')
+
+      expect(result.creator_id).toBe('p_2') // falls back to input
+      expect(result.eligible).toBe(false)
+      expect(result.available_balance).toBe(0)
+      expect(result.issues).toEqual([])
+    })
+
+    it('createCheckoutSession maps checkout response fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_1', mode: 'direct', checkout_url: null,
+          payment_id: 'pay_1', status: 'completed',
+          requires_action: false, amount: 5000, currency: 'USD',
+          expires_at: null,
+          breakdown: { gross_amount: 5000, creator_amount: 4000, platform_amount: 1000, creator_percent: 80 },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        participantId: 'p1', amount: 5000, paymentMethodId: 'pm_1', idempotencyKey: 'ik_1',
+      })
+
+      expect(result.checkoutSession.id).toBe('cs_1')
+      expect(result.checkoutSession.mode).toBe('direct')
+      expect(result.checkoutSession.paymentId).toBe('pay_1')
+      expect(result.checkoutSession.requiresAction).toBe(false)
+      expect(result.checkoutSession.breakdown?.grossAmount).toBe(5000)
+      expect(result.checkoutSession.breakdown?.creatorAmount).toBe(4000)
+      expect(result.checkoutSession.breakdown?.platformAmount).toBe(1000)
+      expect(result.checkoutSession.breakdown?.creatorPercent).toBe(80)
+    })
+
+    it('createPayout maps payout response fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        payout: { id: 'po_1', transaction_id: 'tx_1', gross_amount: 10000, fees: 250, net_amount: 9750, previous_balance: 15000, new_balance: 5250 },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createPayout({ participantId: 'p1', amount: 10000, referenceId: 'ref1' })
+
+      expect(result.payout.id).toBe('po_1')
+      expect(result.payout.transactionId).toBe('tx_1')
+      expect(result.payout.grossAmount).toBe(10000)
+      expect(result.payout.fees).toBe(250)
+      expect(result.payout.netAmount).toBe(9750)
+      expect(result.payout.previousBalance).toBe(15000)
+      expect(result.payout.newBalance).toBe(5250)
+    })
+
+    it('createRefund maps refund with breakdown', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: {
+          id: 'rf_1', transaction_id: 'tx_1', reference_id: 'ref_1',
+          sale_reference: 'sale_1', refunded_amount: 3000, currency: 'USD',
+          status: 'completed', is_full_refund: true, repair_pending: false,
+          breakdown: { from_creator: 2400, from_platform: 600 },
+        },
+        warning: 'partial reversal applied', warning_code: 'partial_reversal',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createRefund({ saleReference: 'sale_1', reason: 'defective' })
+
+      expect(result.refund.id).toBe('rf_1')
+      expect(result.refund.transactionId).toBe('tx_1')
+      expect(result.refund.refundedAmount).toBe(3000)
+      expect(result.refund.isFullRefund).toBe(true)
+      expect(result.refund.breakdown?.fromCreator).toBe(2400)
+      expect(result.refund.breakdown?.fromPlatform).toBe(600)
+      expect(result.warning).toBe('partial reversal applied')
+      expect(result.warningCode).toBe('partial_reversal')
+    })
+
+    it('evaluateFraud maps risk evaluation response', async () => {
+      const fn = mockFetch({
+        success: true, cached: false,
+        evaluation: {
+          id: 'eval_1', signal: 'elevated_risk',
+          risk_factors: [{ policy_id: 'pol_1', policy_type: 'budget_cap', severity: 'soft', indicator: 'over_budget' }],
+          valid_until: '2026-01-02', created_at: '2026-01-01', acknowledged_at: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.evaluateFraud({ idempotencyKey: 'ik_1', amount: 5000 })
+
+      expect(result.evaluation.id).toBe('eval_1')
+      expect(result.evaluation.signal).toBe('elevated_risk')
+      expect(result.evaluation.riskFactors).toHaveLength(1)
+      expect(result.evaluation.riskFactors[0].policyId).toBe('pol_1')
+      expect(result.evaluation.riskFactors[0].policyType).toBe('budget_cap')
+      expect(result.evaluation.riskFactors[0].indicator).toBe('over_budget')
+      expect(result.evaluation.validUntil).toBe('2026-01-02')
+      expect(result.evaluation.acknowledgedAt).toBeNull()
+    })
+
+    it('preflightAuthorization maps decision response', async () => {
+      const fn = mockFetch({
+        success: true, cached: true, message: 'cached',
+        decision: {
+          id: 'dec_1', decision: 'allowed',
+          violated_policies: [{ policy_id: 'p1', policy_type: 'budget_cap', severity: 'soft', reason: 'limit' }],
+          expires_at: '2026-02-01', created_at: '2026-01-01',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.preflightAuthorization({ idempotencyKey: 'ik', amount: 100 })
+
+      expect(result.cached).toBe(true)
+      expect(result.decision.id).toBe('dec_1')
+      expect(result.decision.decision).toBe('allowed')
+      expect(result.decision.violatedPolicies).toHaveLength(1)
+      expect(result.decision.violatedPolicies[0].policyId).toBe('p1')
+      expect(result.decision.violatedPolicies[0].severity).toBe('soft')
+      expect(result.decision.expiresAt).toBe('2026-02-01')
+    })
+
+    it('generateTaxSummary maps nested summaries and totals', async () => {
+      const fn = mockFetch({
+        success: true, tax_year: 2026, note: 'test',
+        summaries: [{
+          participant_id: 'p1', linked_user_id: 'u1', gross_earnings: 50000,
+          refunds_issued: 1000, net_earnings: 49000, total_paid_out: 45000,
+          requires_1099: true, shared_tax_profile: { status: 'active', legal_name: 'John', tax_id_last4: '1234' },
+        }],
+        totals: { total_gross: 50000, total_refunds: 1000, total_net: 49000, total_paid: 45000, participants_requiring_1099: 1 },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.generateTaxSummary(2026)
+
+      expect(result.taxYear).toBe(2026)
+      expect(result.summaries).toHaveLength(1)
+      expect(result.summaries[0].participantId).toBe('p1')
+      expect(result.summaries[0].grossEarnings).toBe(50000)
+      expect(result.summaries[0].requires1099).toBe(true)
+      expect(result.summaries[0].sharedTaxProfile?.legalName).toBe('John')
+      expect(result.totals.totalGross).toBe(50000)
+      expect(result.totals.participantsRequiring1099).toBe(1)
+    })
   })
 
   describe('helpers.ts contract tests', () => {
