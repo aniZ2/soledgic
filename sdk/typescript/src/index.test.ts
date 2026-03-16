@@ -2427,6 +2427,7 @@ describe('Soledgic SDK', () => {
       call: (sdk: Soledgic) => Promise<any>
       endpoint: string
       bodyKeys: string[]
+      mockResponse?: Record<string, any>
     }> = [
       {
         name: 'recordIncome',
@@ -2560,11 +2561,243 @@ describe('Soledgic SDK', () => {
         endpoint: 'send-breach-alert',
         bodyKeys: ['cash_balance', 'pending_total', 'triggered_by'],
       },
+      // Invoices
+      {
+        name: 'createInvoice',
+        call: (sdk) => sdk.createInvoice({ customerName: 'Acme', lineItems: [{ description: 'Service', quantity: 1, unitPrice: 5000 }] }),
+        endpoint: 'invoices',
+        bodyKeys: ['customer_name', 'line_items'],
+      },
+      {
+        name: 'sendInvoice',
+        call: (sdk) => sdk.sendInvoice('inv_1'),
+        endpoint: 'invoices/inv_1/send',
+        bodyKeys: [],
+      },
+      {
+        name: 'recordInvoicePayment',
+        call: (sdk) => sdk.recordInvoicePayment('inv_1', { amount: 5000 }),
+        endpoint: 'invoices/inv_1/record-payment',
+        bodyKeys: ['amount'],
+      },
+      {
+        name: 'voidInvoice',
+        call: (sdk) => sdk.voidInvoice('inv_1', 'duplicate'),
+        endpoint: 'invoices/inv_1/void',
+        bodyKeys: ['reason'],
+      },
+      {
+        name: 'payBill',
+        call: (sdk) => sdk.payBill({ amount: 3000 }),
+        endpoint: 'pay-bill',
+        bodyKeys: ['amount'],
+      },
+      // Payouts
+      {
+        name: 'executePayout',
+        call: (sdk) => sdk.executePayout('po_1'),
+        endpoint: 'execute-payout',
+        bodyKeys: ['action', 'payout_id'],
+      },
+      {
+        name: 'executeBatchPayouts',
+        call: (sdk) => sdk.executeBatchPayouts(['po_1', 'po_2']),
+        endpoint: 'execute-payout',
+        bodyKeys: ['action', 'payout_ids'],
+      },
+      {
+        name: 'generateBatchPayoutFile',
+        call: (sdk) => sdk.generateBatchPayoutFile(['po_1']),
+        endpoint: 'execute-payout',
+        bodyKeys: ['action', 'payout_ids'],
+      },
+      {
+        name: 'listPayoutRails',
+        call: (sdk) => sdk.listPayoutRails(),
+        endpoint: 'execute-payout',
+        bodyKeys: ['action'],
+      },
+      // Splits
+      {
+        name: 'autoPromoteCreators',
+        call: (sdk) => sdk.autoPromoteCreators(),
+        endpoint: 'manage-splits',
+        bodyKeys: ['action'],
+      },
+      {
+        name: 'clearCreatorSplit',
+        call: (sdk) => sdk.clearCreatorSplit('creator_1'),
+        endpoint: 'manage-splits',
+        bodyKeys: ['action', 'creator_id'],
+      },
+      // Email
+      {
+        name: 'configureEmail',
+        call: (sdk) => sdk.configureEmail({ enabled: true }),
+        endpoint: 'send-statements',
+        bodyKeys: ['action', 'email_config'],
+      },
+      {
+        name: 'sendMonthlyStatements',
+        call: (sdk) => sdk.sendMonthlyStatements(2026, 3),
+        endpoint: 'send-statements',
+        bodyKeys: ['action', 'year', 'month'],
+      },
+      {
+        name: 'sendCreatorStatement',
+        call: (sdk) => sdk.sendCreatorStatement('c1', 2026, 3),
+        endpoint: 'send-statements',
+        bodyKeys: ['action', 'creator_id'],
+      },
+      {
+        name: 'previewStatementEmail',
+        call: (sdk) => sdk.previewStatementEmail('c1'),
+        endpoint: 'send-statements',
+        bodyKeys: ['action', 'creator_id'],
+      },
+      {
+        name: 'getEmailHistory',
+        call: (sdk) => sdk.getEmailHistory(),
+        endpoint: 'send-statements',
+        bodyKeys: ['action'],
+      },
+      // Webhooks
+      {
+        name: 'retryWebhookDelivery',
+        call: (sdk) => sdk.retryWebhookDelivery('del_1'),
+        endpoint: 'webhooks',
+        bodyKeys: ['action', 'delivery_id'],
+      },
+      {
+        name: 'rotateWebhookSecret',
+        call: (sdk) => sdk.rotateWebhookSecret('ep_1'),
+        endpoint: 'webhooks',
+        bodyKeys: ['action', 'endpoint_id'],
+      },
+      {
+        name: 'testWebhookEndpoint',
+        call: (sdk) => sdk.testWebhookEndpoint('ep_1'),
+        endpoint: 'webhooks',
+        bodyKeys: ['action', 'endpoint_id'],
+      },
+      // Alerts
+      {
+        name: 'testAlert',
+        call: (sdk) => sdk.testAlert('cfg_1'),
+        endpoint: 'configure-alerts',
+        bodyKeys: ['action', 'config_id'],
+      },
+      // Tax
+      {
+        name: 'generateAllTaxDocuments',
+        call: (sdk) => sdk.generateAllTaxDocuments(2026),
+        endpoint: 'tax/documents/generate',
+        bodyKeys: ['tax_year'],
+        mockResponse: { success: true, generation: { tax_year: 2026, created: 0, skipped: 0, total_amount: 0 } },
+      },
+      {
+        name: 'markTaxDocumentFiled',
+        call: (sdk) => sdk.markTaxDocumentFiled('doc_1'),
+        endpoint: 'tax/documents/doc_1/mark-filed',
+        bodyKeys: [],
+        mockResponse: { success: true, document: { id: 'doc_1', tax_year: 2026, status: 'filed' } },
+      },
+      {
+        name: 'markTaxDocumentsFiledBulk',
+        call: (sdk) => sdk.markTaxDocumentsFiledBulk(2026),
+        endpoint: 'tax/documents/mark-filed',
+        bodyKeys: ['tax_year'],
+      },
+      {
+        name: 'deliverTaxDocumentCopyB',
+        call: (sdk) => sdk.deliverTaxDocumentCopyB(2026),
+        endpoint: 'tax/documents/deliver-copy-b',
+        bodyKeys: ['tax_year'],
+      },
+      {
+        name: 'generateTaxDocumentPdf',
+        call: (sdk) => sdk.generateTaxDocumentPdf('doc_1', 'filer'),
+        endpoint: 'tax/documents/doc_1/pdf',
+        bodyKeys: ['copy_type'],
+      },
+      {
+        name: 'generateTaxDocumentPdfBatch',
+        call: (sdk) => sdk.generateTaxDocumentPdfBatch(2026),
+        endpoint: 'tax/documents/pdf/batch',
+        bodyKeys: ['tax_year'],
+      },
+      // Wallets
+      {
+        name: 'topUpWallet',
+        call: (sdk) => sdk.topUpWallet({ walletId: 'w1', amount: 1000, referenceId: 'ref1' }),
+        endpoint: 'wallets/w1/topups',
+        bodyKeys: ['amount', 'reference_id'],
+      },
+      {
+        name: 'withdrawFromWallet',
+        call: (sdk) => sdk.withdrawFromWallet({ walletId: 'w1', amount: 500, referenceId: 'ref2' }),
+        endpoint: 'wallets/w1/withdrawals',
+        bodyKeys: ['amount', 'reference_id'],
+      },
+      // Reconciliation
+      {
+        name: 'matchTransaction',
+        call: (sdk) => sdk.matchTransaction({ transactionId: 't1', bankTransactionId: 'bt1' }),
+        endpoint: 'reconciliations/matches',
+        bodyKeys: ['transaction_id', 'bank_transaction_id'],
+        mockResponse: { success: true, match: { id: 'm1', transaction_id: 't1', bank_transaction_id: 'bt1', status: 'confirmed', matched_at: '2026-01-01' } },
+      },
+      {
+        name: 'createReconciliationSnapshot',
+        call: (sdk) => sdk.createReconciliationSnapshot({ periodId: 'p1' }),
+        endpoint: 'reconciliations/snapshots',
+        bodyKeys: ['period_id'],
+        mockResponse: { success: true, snapshot: { id: 's1', integrity_hash: 'abc123' } },
+      },
+      {
+        name: 'autoMatchBankTransaction',
+        call: (sdk) => sdk.autoMatchBankTransaction('bat_1'),
+        endpoint: 'reconciliations/auto-match',
+        bodyKeys: ['bank_aggregator_transaction_id'],
+      },
+      // Bank statement import
+      {
+        name: 'importBankStatement',
+        call: (sdk) => sdk.importBankStatement({ bankAccountId: 'ba1', lines: [{ transactionDate: '2026-01-15', description: 'Payment', amount: 100 }] }),
+        endpoint: 'import-bank-statement',
+        bodyKeys: ['bank_account_id', 'lines'],
+      },
+      // Parse import
+      {
+        name: 'parseImportFile',
+        call: (sdk) => sdk.parseImportFile('base64data', 'csv'),
+        endpoint: 'import-transactions',
+        bodyKeys: ['action', 'data'],
+      },
+      {
+        name: 'saveImportTemplate',
+        call: (sdk) => sdk.saveImportTemplate({ name: 'Chase', bank_name: 'Chase', format: 'csv', mapping: { date: 0, amount: 1 } }),
+        endpoint: 'import-transactions',
+        bodyKeys: ['action', 'template'],
+      },
+      // Holds
+      {
+        name: 'releaseHold',
+        call: (sdk) => sdk.releaseHold({ holdId: 'h1' }),
+        endpoint: 'holds/h1/release',
+        bodyKeys: ['execute_transfer'],
+      },
+      {
+        name: 'releaseFunds',
+        call: (sdk) => sdk.releaseFunds('entry_1'),
+        endpoint: 'holds/entry_1/release',
+        bodyKeys: ['execute_transfer'],
+      },
     ]
 
-    for (const { name, call, endpoint, bodyKeys } of postMethods) {
+    for (const { name, call, endpoint, bodyKeys, mockResponse } of postMethods) {
       it(`${name} → POST /${endpoint} with correct snake_case keys`, async () => {
-        const fn = mockFetch({ success: true })
+        const fn = mockFetch(mockResponse ?? { success: true })
         const sdk = createClient(fn)
         await call(sdk)
 
@@ -2593,6 +2826,7 @@ describe('Soledgic SDK', () => {
       name: string
       call: (sdk: Soledgic) => Promise<any>
       endpoint: string
+      mockResponse?: Record<string, any>
     }> = [
       { name: 'getBalanceSheet', call: (sdk) => sdk.getBalanceSheet(), endpoint: 'balance-sheet' },
       { name: 'getRunway', call: (sdk) => sdk.getRunway(), endpoint: 'get-runway' },
@@ -2604,11 +2838,22 @@ describe('Soledgic SDK', () => {
       { name: 'listContractors', call: (sdk) => sdk.listContractors(), endpoint: 'manage-contractors' },
       { name: 'listBankAccounts', call: (sdk) => sdk.listBankAccounts(), endpoint: 'manage-bank-accounts' },
       { name: 'listParticipants', call: (sdk) => sdk.listParticipants(), endpoint: 'participants' },
+      { name: 'getDetailedTrialBalance', call: (sdk) => sdk.getDetailedTrialBalance(), endpoint: 'trial-balance' },
+      { name: 'getDetailedProfitLoss', call: (sdk) => sdk.getDetailedProfitLoss(), endpoint: 'profit-loss' },
+      { name: 'getDueRecurring', call: (sdk) => sdk.getDueRecurring(), endpoint: 'manage-recurring/due' },
+      { name: 'listFraudPolicies', call: (sdk) => sdk.listFraudPolicies(), endpoint: 'fraud/policies' },
+      { name: 'getComplianceOverview', call: (sdk) => sdk.getComplianceOverview(), endpoint: 'compliance/overview', mockResponse: { success: true, overview: { window_days: 30, access_window_hours: 24, total_events: 0, unique_ips: 0, unique_actors: 0, high_risk_events: 0, critical_risk_events: 0, failed_auth_events: 0, payouts_failed: 0, refunds_recorded: 0, dispute_events: 0 }, note: '' } },
+      { name: 'listComplianceAccessPatterns', call: (sdk) => sdk.listComplianceAccessPatterns(), endpoint: 'compliance/access-patterns' },
+      { name: 'listComplianceFinancialActivity', call: (sdk) => sdk.listComplianceFinancialActivity(), endpoint: 'compliance/financial-activity' },
+      { name: 'listComplianceSecuritySummary', call: (sdk) => sdk.listComplianceSecuritySummary(), endpoint: 'compliance/security-summary' },
+      { name: 'getEscrowSummary', call: (sdk) => sdk.getEscrowSummary(), endpoint: 'holds/summary' },
+      { name: 'getHoldSummary', call: (sdk) => sdk.getHoldSummary(), endpoint: 'holds/summary' },
+      { name: 'listInvoices', call: (sdk) => sdk.listInvoices(), endpoint: 'invoices' },
     ]
 
-    for (const { name, call, endpoint } of getMethods) {
+    for (const { name, call, endpoint, mockResponse } of getMethods) {
       it(`${name} → GET /${endpoint} with correct headers`, async () => {
-        const fn = mockFetch({ success: true, data: [], participants: [] })
+        const fn = mockFetch(mockResponse ?? { success: true, data: [], participants: [], patterns: [], activity: [], summary: [], wallets: [], policies: [] })
         const sdk = createClient(fn)
         await call(sdk)
 
