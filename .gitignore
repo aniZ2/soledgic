@@ -49,3 +49,7 @@ service-account.json
 .vercel
 .env*.local
 .graph-health-baseline.json
+
+# Test output
+coverage/
+test-results/
