@@ -1370,4 +1370,693 @@ describe('parseJsonBody', () => {
     expect(result.data).toBeNull()
     expect(result.error).toBe('Request body too large')
   })
+
+  it('allows body exactly at maxSize (boundary: not strictly greater)', async () => {
+    const body = JSON.stringify({ x: 'a'.repeat(90) }) // ~96 chars
+    const req = new Request('https://example.com', {
+      method: 'POST',
+      body,
+      headers: { 'content-length': String(body.length) },
+    })
+    const result = await parseJsonBody(req, body.length) // exactly at limit
+    expect(result.data).not.toBeNull()
+    expect(result.error).toBeNull()
+  })
+
+  it('rejects body one byte over maxSize via content-length', async () => {
+    const req = new Request('https://example.com', {
+      method: 'POST',
+      body: 'x',
+      headers: { 'content-length': '101' },
+    })
+    const result = await parseJsonBody(req, 100)
+    expect(result.data).toBeNull()
+    expect(result.error).toBe('Request body too large')
+  })
+
+  it('rejects body one byte over maxSize via text length', async () => {
+    const body = 'x'.repeat(101)
+    const req = new Request('https://example.com', {
+      method: 'POST',
+      body,
+      headers: { 'content-length': '0' },
+    })
+    const result = await parseJsonBody(req, 100)
+    expect(result.data).toBeNull()
+    expect(result.error).toBe('Request body too large')
+  })
+
+  it('allows body exactly at default maxSize (1MB)', async () => {
+    // content-length exactly 1048576 should be allowed
+    const body = JSON.stringify({ data: 'x' })
+    const req = new Request('https://example.com', {
+      method: 'POST',
+      body,
+      headers: { 'content-length': '1048576' },
+    })
+    // default maxSize is 1MB = 1048576
+    const result = await parseJsonBody(req)
+    // content-length 1048576 is NOT > 1048576, so it passes the first check
+    expect(result.error).not.toBe('Request body too large')
+  })
+
+  it('returns null data and "Invalid JSON" for empty body', async () => {
+    const req = new Request('https://example.com', {
+      method: 'POST',
+      body: '',
+      headers: { 'content-length': '0' },
+    })
+    const result = await parseJsonBody(req)
+    expect(result.data).toBeNull()
+    expect(result.error).toBe('Invalid JSON')
+  })
+
+  it('parsed data is returned as-is (not wrapped)', async () => {
+    const body = JSON.stringify({ key: 'value', num: 42 })
+    const req = new Request('https://example.com', {
+      method: 'POST',
+      body,
+      headers: { 'content-length': String(body.length) },
+    })
+    const result = await parseJsonBody<{ key: string; num: number }>(req)
+    expect(result.data).toEqual({ key: 'value', num: 42 })
+    expect(result.data?.key).toBe('value')
+    expect(result.data?.num).toBe(42)
+  })
+})
+
+describe('sanitizeError', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockValidateCsrf.mockResolvedValue({ valid: true })
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 99, resetAt: Date.now() + 60000 })
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user_1', email: 'test@example.com' } }, error: null })
+    mockGetReadonly.mockResolvedValue(false)
+    mockCookieStore.getAll.mockReturnValue([])
+  })
+
+  it('returns message as-is in non-production', async () => {
+    const handler = createApiHandler(async () => {
+      throw new Error('Error at /var/db/secret.conf from 192.168.1.1')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const errorBody = mockJsonFn.mock.calls[0][0]
+    // In test env (not production), sanitizeError returns message unchanged
+    expect(errorBody.error).toContain('/var/db/secret.conf')
+    expect(errorBody.error).toContain('192.168.1.1')
+  })
+
+  it('sanitizes file paths in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+
+    const handler = createApiHandler(async () => {
+      throw new Error('Failed at /var/lib/app/src/file.ts')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const errorBody = mockJsonFn.mock.calls[0][0]
+    expect(errorBody.error).not.toContain('/var/lib/app/src/file.ts')
+    expect(errorBody.error).toContain('[path]')
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('sanitizes IP addresses in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+
+    const handler = createApiHandler(async () => {
+      throw new Error('Connection from 192.168.1.1 refused')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const errorBody = mockJsonFn.mock.calls[0][0]
+    expect(errorBody.error).not.toContain('192.168.1.1')
+    expect(errorBody.error).toContain('[ip]')
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('sanitizes JWT tokens in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+
+    const handler = createApiHandler(async () => {
+      throw new Error('Invalid token eyJhbGciOiJIUzI1NiJ9.payload.sig')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const errorBody = mockJsonFn.mock.calls[0][0]
+    expect(errorBody.error).not.toContain('eyJhbGciOiJIUzI1NiJ9')
+    expect(errorBody.error).toContain('[token]')
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('sanitizes API keys in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+
+    const handler = createApiHandler(async () => {
+      throw new Error('Bad key sk_live_abcdef123456')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const errorBody = mockJsonFn.mock.calls[0][0]
+    expect(errorBody.error).not.toContain('sk_live_abcdef123456')
+    expect(errorBody.error).toContain('[key]')
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+
+  it('truncates long error messages to 200 chars in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+
+    const longMessage = 'A'.repeat(300)
+    const handler = createApiHandler(async () => {
+      throw new Error(longMessage)
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const errorBody = mockJsonFn.mock.calls[0][0]
+    expect(errorBody.error.length).toBeLessThanOrEqual(200)
+    expect(errorBody.error.length).toBe(200)
+    vi.stubEnv('NODE_ENV', 'test')
+  })
+})
+
+describe('createApiHandler - additional mutation-killing tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockValidateCsrf.mockResolvedValue({ valid: true })
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 99, resetAt: Date.now() + 60000 })
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user_1', email: 'test@example.com' } }, error: null })
+    mockGetReadonly.mockResolvedValue(false)
+    mockCookieStore.getAll.mockReturnValue([])
+  })
+
+  it('CSRF failure response includes exact request_id format', async () => {
+    mockValidateCsrf.mockResolvedValue({ valid: false, error: 'Bad origin' })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    const response = await handler(makeRequest())
+    const body = mockJsonFn.mock.calls[0][0]
+    expect(body.request_id).toMatch(/^req_[0-9a-f]{24}$/)
+    expect(body.error).toBe('Access denied')
+    // Verify status is exactly 403, not 401 or 400
+    expect(mockJsonFn.mock.calls[0][1].status).toBe(403)
+    expect(mockJsonFn.mock.calls[0][1].status).not.toBe(401)
+    expect(mockJsonFn.mock.calls[0][1].status).not.toBe(400)
+  })
+
+  it('rate limit response includes Retry-After header as string', async () => {
+    const futureReset = Date.now() + 45000
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      resetAt: futureReset,
+    })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    }, { requireAuth: false, csrfProtection: false })
+
+    const response = await handler(makeRequest())
+    const body = mockJsonFn.mock.calls[0][0]
+    const init = mockJsonFn.mock.calls[0][1]
+
+    expect(body.retry_after).toBeGreaterThan(0)
+    expect(body.retry_after).toBeLessThanOrEqual(45)
+    expect(init.status).toBe(429)
+    expect(init.status).not.toBe(403)
+    expect(init.status).not.toBe(200)
+    expect(init.headers['Retry-After']).toBeDefined()
+    expect(init.headers['X-RateLimit-Remaining']).toBe('0')
+    expect(init.headers['X-Request-Id']).toMatch(/^req_/)
+  })
+
+  it('content-length check uses > not >= (exactly at limit is allowed)', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+      maxBodySize: 100,
+    })
+
+    // Exactly at limit: should be allowed
+    const reqExact = makeRequest('POST', { 'content-length': '100' })
+    await handler(reqExact)
+    expect(innerHandler).toHaveBeenCalled()
+
+    // One over: should be blocked
+    innerHandler.mockClear()
+    mockJsonFn.mockClear()
+    const reqOver = makeRequest('POST', { 'content-length': '101' })
+    await handler(reqOver)
+    expect(innerHandler).not.toHaveBeenCalled()
+    expect(mockJsonFn.mock.calls[0][1].status).toBe(413)
+  })
+
+  it('401 response sets X-Request-Id, X-Content-Type-Options, X-Frame-Options headers', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    const response = await handler(makeRequest())
+    expect(response.headers.get('X-Request-Id')).toMatch(/^req_[0-9a-f]{24}$/)
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('X-Content-Type-Options')).not.toBe('nosniff ')
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+    expect(response.headers.get('X-Frame-Options')).not.toBe('SAMEORIGIN')
+  })
+
+  it('successful response has all three security headers set', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const response = await handler(makeRequest('GET'))
+    // All three must be set, not just some
+    expect(response.headers.get('X-Request-Id')).toBeTruthy()
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+  })
+
+  it('500 error response includes X-Request-Id in headers init', async () => {
+    const handler = createApiHandler(async () => {
+      throw new Error('boom')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const init = mockJsonFn.mock.calls[0][1]
+    expect(init.status).toBe(500)
+    expect(init.status).not.toBe(400)
+    expect(init.status).not.toBe(503)
+    expect(init.headers['X-Request-Id']).toMatch(/^req_/)
+  })
+
+  it('error catch block logs to audit with exact field structure', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: (table: string) => {
+        expect(table).toBe('audit_log')
+        return { insert: mockInsert }
+      },
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('test audit')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+      routePath: '/api/widgets',
+    })
+
+    await handler(makeRequest())
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'api_error',
+        actor_type: 'system', // no user since requireAuth=false
+        actor_id: null,
+        request_id: expect.stringMatching(/^req_/),
+        request_body: expect.objectContaining({
+          route: '/api/widgets',
+          error_type: 'Error',
+        }),
+        risk_score: 10,
+      })
+    )
+    // risk_score must be exactly 10
+    const insertArg = mockInsert.mock.calls[0][0]
+    expect(insertArg.risk_score).toBe(10)
+    expect(insertArg.risk_score).not.toBe(0)
+    expect(insertArg.risk_score).not.toBe(1)
+  })
+
+  it('error catch block sets actor_type to "user" when authenticated', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('user error')
+    }, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor_type: 'user',
+        actor_id: 'user_1',
+      })
+    )
+  })
+
+  it('audit log failure does not prevent error response', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    vi.mocked(createClient).mockRejectedValue(new Error('audit db down'))
+
+    const handler = createApiHandler(async () => {
+      throw new Error('main error')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const response = await handler(makeRequest())
+    expect(response.status).toBe(500)
+    const body = mockJsonFn.mock.calls[0][0]
+    expect(body.error).toBeDefined()
+  })
+
+  it('getClientIp uses x-vercel-forwarded-for when cf and real-ip are missing', async () => {
+    const { createClient } = await import('@/lib/supabase/server')
+    const mockInsert = vi.fn(async () => ({ error: null }))
+    vi.mocked(createClient).mockResolvedValue({
+      from: () => ({ insert: mockInsert }),
+    } as any)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('test vercel ip')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('POST', { 'x-vercel-forwarded-for': '99.88.77.66' }))
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ip_address: '99.88.77.66' })
+    )
+  })
+
+  it('bearer token is trimmed of whitespace', async () => {
+    mockGetUser
+      .mockResolvedValueOnce({ data: { user: null }, error: { message: 'no cookie' } })
+      .mockResolvedValueOnce({ data: { user: { id: 'bearer_user', email: 'b@t.com' } }, error: null })
+
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const req = makeRequest('POST', { 'authorization': 'Bearer   spaced_token   ' })
+    await handler(req)
+    expect(innerHandler).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({
+        accessToken: 'spaced_token',
+      })
+    )
+  })
+
+  it('bearer fallback is skipped when cookie auth succeeds', async () => {
+    // Cookie auth succeeds on first call
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'cookie_user', email: 'c@t.com' } }, error: null })
+
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const req = makeRequest('POST', { 'authorization': 'Bearer should_not_be_used' })
+    await handler(req)
+    // getUser should be called only once (cookie auth), not twice (no bearer fallback)
+    expect(mockGetUser).toHaveBeenCalledTimes(1)
+    expect(innerHandler).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.objectContaining({
+        user: { id: 'cookie_user', email: 'c@t.com' },
+        // accessToken is set to bearerToken regardless of auth path
+        accessToken: 'should_not_be_used',
+      })
+    )
+  })
+
+  it('401 debug info includes bearer_present=true when bearer provided', async () => {
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    const req = makeRequest('POST', { 'authorization': 'Bearer some_token' })
+    await handler(req)
+    const body = mockJsonFn.mock.calls[0][0]
+    expect(body.debug.bearer_present).toBe(true)
+    expect(body.debug.bearer_present).not.toBe(false)
+    vi.stubEnv('AUTH_DEBUG_LOGS', '')
+  })
+
+  it('401 debug includes matched_auth_cookies and total_cookie_count', async () => {
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'bad' } })
+    mockCookieStore.getAll.mockReturnValue([
+      { name: 'sb-testproject-auth-token', value: 'tok' },
+      { name: 'other', value: 'val' },
+    ])
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    await handler(makeRequest())
+    const body = mockJsonFn.mock.calls[0][0]
+    expect(body.debug.matched_auth_cookies).toEqual(['sb-testproject-auth-token'])
+    expect(body.debug.total_cookie_count).toBe(2)
+    expect(body.debug.pending_auth_cookie_count).toBeGreaterThanOrEqual(0)
+    vi.stubEnv('AUTH_DEBUG_LOGS', '')
+  })
+
+  it('rate limit uses routePath in endpointScope when no custom key', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: true,
+      routePath: '/api/custom-route',
+    })
+
+    await handler(makeRequest())
+    // Without customRateLimitKey, endpoint scope should be just routePath
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.any(String),
+      '/api/custom-route', // not `routePath:key`
+      expect.any(Object)
+    )
+  })
+
+  it('custom rateLimitKey creates composite endpointScope with routePath:key', async () => {
+    const customKeyFn = vi.fn(() => 'my-custom-key')
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: true,
+      routePath: '/api/test',
+      rateLimitKey: customKeyFn,
+    })
+
+    await handler(makeRequest())
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      'my-custom-key',
+      '/api/test:my-custom-key', // composite scope
+      expect.any(Object)
+    )
+  })
+
+  it('HEAD requests are allowed in readonly mode (not a write method)', async () => {
+    mockGetReadonly.mockResolvedValue(true)
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('HEAD'))
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('startTime in context is a number close to current time', async () => {
+    const before = Date.now()
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('GET'))
+    const after = Date.now()
+    const ctx = innerHandler.mock.calls[0][1]
+    expect(ctx.startTime).toBeGreaterThanOrEqual(before)
+    expect(ctx.startTime).toBeLessThanOrEqual(after)
+  })
+
+  it('authUser is passed in context when authenticated', async () => {
+    const mockUser = { id: 'user_1', email: 'test@example.com', app_metadata: {} }
+    mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null })
+
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const ctx = innerHandler.mock.calls[0][1]
+    expect(ctx.authUser).toBe(mockUser)
+    expect(ctx.authUser).not.toBeNull()
+  })
+
+  it('authUser is null when requireAuth is false', async () => {
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest())
+    const ctx = innerHandler.mock.calls[0][1]
+    expect(ctx.authUser).toBeNull()
+    expect(ctx.user).toBeNull()
+    expect(ctx.accessToken).toBeNull()
+  })
+
+  it('non-bearer authorization header is not treated as bearer token', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    const req = makeRequest('POST', { 'authorization': 'Basic dXNlcjpwYXNz' })
+    await handler(req)
+    // Should return 401 without attempting bearer auth
+    expect(mockJsonFn.mock.calls[0][1].status).toBe(401)
+    // getUser called once (cookie auth), not twice (Basic is not Bearer)
+    expect(mockGetUser).toHaveBeenCalledTimes(1)
+  })
+
+  it('bearer token with no whitespace after "Bearer" is not matched', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    // "BearerXYZ" without space should not match /^Bearer\s+(.+)$/i
+    const req = makeRequest('POST', { 'authorization': 'BearerXYZ' })
+    await handler(req)
+    expect(mockJsonFn.mock.calls[0][1].status).toBe(401)
+    expect(mockGetUser).toHaveBeenCalledTimes(1)
+  })
+
+  it('cookie merge uses both cookieStore.getAll() and raw cookie header', async () => {
+    mockCookieStore.getAll.mockReturnValue([
+      { name: 'sb-testproject-auth-token', value: 'from-store' },
+    ])
+
+    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const req = makeRequest('POST', {
+      'cookie': 'extra=value; sb-testproject-auth-token.0=chunk0',
+    })
+    await handler(req)
+    // Auth should succeed because the base auth token was found
+    expect(innerHandler).toHaveBeenCalled()
+  })
 })

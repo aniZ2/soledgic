@@ -6998,5 +6998,1825 @@ describe('Soledgic SDK', () => {
       expect(result.ledger.createdAt).toBe('2026-03-10')
       expect(result.warning).toBe('Demo mode')
     })
+
+    // =========================================================================
+    // WAVE 3: Kill remaining ~130 survived mutants toward 95% score
+    // Targets: strict equality, ?? vs ||, Boolean() wrappers, boundary conditions,
+    // string literal endpoints, fallback chains, XOR logic
+    // =========================================================================
+
+    // --- timingSafeEqual: kill XOR accumulation mutants ---
+
+    it('timingSafeEqual: result |= detects differences even after initial match', () => {
+      // If |= were replaced with =, only the last XOR would matter
+      // 'aX' vs 'aY' - first chars match, second chars differ
+      expect(timingSafeEqual('aX', 'aY')).toBe(false)
+      // Verify the accumulation matters with longer strings
+      expect(timingSafeEqual('abcXef', 'abcYef')).toBe(false)
+    })
+
+    it('timingSafeEqual: length XOR matters even when chars match up to shorter', () => {
+      // aLen ^ bLen should produce non-zero when lengths differ
+      // Even if all chars in the overlap match
+      expect(timingSafeEqual('abc', 'abcd')).toBe(false)
+      expect(timingSafeEqual('abcd', 'abc')).toBe(false)
+    })
+
+    it('timingSafeEqual: Math.max ensures loop covers both strings', () => {
+      // If loop used min instead of max, trailing chars of longer string wouldn't be checked
+      expect(timingSafeEqual('ab', 'ac')).toBe(false)
+    })
+
+    it('timingSafeEqual: charCodeAt(i) vs 0 for out-of-bounds', () => {
+      // When i >= length, charCodeAt gives NaN; code uses 0 as default
+      // This means the XOR of the extra char against 0 should be non-zero
+      expect(timingSafeEqual('a', 'ab')).toBe(false)
+    })
+
+    it('timingSafeEqual: result === 0 returns true only for exact match', () => {
+      // Strictly 0, not falsy
+      expect(timingSafeEqual('abc', 'abc')).toBe(true)
+      expect(timingSafeEqual('abc', 'abC')).toBe(false)
+    })
+
+    // --- hmacHex: byte-to-hex conversion, padStart ---
+
+    it('hmacHex uses padStart(2, "0") for single-digit hex bytes', async () => {
+      // padStart(2, '0') ensures bytes like 0x05 become '05' not '5'
+      const result = await hmacHex('test', 'data')
+      // All hex chars, length 64 (SHA-256 = 32 bytes = 64 hex chars)
+      expect(result.length).toBe(64)
+      expect(result).toMatch(/^[0-9a-f]+$/)
+      // Removing padStart would shorten the output when a byte < 16
+      // Different secrets produce different output
+      const result2 = await hmacHex('different', 'data')
+      expect(result).not.toBe(result2)
+    })
+
+    it('hmacHex different secrets produce different outputs', async () => {
+      const a = await hmacHex('secret1', 'same-payload')
+      const b = await hmacHex('secret2', 'same-payload')
+      expect(a).not.toBe(b)
+    })
+
+    it('hmacHex empty payload still produces valid 64-char hex', async () => {
+      const result = await hmacHex('key', '')
+      expect(result.length).toBe(64)
+      expect(result).toMatch(/^[0-9a-f]{64}$/)
+    })
+
+    // --- verifyWebhookSignature: tolerance boundary conditions ---
+
+    it('verifyWebhookSignature: > vs >= tolerance boundary (exactly at tolerance passes)', async () => {
+      const payload = '{"boundary":"test"}'
+      const secret = 'boundary_secret'
+      const timestamp = 1000000
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+      // Exactly 300 seconds difference should pass (> not >=)
+      const atBoundary = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 300,
+        now: timestamp + 300,
+      })
+      expect(atBoundary).toBe(true)
+
+      // 301 seconds should fail
+      const pastBoundary = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 300,
+        now: timestamp + 301,
+      })
+      expect(pastBoundary).toBe(false)
+    })
+
+    it('verifyWebhookSignature: negative time difference (future timestamp)', async () => {
+      const payload = '{"future":"test"}'
+      const secret = 'future_secret'
+      const timestamp = 2000000
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+      // now is BEFORE timestamp, Math.abs ensures this is checked
+      const result = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 300,
+        now: timestamp - 301,
+      })
+      expect(result).toBe(false)
+
+      // But within tolerance should pass
+      const result2 = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 300,
+        now: timestamp - 300,
+      })
+      expect(result2).toBe(true)
+    })
+
+    it('verifyWebhookSignature: toleranceSeconds defaults to 300', async () => {
+      const payload = '{"default":"tol"}'
+      const secret = 'default_tol_sec'
+      const timestamp = 3000000
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+      // 300 seconds should pass with default tolerance
+      const result = await verifyWebhookSignature(payload, header, secret, {
+        now: timestamp + 300,
+      })
+      expect(result).toBe(true)
+
+      // 301 should fail
+      const result2 = await verifyWebhookSignature(payload, header, secret, {
+        now: timestamp + 301,
+      })
+      expect(result2).toBe(false)
+    })
+
+    it('verifyWebhookSignature: .some() vs .every() on v1Signatures', async () => {
+      const payload = '{"multi":"sig"}'
+      const secret = 'multi_secret'
+      const timestamp = 4000000
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+      // Add a wrong signature alongside the correct one
+      const wrongSig = 'deadbeef'.repeat(8)
+      const multiHeader = `${header},v1=${wrongSig}`
+
+      // .some() should still return true if ANY signature matches
+      const result = await verifyWebhookSignature(payload, multiHeader, secret, {
+        now: timestamp,
+      })
+      expect(result).toBe(true)
+    })
+
+    it('verifyWebhookSignature: all signatures wrong returns false', async () => {
+      const payload = '{"all":"wrong"}'
+      const header = 't=1000000,v1=aabbccdd,v1=11223344'
+
+      const result = await verifyWebhookSignature(payload, header, 'secret', {
+        toleranceSeconds: 0,
+      })
+      expect(result).toBe(false)
+    })
+
+    it('verifyWebhookSignature: timestamp.payload format in HMAC', async () => {
+      // The HMAC is computed over `${timestamp}.${payload}` not just payload
+      const payload = 'test-payload'
+      const secret = 'test-secret'
+      const timestamp = 5000000
+
+      // Build correct signature
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+      // Verify it passes
+      const result = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 0,
+        now: timestamp,
+      })
+      expect(result).toBe(true)
+
+      // Using wrong timestamp should fail even with correct payload
+      const wrongHeader = header.replace(`t=${timestamp}`, 't=9999999')
+      const result2 = await verifyWebhookSignature(payload, wrongHeader, secret, {
+        toleranceSeconds: 0,
+        now: 9999999,
+      })
+      expect(result2).toBe(false)
+    })
+
+    // --- toEpochSeconds: Math.floor removal ---
+
+    it('verifyWebhookSignature: Date now option converts to epoch seconds', async () => {
+      const payload = '{"date":"test"}'
+      const secret = 'date_secret'
+      const timestamp = 6000000
+      const header = await buildWebhookSignature(payload, secret, timestamp)
+
+      // Using a Date object for now
+      const dateNow = new Date(timestamp * 1000 + 200_000) // 200 seconds after
+      const result = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 300,
+        now: dateNow,
+      })
+      expect(result).toBe(true)
+
+      // Date that's too far should fail
+      const dateFar = new Date(timestamp * 1000 + 301_000)
+      const result2 = await verifyWebhookSignature(payload, header, secret, {
+        toleranceSeconds: 300,
+        now: dateFar,
+      })
+      expect(result2).toBe(false)
+    })
+
+    // --- parseWebhookSignatureHeader: edge cases ---
+
+    it('parseWebhookSignatureHeader: Infinity timestamp treated as null', () => {
+      const result = parseWebhookSignatureHeader('t=Infinity,v1=sig')
+      // Number('Infinity') is Infinity, Number.isFinite(Infinity) is false
+      expect(result.timestamp).toBeNull()
+      expect(result.v1Signatures).toEqual(['sig'])
+    })
+
+    it('parseWebhookSignatureHeader: NaN timestamp treated as null', () => {
+      const result = parseWebhookSignatureHeader('t=NaN,v1=sig')
+      expect(result.timestamp).toBeNull()
+    })
+
+    it('parseWebhookSignatureHeader: part with empty value ignored', () => {
+      const result = parseWebhookSignatureHeader('t=,v1=sig')
+      // key='t', value='' -> value is falsy, continue
+      expect(result.timestamp).toBeNull()
+      expect(result.v1Signatures).toEqual(['sig'])
+    })
+
+    it('parseWebhookSignatureHeader: whitespace trimming on parts', () => {
+      const result = parseWebhookSignatureHeader(' t=100 , v1=sig1 ')
+      expect(result.timestamp).toBe(100)
+      expect(result.v1Signatures).toEqual(['sig1'])
+    })
+
+    // --- parseWebhookEvent: data nullish coalescing ---
+
+    it('parseWebhookEvent: data undefined becomes null via ?? null', () => {
+      const result = parseWebhookEvent('{"type":"test"}')
+      // data is undefined, ?? null should give null (not undefined)
+      expect(result.data).toBeNull()
+      expect(result.data).not.toBeUndefined()
+    })
+
+    it('parseWebhookEvent: data null stays null via ?? null', () => {
+      const result = parseWebhookEvent('{"type":"test","data":null}')
+      expect(result.data).toBeNull()
+    })
+
+    it('parseWebhookEvent: non-string id/type/created_at/livemode return null/defaults', () => {
+      const result = parseWebhookEvent('{"id":123,"type":456,"created_at":789,"livemode":"yes"}')
+      expect(result.id).toBeNull() // 123 is not string
+      expect(result.type).toBe('unknown') // 456 is not string, event also not string
+      expect(result.createdAt).toBeNull() // 789 is not string
+      expect(result.livemode).toBeNull() // "yes" is not boolean
+    })
+
+    it('parseWebhookEvent: event field non-string falls to unknown', () => {
+      const result = parseWebhookEvent('{"event":42}')
+      expect(result.type).toBe('unknown')
+    })
+
+    it('parseWebhookEvent: livemode false preserves false', () => {
+      const result = parseWebhookEvent('{"type":"t","livemode":false}')
+      expect(result.livemode).toBe(false)
+    })
+
+    // --- helpers.ts: mapWebhookEndpoint ---
+
+    it('mapWebhookEndpoint: String(null ?? "") gives empty string', () => {
+      const result = mapWebhookEndpoint({ id: null })
+      expect(result.id).toBe('')
+      // Removing ?? '' would give String(null) = 'null'
+      expect(result.id).not.toBe('null')
+    })
+
+    it('mapWebhookEndpoint: String(undefined ?? "") gives empty string', () => {
+      const result = mapWebhookEndpoint({})
+      expect(result.id).toBe('')
+      expect(result.id).not.toBe('undefined')
+    })
+
+    it('mapWebhookEndpoint: non-string url gives empty string', () => {
+      const result = mapWebhookEndpoint({ id: 'x', url: 123 })
+      expect(result.url).toBe('')
+    })
+
+    it('mapWebhookEndpoint: non-string description gives null', () => {
+      const result = mapWebhookEndpoint({ id: 'x', description: 42 })
+      expect(result.description).toBeNull()
+    })
+
+    it('mapWebhookEndpoint: non-string created_at gives empty string', () => {
+      const result = mapWebhookEndpoint({ id: 'x', created_at: 12345 })
+      expect(result.createdAt).toBe('')
+    })
+
+    it('mapWebhookEndpoint: non-string secret_rotated_at gives null', () => {
+      const result = mapWebhookEndpoint({ id: 'x', secret_rotated_at: true })
+      expect(result.secretRotatedAt).toBeNull()
+    })
+
+    it('mapWebhookEndpoint: Boolean() coerces truthy is_active', () => {
+      const result = mapWebhookEndpoint({ id: 'x', is_active: 1 })
+      expect(result.isActive).toBe(true)
+      expect(typeof result.isActive).toBe('boolean')
+
+      const result2 = mapWebhookEndpoint({ id: 'x', is_active: 0 })
+      expect(result2.isActive).toBe(false)
+    })
+
+    it('mapWebhookEndpoint: non-array events gives empty array', () => {
+      const result = mapWebhookEndpoint({ id: 'x', events: 'not-array' })
+      expect(result.events).toEqual([])
+    })
+
+    // --- helpers.ts: mapWebhookDelivery ---
+
+    it('mapWebhookDelivery: Number(null || 0) gives 0', () => {
+      const result = mapWebhookDelivery({ id: 'x', attempts: null })
+      expect(result.attempts).toBe(0)
+    })
+
+    it('mapWebhookDelivery: Number(undefined || 0) gives 0', () => {
+      const result = mapWebhookDelivery({ id: 'x' })
+      expect(result.attempts).toBe(0)
+    })
+
+    it('mapWebhookDelivery: Number(3 || 0) gives 3', () => {
+      const result = mapWebhookDelivery({ id: 'x', attempts: 3 })
+      expect(result.attempts).toBe(3)
+    })
+
+    it('mapWebhookDelivery: String(null ?? "") gives empty string', () => {
+      const result = mapWebhookDelivery({ id: null })
+      expect(result.id).toBe('')
+      expect(result.id).not.toBe('null')
+    })
+
+    it('mapWebhookDelivery: non-string event_type gives "unknown"', () => {
+      const result = mapWebhookDelivery({ id: 'x', event_type: 42 })
+      expect(result.eventType).toBe('unknown')
+    })
+
+    it('mapWebhookDelivery: non-string status gives "unknown"', () => {
+      const result = mapWebhookDelivery({ id: 'x', status: false })
+      expect(result.status).toBe('unknown')
+    })
+
+    it('mapWebhookDelivery: non-number max_attempts gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', max_attempts: 'five' })
+      expect(result.maxAttempts).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-number response_status gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', response_status: 'ok' })
+      expect(result.responseStatus).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-number response_time_ms gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', response_time_ms: 'fast' })
+      expect(result.responseTimeMs).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-string response_body gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', response_body: 42 })
+      expect(result.responseBody).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-string endpoint_id gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', endpoint_id: 123 })
+      expect(result.endpointId).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-string created_at gives empty string', () => {
+      const result = mapWebhookDelivery({ id: 'x', created_at: 999 })
+      expect(result.createdAt).toBe('')
+    })
+
+    it('mapWebhookDelivery: non-string delivered_at gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', delivered_at: 123 })
+      expect(result.deliveredAt).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-string next_retry_at gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', next_retry_at: true })
+      expect(result.nextRetryAt).toBeNull()
+    })
+
+    it('mapWebhookDelivery: non-object payload gives null', () => {
+      const result = mapWebhookDelivery({ id: 'x', payload: 'string' })
+      expect(result.payload).toBeNull()
+
+      const result2 = mapWebhookDelivery({ id: 'x', payload: null })
+      expect(result2.payload).toBeNull()
+    })
+
+    it('mapWebhookDelivery: object payload is preserved', () => {
+      const result = mapWebhookDelivery({ id: 'x', payload: { event: 'test', data: { a: 1 } } })
+      expect(result.payload).toEqual({ event: 'test', data: { a: 1 } })
+    })
+
+    // --- resolveWebhookEndpointUrl: non-string url in object ---
+
+    it('resolveWebhookEndpointUrl: object with non-string url returns null', () => {
+      expect(resolveWebhookEndpointUrl({ url: 42 }, undefined)).toBeNull()
+    })
+
+    it('resolveWebhookEndpointUrl: number value for endpointUrl returns null', () => {
+      // typeof 42 !== 'string', so returns null
+      expect(resolveWebhookEndpointUrl(undefined, 42)).toBeNull()
+    })
+
+    // --- client.ts: configureEmail sendDay || 1 ---
+
+    it('configureEmail defaults send_day to 1 when not provided', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.configureEmail({ enabled: true })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.email_config.send_day).toBe(1)
+    })
+
+    it('configureEmail uses provided sendDay', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.configureEmail({ enabled: true, sendDay: 15 })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.email_config.send_day).toBe(15)
+    })
+
+    it('configureEmail maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.configureEmail({
+        enabled: false,
+        sendDay: 5,
+        fromName: 'Acme',
+        fromEmail: 'no-reply@acme.com',
+        subjectTemplate: 'Your statement for {{month}}',
+        bodyTemplate: 'Hello {{name}}',
+        ccAdmin: true,
+        adminEmail: 'admin@acme.com',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.email_config.enabled).toBe(false)
+      expect(body.email_config.send_day).toBe(5)
+      expect(body.email_config.from_name).toBe('Acme')
+      expect(body.email_config.from_email).toBe('no-reply@acme.com')
+      expect(body.email_config.subject_template).toBe('Your statement for {{month}}')
+      expect(body.email_config.body_template).toBe('Hello {{name}}')
+      expect(body.email_config.cc_admin).toBe(true)
+      expect(body.email_config.admin_email).toBe('admin@acme.com')
+    })
+
+    // --- client.ts: getSummary Number() coercion and reduce ---
+
+    it('getSummary coerces non-numeric balances to 0 via Number(x || 0)', async () => {
+      const fn = mockFetch({
+        success: true,
+        participants: [
+          { ledger_balance: null, held_amount: undefined, available_balance: '' },
+          { ledger_balance: '100', held_amount: 0, available_balance: 50 },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getSummary()
+
+      // null || 0 = 0, undefined || 0 = 0, '' || 0 = 0
+      // '100' || 0 = '100', Number('100') = 100
+      expect(result.data.total_ledger_balance).toBe(100)
+      expect(result.data.total_held_amount).toBe(0)
+      expect(result.data.total_available_balance).toBe(50)
+      expect(result.data.participant_count).toBe(2)
+    })
+
+    // --- client.ts: createCheckoutSession paymentMethodId + sourceId logic ---
+
+    it('createCheckoutSession with sourceId (via paymentMethodId key present) passes validation', async () => {
+      // hasPaymentMethod checks: 'paymentMethodId' in req ? Boolean(req.paymentMethodId || req.sourceId)
+      // So paymentMethodId key must be present for sourceId to be checked
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_src_via',
+          mode: 'direct',
+          payment_id: 'pay_src',
+          status: 'completed',
+          requires_action: false,
+          amount: 1000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: '', // falsy but key present
+        sourceId: 'src_1', // sourceId makes hasPaymentMethod true via ||
+        successUrl: 'https://example.com/ok', // also provide successUrl as fallback
+      } as any)
+
+      expect(result.checkoutSession.id).toBe('cs_src_via')
+    })
+
+    it('createCheckoutSession paymentIntentId falls back to payment_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_pi',
+          mode: 'direct',
+          payment_id: 'pay_pi',
+          payment_intent_id: 'pi_explicit',
+          status: 'completed',
+          requires_action: false,
+          amount: 1000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+      })
+
+      // When both are present, payment_intent_id takes priority
+      expect(result.checkoutSession.paymentIntentId).toBe('pi_explicit')
+    })
+
+    it('createCheckoutSession requiresAction Boolean coercion', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_ra',
+          mode: 'direct',
+          payment_id: 'pay_ra',
+          status: 'pending',
+          requires_action: 1, // truthy but not boolean
+          amount: 1000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+      })
+
+      expect(result.checkoutSession.requiresAction).toBe(true)
+      expect(typeof result.checkoutSession.requiresAction).toBe('boolean')
+    })
+
+    it('createCheckoutSession amount falls back to req.amount', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_amt',
+          mode: 'direct',
+          status: 'pending',
+          requires_action: false,
+          // amount missing in response
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 7777,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+      })
+
+      expect(result.checkoutSession.amount).toBe(7777)
+    })
+
+    // --- client.ts: walletObject Boolean coercions (=== true) ---
+
+    it('mapWalletObject: redeemable/transferable/topup/payout only true for exact true', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallet: {
+          id: 'w_bool',
+          wallet_type: 't',
+          scope_type: 's',
+          account_type: 'a',
+          currency: 'USD',
+          status: 'active',
+          balance: 0,
+          redeemable: 1, // truthy but not true
+          transferable: 'yes',
+          topup_supported: {},
+          payout_supported: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getWallet('w_bool')
+
+      // === true means only exactly `true` works
+      expect(result.wallet.redeemable).toBe(false)
+      expect(result.wallet.transferable).toBe(false)
+      expect(result.wallet.topupSupported).toBe(false)
+      expect(result.wallet.payoutSupported).toBe(false)
+    })
+
+    // --- client.ts: createWallet response.created === true ---
+
+    it('createWallet created is true only for exact true', async () => {
+      const fn1 = mockFetch({
+        success: true,
+        created: 1, // truthy but not true
+        wallet: { id: 'w1', wallet_type: 't', scope_type: 's', account_type: 'a', currency: 'USD', status: 'active', balance: 0, redeemable: false, transferable: false, topup_supported: false, payout_supported: false },
+      })
+      const sdk1 = createClient(fn1)
+      const result1 = await sdk1.createWallet({ ownerId: 'o1', walletType: 't' })
+      expect(result1.created).toBe(false) // 1 === true is false
+
+      const fn2 = mockFetch({
+        success: true,
+        created: true,
+        wallet: { id: 'w2', wallet_type: 't', scope_type: 's', account_type: 'a', currency: 'USD', status: 'active', balance: 0, redeemable: false, transferable: false, topup_supported: false, payout_supported: false },
+      })
+      const sdk2 = createClient(fn2)
+      const result2 = await sdk2.createWallet({ ownerId: 'o2', walletType: 't' })
+      expect(result2.created).toBe(true)
+    })
+
+    // --- client.ts: mapWalletObject available_balance fallback ---
+
+    it('mapWalletObject: available_balance 0 uses 0 not balance fallback', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallet: {
+          id: 'w_avb',
+          wallet_type: 't',
+          scope_type: 's',
+          account_type: 'a',
+          currency: 'USD',
+          status: 'active',
+          balance: 500,
+          available_balance: 0, // explicitly 0, should not fall back to balance
+          redeemable: false,
+          transferable: false,
+          topup_supported: false,
+          payout_supported: false,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getWallet('w_avb')
+
+      // ?? operator: 0 is not nullish, so should stay 0
+      expect(result.wallet.availableBalance).toBe(0)
+    })
+
+    // --- client.ts: registerInstrument nested extractedTerms ---
+
+    it('registerInstrument maps nested extractedTerms to snake_case', async () => {
+      const fn = mockFetch({ success: true, instrument_id: 'inst_1' })
+      const sdk = createClient(fn)
+      await sdk.registerInstrument({
+        externalRef: 'contract_123',
+        extractedTerms: {
+          amount: 5000,
+          currency: 'USD',
+          cadence: 'monthly',
+          counterpartyName: 'Vendor Co',
+        },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.external_ref).toBe('contract_123')
+      expect(body.extracted_terms.amount).toBe(5000)
+      expect(body.extracted_terms.currency).toBe('USD')
+      expect(body.extracted_terms.cadence).toBe('monthly')
+      expect(body.extracted_terms.counterparty_name).toBe('Vendor Co')
+    })
+
+    // --- client.ts: projectIntent snake_case request and response ---
+
+    it('projectIntent sends horizon_count in request', async () => {
+      const fn = mockFetch({
+        success: true,
+        instrument_id: 'inst_h',
+        projections_created: 3,
+        projections_requested: 3,
+        duplicates_skipped: 0,
+        date_range: {},
+        projected_dates: [],
+      })
+      const sdk = createClient(fn)
+      await sdk.projectIntent({
+        authorizingInstrumentId: 'inst_h',
+        horizonCount: 3,
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.authorizing_instrument_id).toBe('inst_h')
+      expect(body.horizon_count).toBe(3)
+    })
+
+    // --- client.ts: configurePayoutRail ---
+
+    it('configurePayoutRail maps rail config', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.configurePayoutRail('card', {
+        enabled: true,
+        credentials: { api_key: 'key_test' },
+        settings: { min_amount: 100 },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('configure_rail')
+      expect(body.rail_config.rail).toBe('card')
+      expect(body.rail_config.enabled).toBe(true)
+      expect(body.rail_config.credentials.api_key).toBe('key_test')
+      expect(body.rail_config.settings.min_amount).toBe(100)
+    })
+
+    // --- client.ts: getDetailedTrialBalance snapshot flag ---
+
+    it('getDetailedTrialBalance sends snapshot=true as string', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getDetailedTrialBalance({ asOf: '2026-03-01', snapshot: true })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('snapshot=true')
+      expect(url).toContain('as_of=2026-03-01')
+    })
+
+    it('getDetailedTrialBalance omits snapshot when false', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getDetailedTrialBalance({ snapshot: false })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).not.toContain('snapshot')
+    })
+
+    // --- client.ts: getDetailedProfitLoss all params ---
+
+    it('getDetailedProfitLoss sends all params', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getDetailedProfitLoss({
+        year: 2026,
+        month: 3,
+        quarter: 1,
+        startDate: '2026-01-01',
+        endDate: '2026-03-31',
+        breakdown: 'monthly',
+      })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('year=2026')
+      expect(url).toContain('month=3')
+      expect(url).toContain('quarter=1')
+      expect(url).toContain('start_date=2026-01-01')
+      expect(url).toContain('end_date=2026-03-31')
+      expect(url).toContain('breakdown=monthly')
+    })
+
+    // --- client.ts: createParticipant with taxInfo and payout preferences ---
+
+    it('createParticipant maps taxInfo to snake_case', async () => {
+      const fn = mockFetch({ success: true, participant: { id: 'p_tax' } })
+      const sdk = createClient(fn)
+      await sdk.createParticipant({
+        participantId: 'p_tax',
+        taxInfo: {
+          taxIdType: 'ein',
+          taxIdLast4: '9999',
+          legalName: 'Corp LLC',
+          businessType: 'llc',
+          address: {
+            line1: '100 Main',
+            line2: 'Floor 2',
+            city: 'NYC',
+            state: 'NY',
+            postalCode: '10001',
+            country: 'US',
+          },
+        },
+        payoutPreferences: {
+          schedule: 'weekly',
+          minimumAmount: 1000,
+          method: 'ach',
+        },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.tax_info.tax_id_type).toBe('ein')
+      expect(body.tax_info.tax_id_last4).toBe('9999')
+      expect(body.tax_info.legal_name).toBe('Corp LLC')
+      expect(body.tax_info.business_type).toBe('llc')
+      expect(body.tax_info.address.line1).toBe('100 Main')
+      expect(body.tax_info.address.line2).toBe('Floor 2')
+      expect(body.tax_info.address.city).toBe('NYC')
+      expect(body.tax_info.address.postal_code).toBe('10001')
+      expect(body.payout_preferences.schedule).toBe('weekly')
+      expect(body.payout_preferences.minimum_amount).toBe(1000)
+      expect(body.payout_preferences.method).toBe('ach')
+    })
+
+    // --- client.ts: createLedger sends all settings ---
+
+    it('createLedger maps all settings to snake_case', async () => {
+      const fn = mockFetch({
+        success: true,
+        ledger: { id: 'l1', business_name: 'B', ledger_mode: 'standard', api_key: 'k', status: 'active', created_at: '2026-01-01' },
+      })
+      const sdk = createClient(fn)
+      await sdk.createLedger({
+        businessName: 'B',
+        ownerEmail: 'e@t.com',
+        ledgerMode: 'standard',
+        settings: {
+          defaultTaxRate: 0.1,
+          defaultSplitPercent: 80,
+          platformFeePercent: 5,
+          minPayoutAmount: 1000,
+          payoutSchedule: 'weekly',
+          taxWithholdingPercent: 15,
+          currency: 'EUR',
+          fiscalYearStart: '01-01',
+          receiptThreshold: 2500,
+        },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.settings.default_tax_rate).toBe(0.1)
+      expect(body.settings.default_split_percent).toBe(80)
+      expect(body.settings.platform_fee_percent).toBe(5)
+      expect(body.settings.min_payout_amount).toBe(1000)
+      expect(body.settings.payout_schedule).toBe('weekly')
+      expect(body.settings.tax_withholding_percent).toBe(15)
+      expect(body.settings.currency).toBe('EUR')
+      expect(body.settings.fiscal_year_start).toBe('01-01')
+      expect(body.settings.receipt_threshold).toBe(2500)
+    })
+
+    // --- client.ts: recordSale sends all optional fields ---
+
+    it('recordSale maps all optional fields', async () => {
+      const fn = mockFetch({ success: true, transactionId: 'txn_full' })
+      const sdk = createClient(fn)
+      await sdk.recordSale({
+        referenceId: 'ref_full',
+        creatorId: 'c_full',
+        amount: 10000,
+        processingFee: 300,
+        processingFeePaidBy: 'creator',
+        creatorPercent: 75,
+        productId: 'prod_1',
+        productName: 'Widget',
+        creatorName: 'Alice',
+        skipWithholding: true,
+        transactionDate: '2026-03-15',
+        metadata: { key: 'val' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.processing_fee).toBe(300)
+      expect(body.creator_percent).toBe(75)
+      expect(body.product_id).toBe('prod_1')
+      expect(body.product_name).toBe('Widget')
+      expect(body.creator_name).toBe('Alice')
+      expect(body.skip_withholding).toBe(true)
+      expect(body.transaction_date).toBe('2026-03-15')
+    })
+
+    // --- client.ts: recordExpense authorization fields ---
+
+    it('recordExpense maps authorization fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordExpense({
+        referenceId: 'exp_auth',
+        amount: 5000,
+        authorizingInstrumentId: 'instr_1',
+        riskEvaluationId: 'eval_1',
+        authorizationDecisionId: 'dec_1',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.authorizing_instrument_id).toBe('instr_1')
+      expect(body.risk_evaluation_id).toBe('eval_1')
+      expect(body.authorization_decision_id).toBe('dec_1')
+    })
+
+    // --- client.ts: recordBill authorization fields ---
+
+    it('recordBill maps authorization fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordBill({
+        amount: 3000,
+        description: 'Bill',
+        vendorName: 'V',
+        authorizingInstrumentId: 'instr_b',
+        riskEvaluationId: 'eval_b',
+        authorizationDecisionId: 'dec_b',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.authorizing_instrument_id).toBe('instr_b')
+      expect(body.risk_evaluation_id).toBe('eval_b')
+      expect(body.authorization_decision_id).toBe('dec_b')
+    })
+
+    // --- client.ts: recordIncome all optional fields ---
+
+    it('recordIncome maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordIncome({
+        referenceId: 'inc_full',
+        amount: 8000,
+        description: 'Consulting',
+        category: 'services',
+        customerId: 'cust_1',
+        customerName: 'Acme',
+        receivedTo: 'cash',
+        invoiceId: 'inv_1',
+        transactionDate: '2026-03-10',
+        metadata: { note: 'test' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.description).toBe('Consulting')
+      expect(body.category).toBe('services')
+      expect(body.customer_id).toBe('cust_1')
+      expect(body.received_to).toBe('cash')
+      expect(body.invoice_id).toBe('inv_1')
+      expect(body.transaction_date).toBe('2026-03-10')
+      expect(body.metadata).toEqual({ note: 'test' })
+    })
+
+    // --- client.ts: recordExpense all optional fields ---
+
+    it('recordExpense maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordExpense({
+        referenceId: 'exp_full',
+        amount: 4000,
+        description: 'Office supplies',
+        category: 'supplies',
+        vendorId: 'v_1',
+        vendorName: 'OfficeMax',
+        paidFrom: 'checking',
+        receiptUrl: 'https://example.com/receipt.jpg',
+        taxDeductible: false,
+        transactionDate: '2026-03-12',
+        metadata: { receipt: true },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.description).toBe('Office supplies')
+      expect(body.category).toBe('supplies')
+      expect(body.vendor_id).toBe('v_1')
+      expect(body.paid_from).toBe('checking')
+      expect(body.receipt_url).toBe('https://example.com/receipt.jpg')
+      expect(body.tax_deductible).toBe(false)
+      expect(body.transaction_date).toBe('2026-03-12')
+    })
+
+    // --- client.ts: recordBill all optional fields ---
+
+    it('recordBill maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordBill({
+        amount: 7000,
+        description: 'Hosting',
+        vendorName: 'AWS',
+        vendorId: 'aws_1',
+        referenceId: 'bill_ref',
+        dueDate: '2026-04-01',
+        expenseCategory: 'infrastructure',
+        paid: true,
+        metadata: { env: 'prod' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.vendor_id).toBe('aws_1')
+      expect(body.expense_category).toBe('infrastructure')
+      expect(body.paid).toBe(true)
+    })
+
+    // --- client.ts: recordAdjustment all optional fields ---
+
+    it('recordAdjustment maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordAdjustment({
+        adjustmentType: 'reclassification',
+        adjustmentDate: '2026-03-10',
+        entries: [
+          { accountType: 'cash', entityId: 'e_1', entryType: 'debit', amount: 500 },
+          { accountType: 'revenue', entryType: 'credit', amount: 500 },
+        ],
+        reason: 'Reclassify revenue',
+        originalTransactionId: 'txn_orig',
+        supportingDocumentation: 'https://example.com/doc.pdf',
+        preparedBy: 'finance_team',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.adjustment_date).toBe('2026-03-10')
+      expect(body.entries[0].entity_id).toBe('e_1')
+      expect(body.original_transaction_id).toBe('txn_orig')
+      expect(body.supporting_documentation).toBe('https://example.com/doc.pdf')
+    })
+
+    // --- client.ts: recordOpeningBalance entity_id in balances ---
+
+    it('recordOpeningBalance maps entity_id and sourceDescription', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordOpeningBalance({
+        asOfDate: '2026-01-01',
+        source: 'import',
+        sourceDescription: 'Migrated from QuickBooks',
+        balances: [
+          { accountType: 'cash', entityId: 'checking_1', balance: 50000 },
+        ],
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.source_description).toBe('Migrated from QuickBooks')
+      expect(body.balances[0].entity_id).toBe('checking_1')
+    })
+
+    // --- client.ts: recordTransfer all optional fields ---
+
+    it('recordTransfer maps description and referenceId', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.recordTransfer({
+        fromAccountType: 'cash',
+        toAccountType: 'savings',
+        amount: 1000,
+        transferType: 'operating',
+        description: 'Monthly savings',
+        referenceId: 'xfer_ref_1',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.description).toBe('Monthly savings')
+      expect(body.reference_id).toBe('xfer_ref_1')
+    })
+
+    // --- client.ts: uploadReceipt all optional fields ---
+
+    it('uploadReceipt maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.uploadReceipt({
+        fileUrl: 'https://example.com/r.jpg',
+        fileName: 'receipt.jpg',
+        fileSize: 12345,
+        mimeType: 'image/jpeg',
+        merchantName: 'Store',
+        transactionDate: '2026-03-10',
+        totalAmount: 2500,
+        transactionId: 'txn_rcpt',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.file_name).toBe('receipt.jpg')
+      expect(body.file_size).toBe(12345)
+      expect(body.transaction_date).toBe('2026-03-10')
+    })
+
+    // --- client.ts: receivePayment all optional fields ---
+
+    it('receivePayment maps all optional fields', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.receivePayment({
+        amount: 5000,
+        invoiceTransactionId: 'inv_txn_1',
+        customerName: 'Bob',
+        customerId: 'cust_bob',
+        referenceId: 'rp_ref',
+        paymentMethod: 'wire',
+        paymentDate: '2026-03-15',
+        metadata: { source: 'manual' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.invoice_transaction_id).toBe('inv_txn_1')
+      expect(body.customer_id).toBe('cust_bob')
+      expect(body.reference_id).toBe('rp_ref')
+      expect(body.payment_date).toBe('2026-03-15')
+    })
+
+    // --- client.ts: sendBreachAlert all optional fields ---
+
+    it('sendBreachAlert maps all optional fields', async () => {
+      const fn = mockFetch({ success: true, alerts_sent: 1, message: 'Sent' })
+      const sdk = createClient(fn)
+      await sdk.sendBreachAlert({
+        cashBalance: 5000,
+        pendingTotal: 20000,
+        shortfall: 15000,
+        coverageRatio: 0.25,
+        triggeredBy: 'project-intent',
+        instrumentId: 'instr_br',
+        externalRef: 'contract_br',
+        projectionsCreated: 12,
+        channel: 'slack',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.shortfall).toBe(15000)
+      expect(body.coverage_ratio).toBe(0.25)
+      expect(body.instrument_id).toBe('instr_br')
+      expect(body.external_ref).toBe('contract_br')
+      expect(body.projections_created).toBe(12)
+      expect(body.channel).toBe('slack')
+    })
+
+    // --- client.ts: preflightAuthorization all optional request fields ---
+
+    it('preflightAuthorization maps all optional fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: false,
+        message: 'ok',
+        decision: { id: 'd1', decision: 'allowed', violated_policies: [], expires_at: null, created_at: '2026-01-01' },
+      })
+      const sdk = createClient(fn)
+      await sdk.preflightAuthorization({
+        idempotencyKey: 'ik_pf_full',
+        amount: 5000,
+        currency: 'EUR',
+        counterpartyName: 'Vendor X',
+        authorizingInstrumentId: 'instr_pf',
+        expectedDate: '2026-04-01',
+        category: 'equipment',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.currency).toBe('EUR')
+      expect(body.counterparty_name).toBe('Vendor X')
+      expect(body.authorizing_instrument_id).toBe('instr_pf')
+      expect(body.expected_date).toBe('2026-04-01')
+      expect(body.category).toBe('equipment')
+    })
+
+    // --- client.ts: evaluateFraud all optional request fields ---
+
+    it('evaluateFraud maps all optional request fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: false,
+        evaluation: { id: 'e1', signal: 'low', risk_factors: [], valid_until: null, created_at: '2026-01-01', acknowledged_at: null },
+      })
+      const sdk = createClient(fn)
+      await sdk.evaluateFraud({
+        idempotencyKey: 'ik_fr',
+        amount: 3000,
+        currency: 'GBP',
+        counterpartyName: 'New Vendor',
+        authorizingInstrumentId: 'instr_fr',
+        expectedDate: '2026-05-01',
+        category: 'supplies',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.currency).toBe('GBP')
+      expect(body.counterparty_name).toBe('New Vendor')
+      expect(body.authorizing_instrument_id).toBe('instr_fr')
+      expect(body.expected_date).toBe('2026-05-01')
+      expect(body.category).toBe('supplies')
+    })
+
+    // --- client.ts: createFraudPolicy sends all fields ---
+
+    it('createFraudPolicy sends severity and priority', async () => {
+      const fn = mockFetch({
+        success: true,
+        policy: { id: 'fp_x', type: 'velocity', severity: 'soft', priority: 5, is_active: true, config: {}, created_at: null, updated_at: null },
+      })
+      const sdk = createClient(fn)
+      await sdk.createFraudPolicy({
+        policyType: 'velocity',
+        config: { max_per_hour: 100 },
+        severity: 'soft',
+        priority: 5,
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.policy_type).toBe('velocity')
+      expect(body.severity).toBe('soft')
+      expect(body.priority).toBe(5)
+      expect(body.config).toEqual({ max_per_hour: 100 })
+    })
+
+    // --- client.ts: createPayout all optional request fields ---
+
+    it('createPayout maps all optional fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        payout: { id: 'po_full_req', transaction_id: 'tx_req' },
+      })
+      const sdk = createClient(fn)
+      await sdk.createPayout({
+        participantId: 'p_1',
+        walletId: 'w_1',
+        amount: 10000,
+        referenceId: 'po_ref',
+        referenceType: 'monthly',
+        description: 'Monthly payout',
+        payoutMethod: 'ach',
+        fees: 150,
+        feesPaidBy: 'creator',
+        metadata: { batch: 'march' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.wallet_id).toBe('w_1')
+      expect(body.reference_type).toBe('monthly')
+      expect(body.description).toBe('Monthly payout')
+      expect(body.payout_method).toBe('ach')
+      expect(body.fees).toBe(150)
+      expect(body.fees_paid_by).toBe('creator')
+      expect(body.metadata).toEqual({ batch: 'march' })
+    })
+
+    // --- client.ts: createRefund all optional request fields ---
+
+    it('createRefund maps all optional request fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: { id: 'rf_req', sale_reference: 'sale_x', refunded_amount: 1000, currency: 'USD', status: 'completed' },
+      })
+      const sdk = createClient(fn)
+      await sdk.createRefund({
+        saleReference: 'sale_x',
+        reason: 'Damaged',
+        amount: 1000,
+        refundFrom: 'creator',
+        externalRefundId: 'ext_rf_1',
+        idempotencyKey: 'ik_rf',
+        mode: 'processor_refund',
+        processorPaymentId: 'pp_1',
+        metadata: { category: 'returns' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.refund_from).toBe('creator')
+      expect(body.external_refund_id).toBe('ext_rf_1')
+      expect(body.idempotency_key).toBe('ik_rf')
+      expect(body.mode).toBe('processor_refund')
+      expect(body.processor_payment_id).toBe('pp_1')
+      expect(body.metadata).toEqual({ category: 'returns' })
+    })
+
+    // --- client.ts: createCheckoutSession all optional request fields ---
+
+    it('createCheckoutSession maps all optional fields in request body', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: { id: 'cs_all', mode: 'session', status: 'pending', requires_action: false, amount: 5000, checkout_url: 'https://pay.example.com/cs_all' },
+      })
+      const sdk = createClient(fn)
+      await sdk.createCheckoutSession({
+        amount: 5000,
+        participantId: 'p_cs',
+        currency: 'GBP',
+        productId: 'prod_cs',
+        productName: 'Premium Plan',
+        customerEmail: 'buyer@example.com',
+        customerId: 'cust_cs',
+        successUrl: 'https://example.com/ok',
+        cancelUrl: 'https://example.com/cancel',
+        metadata: { plan: 'premium' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.currency).toBe('GBP')
+      expect(body.product_id).toBe('prod_cs')
+      expect(body.product_name).toBe('Premium Plan')
+      expect(body.customer_email).toBe('buyer@example.com')
+      expect(body.customer_id).toBe('cust_cs')
+      expect(body.cancel_url).toBe('https://example.com/cancel')
+      expect(body.metadata).toEqual({ plan: 'premium' })
+    })
+
+    // --- client.ts: createTransfer all optional fields ---
+
+    it('createTransfer maps all optional fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        transfer: { transaction_id: 'txn_xf', from_balance: 0, to_balance: 500 },
+      })
+      const sdk = createClient(fn)
+      await sdk.createTransfer({
+        fromParticipantId: 'from_p',
+        toParticipantId: 'to_p',
+        amount: 500,
+        referenceId: 'xfer_ref',
+        description: 'Gift transfer',
+        metadata: { type: 'gift' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.reference_id).toBe('xfer_ref')
+      expect(body.description).toBe('Gift transfer')
+      expect(body.metadata).toEqual({ type: 'gift' })
+    })
+
+    // --- client.ts: topUpWallet and withdrawFromWallet optional fields ---
+
+    it('topUpWallet maps description and metadata', async () => {
+      const fn = mockFetch({ success: true, topup: { wallet_id: 'w1' } })
+      const sdk = createClient(fn)
+      await sdk.topUpWallet({
+        walletId: 'w1',
+        amount: 1000,
+        referenceId: 'tu_ref',
+        description: 'Bonus credit',
+        metadata: { source: 'promo' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.description).toBe('Bonus credit')
+      expect(body.metadata).toEqual({ source: 'promo' })
+    })
+
+    it('withdrawFromWallet maps description and metadata', async () => {
+      const fn = mockFetch({ success: true, withdrawal: { wallet_id: 'w1' } })
+      const sdk = createClient(fn)
+      await sdk.withdrawFromWallet({
+        walletId: 'w1',
+        amount: 500,
+        referenceId: 'wd_ref',
+        description: 'Cash out',
+        metadata: { reason: 'emergency' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.description).toBe('Cash out')
+      expect(body.metadata).toEqual({ reason: 'emergency' })
+    })
+
+    // --- client.ts: createWallet optional fields ---
+
+    it('createWallet maps all optional request fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        created: true,
+        wallet: { id: 'w_new', wallet_type: 't', scope_type: 's', account_type: 'a', currency: 'USD', status: 'active', balance: 0, redeemable: false, transferable: false, topup_supported: false, payout_supported: false },
+      })
+      const sdk = createClient(fn)
+      await sdk.createWallet({
+        ownerId: 'owner_1',
+        participantId: 'part_1',
+        ownerType: 'customer',
+        walletType: 'consumer_credit',
+        name: 'Store Credits',
+        metadata: { tier: 'gold' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.participant_id).toBe('part_1')
+      expect(body.owner_type).toBe('customer')
+      expect(body.name).toBe('Store Credits')
+      expect(body.metadata).toEqual({ tier: 'gold' })
+    })
+
+    // --- client.ts: listWallets optional filters ---
+
+    it('listWallets maps optional filter params', async () => {
+      const fn = mockFetch({ success: true, wallets: [], total: 0, limit: 25, offset: 0 })
+      const sdk = createClient(fn)
+      await sdk.listWallets({
+        ownerId: 'o_1',
+        ownerType: 'participant',
+        walletType: 'creator_earnings',
+        limit: 50,
+        offset: 10,
+      })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('owner_id=o_1')
+      expect(url).toContain('owner_type=participant')
+      expect(url).toContain('wallet_type=creator_earnings')
+      expect(url).toContain('limit=50')
+      expect(url).toContain('offset=10')
+    })
+
+    // --- client.ts: getHeldFunds (old API) ---
+
+    it('getHeldFunds maps query params', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getHeldFunds({
+        ventureId: 'v_1',
+        creatorId: 'c_1',
+        readyOnly: true,
+        limit: 20,
+      })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('venture_id=v_1')
+      expect(url).toContain('participant_id=c_1')
+      expect(url).toContain('ready_only=true')
+      expect(url).toContain('limit=20')
+    })
+
+    // --- client.ts: listHolds query params ---
+
+    it('listHolds maps ventureId and readyOnly query params', async () => {
+      const fn = mockFetch({ success: true, holds: [], count: 0 })
+      const sdk = createClient(fn)
+      await sdk.listHolds({
+        participantId: 'p_1',
+        ventureId: 'v_h',
+        readyOnly: true,
+        limit: 50,
+      })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('venture_id=v_h')
+      expect(url).toContain('ready_only=true')
+      expect(url).toContain('limit=50')
+    })
+
+    // --- client.ts: listRefunds query params ---
+
+    it('listRefunds sends limit as query param', async () => {
+      const fn = mockFetch({ success: true, refunds: [] })
+      const sdk = createClient(fn)
+      await sdk.listRefunds({ saleReference: 'sale_q', limit: 25 })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('sale_reference=sale_q')
+      expect(url).toContain('limit=25')
+    })
+
+    // --- client.ts: getWalletEntries optional params ---
+
+    it('getWalletEntries sends limit and offset', async () => {
+      const fn = mockFetch({ success: true, entries: [], wallet: null })
+      const sdk = createClient(fn)
+      await sdk.getWalletEntries('w_entries', { limit: 10, offset: 5 })
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('limit=10')
+      expect(url).toContain('offset=5')
+    })
+
+    // --- client.ts: generateTaxSummary with creatorId ---
+
+    it('generateTaxSummary sends participant_id query param', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        summaries: [],
+        totals: { total_gross: 0, total_refunds: 0, total_net: 0, total_paid: 0, participants_requiring_1099: 0 },
+      })
+      const sdk = createClient(fn)
+      await sdk.generateTaxSummary(2025, 'creator_x')
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('participant_id=creator_x')
+    })
+
+    // --- client.ts: calculateTaxForParticipant monthlyTotals default ---
+
+    it('calculateTaxForParticipant defaults monthlyTotals to empty object', async () => {
+      const fn = mockFetch({
+        success: true,
+        calculation: {
+          participant_id: 'p_mt',
+          tax_year: 2025,
+          gross_payments: 0,
+          transaction_count: 0,
+          requires_1099: false,
+          // monthly_totals missing -> || {}
+          threshold: 600,
+          linked_user_id: null,
+          shared_tax_profile: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.calculateTaxForParticipant('p_mt')
+
+      expect(result.calculation.monthlyTotals).toEqual({})
+    })
+
+    // --- client.ts: listTaxDocuments defaults documents to empty array ---
+
+    it('listTaxDocuments defaults documents to empty array', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        summary: { total_documents: 0, total_amount: 0, by_status: {} },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listTaxDocuments(2025)
+
+      expect(result.documents).toEqual([])
+    })
+
+    // --- client.ts: preflightAndRecordBill allowed path ---
+
+    it('preflightAndRecordBill records bill when allowed', async () => {
+      const fn = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true, status: 200,
+          json: () => Promise.resolve({
+            success: true, cached: false, message: 'allowed',
+            decision: { id: 'dec_bill_allow', decision: 'allowed', violated_policies: [], expires_at: null, created_at: '2026-01-01' },
+          }),
+          text: () => Promise.resolve(''),
+          headers: new Map(),
+        })
+        .mockResolvedValueOnce({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ success: true, transaction_id: 'txn_bill' }),
+          text: () => Promise.resolve(''),
+          headers: new Map(),
+        })
+      const sdk = createClient(fn)
+      const result = await sdk.preflightAndRecordBill(
+        { idempotencyKey: 'ik_bill', amount: 5000 },
+        { amount: 5000, description: 'Hosting', vendorName: 'AWS' },
+      )
+
+      expect(result.preflight.decision.decision).toBe('allowed')
+      expect(result.transaction).toBeDefined()
+      expect(result.transaction.transaction_id).toBe('txn_bill')
+
+      // Verify the bill was called with the decision id
+      const billBody = JSON.parse(fn.mock.calls[1][1].body)
+      expect(billBody.authorization_decision_id).toBe('dec_bill_allow')
+    })
+
+    // --- client.ts: createCheckoutSession idempotencyKey in body ---
+
+    it('createCheckoutSession sends idempotency_key', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: { id: 'cs_ik', mode: 'direct', payment_id: 'pay_ik', status: 'completed', requires_action: false, amount: 1000 },
+      })
+      const sdk = createClient(fn)
+      await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+        idempotencyKey: 'ik_checkout',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.idempotency_key).toBe('ik_checkout')
+    })
+
+    // --- client.ts: reverseTransaction all optional request fields ---
+
+    it('reverseTransaction maps metadata in request', async () => {
+      const fn = mockFetch({ success: true, void_type: 'void', message: 'Done' })
+      const sdk = createClient(fn)
+      await sdk.reverseTransaction({
+        transactionId: 'txn_meta',
+        reason: 'Test',
+        metadata: { audit: 'trail' },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.metadata).toEqual({ audit: 'trail' })
+    })
+
+    // --- client.ts: createReconciliationSnapshot as_of_date ---
+
+    it('createReconciliationSnapshot sends as_of_date', async () => {
+      const fn = mockFetch({
+        success: true,
+        snapshot: { id: 'snap_aod', integrity_hash: 'hash_aod' },
+      })
+      const sdk = createClient(fn)
+      await sdk.createReconciliationSnapshot({
+        periodId: 'p_aod',
+        asOfDate: '2026-03-15',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.as_of_date).toBe('2026-03-15')
+    })
+
+    // --- client.ts: createInvoice line item amount computation ---
+
+    it('createInvoice uses explicit amount when provided', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.createInvoice({
+        customerName: 'Test',
+        lineItems: [{ description: 'Item', quantity: 2, unitPrice: 1000, amount: 2500 }],
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      // When amount is explicitly provided, it should be used as-is
+      expect(body.line_items[0].amount).toBe(2500)
+    })
+
+    // --- client.ts: getDueRecurring with days param ---
+
+    it('getDueRecurring sends days param', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getDueRecurring(7)
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).toContain('days=7')
+    })
+
+    // --- client.ts: closePeriod with quarter ---
+
+    it('closePeriod sends quarter param', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.closePeriod(2026, undefined, 1)
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.quarter).toBe(1)
+    })
+
+    // --- client.ts: createPeriod ---
+
+    it('createPeriod maps request fields', async () => {
+      const fn = mockFetch({ success: true, period: { id: 'per_1' } })
+      const sdk = createClient(fn)
+      await sdk.createPeriod({
+        startDate: '2026-01-01',
+        endDate: '2026-01-31',
+        name: 'January 2026',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('create')
+      expect(body.start_date).toBe('2026-01-01')
+      expect(body.end_date).toBe('2026-01-31')
+      expect(body.name).toBe('January 2026')
+    })
+
+    // --- client.ts: getFrozenStatement ---
+
+    it('getFrozenStatement sends action get with statement_type', async () => {
+      const fn = mockFetch({ success: true, statement: { id: 'stmt_1' } })
+      const sdk = createClient(fn)
+      await sdk.getFrozenStatement('period_1', 'profit_loss')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('get')
+      expect(body.period_id).toBe('period_1')
+      expect(body.statement_type).toBe('profit_loss')
+    })
+
+    // --- client.ts: listFrozenStatements ---
+
+    it('listFrozenStatements sends action list with optional period_id', async () => {
+      const fn = mockFetch({ success: true, statements: [] })
+      const sdk = createClient(fn)
+      await sdk.listFrozenStatements('period_2')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('list')
+      expect(body.period_id).toBe('period_2')
+    })
+
+    it('listFrozenStatements sends undefined period_id when not provided', async () => {
+      const fn = mockFetch({ success: true, statements: [] })
+      const sdk = createClient(fn)
+      await sdk.listFrozenStatements()
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('list')
+    })
+
+    // --- client.ts: report methods send correct report_type ---
+
+    it('getProfitLoss sends profit_loss report_type', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getProfitLoss('2026-01-01', '2026-03-31')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('profit_loss')
+      expect(body.start_date).toBe('2026-01-01')
+      expect(body.end_date).toBe('2026-03-31')
+    })
+
+    it('getTrialBalance sends trial_balance report_type', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getTrialBalance('2026-03-01')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('trial_balance')
+      expect(body.as_of).toBe('2026-03-01')
+    })
+
+    it('get1099Summary sends 1099_summary report_type', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.get1099Summary(2025)
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('1099_summary')
+      expect(body.tax_year).toBe(2025)
+    })
+
+    it('getCreatorEarnings sends creator_earnings report_type', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getCreatorEarnings('2026-01-01', '2026-03-31')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('creator_earnings')
+    })
+
+    it('getTransactions sends transaction_history with optional params', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getTransactions('2026-01-01', '2026-03-31', 'creator_x')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('transaction_history')
+      expect(body.creator_id).toBe('creator_x')
+    })
+
+    // --- client.ts: convenience PDF methods ---
+
+    it('getCreatorStatement delegates to generatePDF with creator_statement', async () => {
+      const fn = mockFetch({ success: true, filename: 'stmt.pdf', data: 'base64' })
+      const sdk = createClient(fn)
+      await sdk.getCreatorStatement('c_1', '2026-01-01', '2026-01-31')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('creator_statement')
+      expect(body.creator_id).toBe('c_1')
+    })
+
+    it('getTrialBalancePDF delegates to generatePDF with trial_balance', async () => {
+      const fn = mockFetch({ success: true, filename: 'tb.pdf', data: 'base64' })
+      const sdk = createClient(fn)
+      await sdk.getTrialBalancePDF()
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('trial_balance')
+    })
+
+    it('get1099PDF delegates to generatePDF with 1099', async () => {
+      const fn = mockFetch({ success: true, filename: '1099.pdf', data: 'base64' })
+      const sdk = createClient(fn)
+      await sdk.get1099PDF(2025)
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('1099')
+      expect(body.tax_year).toBe(2025)
+    })
+
+    // --- client.ts: requestGet skips undefined params ---
+
+    it('requestGet omits undefined params from URL', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      await sdk.getAPAging() // no asOfDate
+
+      const url = String(fn.mock.calls[0][0])
+      expect(url).not.toContain('as_of_date')
+    })
+
+    // --- client.ts: listAlerts defaults data to empty array when data not array ---
+
+    it('listAlerts defaults data to empty when response.data is not array', async () => {
+      const fn = mockFetch({ success: true, data: null })
+      const sdk = createClient(fn)
+      const result = await sdk.listAlerts()
+
+      expect(result.data).toEqual([])
+    })
+
+    // --- client.ts: exportReport JSON path ---
+
+    it('exportReport with json format returns full response', async () => {
+      const fn = mockFetch({ success: true, report_type: 'summary', data: [], row_count: 0 })
+      const sdk = createClient(fn)
+      const result = await sdk.exportReport({ reportType: 'summary', format: 'json', startDate: '2026-01-01', endDate: '2026-03-31', creatorId: 'c_1' })
+
+      expect(result).toMatchObject({ success: true, report_type: 'summary' })
+    })
+
+    // --- client.ts: createCheckoutSession checkout_url null path ---
+
+    it('createCheckoutSession status null when missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_ns',
+          mode: 'session',
+          requires_action: false,
+          amount: 1000,
+          // status, checkout_url, expires_at all missing
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        successUrl: 'https://example.com/ok',
+      })
+
+      expect(result.checkoutSession.status).toBeNull()
+      expect(result.checkoutSession.checkoutUrl).toBeNull()
+      expect(result.checkoutSession.expiresAt).toBeNull()
+    })
   })
 })

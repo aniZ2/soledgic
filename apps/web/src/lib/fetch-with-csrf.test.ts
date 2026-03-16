@@ -385,4 +385,109 @@ describe('fetchWithCsrf', () => {
     const headers = call[1].headers as Headers
     expect(headers.get('authorization')).toBeNull()
   })
+
+  it('auth header format is exactly "Bearer <token>" with single space', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'my_jwt' } },
+    })
+
+    await fetchWithCsrf('https://app.soledgic.com/api/test')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('authorization')).toBe('Bearer my_jwt')
+    expect(headers.get('authorization')).not.toBe('Bearer  my_jwt')
+    expect(headers.get('authorization')).not.toBe('bearer my_jwt')
+  })
+
+  it('x-requested-with default value is exactly "fetch"', async () => {
+    await fetchWithCsrf('https://external.com/data')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('x-requested-with')).toBe('fetch')
+    expect(headers.get('x-requested-with')).not.toBe('XMLHttpRequest')
+    expect(headers.get('x-requested-with')).not.toBe('')
+  })
+
+  it('isInternalApiRequest returns false for malformed URLs', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'tok' } },
+    })
+
+    // Invalid URL that can't be parsed
+    await fetchWithCsrf('not://valid url with spaces', {})
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    // Should not crash, should not inject auth
+    expect(headers.get('authorization')).toBeNull()
+  })
+
+  it('csrf token regex matches token at start of cookie string', async () => {
+    fakeCookies = '__csrf_token=start_token; other=val'
+    const token = getCsrfToken()
+    expect(token).toBe('start_token')
+  })
+
+  it('csrf token regex does not match partial cookie names', async () => {
+    fakeCookies = 'my__csrf_token=wrong; __csrf_token=right'
+    const token = getCsrfToken()
+    // The regex uses (?:^|;\s*) so it should match __csrf_token at start or after ;
+    expect(token).toBe('right')
+  })
+
+  it('getCsrfToken returns undefined for empty document.cookie', () => {
+    fakeCookies = ''
+    expect(getCsrfToken()).toBeUndefined()
+  })
+
+  it('does not set x-csrf-token when getCsrfToken returns undefined', async () => {
+    fakeCookies = '' // no csrf token
+    await fetchWithCsrf('https://external.com/data')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.has('x-csrf-token')).toBe(false)
+  })
+
+  it('sets x-csrf-token when getCsrfToken returns a value', async () => {
+    fakeCookies = '__csrf_token=my_token'
+    await fetchWithCsrf('https://external.com/data')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.has('x-csrf-token')).toBe(true)
+    expect(headers.get('x-csrf-token')).toBe('my_token')
+  })
+
+  it('Content-Type check uses !== undefined, not falsy check', async () => {
+    // body: '' is falsy but !== undefined, so Content-Type should be set
+    await fetchWithCsrf('https://external.com/data', {
+      method: 'POST',
+      body: '',
+    })
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('Content-Type')).toBe('application/json')
+
+    // body: undefined -> Content-Type should NOT be set
+    fetchSpy.mockClear()
+    await fetchWithCsrf('https://external.com/data', {
+      method: 'POST',
+    })
+
+    const call2 = fetchSpy.mock.calls[0]
+    const headers2 = call2[1].headers as Headers
+    expect(headers2.get('Content-Type')).toBeNull()
+  })
+
+  it('credentials default is "include" via nullish coalescing', async () => {
+    // When credentials is undefined (default)
+    await fetchWithCsrf('https://external.com/data', {})
+
+    const call = fetchSpy.mock.calls[0]
+    expect(call[1].credentials).toBe('include')
+  })
 })
