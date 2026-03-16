@@ -1945,4 +1945,279 @@ describe('Soledgic SDK', () => {
     expect(result.summary.total_held).toBe(50000)
     expect(result.summary.total_count).toBe(5)
   })
+
+  // === DELETE OPERATIONS ===
+
+  describe('deleteWebhookEndpoint', () => {
+    it('sends action: delete with endpoint_id', async () => {
+      const fn = mockFetch({ success: true, message: 'Endpoint deleted' })
+      const sdk = createClient(fn)
+      const result = await sdk.deleteWebhookEndpoint('ep_123')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/webhooks')
+      expect(body.action).toBe('delete')
+      expect(body.endpoint_id).toBe('ep_123')
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Endpoint deleted')
+    })
+
+    it('returns undefined message when response has no message', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.deleteWebhookEndpoint('ep_456')
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBeUndefined()
+    })
+  })
+
+  describe('deleteAlert', () => {
+    it('sends action: delete with config_id', async () => {
+      const fn = mockFetch({ success: true, message: 'Alert deleted' })
+      const sdk = createClient(fn)
+      const result = await sdk.deleteAlert('alert_cfg_1')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/configure-alerts')
+      expect(body.action).toBe('delete')
+      expect(body.config_id).toBe('alert_cfg_1')
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Alert deleted')
+    })
+  })
+
+  // === PDF EXPORTS ===
+
+  describe('generatePDF', () => {
+    it('sends report_type and snake_case options', async () => {
+      const fn = mockFetch({ success: true, filename: 'pl_2026.pdf', data: 'base64data' })
+      const sdk = createClient(fn)
+      const result = await sdk.generatePDF('profit_loss', {
+        startDate: '2026-01-01',
+        endDate: '2026-03-01',
+        periodId: 'period_1',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/generate-pdf')
+      expect(body.report_type).toBe('profit_loss')
+      expect(body.start_date).toBe('2026-01-01')
+      expect(body.end_date).toBe('2026-03-01')
+      expect(body.period_id).toBe('period_1')
+      expect(result.success).toBe(true)
+      expect(result.filename).toBe('pl_2026.pdf')
+      expect(result.data).toBe('base64data')
+    })
+
+    it('sends creator_statement with creatorId', async () => {
+      const fn = mockFetch({ success: true, filename: 'stmt.pdf', data: 'base64', frozen: false })
+      const sdk = createClient(fn)
+      const result = await sdk.generatePDF('creator_statement', {
+        creatorId: 'c_1',
+        startDate: '2026-01-01',
+        endDate: '2026-02-01',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('creator_statement')
+      expect(body.creator_id).toBe('c_1')
+      expect(result.frozen).toBe(false)
+    })
+
+    it('sends 1099 with tax_year', async () => {
+      const fn = mockFetch({ success: true, filename: '1099_2025.pdf', data: 'base64' })
+      const sdk = createClient(fn)
+      await sdk.generatePDF('1099', { taxYear: 2025 })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('1099')
+      expect(body.tax_year).toBe(2025)
+    })
+  })
+
+  describe('getProfitLossPDF', () => {
+    it('delegates to generatePDF with profit_loss type', async () => {
+      const fn = mockFetch({ success: true, filename: 'pl.pdf', data: 'base64' })
+      const sdk = createClient(fn)
+      await sdk.getProfitLossPDF('2026-01-01', '2026-03-01', 'period_1')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('profit_loss')
+      expect(body.start_date).toBe('2026-01-01')
+      expect(body.end_date).toBe('2026-03-01')
+      expect(body.period_id).toBe('period_1')
+    })
+
+    it('works without optional periodId', async () => {
+      const fn = mockFetch({ success: true, filename: 'pl.pdf', data: 'base64' })
+      const sdk = createClient(fn)
+      await sdk.getProfitLossPDF('2026-01-01', '2026-03-01')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('profit_loss')
+      expect(body.period_id).toBeUndefined()
+    })
+  })
+
+  // === FROZEN STATEMENTS ===
+
+  describe('generateFrozenStatements', () => {
+    it('sends action: generate with period_id', async () => {
+      const fn = mockFetch({ success: true, statements: ['profit_loss', 'balance_sheet'] })
+      const sdk = createClient(fn)
+      const result = await sdk.generateFrozenStatements('period_2026_01')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/frozen-statements')
+      expect(body.action).toBe('generate')
+      expect(body.period_id).toBe('period_2026_01')
+      expect(result.success).toBe(true)
+    })
+  })
+
+  describe('verifyFrozenStatements', () => {
+    it('sends action: verify with period_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        all_valid: true,
+        verification_results: [
+          { statement_type: 'profit_loss', valid: true },
+          { statement_type: 'balance_sheet', valid: true },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.verifyFrozenStatements('period_2026_01')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/frozen-statements')
+      expect(body.action).toBe('verify')
+      expect(body.period_id).toBe('period_2026_01')
+      expect(result.success).toBe(true)
+      expect(result.all_valid).toBe(true)
+      expect(result.verification_results).toHaveLength(2)
+    })
+
+    it('returns all_valid: false when a statement is tampered', async () => {
+      const fn = mockFetch({
+        success: true,
+        all_valid: false,
+        verification_results: [
+          { statement_type: 'profit_loss', valid: false, error: 'hash mismatch' },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.verifyFrozenStatements('period_2026_01')
+
+      expect(result.all_valid).toBe(false)
+      expect(result.verification_results[0].valid).toBe(false)
+    })
+  })
+
+  // === TIER / SPLIT METHODS ===
+
+  describe('listTiers', () => {
+    it('sends action: list_tiers to manage-splits', async () => {
+      const fn = mockFetch({
+        success: true,
+        tiers: [
+          { id: 'tier_1', name: 'Gold', creator_percent: 85, threshold: 10000 },
+          { id: 'tier_2', name: 'Silver', creator_percent: 80, threshold: 0 },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listTiers()
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/manage-splits')
+      expect(body.action).toBe('list_tiers')
+      expect(result.tiers).toHaveLength(2)
+    })
+  })
+
+  describe('getEffectiveSplit', () => {
+    it('sends action: get_effective_split with creator_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        creator_id: 'c_1',
+        effective_split: 85,
+        source: 'custom_override',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getEffectiveSplit('c_1')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/manage-splits')
+      expect(body.action).toBe('get_effective_split')
+      expect(body.creator_id).toBe('c_1')
+      expect(result.effective_split).toBe(85)
+      expect(result.source).toBe('custom_override')
+    })
+  })
+
+  describe('setCreatorSplit', () => {
+    it('sends action: set_creator_split with creator_id and split_percent', async () => {
+      const fn = mockFetch({ success: true, message: 'Split updated' })
+      const sdk = createClient(fn)
+      const result = await sdk.setCreatorSplit('c_1', 90)
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/manage-splits')
+      expect(body.action).toBe('set_creator_split')
+      expect(body.creator_id).toBe('c_1')
+      expect(body.split_percent).toBe(90)
+      expect(result.success).toBe(true)
+    })
+  })
+
+  // === IMPORT METHODS ===
+
+  describe('getImportTemplates', () => {
+    it('sends action: get_templates to import-transactions', async () => {
+      const fn = mockFetch({
+        success: true,
+        templates: [
+          { id: 'tpl_1', name: 'Chase CSV', bank_name: 'Chase', format: 'csv' },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getImportTemplates()
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/import-transactions')
+      expect(body.action).toBe('get_templates')
+      expect(result.templates).toHaveLength(1)
+      expect(result.templates[0].name).toBe('Chase CSV')
+    })
+  })
+
+  describe('importTransactions', () => {
+    it('sends action: import with transactions array', async () => {
+      const transactions = [
+        { date: '2026-01-15', description: 'Sale #1001', amount: 5000 },
+        { date: '2026-01-16', description: 'Sale #1002', amount: 3000, reference: 'ref_1002' },
+      ]
+      const fn = mockFetch({ success: true, imported: 2, skipped: 0 })
+      const sdk = createClient(fn)
+      const result = await sdk.importTransactions(transactions)
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(fn.mock.calls[0][0]).toContain('/import-transactions')
+      expect(body.action).toBe('import')
+      expect(body.transactions).toHaveLength(2)
+      expect(body.transactions[0].date).toBe('2026-01-15')
+      expect(body.transactions[0].amount).toBe(5000)
+      expect(body.transactions[1].reference).toBe('ref_1002')
+      expect(result.imported).toBe(2)
+    })
+
+    it('sends empty array when no transactions', async () => {
+      const fn = mockFetch({ success: true, imported: 0, skipped: 0 })
+      const sdk = createClient(fn)
+      await sdk.importTransactions([])
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.transactions).toEqual([])
+    })
+  })
 })

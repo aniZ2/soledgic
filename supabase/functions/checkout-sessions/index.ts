@@ -9,6 +9,7 @@ import {
   respondWithResult,
 } from '../_shared/treasury-resource.ts'
 import { createCheckoutResponse } from '../_shared/checkout-service.ts'
+import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
 const handler = createHandler(
   { endpoint: 'checkout-sessions', requireAuth: true, rateLimit: true },
@@ -45,7 +46,7 @@ const handler = createHandler(
       cancel_url: typeof payload.cancel_url === 'string' ? payload.cancel_url : undefined,
       idempotency_key: typeof payload.idempotency_key === 'string' ? payload.idempotency_key : undefined,
       metadata: payload.metadata as Record<string, string> | undefined,
-    }, requestId)
+    }, requestId, getPaymentProvider('card'))
 
     return respondWithResult(req, requestId, response)
   },

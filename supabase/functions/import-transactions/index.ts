@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_IMPORT_ENGINE
 // Soledgic Edge Function: Import Transactions
 // POST /import-transactions - Parse and import bank exports (CSV, OFX)
 // SECURITY HARDENED VERSION

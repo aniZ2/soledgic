@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_PREFLIGHT_AUTH
 // Soledgic Edge Function: Preflight Authorization
 // POST /preflight-authorization
 //

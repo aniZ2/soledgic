@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_SPLIT_MANAGER
 // Soledgic Edge Function: Manage Splits
 // POST /manage-splits
 // Configure tiers, per-creator rates, per-product rates

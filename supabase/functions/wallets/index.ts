@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_WALLET_ROUTER
 import {
   createHandler,
   errorResponse,

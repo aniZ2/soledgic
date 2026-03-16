@@ -10,7 +10,7 @@ import {
   validateString,
   validateUrl,
 } from './utils.ts'
-import { getPaymentProvider } from './payment-provider.ts'
+import type { PaymentProvider } from './payment-provider.ts'
 import {
   ResourceResult,
   resourceError,
@@ -96,6 +96,7 @@ export async function createCheckoutResponse(
   ledger: LedgerContext,
   body: CreateCheckoutRequest,
   requestId: string,
+  provider?: PaymentProvider,
 ): Promise<ResourceResult> {
   const amount = validateAmount(body.amount)
   if (amount === null || amount <= 0) {
@@ -229,7 +230,7 @@ export async function createCheckoutResponse(
     return resourceError('merchant_id is not allowed', 400, {}, 'merchant_override_not_allowed')
   }
 
-  const provider = getPaymentProvider('card')
+  if (!provider) throw new Error('PaymentProvider is required for direct charge flows')
   const description = productName
     ? `${productName}`
     : `Purchase from ${(ledger.settings as any)?.platform_name || ledger.business_name}`

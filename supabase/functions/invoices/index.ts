@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_INVOICE_ENGINE
 // Soledgic Edge Function: Invoice Management
 // POST /invoices - Create invoice
 // GET /invoices - List invoices

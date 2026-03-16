@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_RECONCILIATION_ENGINE
 // Soledgic Edge Function: Reconciliation
 // POST /reconcile
 // Handles bank reconciliation with snapshot freezing per period

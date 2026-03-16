@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_BILLING
 // Soledgic Edge Function: Billing Management API
 // POST /billing
 //

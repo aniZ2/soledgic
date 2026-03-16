@@ -8,7 +8,7 @@ import {
   validateId,
   validateString,
 } from './utils.ts'
-import { getPaymentProvider } from './payment-provider.ts'
+import type { PaymentProvider } from './payment-provider.ts'
 import {
   ResourceResult,
   resourceError,
@@ -290,6 +290,7 @@ export async function recordRefundResponse(
   ledger: LedgerContext,
   body: RefundRequest,
   requestId: string,
+  provider?: PaymentProvider,
 ): Promise<ResourceResult> {
   const originalRef = validateId(body.original_sale_reference, 255)
   const reason = validateString(body.reason, 500)
@@ -536,7 +537,7 @@ export async function recordRefundResponse(
     }
 
     // Ledger entry is now booked. Call the processor.
-    const provider = getPaymentProvider('card')
+    if (!provider) return resourceError('PaymentProvider is required for processor refunds', 500, {}, 'missing_provider')
     const processorIdempotencyId = idempotencyKey
       ? `refund_${idempotencyKey}`
       : await buildDeterministicRefundReferenceId(originalSale.id, effectiveRefundCents, refundFrom, reason)

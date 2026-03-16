@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_RECORD_BILL
 // Soledgic Edge Function: Record Bill
 // POST /record-bill
 // Records a bill (accounts payable) - works for any ledger mode

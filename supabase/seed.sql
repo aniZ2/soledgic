@@ -1,0 +1,3 @@
+-- Seed data is configured manually per environment.
+-- This file exists to satisfy supabase/config.toml's sql_paths reference.
+-- For local development setup, see docs/COMPLETE_REFERENCE.md.

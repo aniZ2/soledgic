@@ -5,7 +5,7 @@ import {
   sanitizeForAudit,
   validateId,
 } from './utils.ts'
-import { getPaymentProvider } from './payment-provider.ts'
+import type { PaymentProvider } from './payment-provider.ts'
 import {
   ResourceResult,
   resourceError,
@@ -543,6 +543,7 @@ async function executeReleaseTransfer(
   supabase: SupabaseClient,
   ledger: LedgerContext,
   releaseId: string,
+  provider: PaymentProvider,
 ): Promise<{
   success: boolean
   transferId: string | null
@@ -593,7 +594,6 @@ async function executeReleaseTransfer(
   }
 
   const amountMinor = majorToMinor(releaseRecord.amount_major, releaseRecord.currency)
-  const provider = getPaymentProvider('card')
 
   const transfer = await provider.createPaymentIntent({
     amount: amountMinor,
@@ -737,6 +737,7 @@ export async function releaseHeldFundsResponse(
   ledger: LedgerContext,
   body: HoldsQueryRequest,
   requestId: string,
+  provider?: PaymentProvider,
 ): Promise<ResourceResult> {
   const entryId = body.entry_id ? validateId(body.entry_id, 120) : null
   if (!entryId || !isUuidLike(entryId)) {
@@ -749,7 +750,8 @@ export async function releaseHeldFundsResponse(
 
     let transferResult: Awaited<ReturnType<typeof executeReleaseTransfer>> | null = null
     if (executeTransfer) {
-      transferResult = await executeReleaseTransfer(supabase, ledger, queued.releaseId)
+      if (!provider) return resourceError('PaymentProvider is required for transfer execution', 500, {}, 'missing_provider')
+      transferResult = await executeReleaseTransfer(supabase, ledger, queued.releaseId, provider)
       if (!transferResult.success) {
         return resourceError(transferResult.error || 'Failed to execute release transfer', 502, {}, 'release_transfer_failed')
       }

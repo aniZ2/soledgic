@@ -61,7 +61,7 @@
 | `entries` | Double-entry debit/credit lines |
 | `payouts` | Payout event records |
 | `audit_log` | Every API call logged |
-| `webhook_events` | Outbound webhook tracking |
+| `webhook_deliveries` | Outbound webhook delivery tracking |
 
 ### Reporting Tables
 

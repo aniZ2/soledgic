@@ -12,6 +12,7 @@ import {
   listRefundsResponse,
   recordRefundResponse,
 } from '../_shared/refund-service.ts'
+import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
 const handler = createHandler(
   { endpoint: 'refunds', requireAuth: true, rateLimit: true },
@@ -55,7 +56,7 @@ const handler = createHandler(
       mode: payload.mode as 'ledger_only' | 'processor_refund' | undefined,
       processor_payment_id: typeof payload.processor_payment_id === 'string' ? payload.processor_payment_id : undefined,
       metadata: payload.metadata as Record<string, any> | undefined,
-    }, requestId)
+    }, requestId, getPaymentProvider('card'))
 
     return respondWithResult(req, requestId, response)
   },

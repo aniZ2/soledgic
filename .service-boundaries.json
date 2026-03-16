@@ -9,9 +9,12 @@
         "supabase/functions/_shared/refund-service.ts",
         "supabase/functions/_shared/holds-service.ts",
         "supabase/functions/execute-payout/",
-        "supabase/functions/bill-overages/"
+        "supabase/functions/bill-overages/",
+        "supabase/functions/checkout-sessions/",
+        "supabase/functions/refunds/",
+        "supabase/functions/holds/"
       ],
-      "reason": "Payment provider touches real money — only orchestration services may call it"
+      "reason": "Payment provider touches real money — only orchestration services and their entry-point edge functions may import it"
     },
     {
       "id": "SVC_CHECKOUT_ORCHESTRATOR",

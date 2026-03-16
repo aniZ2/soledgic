@@ -645,13 +645,17 @@ Deno.test('recordRefundResponse: voids reserved ledger entry when processor refu
       },
     } as any
 
+    // Import getPaymentProvider to pass an actual provider instance
+    const { getPaymentProvider } = await import('../payment-provider.ts')
+    const provider = getPaymentProvider('card')
+
     const result = await recordRefundResponse(req, supabase, ledger, {
       original_sale_reference: 'sale_1',
       amount: 3000,
       reason: 'Customer request',
       mode: 'processor_refund',
       processor_payment_id: 'pi_123',
-    }, requestId)
+    }, requestId, provider)
 
     assertEquals(result.status, 502)
     assertEquals(result.body.error_code, 'processor_refund_failed')

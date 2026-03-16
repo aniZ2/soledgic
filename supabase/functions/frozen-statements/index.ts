@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_FROZEN_STATEMENTS
 // Soledgic Edge Function: Frozen Statements
 // POST /frozen-statements
 // Generate and retrieve read-only financial statements for locked periods

@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_RECORD_INCOME
 // Soledgic Edge Function: Record Income
 // POST /record-income
 // Records business income (Standard mode - no splits)

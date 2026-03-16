@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_BANK_ACCOUNT_MANAGER
 // Soledgic Edge Function: Manage Bank Accounts
 // POST /manage-bank-accounts - Create bank account
 // GET /manage-bank-accounts - List bank accounts

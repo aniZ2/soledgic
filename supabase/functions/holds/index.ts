@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_HOLDS_ROUTER
 import {
   createHandler,
   errorResponse,
@@ -15,6 +16,7 @@ import {
   listHeldFundsResponse,
   releaseHeldFundsResponse,
 } from '../_shared/holds-service.ts'
+import { getPaymentProvider } from '../_shared/payment-provider.ts'
 
 const handler = createHandler(
   { endpoint: 'holds', requireAuth: true, rateLimit: true },
@@ -69,7 +71,7 @@ const handler = createHandler(
       const response = await releaseHeldFundsResponse(req, supabase, ledger, {
         entry_id: segments[0],
         execute_transfer: payload.execute_transfer !== false,
-      }, requestId)
+      }, requestId, getPaymentProvider('card'))
 
       return respondWithResult(req, requestId, response)
     }

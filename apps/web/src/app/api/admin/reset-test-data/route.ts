@@ -86,12 +86,12 @@ export const POST = createApiHandler(
       .in('ledger_id', testLedgerIds)
     deleted.payouts = payoutsCount ?? 0
 
-    // 5. Webhook events
-    const { count: webhookEventsCount } = await supabase
-      .from('webhook_events')
+    // 5. Webhook deliveries
+    const { count: webhookDeliveriesCount } = await supabase
+      .from('webhook_deliveries')
       .delete({ count: 'exact' })
       .in('ledger_id', testLedgerIds)
-    deleted.webhook_events = webhookEventsCount ?? 0
+    deleted.webhook_deliveries = webhookDeliveriesCount ?? 0
 
     // 6. Reconciliation records
     const { count: reconCount } = await supabase

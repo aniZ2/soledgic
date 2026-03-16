@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_STATEMENT_SENDER
 // Soledgic Auto-Email Service
 // Sends monthly creator statements automatically after period close
 // Triggered by: cron job on 1st of month, or manually via API

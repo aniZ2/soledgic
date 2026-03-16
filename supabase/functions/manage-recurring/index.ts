@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_RECURRING_MANAGER
 // Soledgic Edge Function: Manage Recurring Expenses
 // POST /manage-recurring - Create recurring template
 // GET /manage-recurring - List recurring expenses

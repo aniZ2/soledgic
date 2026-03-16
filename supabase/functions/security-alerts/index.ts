@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_SECURITY_ALERTS
 // Soledgic Edge Function: Security Alerts
 // POST /security-alerts - Process security events and send alerts
 // Called by cron job or triggered by threshold breaches

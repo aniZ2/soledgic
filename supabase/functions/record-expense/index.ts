@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_RECORD_EXPENSE
 // Soledgic Edge Function: Record Expense
 // POST /record-expense
 // Records a business expense (Standard + Marketplace mode)

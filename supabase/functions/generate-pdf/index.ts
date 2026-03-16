@@ -1,3 +1,4 @@
+// SERVICE_ID: SVC_PDF_GENERATOR
 // Soledgic Edge Function: Generate PDF Reports
 // POST /generate-pdf - Creates downloadable PDF reports
 // SECURITY HARDENED VERSION v2 - Fixed auth bypass and rate limiting
