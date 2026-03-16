@@ -3160,6 +3160,215 @@ describe('Soledgic SDK', () => {
       expect(result.totals.totalGross).toBe(50000)
       expect(result.totals.participantsRequiring1099).toBe(1)
     })
+
+    it('createCreator maps nested participant with tax_info', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: { id: 'c1', account_id: 'acct_1', display_name: 'Jane', email: 'j@test.com', default_split_percent: 80, payout_preferences: { schedule: 'weekly' }, created_at: '2026-01-01' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCreator({ creatorId: 'c1' })
+
+      expect(result.creator.id).toBe('c1')
+      expect(result.creator.accountId).toBe('acct_1')
+      expect(result.creator.displayName).toBe('Jane')
+      expect(result.creator.email).toBe('j@test.com')
+      expect(result.creator.defaultSplitPercent).toBe(80)
+      expect(result.creator.payoutPreferences).toEqual({ schedule: 'weekly' })
+      expect(result.creator.createdAt).toBe('2026-01-01')
+
+      // Verify tax_info snake_case mapping in request body
+      const fn2 = mockFetch({ success: true, participant: {} })
+      const sdk2 = createClient(fn2)
+      await sdk2.createCreator({
+        creatorId: 'c2',
+        taxInfo: { taxIdType: 'ein', taxIdLast4: '5678', legalName: 'Corp', businessType: 'llc', address: { line1: '123 St', city: 'NY', state: 'NY', postalCode: '10001', country: 'US' } },
+        payoutPreferences: { schedule: 'monthly', minimumAmount: 5000, method: 'card' },
+      })
+      const body = JSON.parse(fn2.mock.calls[0][1].body)
+      expect(body.tax_info.tax_id_type).toBe('ein')
+      expect(body.tax_info.tax_id_last4).toBe('5678')
+      expect(body.tax_info.legal_name).toBe('Corp')
+      expect(body.tax_info.address.postal_code).toBe('10001')
+      expect(body.payout_preferences.minimum_amount).toBe(5000)
+    })
+
+    it('listParticipants maps array of participants', async () => {
+      const fn = mockFetch({
+        success: true,
+        participants: [
+          { id: 'p1', linked_user_id: 'u1', name: 'Alice', tier: 'gold', ledger_balance: 10000, held_amount: 500, available_balance: 9500 },
+          { id: 'p2', linked_user_id: null, name: null, tier: null, ledger_balance: 0, held_amount: 0, available_balance: 0 },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listParticipants()
+
+      expect(result.participants).toHaveLength(2)
+      expect(result.participants[0].id).toBe('p1')
+      expect(result.participants[0].linkedUserId).toBe('u1')
+      expect(result.participants[0].name).toBe('Alice')
+      expect(result.participants[0].tier).toBe('gold')
+      expect(result.participants[0].ledgerBalance).toBe(10000)
+      expect(result.participants[0].heldAmount).toBe(500)
+      expect(result.participants[0].availableBalance).toBe(9500)
+      expect(result.participants[1].linkedUserId).toBeNull()
+      expect(result.participants[1].name).toBeNull()
+    })
+
+    it('getParticipant maps detail with holds array', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: {
+          id: 'p1', linked_user_id: 'u1', name: 'Bob', tier: 'silver',
+          custom_split_percent: 75, ledger_balance: 8000, held_amount: 1000, available_balance: 7000,
+          holds: [{ amount: 500, reason: 'tax', release_date: '2026-03-01', status: 'held' }],
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getParticipant('p1')
+
+      expect(result.participant.id).toBe('p1')
+      expect(result.participant.customSplitPercent).toBe(75)
+      expect(result.participant.holds).toHaveLength(1)
+      expect(result.participant.holds[0].amount).toBe(500)
+      expect(result.participant.holds[0].reason).toBe('tax')
+      expect(result.participant.holds[0].releaseDate).toBe('2026-03-01')
+      expect(result.participant.holds[0].status).toBe('held')
+    })
+
+    it('createLedger maps response with nested settings', async () => {
+      const fn = mockFetch({
+        success: true, warning: 'trial mode',
+        ledger: { id: 'l1', business_name: 'Acme', ledger_mode: 'platform', api_key: 'sk_test', status: 'active', created_at: '2026-01-01' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createLedger({ businessName: 'Acme', ownerEmail: 'a@test.com' })
+
+      expect(result.ledger.id).toBe('l1')
+      expect(result.ledger.businessName).toBe('Acme')
+      expect(result.ledger.ledgerMode).toBe('platform')
+      expect(result.ledger.apiKey).toBe('sk_test')
+      expect(result.warning).toBe('trial mode')
+    })
+
+    it('getParticipantPayoutEligibility maps eligibility with issues', async () => {
+      const fn = mockFetch({
+        success: true,
+        eligibility: { participant_id: 'p1', eligible: false, available_balance: 0, issues: ['no_bank_account', 'below_minimum'], requirements: { min_payout: 1000 } },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getParticipantPayoutEligibility('p1')
+
+      expect(result.eligibility.participantId).toBe('p1')
+      expect(result.eligibility.eligible).toBe(false)
+      expect(result.eligibility.issues).toEqual(['no_bank_account', 'below_minimum'])
+      expect(result.eligibility.requirements).toEqual({ min_payout: 1000 })
+    })
+
+    it('calculateTaxForParticipant maps tax calculation', async () => {
+      const fn = mockFetch({
+        success: true,
+        calculation: {
+          participant_id: 'p1', tax_year: 2026, gross_payments: 75000,
+          transaction_count: 150, requires_1099: true, monthly_totals: { '2026-01': 6000 },
+          threshold: 600, linked_user_id: 'u1',
+          shared_tax_profile: { status: 'active', legal_name: 'Jane Doe', tax_id_last4: '4321' },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.calculateTaxForParticipant('p1', 2026)
+
+      expect(result.calculation.participantId).toBe('p1')
+      expect(result.calculation.taxYear).toBe(2026)
+      expect(result.calculation.grossPayments).toBe(75000)
+      expect(result.calculation.transactionCount).toBe(150)
+      expect(result.calculation.requires1099).toBe(true)
+      expect(result.calculation.threshold).toBe(600)
+      expect(result.calculation.linkedUserId).toBe('u1')
+      expect(result.calculation.sharedTaxProfile?.legalName).toBe('Jane Doe')
+      expect(result.calculation.sharedTaxProfile?.taxIdLast4).toBe('4321')
+    })
+
+    it('listRefunds maps refund array with breakdown', async () => {
+      const fn = mockFetch({
+        success: true, count: 1,
+        refunds: [{
+          id: 'r1', transaction_id: 'tx1', reference_id: 'ref1', sale_reference: 'sale1',
+          refunded_amount: 2000, currency: 'USD', status: 'completed', reason: 'defective',
+          refund_from: 'both', external_refund_id: null, created_at: '2026-01-15',
+          breakdown: { from_creator: 1600, from_platform: 400 }, repair_pending: false, last_error: null,
+        }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listRefunds({ saleReference: 'sale1' })
+
+      expect(result.count).toBe(1)
+      expect(result.refunds).toHaveLength(1)
+      expect(result.refunds[0].id).toBe('r1')
+      expect(result.refunds[0].transactionId).toBe('tx1')
+      expect(result.refunds[0].refundedAmount).toBe(2000)
+      expect(result.refunds[0].reason).toBe('defective')
+      expect(result.refunds[0].refundFrom).toBe('both')
+      expect(result.refunds[0].breakdown?.fromCreator).toBe(1600)
+      expect(result.refunds[0].breakdown?.fromPlatform).toBe(400)
+      expect(result.refunds[0].repairPending).toBe(false)
+    })
+
+    it('listAlerts maps alert configurations', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: [{
+          id: 'a1', alert_type: 'breach_risk', channel: 'slack',
+          config: { webhook_url: 'https://hooks.slack.com/xxx' },
+          thresholds: { coverage_ratio_below: 0.5, shortfall_above: 1000 },
+          is_active: true, last_triggered_at: '2026-01-01', trigger_count: 5, created_at: '2025-12-01',
+        }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listAlerts()
+
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].id).toBe('a1')
+      expect(result.data[0].alertType).toBe('breach_risk')
+      expect(result.data[0].channel).toBe('slack')
+      expect(result.data[0].thresholds.coverageRatioBelow).toBe(0.5)
+      expect(result.data[0].thresholds.shortfallAbove).toBe(1000)
+      expect(result.data[0].isActive).toBe(true)
+      expect(result.data[0].triggerCount).toBe(5)
+    })
+
+    it('createFraudPolicy maps policy response', async () => {
+      const fn = mockFetch({
+        success: true,
+        policy: { id: 'fp1', type: 'budget_cap', severity: 'hard', priority: 10, is_active: true, config: { limit: 50000 }, created_at: '2026-01-01', updated_at: null },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createFraudPolicy({ policyType: 'budget_cap', config: { limit: 50000 } })
+
+      expect(result.policy.id).toBe('fp1')
+      expect(result.policy.type).toBe('budget_cap')
+      expect(result.policy.severity).toBe('hard')
+      expect(result.policy.priority).toBe(10)
+      expect(result.policy.isActive).toBe(true)
+      expect(result.policy.config).toEqual({ limit: 50000 })
+    })
+
+    it('listComplianceAccessPatterns maps pattern entries', async () => {
+      const fn = mockFetch({
+        success: true, window_hours: 24, count: 1,
+        patterns: [{ ip_address: '1.2.3.4', hour: '2026-01-15T14:00:00Z', request_count: 50, unique_actions: 3, actions: ['read', 'write', 'delete'], max_risk_score: 45, failed_auths: 2 }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceAccessPatterns()
+
+      expect(result.windowHours).toBe(24)
+      expect(result.patterns[0].ipAddress).toBe('1.2.3.4')
+      expect(result.patterns[0].requestCount).toBe(50)
+      expect(result.patterns[0].uniqueActions).toBe(3)
+      expect(result.patterns[0].maxRiskScore).toBe(45)
+      expect(result.patterns[0].failedAuths).toBe(2)
+    })
   })
 
   describe('helpers.ts contract tests', () => {
