@@ -8,7 +8,12 @@
  * 3. Vendor naming violations — stripe_*, plaid_* columns that weren't dropped
  * 4. RPC parameter mismatches — code passes different params than SQL expects
  *
- * Usage: node scripts/validate-schema-hygiene.mjs [--enforce]
+ * Usage: node scripts/validate-schema-hygiene.mjs [--enforce] [--live]
+ *
+ * --live: Query pg_stat_statements on the live DB to verify column usage.
+ *         Columns confirmed in recent queries are auto-suppressed.
+ *         Requires SUPABASE_PROJECT_REF and SUPABASE_ACCESS_TOKEN env vars,
+ *         or the Supabase CLI token in macOS keychain.
  */
 
 import { readdirSync, readFileSync, existsSync } from 'fs'
@@ -17,6 +22,7 @@ import { join } from 'path'
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
 const MIGRATIONS_DIR = join(ROOT, 'supabase/migrations')
 const ENFORCE = process.argv.includes('--enforce')
+const LIVE_CHECK = process.argv.includes('--live')
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -53,6 +59,116 @@ const IGNORED_PREFIXES = ['auth.', 'storage.', 'vault.', 'extensions.', 'graphql
 function isIgnoredTable(name) {
   if (IGNORED_TABLES.has(name)) return true
   return IGNORED_PREFIXES.some((p) => name.startsWith(p))
+}
+
+// ── Live DB query (pg_stat_statements) ──────────────────────────────
+
+import { execSync } from 'child_process'
+
+/**
+ * Query pg_stat_statements on the live Supabase DB.
+ * Returns a Set of column/table names that appear in recent queries.
+ * Falls back gracefully if credentials are unavailable.
+ */
+async function queryLiveColumnUsage(columnNames) {
+  if (!LIVE_CHECK || columnNames.length === 0) return new Set()
+
+  // Resolve credentials
+  let projectRef = process.env.SUPABASE_PROJECT_REF
+  let accessToken = process.env.SUPABASE_ACCESS_TOKEN
+
+  if (!projectRef) {
+    // Try to get from supabase projects list (linked project)
+    try {
+      const out = execSync('supabase projects list 2>/dev/null', { encoding: 'utf-8' })
+      const linked = out.split('\n').find((line) => line.includes('●'))
+      if (linked) {
+        const parts = linked.split(/\s*\|\s*/).map((s) => s.trim())
+        projectRef = parts[2] // REFERENCE ID column
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (!accessToken) {
+    // Try macOS keychain
+    try {
+      const raw = execSync(
+        'security find-generic-password -s "Supabase CLI" -a "supabase" -w 2>/dev/null',
+        { encoding: 'utf-8' },
+      ).trim()
+      const base64Part = raw.replace('go-keyring-base64:', '')
+      accessToken = Buffer.from(base64Part, 'base64').toString('utf-8')
+    } catch { /* ignore */ }
+  }
+
+  if (!projectRef || !accessToken) {
+    console.log('  \x1b[90mℹ --live: Skipping (no SUPABASE_PROJECT_REF/SUPABASE_ACCESS_TOKEN found)\x1b[0m')
+    return new Set()
+  }
+
+  // Query pg_stat_statements for columns that appear in recent queries
+  // We batch into groups to avoid overly long SQL
+  const confirmedAlive = new Set()
+  const batchSize = 30
+
+  for (let i = 0; i < columnNames.length; i += batchSize) {
+    const batch = columnNames.slice(i, i + batchSize)
+    const patterns = batch.map((c) => `'%${c}%'`).join(', ')
+    const sql = `SELECT query FROM pg_stat_statements WHERE query ILIKE ANY(ARRAY[${patterns}]) LIMIT 500;`
+
+    try {
+      const resp = await fetch(
+        `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: sql }),
+        },
+      )
+
+      if (!resp.ok) {
+        console.log(`  \x1b[90mℹ --live: DB query failed (${resp.status}) — skipping live check\x1b[0m`)
+        return confirmedAlive
+      }
+
+      const rows = await resp.json()
+      if (!Array.isArray(rows)) continue
+
+      // For each column, check if it appears in a non-DDL query
+      const allQueries = rows.map((r) => r.query || '').join('\n')
+      for (const col of batch) {
+        // Check the column appears in a DML context (not just CREATE TABLE / ALTER TABLE)
+        const re = new RegExp(`\\b${col}\\b`, 'i')
+        if (!re.test(allQueries)) continue
+
+        // Filter out DDL-only matches (CREATE TABLE, ALTER TABLE, DROP)
+        const isDmlUsage = rows.some((r) => {
+          const q = r.query || ''
+          if (!re.test(q)) return false
+          // Skip if this is purely a migration/DDL statement
+          const normalized = q.replace(/\s+/g, ' ').trim().toUpperCase()
+          if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('ALTER TABLE') ||
+              normalized.startsWith('DROP ') || normalized.startsWith('CREATE INDEX') ||
+              normalized.startsWith('GRANT ') || normalized.startsWith('CREATE POLICY')) {
+            return false
+          }
+          return true
+        })
+
+        if (isDmlUsage) {
+          confirmedAlive.add(col)
+        }
+      }
+    } catch (err) {
+      console.log(`  \x1b[90mℹ --live: Network error — skipping live check\x1b[0m`)
+      return confirmedAlive
+    }
+  }
+
+  return confirmedAlive
 }
 
 // ── Collect all source files ─────────────────────────────────────────
@@ -214,12 +330,26 @@ if (sqlOnlyTables.length > 0) {
   }
 }
 
-if (deadTables.length === 0 && sqlOnlyTables.length === 0) {
-  ok(`All ${liveTables.size} live tables are referenced in code`)
-} else if (deadTables.length === 0) {
+// Live DB check for dead tables
+const liveConfirmedTables = await queryLiveColumnUsage(deadTables)
+const confirmedAliveTables = []
+const stillDeadTables = []
+for (const t of deadTables) {
+  if (liveConfirmedTables.has(t)) {
+    confirmedAliveTables.push(t)
+    console.log(`  \x1b[32m✓ LIVE\x1b[0m  Table "${t}" confirmed in pg_stat_statements (suppressed)`)
+  } else {
+    stillDeadTables.push(t)
+  }
+}
+
+if (stillDeadTables.length === 0 && sqlOnlyTables.length === 0) {
+  const suppressed = confirmedAliveTables.length > 0 ? ` (${confirmedAliveTables.length} confirmed alive via live DB)` : ''
+  ok(`All ${liveTables.size} live tables are referenced in code or live queries${suppressed}`)
+} else if (stillDeadTables.length === 0) {
   ok(`All tables with no .ts references are used in SQL functions (${sqlOnlyTables.length} SQL-only)`)
 } else {
-  for (const t of deadTables) {
+  for (const t of stillDeadTables) {
     warn(`Table "${t}" exists in migrations but has zero references (code + SQL)`)
   }
 }
@@ -349,6 +479,29 @@ for (const table of referencedTables.sort()) {
   }
 }
 
+// Live DB check: query pg_stat_statements to confirm which "dead" columns are actually used
+const allDeadColNames = deadColumnsByTable.flatMap(({ columns }) => columns)
+const liveConfirmed = await queryLiveColumnUsage(allDeadColNames)
+
+let liveConfirmedCount = 0
+if (liveConfirmed.size > 0) {
+  // Move live-confirmed columns from dead to confirmed-alive
+  for (const entry of deadColumnsByTable) {
+    const stillDead = []
+    for (const col of entry.columns) {
+      if (liveConfirmed.has(col)) {
+        liveConfirmedCount++
+        console.log(`  \x1b[32m✓ LIVE\x1b[0m  Column "${entry.table}.${col}" confirmed in pg_stat_statements (suppressed)`)
+      } else {
+        stillDead.push(col)
+      }
+    }
+    entry.columns = stillDead
+  }
+  // Recalculate
+  deadColumnCount = deadColumnsByTable.reduce((sum, e) => sum + e.columns.length, 0)
+}
+
 if (sqlOnlyColumnCount > 0) {
   for (const { table, columns } of sqlOnlyColumnsByTable) {
     for (const col of columns) {
@@ -360,7 +513,8 @@ if (sqlOnlyColumnCount > 0) {
 if (deadColumnCount === 0 && sqlOnlyColumnCount === 0) {
   ok('No potentially dead columns found on referenced tables')
 } else if (deadColumnCount === 0) {
-  ok(`All columns with no .ts references are used in SQL functions (${sqlOnlyColumnCount} SQL-only)`)
+  const suppressed = liveConfirmedCount > 0 ? ` (${liveConfirmedCount} confirmed alive via pg_stat_statements)` : ''
+  ok(`All columns with no .ts references are used in SQL functions or live queries (${sqlOnlyColumnCount} SQL-only)${suppressed}`)
 } else {
   for (const { table, columns } of deadColumnsByTable) {
     for (const col of columns) {
@@ -369,10 +523,11 @@ if (deadColumnCount === 0 && sqlOnlyColumnCount === 0) {
   }
 }
 
-if (deadColumnCount > 0 || sqlOnlyColumnCount > 0) {
+if (deadColumnCount > 0 || sqlOnlyColumnCount > 0 || liveConfirmedCount > 0) {
   const parts = []
   if (deadColumnCount > 0) parts.push(`${deadColumnCount} dead`)
   if (sqlOnlyColumnCount > 0) parts.push(`${sqlOnlyColumnCount} SQL-only`)
+  if (liveConfirmedCount > 0) parts.push(`${liveConfirmedCount} confirmed alive via live DB`)
   console.log(`\n  \x1b[90m${parts.join(', ')} column(s) across ${deadColumnsByTable.length + sqlOnlyColumnsByTable.length} table(s)\x1b[0m`)
 }
 
