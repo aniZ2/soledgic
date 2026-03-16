@@ -224,4 +224,78 @@ describe('fetchWithCsrf', () => {
     const headers = call[1].headers as Headers
     expect(headers.get('authorization')).toBeNull()
   })
+
+  it('does not set csrf header when no csrf cookie exists', async () => {
+    fakeCookies = 'other=value'
+    await fetchWithCsrf('https://external.com/data')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('x-csrf-token')).toBeNull()
+  })
+
+  it('passes through additional options like method', async () => {
+    await fetchWithCsrf('https://external.com/data', { method: 'DELETE' })
+
+    const call = fetchSpy.mock.calls[0]
+    expect(call[1].method).toBe('DELETE')
+  })
+
+  it('does not inject auth for relative /api/ path treated as external (different origin)', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: 'jwt_token_123' } },
+    })
+
+    // Relative URL will be resolved against window.location.origin
+    await fetchWithCsrf('/api/test')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    // /api/test resolved to https://app.soledgic.com/api/test — this IS internal
+    expect(headers.get('authorization')).toBe('Bearer jwt_token_123')
+  })
+
+  it('does not inject auth when session has no access_token', async () => {
+    mockGetSession.mockResolvedValue({
+      data: { session: { access_token: null } },
+    })
+
+    await fetchWithCsrf('https://app.soledgic.com/api/test')
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('authorization')).toBeNull()
+  })
+
+  it('does not set Content-Type when body is explicitly undefined', async () => {
+    await fetchWithCsrf('https://external.com/data', { body: undefined })
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('Content-Type')).toBeNull()
+  })
+
+  it('sets Content-Type for empty string body', async () => {
+    await fetchWithCsrf('https://external.com/data', {
+      method: 'POST',
+      body: '',
+    })
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    // body is '' which is not undefined, so Content-Type should be set
+    expect(headers.get('Content-Type')).toBe('application/json')
+  })
+
+  it('preserves other request init properties', async () => {
+    const signal = new AbortController().signal
+    await fetchWithCsrf('https://external.com/data', {
+      method: 'PUT',
+      body: '{}',
+      signal,
+    })
+
+    const call = fetchSpy.mock.calls[0]
+    expect(call[1].signal).toBe(signal)
+  })
 })

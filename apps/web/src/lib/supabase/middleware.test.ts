@@ -173,4 +173,214 @@ describe('updateSession', () => {
     await updateSession(req)
     expect(mockGetUser).not.toHaveBeenCalled()
   })
+
+  it('skips DELETE requests', async () => {
+    const req = makeNextRequest('DELETE', [
+      { name: 'sb-testproject-auth-token', value: 'token' },
+    ])
+    await updateSession(req)
+    expect(mockGetUser).not.toHaveBeenCalled()
+  })
+
+  it('skips PUT requests', async () => {
+    const req = makeNextRequest('PUT', [
+      { name: 'sb-testproject-auth-token', value: 'token' },
+    ])
+    await updateSession(req)
+    expect(mockGetUser).not.toHaveBeenCalled()
+  })
+
+  it('returns originalResponse (not supabaseResponse) when setAll not called and user is null', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'token' },
+    ])
+    const result = await updateSession(req)
+    // No cookies should have been set on the response
+    expect(mockNextResponseCookiesSet).not.toHaveBeenCalled()
+  })
+
+  it('returns supabaseResponse when setAll is called but user is null (signed-out with cookie updates)', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: '', options: { maxAge: 0 } },
+        ])
+      }
+      return { data: { user: null }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'old-token' },
+    ])
+    const result = await updateSession(req)
+    // Cookie mutations should have been applied
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      '',
+      expect.any(Object)
+    )
+  })
+
+  it('defaults httpOnly to false when options.httpOnly is undefined', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: 'new-token', options: { path: '/' } },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'old-token' },
+    ])
+    await updateSession(req)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      'new-token',
+      expect.objectContaining({ httpOnly: false, path: '/' })
+    )
+  })
+
+  it('propagates httpOnly=false when explicitly set to false', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: 'tok', options: { httpOnly: false } },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'old-token' },
+    ])
+    await updateSession(req)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      'tok',
+      expect.objectContaining({ httpOnly: false })
+    )
+  })
+
+  it('propagates multiple cookie chunks from setAll', async () => {
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token.0', value: 'chunk0', options: { httpOnly: true } },
+          { name: 'sb-testproject-auth-token.1', value: 'chunk1', options: { httpOnly: true } },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token.0', value: 'old0' },
+      { name: 'sb-testproject-auth-token.1', value: 'old1' },
+    ])
+    await updateSession(req)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledTimes(2)
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token.0',
+      'chunk0',
+      expect.objectContaining({ httpOnly: true })
+    )
+    expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
+      'sb-testproject-auth-token.1',
+      'chunk1',
+      expect.objectContaining({ httpOnly: true })
+    )
+  })
+
+  it('sets request cookies before creating supabase response', async () => {
+    const setCalls: string[] = []
+    const reqCookieSet = vi.fn((name: string) => { setCalls.push(`req:${name}`) })
+
+    mockGetUser.mockImplementation(() => {
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: 'refreshed', options: {} },
+        ])
+      }
+      return { data: { user: { id: 'user_1' } }, error: null }
+    })
+
+    const cookies = [{ name: 'sb-testproject-auth-token', value: 'old' }]
+    const cookieMap = new Map(cookies.map(c => [c.name, c]))
+    const req = {
+      method: 'GET',
+      nextUrl: { pathname: '/' },
+      cookies: {
+        getAll: () => cookies,
+        get: (name: string) => cookieMap.get(name),
+        set: reqCookieSet,
+      },
+      headers: new Headers(),
+    } as unknown as import('next/server').NextRequest
+
+    await updateSession(req)
+    // request.cookies.set should have been called to update the request
+    expect(reqCookieSet).toHaveBeenCalledWith('sb-testproject-auth-token', 'refreshed')
+  })
+
+  it('does not log for auth session missing errors', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Auth session missing' },
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'stale' },
+    ])
+    await updateSession(req)
+
+    // console.warn should NOT have been called because the error contains 'auth session missing'
+    expect(consoleSpy).not.toHaveBeenCalled()
+    consoleSpy.mockRestore()
+  })
+
+  it('logs non-session-missing errors when AUTH_DEBUG_LOGS is true', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubEnv('AUTH_DEBUG_LOGS', 'true')
+
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Token expired', code: 'token_expired' },
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'expired' },
+    ])
+    await updateSession(req)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Middleware auth refresh failed',
+      expect.objectContaining({ code: 'token_expired' })
+    )
+    consoleSpy.mockRestore()
+  })
+
+  it('returns originalResponse on auth error (never propagates cookie clears)', async () => {
+    mockGetUser.mockImplementation(() => {
+      // Supabase tries to clear cookies on failure
+      if (capturedSetAll) {
+        capturedSetAll([
+          { name: 'sb-testproject-auth-token', value: '', options: { maxAge: 0 } },
+        ])
+      }
+      return { data: { user: null }, error: { message: 'refresh failed' } }
+    })
+
+    const req = makeNextRequest('GET', [
+      { name: 'sb-testproject-auth-token', value: 'bad-token' },
+    ])
+    await updateSession(req)
+    // Cookie mutations should NOT be propagated on error
+    expect(mockNextResponseCookiesSet).not.toHaveBeenCalled()
+  })
 })

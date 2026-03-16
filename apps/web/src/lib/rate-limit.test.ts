@@ -189,4 +189,95 @@ describe('checkRateLimit (in-memory fallback)', () => {
     const r3 = await checkRateLimit(key, '/api/endpoint-a', config)
     expect(r3.allowed).toBe(false)
   })
+
+  it('handles requests=1 edge case (single request allowed)', async () => {
+    const key = 'test-user-single'
+    const endpoint = '/api/test-single'
+    const config = { requests: 1, windowMs: 60000 }
+
+    const r1 = await checkRateLimit(key, endpoint, config)
+    expect(r1.allowed).toBe(true)
+    expect(r1.remaining).toBe(0) // requests(1) - count(1) = 0
+
+    const r2 = await checkRateLimit(key, endpoint, config)
+    expect(r2.allowed).toBe(false)
+    expect(r2.remaining).toBe(0)
+  })
+
+  it('uses default config when none provided (100 requests, 60000ms)', async () => {
+    const key = 'test-user-default-config'
+    const endpoint = '/api/test-default-config'
+
+    // Call without explicit config — should use defaults
+    const r1 = await checkRateLimit(key, endpoint)
+    expect(r1.allowed).toBe(true)
+    expect(r1.remaining).toBe(99) // default 100 - 1
+  })
+
+  it('blocked entry count exceeds requests (count > config.requests)', async () => {
+    const key = 'test-user-exceed'
+    const endpoint = '/api/test-exceed'
+    const config = { requests: 1, windowMs: 60000 }
+
+    await checkRateLimit(key, endpoint, config) // count=1
+    const r2 = await checkRateLimit(key, endpoint, config) // count=2, > 1
+    expect(r2.allowed).toBe(false)
+    expect(r2.remaining).toBe(0)
+
+    // Third request still blocked
+    const r3 = await checkRateLimit(key, endpoint, config) // count=3, > 1
+    expect(r3.allowed).toBe(false)
+    expect(r3.remaining).toBe(0)
+  })
+})
+
+describe('ROUTE_LIMITS values', () => {
+  it('has correct values for /api/auth', () => {
+    expect(ROUTE_LIMITS['/api/auth']).toEqual({ requests: 10, windowMs: 60000 })
+  })
+
+  it('has correct values for /api/ledgers', () => {
+    expect(ROUTE_LIMITS['/api/ledgers']).toEqual({ requests: 100, windowMs: 60000 })
+  })
+
+  it('has correct values for /api/organizations', () => {
+    expect(ROUTE_LIMITS['/api/organizations']).toEqual({ requests: 50, windowMs: 60000 })
+  })
+
+  it('has correct values for /api/team', () => {
+    expect(ROUTE_LIMITS['/api/team']).toEqual({ requests: 30, windowMs: 60000 })
+  })
+
+  it('has correct values for default', () => {
+    expect(ROUTE_LIMITS['default']).toEqual({ requests: 100, windowMs: 60000 })
+  })
+})
+
+describe('getRouteLimit with all route prefixes', () => {
+  it('returns /api/auth config for /api/auth/callback', () => {
+    expect(getRouteLimit('/api/auth/callback').requests).toBe(10)
+  })
+
+  it('returns /api/ledgers config for /api/ledgers/123', () => {
+    expect(getRouteLimit('/api/ledgers/123').requests).toBe(100)
+  })
+
+  it('returns /api/organizations config for /api/organizations/create', () => {
+    expect(getRouteLimit('/api/organizations/create').requests).toBe(50)
+  })
+
+  it('returns /api/team config for /api/team/members', () => {
+    expect(getRouteLimit('/api/team/members').requests).toBe(30)
+  })
+
+  it('returns default for completely unmatched route', () => {
+    expect(getRouteLimit('/other/path').requests).toBe(100)
+    expect(getRouteLimit('/other/path').windowMs).toBe(60000)
+  })
+
+  it('returns exact match over prefix match', () => {
+    // /api/auth is an exact match — should return it directly
+    const result = getRouteLimit('/api/auth')
+    expect(result.requests).toBe(10)
+  })
 })

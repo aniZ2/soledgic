@@ -3442,4 +3442,2102 @@ describe('Soledgic SDK', () => {
       expect(empty.payload).toBeNull()
     })
   })
+
+  // ==========================================================================
+  // DEEP COVERAGE FOR 90% MUTATION SCORE
+  // Every field assertion kills a mutant that removes or swaps that mapping line.
+  // ==========================================================================
+
+  describe('deep coverage for 90% mutation score', () => {
+
+    // --- WALLET: mapWalletObject exhaustive field coverage ---
+
+    it('mapWalletObject maps every field including null/false fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallet: {
+          id: 'w_full',
+          wallet_type: 'creator_earnings',
+          scope_type: 'participant',
+          owner_id: 'own_1',
+          owner_type: 'participant',
+          participant_id: 'part_1',
+          account_type: 'creator_balance',
+          name: 'Earnings Wallet',
+          currency: 'EUR',
+          status: 'active',
+          balance: 9999,
+          held_amount: 100,
+          available_balance: 9899,
+          redeemable: true,
+          transferable: true,
+          topup_supported: true,
+          payout_supported: true,
+          created_at: '2026-03-10T00:00:00Z',
+          metadata: { custom: 'val' },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getWallet('w_full')
+
+      expect(result.success).toBe(true)
+      expect(result.wallet.id).toBe('w_full')
+      expect(result.wallet.object).toBe('wallet')
+      expect(result.wallet.walletType).toBe('creator_earnings')
+      expect(result.wallet.scopeType).toBe('participant')
+      expect(result.wallet.ownerId).toBe('own_1')
+      expect(result.wallet.ownerType).toBe('participant')
+      expect(result.wallet.participantId).toBe('part_1')
+      expect(result.wallet.accountType).toBe('creator_balance')
+      expect(result.wallet.name).toBe('Earnings Wallet')
+      expect(result.wallet.currency).toBe('EUR')
+      expect(result.wallet.status).toBe('active')
+      expect(result.wallet.balance).toBe(9999)
+      expect(result.wallet.heldAmount).toBe(100)
+      expect(result.wallet.availableBalance).toBe(9899)
+      expect(result.wallet.redeemable).toBe(true)
+      expect(result.wallet.transferable).toBe(true)
+      expect(result.wallet.topupSupported).toBe(true)
+      expect(result.wallet.payoutSupported).toBe(true)
+      expect(result.wallet.createdAt).toBe('2026-03-10T00:00:00Z')
+      expect(result.wallet.metadata).toEqual({ custom: 'val' })
+    })
+
+    it('mapWalletObject null/undefined fallback paths', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallet: {
+          id: 'w_sparse',
+          wallet_type: 'consumer_credit',
+          scope_type: 'customer',
+          // owner_id, owner_type, participant_id, name, created_at all missing
+          account_type: 'user_wallet',
+          currency: 'USD',
+          status: 'active',
+          balance: 500,
+          // held_amount missing -> 0
+          // available_balance missing -> falls back to balance
+          redeemable: false,
+          transferable: false,
+          topup_supported: false,
+          payout_supported: false,
+          // metadata missing -> {}
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getWallet('w_sparse')
+
+      expect(result.wallet.ownerId).toBeNull()
+      expect(result.wallet.ownerType).toBeNull()
+      expect(result.wallet.participantId).toBeNull()
+      expect(result.wallet.name).toBeNull()
+      expect(result.wallet.heldAmount).toBe(0)
+      expect(result.wallet.availableBalance).toBe(500) // falls back to balance
+      expect(result.wallet.redeemable).toBe(false)
+      expect(result.wallet.transferable).toBe(false)
+      expect(result.wallet.topupSupported).toBe(false)
+      expect(result.wallet.payoutSupported).toBe(false)
+      expect(result.wallet.createdAt).toBeNull()
+      expect(result.wallet.metadata).toEqual({})
+    })
+
+    it('listWallets maps array through mapWalletObject and returns pagination', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallets: [
+          { id: 'w1', wallet_type: 'a', scope_type: 'b', account_type: 'c', currency: 'USD', status: 'active', balance: 10, redeemable: false, transferable: false, topup_supported: false, payout_supported: false },
+          { id: 'w2', wallet_type: 'x', scope_type: 'y', account_type: 'z', currency: 'EUR', status: 'frozen', balance: 0, redeemable: true, transferable: true, topup_supported: true, payout_supported: true },
+        ],
+        total: 2,
+        limit: 25,
+        offset: 0,
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listWallets()
+
+      expect(result.wallets).toHaveLength(2)
+      expect(result.wallets[0].id).toBe('w1')
+      expect(result.wallets[0].redeemable).toBe(false)
+      expect(result.wallets[1].id).toBe('w2')
+      expect(result.wallets[1].redeemable).toBe(true)
+      expect(result.total).toBe(2)
+      expect(result.limit).toBe(25)
+      expect(result.offset).toBe(0)
+    })
+
+    it('createWallet maps created flag and wallet object', async () => {
+      const fn = mockFetch({
+        success: true,
+        created: false, // existing wallet returned
+        wallet: { id: 'w_exist', wallet_type: 't', scope_type: 's', account_type: 'a', currency: 'USD', status: 'active', balance: 100, redeemable: false, transferable: false, topup_supported: false, payout_supported: false },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createWallet({ ownerId: 'o1', walletType: 't' })
+
+      expect(result.created).toBe(false) // created === true check in code
+      expect(result.wallet.id).toBe('w_exist')
+    })
+
+    it('getWalletEntries maps wallet as null when absent and maps entry fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallet: null,
+        entries: [
+          {
+            entry_id: 'e1',
+            entry_type: 'debit',
+            amount: 300,
+            transaction_id: 'txn_e1',
+            reference_id: 'ref_e1',
+            transaction_type: 'withdrawal',
+            description: 'Cash out',
+            status: 'completed',
+            metadata: { source: 'api' },
+            created_at: '2026-03-11T00:00:00Z',
+          },
+        ],
+        total: 1,
+        limit: 25,
+        offset: 0,
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getWalletEntries('w_any')
+
+      expect(result.wallet).toBeNull()
+      expect(result.entries).toHaveLength(1)
+      expect(result.entries[0].entryId).toBe('e1')
+      expect(result.entries[0].entryType).toBe('debit')
+      expect(result.entries[0].amount).toBe(300)
+      expect(result.entries[0].transactionId).toBe('txn_e1')
+      expect(result.entries[0].referenceId).toBe('ref_e1')
+      expect(result.entries[0].transactionType).toBe('withdrawal')
+      expect(result.entries[0].description).toBe('Cash out')
+      expect(result.entries[0].status).toBe('completed')
+      expect(result.entries[0].metadata).toEqual({ source: 'api' })
+      expect(result.entries[0].createdAt).toBe('2026-03-11T00:00:00Z')
+      expect(result.total).toBe(1)
+      expect(result.limit).toBe(25)
+      expect(result.offset).toBe(0)
+    })
+
+    it('topUpWallet falls back to deposit key and null defaults', async () => {
+      const fn = mockFetch({
+        success: true,
+        deposit: {
+          wallet_id: 'w_dep',
+          owner_id: 'o_dep',
+          transaction_id: 'txn_dep',
+          balance: 7777,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.topUpWallet({ walletId: 'w_dep', amount: 1000 })
+
+      expect(result.success).toBe(true)
+      expect(result.walletId).toBe('w_dep')
+      expect(result.ownerId).toBe('o_dep')
+      expect(result.transactionId).toBe('txn_dep')
+      expect(result.balance).toBe(7777)
+    })
+
+    it('topUpWallet returns nulls when topup/deposit keys missing', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.topUpWallet({ walletId: 'w_empty', amount: 100 })
+
+      expect(result.walletId).toBeNull()
+      expect(result.ownerId).toBeNull()
+      expect(result.transactionId).toBeNull()
+      expect(result.balance).toBeNull()
+    })
+
+    it('withdrawFromWallet maps withdrawal key and null defaults', async () => {
+      const fn = mockFetch({
+        success: true,
+        withdrawal: {
+          wallet_id: 'w_wd',
+          owner_id: 'o_wd',
+          transaction_id: 'txn_wd',
+          balance: 3000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.withdrawFromWallet({ walletId: 'w_wd', amount: 500 })
+
+      expect(result.success).toBe(true)
+      expect(result.walletId).toBe('w_wd')
+      expect(result.ownerId).toBe('o_wd')
+      expect(result.transactionId).toBe('txn_wd')
+      expect(result.balance).toBe(3000)
+    })
+
+    it('withdrawFromWallet falls back to response root when withdrawal key missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        wallet_id: 'w_root',
+        owner_id: 'o_root',
+        transaction_id: 'txn_root',
+        balance: 1000,
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.withdrawFromWallet({ walletId: 'w_root', amount: 200 })
+
+      expect(result.walletId).toBe('w_root')
+      expect(result.ownerId).toBe('o_root')
+      expect(result.transactionId).toBe('txn_root')
+      expect(result.balance).toBe(1000)
+    })
+
+    it('createTransfer maps transfer fields and uses request params for participant ids', async () => {
+      const fn = mockFetch({
+        success: true,
+        transfer: {
+          transaction_id: 'txn_xfer',
+          from_balance: 200,
+          to_balance: 800,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createTransfer({
+        fromParticipantId: 'from_p',
+        toParticipantId: 'to_p',
+        amount: 500,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.transfer.transactionId).toBe('txn_xfer')
+      expect(result.transfer.fromParticipantId).toBe('from_p')
+      expect(result.transfer.toParticipantId).toBe('to_p')
+      expect(result.transfer.fromBalance).toBe(200)
+      expect(result.transfer.toBalance).toBe(800)
+    })
+
+    it('createTransfer falls back to response root when transfer key missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        transaction_id: 'txn_root',
+        from_balance: 0,
+        to_balance: 500,
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createTransfer({
+        fromParticipantId: 'a',
+        toParticipantId: 'b',
+        amount: 500,
+      })
+
+      expect(result.transfer.transactionId).toBe('txn_root')
+      expect(result.transfer.fromBalance).toBe(0)
+      expect(result.transfer.toBalance).toBe(500)
+    })
+
+    // --- HOLDS: exhaustive field mapping ---
+
+    it('listHolds maps every field including null fallbacks and Boolean coercions', async () => {
+      const fn = mockFetch({
+        success: true,
+        holds: [
+          {
+            id: 'h_1',
+            participant_id: 'p_1',
+            participant_name: 'Alice',
+            amount: 5000,
+            currency: 'USD',
+            held_since: '2026-01-01T00:00:00Z',
+            days_held: 10,
+            hold_reason: 'escrow',
+            hold_until: '2026-02-01T00:00:00Z',
+            ready_for_release: true,
+            release_status: 'ready',
+            transaction_reference: 'order_99',
+            product_name: 'Premium Book',
+            venture_id: 'v_1',
+            connected_account_ready: true,
+          },
+          {
+            id: 'h_2',
+            // all nullable fields missing
+            amount: 100,
+            currency: 'EUR',
+            held_since: '2026-02-01T00:00:00Z',
+            days_held: 1,
+            ready_for_release: false,
+            release_status: 'held',
+            connected_account_ready: false,
+          },
+        ],
+        count: 2,
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listHolds()
+
+      expect(result.success).toBe(true)
+      expect(result.count).toBe(2)
+      expect(result.holds).toHaveLength(2)
+
+      // Full hold
+      const h1 = result.holds[0]
+      expect(h1.id).toBe('h_1')
+      expect(h1.participantId).toBe('p_1')
+      expect(h1.participantName).toBe('Alice')
+      expect(h1.amount).toBe(5000)
+      expect(h1.currency).toBe('USD')
+      expect(h1.heldSince).toBe('2026-01-01T00:00:00Z')
+      expect(h1.daysHeld).toBe(10)
+      expect(h1.holdReason).toBe('escrow')
+      expect(h1.holdUntil).toBe('2026-02-01T00:00:00Z')
+      expect(h1.readyForRelease).toBe(true)
+      expect(h1.releaseStatus).toBe('ready')
+      expect(h1.transactionReference).toBe('order_99')
+      expect(h1.productName).toBe('Premium Book')
+      expect(h1.ventureId).toBe('v_1')
+      expect(h1.connectedAccountReady).toBe(true)
+
+      // Sparse hold — null fallbacks
+      const h2 = result.holds[1]
+      expect(h2.participantId).toBeNull()
+      expect(h2.participantName).toBeNull()
+      expect(h2.holdReason).toBeNull()
+      expect(h2.holdUntil).toBeNull()
+      expect(h2.readyForRelease).toBe(false)
+      expect(h2.transactionReference).toBeNull()
+      expect(h2.productName).toBeNull()
+      expect(h2.ventureId).toBeNull()
+      expect(h2.connectedAccountReady).toBe(false)
+    })
+
+    it('listHolds defaults count to 0 when missing', async () => {
+      const fn = mockFetch({ success: true, holds: [] })
+      const sdk = createClient(fn)
+      const result = await sdk.listHolds()
+
+      expect(result.count).toBe(0)
+      expect(result.holds).toEqual([])
+    })
+
+    it('releaseHold maps release object with all fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        release: {
+          id: 'rel_1',
+          hold_id: 'h_99',
+          executed: true,
+          transfer_id: 'xfr_1',
+          transfer_status: 'completed',
+          amount: 7500,
+          currency: 'USD',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.releaseHold({ holdId: 'h_99' })
+
+      expect(result.success).toBe(true)
+      expect(result.release.id).toBe('rel_1')
+      expect(result.release.holdId).toBe('h_99')
+      expect(result.release.executed).toBe(true)
+      expect(result.release.transferId).toBe('xfr_1')
+      expect(result.release.transferStatus).toBe('completed')
+      expect(result.release.amount).toBe(7500)
+      expect(result.release.currency).toBe('USD')
+    })
+
+    it('releaseHold null fallbacks when release is empty', async () => {
+      const fn = mockFetch({ success: true, release: {} })
+      const sdk = createClient(fn)
+      const result = await sdk.releaseHold({ holdId: 'h_empty' })
+
+      expect(result.release.holdId).toBe('h_empty') // falls back to req.holdId
+      expect(result.release.executed).toBe(false)
+      expect(result.release.transferId).toBeNull()
+      expect(result.release.transferStatus).toBeNull()
+      expect(result.release.amount).toBeNull()
+      expect(result.release.currency).toBeNull()
+    })
+
+    it('releaseHold falls back to response root when release key missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        id: 'rel_root',
+        hold_id: 'h_root',
+        executed: true,
+        transfer_id: 'xfr_root',
+        transfer_status: 'pending',
+        amount: 1000,
+        currency: 'EUR',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.releaseHold({ holdId: 'h_root' })
+
+      expect(result.release.id).toBe('rel_root')
+      expect(result.release.holdId).toBe('h_root')
+      expect(result.release.executed).toBe(true)
+      expect(result.release.transferId).toBe('xfr_root')
+    })
+
+    it('releaseHold sends execute_transfer true by default', async () => {
+      const fn = mockFetch({ success: true, release: { id: 'r1' } })
+      const sdk = createClient(fn)
+      await sdk.releaseHold({ holdId: 'h1' })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.execute_transfer).toBe(true)
+    })
+
+    it('releaseHold sends execute_transfer false when explicitly set', async () => {
+      const fn = mockFetch({ success: true, release: { id: 'r1' } })
+      const sdk = createClient(fn)
+      await sdk.releaseHold({ holdId: 'h1', executeTransfer: false })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.execute_transfer).toBe(false)
+    })
+
+    // --- COMPLIANCE: financial activity and security summary ---
+
+    it('listComplianceFinancialActivity maps every field in activity entries', async () => {
+      const fn = mockFetch({
+        success: true,
+        window_days: 7,
+        activity: [
+          {
+            date: '2026-03-10',
+            payouts_initiated: 5,
+            payouts_completed: 3,
+            payouts_failed: 1,
+            sales_recorded: 20,
+            refunds_recorded: 2,
+            dispute_events: 0,
+          },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceFinancialActivity({ days: 7 })
+
+      expect(result.success).toBe(true)
+      expect(result.windowDays).toBe(7)
+      expect(result.activity).toHaveLength(1)
+      const a = result.activity[0]
+      expect(a.date).toBe('2026-03-10')
+      expect(a.payoutsInitiated).toBe(5)
+      expect(a.payoutsCompleted).toBe(3)
+      expect(a.payoutsFailed).toBe(1)
+      expect(a.salesRecorded).toBe(20)
+      expect(a.refundsRecorded).toBe(2)
+      expect(a.disputeEvents).toBe(0)
+    })
+
+    it('listComplianceFinancialActivity returns empty array when activity missing', async () => {
+      const fn = mockFetch({ success: true, window_days: 30 })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceFinancialActivity()
+
+      expect(result.activity).toEqual([])
+      expect(result.windowDays).toBe(30)
+    })
+
+    it('listComplianceSecuritySummary maps every field in summary entries', async () => {
+      const fn = mockFetch({
+        success: true,
+        window_days: 14,
+        summary: [
+          {
+            date: '2026-03-09',
+            action: 'record-sale',
+            event_count: 50,
+            unique_ips: 3,
+            unique_actors: 2,
+            avg_risk_score: 15,
+            max_risk_score: 45,
+            high_risk_count: 1,
+            critical_risk_count: 0,
+          },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceSecuritySummary({ days: 14 })
+
+      expect(result.success).toBe(true)
+      expect(result.windowDays).toBe(14)
+      expect(result.summary).toHaveLength(1)
+      const s = result.summary[0]
+      expect(s.date).toBe('2026-03-09')
+      expect(s.action).toBe('record-sale')
+      expect(s.eventCount).toBe(50)
+      expect(s.uniqueIps).toBe(3)
+      expect(s.uniqueActors).toBe(2)
+      expect(s.avgRiskScore).toBe(15)
+      expect(s.maxRiskScore).toBe(45)
+      expect(s.highRiskCount).toBe(1)
+      expect(s.criticalRiskCount).toBe(0)
+    })
+
+    it('listComplianceSecuritySummary returns empty array when summary missing', async () => {
+      const fn = mockFetch({ success: true, window_days: 7 })
+      const sdk = createClient(fn)
+      const result = await sdk.listComplianceSecuritySummary()
+
+      expect(result.summary).toEqual([])
+    })
+
+    // --- TAX: listTaxDocuments, getTaxDocument, exportTaxDocuments ---
+
+    it('listTaxDocuments maps summary.byStatus defaults to 0', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        summary: {}, // no fields at all
+        documents: [],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listTaxDocuments(2025)
+
+      expect(result.taxYear).toBe(2025)
+      expect(result.summary.totalDocuments).toBe(0)
+      expect(result.summary.totalAmount).toBe(0)
+      expect(result.summary.byStatus.calculated).toBe(0)
+      expect(result.summary.byStatus.exported).toBe(0)
+      expect(result.summary.byStatus.filed).toBe(0)
+      expect(result.documents).toEqual([])
+    })
+
+    it('listTaxDocuments maps summary when summary itself is null', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        documents: [{ id: 'doc_1' }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listTaxDocuments(2025)
+
+      expect(result.summary.totalDocuments).toBe(0)
+      expect(result.summary.totalAmount).toBe(0)
+      expect(result.summary.byStatus.calculated).toBe(0)
+    })
+
+    it('getTaxDocument passes through document object', async () => {
+      const fn = mockFetch({
+        success: true,
+        document: {
+          id: 'doc_42',
+          participant_id: 'p_1',
+          tax_year: 2025,
+          gross_amount: 120000,
+          status: 'calculated',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getTaxDocument('doc_42')
+
+      expect(result.success).toBe(true)
+      expect(result.document.id).toBe('doc_42')
+      expect(result.document.participant_id).toBe('p_1')
+      expect(result.document.tax_year).toBe(2025)
+      expect(result.document.gross_amount).toBe(120000)
+      expect(result.document.status).toBe('calculated')
+    })
+
+    it('exportTaxDocuments CSV path extracts filename from Content-Disposition', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('id,amount\ndoc_1,50000'),
+        headers: new Headers({
+          'Content-Disposition': 'attachment; filename="1099_export_2025.csv"',
+        }),
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.exportTaxDocuments(2025, 'csv')
+
+      expect(result).toEqual({
+        csv: 'id,amount\ndoc_1,50000',
+        filename: '1099_export_2025.csv',
+      })
+    })
+
+    it('exportTaxDocuments CSV path uses fallback filename when header missing', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('data'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.exportTaxDocuments(2025, 'csv')
+
+      expect(result.filename).toBe('1099_export_2025.csv')
+    })
+
+    it('exportTaxDocuments JSON path returns parsed response', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        documents: [{ id: 'doc_1' }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.exportTaxDocuments(2025, 'json')
+
+      expect(result).toMatchObject({ success: true, tax_year: 2025 })
+    })
+
+    it('correctTaxDocument sends all optional params', async () => {
+      const fn = mockFetch({ success: true, document: { id: 'doc_c', status: 'corrected', correction_id: 'corr_1' } })
+      const sdk = createClient(fn)
+      const result = await sdk.correctTaxDocument('doc_c', {
+        reason: 'Amount error',
+        grossAmount: 200000,
+        federalWithholding: 5000,
+        stateWithholding: 2000,
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.reason).toBe('Amount error')
+      expect(body.gross_amount).toBe(200000)
+      expect(body.federal_withholding).toBe(5000)
+      expect(body.state_withholding).toBe(2000)
+      expect(result.document.correction_id).toBe('corr_1')
+    })
+
+    // --- EXPORT REPORT: CSV and JSON paths ---
+
+    it('exportReport CSV path with no filename in header falls back to reportType', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('col1,col2\na,b'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.exportReport({
+        reportType: 'transaction_detail',
+        format: 'csv',
+      })
+
+      expect(result).toEqual({
+        csv: 'col1,col2\na,b',
+        filename: 'transaction_detail.csv',
+      })
+    })
+
+    it('exportReport CSV sends correct snake_case body', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('data'),
+        headers: new Headers({ 'Content-Disposition': 'attachment; filename=report.csv' }),
+      })
+      const sdk = createClient(fn)
+      await sdk.exportReport({
+        reportType: 'creator_earnings',
+        format: 'csv',
+        startDate: '2026-01-01',
+        endDate: '2026-03-01',
+        creatorId: 'c_1',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.report_type).toBe('creator_earnings')
+      expect(body.format).toBe('csv')
+      expect(body.start_date).toBe('2026-01-01')
+      expect(body.end_date).toBe('2026-03-01')
+      expect(body.creator_id).toBe('c_1')
+    })
+
+    // --- CHECKOUT SESSION: session mode vs direct mode ---
+
+    it('createCheckoutSession session mode maps all fields from checkout_session', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'sess_full',
+          mode: 'session',
+          checkout_url: 'https://pay.example.com/sess_full',
+          payment_id: null,
+          payment_intent_id: null,
+          status: 'pending',
+          requires_action: false,
+          amount: 2500,
+          currency: 'GBP',
+          expires_at: '2026-04-01T00:00:00Z',
+          breakdown: {
+            gross_amount: 2500,
+            creator_amount: 2000,
+            platform_amount: 500,
+            creator_percent: 80,
+          },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 2500,
+        participantId: 'p_1',
+        successUrl: 'https://example.com/success',
+        cancelUrl: 'https://example.com/cancel',
+        currency: 'GBP',
+        customerEmail: 'test@example.com',
+      })
+
+      expect(result.success).toBe(true)
+      const cs = result.checkoutSession
+      expect(cs.id).toBe('sess_full')
+      expect(cs.mode).toBe('session')
+      expect(cs.checkoutUrl).toBe('https://pay.example.com/sess_full')
+      expect(cs.paymentId).toBeNull()
+      expect(cs.paymentIntentId).toBeNull()
+      expect(cs.status).toBe('pending')
+      expect(cs.requiresAction).toBe(false)
+      expect(cs.amount).toBe(2500)
+      expect(cs.currency).toBe('GBP')
+      expect(cs.expiresAt).toBe('2026-04-01T00:00:00Z')
+      expect(cs.breakdown).not.toBeNull()
+      expect(cs.breakdown!.grossAmount).toBe(2500)
+      expect(cs.breakdown!.creatorAmount).toBe(2000)
+      expect(cs.breakdown!.platformAmount).toBe(500)
+      expect(cs.breakdown!.creatorPercent).toBe(80)
+    })
+
+    it('createCheckoutSession direct mode with no breakdown', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: {
+          id: 'cs_direct',
+          mode: 'direct',
+          payment_id: 'pay_direct',
+          status: 'completed',
+          requires_action: false,
+          amount: 1000,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_1',
+      })
+
+      const cs = result.checkoutSession
+      expect(cs.mode).toBe('direct')
+      expect(cs.paymentId).toBe('pay_direct')
+      expect(cs.paymentIntentId).toBe('pay_direct') // falls back to payment_id
+      expect(cs.checkoutUrl).toBeNull()
+      expect(cs.breakdown).toBeNull()
+      expect(cs.currency).toBe('USD') // default
+      expect(cs.expiresAt).toBeNull()
+    })
+
+    it('createCheckoutSession falls back to response root when checkout_session key missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        id: 'cs_root',
+        mode: 'direct',
+        payment_id: 'pay_root',
+        status: 'completed',
+        requires_action: true,
+        amount: 5000,
+        currency: 'USD',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createCheckoutSession({
+        amount: 5000,
+        participantId: 'p_1',
+        paymentMethodId: 'pm_2',
+      })
+
+      expect(result.checkoutSession.id).toBe('cs_root')
+      expect(result.checkoutSession.requiresAction).toBe(true)
+    })
+
+    it('createCheckoutSession with sourceId sends source_id in body', async () => {
+      const fn = mockFetch({
+        success: true,
+        checkout_session: { id: 'cs_src', mode: 'direct', payment_id: 'pay_src', status: 'completed', requires_action: false },
+      })
+      const sdk = createClient(fn)
+      await sdk.createCheckoutSession({
+        amount: 1000,
+        participantId: 'p_1',
+        sourceId: 'src_1',
+        successUrl: 'https://example.com/ok',
+      } as any)
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.source_id).toBe('src_1')
+      expect(body.success_url).toBe('https://example.com/ok')
+    })
+
+    // --- ALERT CRUD: createAlert and updateAlert with config mapping ---
+
+    it('createAlert with Slack config maps webhookUrl and channel', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_1',
+          alert_type: 'breach_risk',
+          channel: 'slack',
+          config: { webhook_url: 'https://hooks.slack.com/xxx', channel: '#alerts' },
+          thresholds: { coverage_ratio_below: 0.3, shortfall_above: 5000 },
+          is_active: true,
+          trigger_count: 0,
+          created_at: '2026-03-10T00:00:00Z',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createAlert({
+        alertType: 'breach_risk',
+        channel: 'slack',
+        config: { webhookUrl: 'https://hooks.slack.com/xxx', channel: '#alerts' },
+        thresholds: { coverageRatioBelow: 0.3, shortfallAbove: 5000 },
+        isActive: true,
+      })
+
+      // Verify request body mapping
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('create')
+      expect(body.alert_type).toBe('breach_risk')
+      expect(body.channel).toBe('slack')
+      expect(body.config.webhook_url).toBe('https://hooks.slack.com/xxx')
+      expect(body.config.channel).toBe('#alerts')
+      expect(body.thresholds.coverage_ratio_below).toBe(0.3)
+      expect(body.thresholds.shortfall_above).toBe(5000)
+      expect(body.is_active).toBe(true)
+
+      // Verify response mapping
+      expect(result.success).toBe(true)
+      expect(result.data.id).toBe('alert_1')
+      expect(result.data.alertType).toBe('breach_risk')
+      expect(result.data.channel).toBe('slack')
+      expect(result.data.config).toEqual({ webhook_url: 'https://hooks.slack.com/xxx', channel: '#alerts' })
+      expect(result.data.thresholds.coverageRatioBelow).toBe(0.3)
+      expect(result.data.thresholds.shortfallAbove).toBe(5000)
+      expect(result.data.isActive).toBe(true)
+      expect(result.data.triggerCount).toBe(0)
+      expect(result.data.createdAt).toBe('2026-03-10T00:00:00Z')
+    })
+
+    it('createAlert with Email config maps recipients', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_2',
+          alert_type: 'breach_risk',
+          channel: 'email',
+          config: { recipients: ['a@test.com', 'b@test.com'] },
+          thresholds: {},
+          is_active: false,
+          trigger_count: 3,
+          created_at: '2026-03-11T00:00:00Z',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createAlert({
+        alertType: 'breach_risk',
+        channel: 'email',
+        config: { recipients: ['a@test.com', 'b@test.com'] },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.config.recipients).toEqual(['a@test.com', 'b@test.com'])
+      expect(body.config.webhook_url).toBeUndefined()
+
+      expect(result.data.triggerCount).toBe(3)
+      expect(result.data.isActive).toBe(false)
+    })
+
+    it('createAlert response defaults trigger_count to 0 when missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_3',
+          alert_type: 'breach_risk',
+          channel: 'slack',
+          config: {},
+          thresholds: {},
+          is_active: true,
+          // trigger_count missing
+          // created_at missing
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createAlert({
+        alertType: 'breach_risk',
+        channel: 'slack',
+        config: { webhookUrl: 'https://hooks.slack.com/yyy' },
+      })
+
+      expect(result.data.triggerCount).toBe(0)
+    })
+
+    it('updateAlert with Slack config maps webhookUrl and channel', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_u1',
+          alert_type: 'breach_risk',
+          channel: 'slack',
+          config: { webhook_url: 'https://hooks.slack.com/new', channel: '#ops' },
+          thresholds: { coverage_ratio_below: 0.2, shortfall_above: 10000 },
+          is_active: true,
+          trigger_count: 5,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.updateAlert({
+        configId: 'alert_u1',
+        config: { webhookUrl: 'https://hooks.slack.com/new', channel: '#ops' },
+        thresholds: { coverageRatioBelow: 0.2, shortfallAbove: 10000 },
+        isActive: true,
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.action).toBe('update')
+      expect(body.config_id).toBe('alert_u1')
+      expect(body.config.webhook_url).toBe('https://hooks.slack.com/new')
+      expect(body.config.channel).toBe('#ops')
+      expect(body.thresholds.coverage_ratio_below).toBe(0.2)
+      expect(body.thresholds.shortfall_above).toBe(10000)
+
+      expect(result.data.id).toBe('alert_u1')
+      expect(result.data.alertType).toBe('breach_risk')
+      expect(result.data.thresholds.coverageRatioBelow).toBe(0.2)
+      expect(result.data.thresholds.shortfallAbove).toBe(10000)
+      expect(result.data.isActive).toBe(true)
+      expect(result.data.triggerCount).toBe(5)
+      expect(result.data.createdAt).toBe('2026-01-01T00:00:00Z')
+    })
+
+    it('updateAlert with Email config maps recipients', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_u2',
+          alert_type: 'breach_risk',
+          channel: 'email',
+          config: { recipients: ['c@test.com'] },
+          thresholds: {},
+          is_active: false,
+          trigger_count: 0,
+          created_at: '',
+        },
+      })
+      const sdk = createClient(fn)
+      await sdk.updateAlert({
+        configId: 'alert_u2',
+        config: { recipients: ['c@test.com'] },
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.config.recipients).toEqual(['c@test.com'])
+    })
+
+    it('updateAlert with no config sends undefined config', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_u3',
+          alert_type: 'breach_risk',
+          channel: 'slack',
+          config: {},
+          thresholds: {},
+          is_active: false,
+          trigger_count: 0,
+          created_at: '',
+        },
+      })
+      const sdk = createClient(fn)
+      await sdk.updateAlert({ configId: 'alert_u3', isActive: false })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.config).toBeUndefined()
+    })
+
+    it('updateAlert defaults trigger_count to 0 and created_at to empty string', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'alert_u4',
+          alert_type: 'test',
+          channel: 'email',
+          // config missing -> || {}
+          thresholds: {},
+          is_active: true,
+          // trigger_count missing -> ?? 0
+          // created_at missing -> ?? ''
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.updateAlert({ configId: 'alert_u4' })
+
+      expect(result.data.config).toEqual({})
+      expect(result.data.triggerCount).toBe(0)
+      expect(result.data.createdAt).toBe('')
+    })
+
+    // --- listAlerts exhaustive field coverage ---
+
+    it('listAlerts maps lastTriggeredAt and handles empty data', async () => {
+      const fn = mockFetch({ success: true, data: [] })
+      const sdk = createClient(fn)
+      const result = await sdk.listAlerts()
+
+      expect(result.data).toEqual([])
+    })
+
+    it('listAlerts maps all fields including lastTriggeredAt', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: [{
+          id: 'a_full',
+          alert_type: 'breach_risk',
+          channel: 'email',
+          config: { recipients: ['x@y.com'] },
+          thresholds: { coverage_ratio_below: 0.1, shortfall_above: 999 },
+          is_active: false,
+          last_triggered_at: '2026-03-15T12:00:00Z',
+          trigger_count: 42,
+          created_at: '2026-01-01T00:00:00Z',
+        }],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listAlerts()
+
+      const a = result.data[0]
+      expect(a.id).toBe('a_full')
+      expect(a.alertType).toBe('breach_risk')
+      expect(a.channel).toBe('email')
+      expect(a.config).toEqual({ recipients: ['x@y.com'] })
+      expect(a.thresholds.coverageRatioBelow).toBe(0.1)
+      expect(a.thresholds.shortfallAbove).toBe(999)
+      expect(a.isActive).toBe(false)
+      expect(a.lastTriggeredAt).toBe('2026-03-15T12:00:00Z')
+      expect(a.triggerCount).toBe(42)
+      expect(a.createdAt).toBe('2026-01-01T00:00:00Z')
+    })
+
+    // --- INVOICE METHODS: verify response pass-through ---
+
+    it('getInvoice passes through invoice object from GET', async () => {
+      const fn = mockFetch({
+        success: true,
+        invoice: {
+          id: 'inv_99',
+          customer_name: 'Acme',
+          status: 'sent',
+          total_amount: 12500,
+          line_items: [{ description: 'Service', quantity: 1, unit_price: 12500, amount: 12500 }],
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getInvoice('inv_99')
+
+      const [url, opts] = fn.mock.calls[0]
+      expect(opts.method).toBe('GET')
+      expect(String(url)).toContain('/invoices/inv_99')
+      expect(result.invoice.id).toBe('inv_99')
+      expect(result.invoice.customer_name).toBe('Acme')
+    })
+
+    it('sendInvoice returns response from POST', async () => {
+      const fn = mockFetch({ success: true, message: 'Invoice emailed', invoice_id: 'inv_sent' })
+      const sdk = createClient(fn)
+      const result = await sdk.sendInvoice('inv_sent')
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Invoice emailed')
+    })
+
+    it('recordInvoicePayment maps payment_method to snake_case', async () => {
+      const fn = mockFetch({ success: true, transaction_id: 'txn_ip', remaining_balance: 0 })
+      const sdk = createClient(fn)
+      const result = await sdk.recordInvoicePayment('inv_55', {
+        amount: 12500,
+        paymentMethod: 'credit_card',
+        paymentDate: '2026-03-15',
+        referenceId: 'ref_ip',
+        notes: 'Full payment',
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.amount).toBe(12500)
+      expect(body.payment_method).toBe('credit_card')
+      expect(body.payment_date).toBe('2026-03-15')
+      expect(body.reference_id).toBe('ref_ip')
+      expect(body.notes).toBe('Full payment')
+      expect(result.remaining_balance).toBe(0)
+    })
+
+    it('voidInvoice sends reason in body', async () => {
+      const fn = mockFetch({ success: true, invoice_id: 'inv_void', status: 'voided' })
+      const sdk = createClient(fn)
+      const result = await sdk.voidInvoice('inv_void', 'Duplicate invoice')
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.reason).toBe('Duplicate invoice')
+      expect(result.status).toBe('voided')
+    })
+
+    it('createInvoice maps customerAddress postal_code', async () => {
+      const fn = mockFetch({ success: true, invoice_id: 'inv_addr' })
+      const sdk = createClient(fn)
+      await sdk.createInvoice({
+        customerName: 'Test Corp',
+        customerAddress: {
+          line1: '456 Oak Ave',
+          line2: 'Suite 200',
+          city: 'Portland',
+          state: 'OR',
+          postalCode: '97201',
+          country: 'US',
+        },
+        lineItems: [{ description: 'Consulting', quantity: 1, unitPrice: 10000 }],
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.customer_address.line1).toBe('456 Oak Ave')
+      expect(body.customer_address.line2).toBe('Suite 200')
+      expect(body.customer_address.city).toBe('Portland')
+      expect(body.customer_address.state).toBe('OR')
+      expect(body.customer_address.postal_code).toBe('97201')
+      expect(body.customer_address.country).toBe('US')
+    })
+
+    // --- PAYOUT: response field exhaustive ---
+
+    it('createPayout returns nulls for missing optional fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        payout: { id: 'po_sparse', transaction_id: 'tx_sparse' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createPayout({ participantId: 'p_1', amount: 1000 })
+
+      expect(result.payout.id).toBe('po_sparse')
+      expect(result.payout.transactionId).toBe('tx_sparse')
+      expect(result.payout.grossAmount).toBeNull()
+      expect(result.payout.fees).toBeNull()
+      expect(result.payout.netAmount).toBeNull()
+      expect(result.payout.previousBalance).toBeNull()
+      expect(result.payout.newBalance).toBeNull()
+    })
+
+    it('createPayout falls back to response root when payout key missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        id: 'po_root',
+        transaction_id: 'tx_root',
+        gross_amount: 5000,
+        fees: 100,
+        net_amount: 4900,
+        previous_balance: 10000,
+        new_balance: 5100,
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createPayout({ participantId: 'p_1', amount: 5000 })
+
+      expect(result.payout.id).toBe('po_root')
+      expect(result.payout.grossAmount).toBe(5000)
+      expect(result.payout.fees).toBe(100)
+      expect(result.payout.netAmount).toBe(4900)
+      expect(result.payout.previousBalance).toBe(10000)
+      expect(result.payout.newBalance).toBe(5100)
+    })
+
+    // --- REFUND: null breakdown, missing fields ---
+
+    it('createRefund with null breakdown returns null', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: {
+          id: 'rf_nb',
+          transaction_id: 'tx_nb',
+          reference_id: 'ref_nb',
+          sale_reference: 'sale_nb',
+          refunded_amount: 1000,
+          currency: 'USD',
+          status: 'completed',
+          breakdown: null,
+          is_full_refund: null,
+          repair_pending: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createRefund({ saleReference: 'sale_nb', reason: 'test' })
+
+      expect(result.refund.breakdown).toBeNull()
+      expect(result.refund.isFullRefund).toBeNull()
+      expect(result.refund.repairPending).toBeNull()
+      expect(result.warning).toBeNull()
+      expect(result.warningCode).toBeNull()
+    })
+
+    it('createRefund falls back id from reference_id then transaction_id', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: {
+          // id missing, reference_id present
+          reference_id: 'ref_fallback',
+          sale_reference: 'sale_1',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createRefund({ saleReference: 'sale_1', reason: 'test' })
+
+      expect(result.refund.id).toBe('ref_fallback')
+    })
+
+    it('createRefund id falls back to empty string when all id fields missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        refund: { sale_reference: 'sale_2' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createRefund({ saleReference: 'sale_2', reason: 'test' })
+
+      expect(result.refund.id).toBe('')
+    })
+
+    // --- SEND BREACH ALERT: with results array ---
+
+    it('sendBreachAlert maps results array and all counters', async () => {
+      const fn = mockFetch({
+        success: true,
+        message: 'Alerts dispatched',
+        alerts_sent: 2,
+        alerts_failed: 1,
+        alerts_skipped: 0,
+        results: [
+          { channel: 'slack', success: true },
+          { channel: 'email', success: true },
+          { channel: 'webhook', success: false, error: 'timeout' },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.sendBreachAlert({
+        cashBalance: 1000,
+        pendingTotal: 5000,
+        shortfall: 4000,
+        coverageRatio: 0.2,
+        triggeredBy: 'project-intent',
+        instrumentId: 'inst_1',
+        externalRef: 'contract_1',
+        projectionsCreated: 6,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.message).toBe('Alerts dispatched')
+      expect(result.alertsSent).toBe(2)
+      expect(result.alertsFailed).toBe(1)
+      expect(result.alertsSkipped).toBe(0)
+      expect(result.results).toHaveLength(3)
+      expect(result.results![0].channel).toBe('slack')
+      expect(result.results![0].success).toBe(true)
+      expect(result.results![2].error).toBe('timeout')
+    })
+
+    // --- RECONCILIATION: matchTransaction, unmatchTransaction, listUnmatched ---
+
+    it('matchTransaction maps match object', async () => {
+      const fn = mockFetch({
+        success: true,
+        match: {
+          id: 'm_1',
+          transaction_id: 'txn_m1',
+          bank_transaction_id: 'btxn_m1',
+          status: 'confirmed',
+          matched_at: '2026-03-10T00:00:00Z',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.matchTransaction({
+        transactionId: 'txn_m1',
+        bankTransactionId: 'btxn_m1',
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.match.id).toBe('m_1')
+      expect(result.match.transactionId).toBe('txn_m1')
+      expect(result.match.bankTransactionId).toBe('btxn_m1')
+      expect(result.match.status).toBe('confirmed')
+      expect(result.match.matchedAt).toBe('2026-03-10T00:00:00Z')
+    })
+
+    it('unmatchTransaction maps deleted and transactionId', async () => {
+      const fn = mockFetch({
+        success: true,
+        deleted: true,
+        transaction_id: 'txn_um1',
+      })
+      vi.stubGlobal('fetch', fn)
+      const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+      const result = await sdk.unmatchTransaction('txn_um1')
+
+      expect(result.success).toBe(true)
+      expect(result.deleted).toBe(true)
+      expect(result.transactionId).toBe('txn_um1')
+    })
+
+    it('unmatchTransaction coerces deleted to Boolean', async () => {
+      const fn = mockFetch({
+        success: true,
+        deleted: 0,
+        transaction_id: 'txn_um2',
+      })
+      vi.stubGlobal('fetch', fn)
+      const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+      const result = await sdk.unmatchTransaction('txn_um2')
+
+      expect(result.deleted).toBe(false)
+    })
+
+    it('listUnmatchedTransactions maps transactions with null fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        unmatched_count: 2,
+        transactions: [
+          {
+            id: 't_1',
+            reference_id: 'ref_1',
+            description: 'Payment from client',
+            amount: 5000,
+            currency: 'USD',
+            created_at: '2026-03-10T00:00:00Z',
+            status: 'pending',
+            metadata: { source: 'import' },
+          },
+          {
+            id: 't_2',
+            // reference_id missing -> null
+            // description missing -> null
+            amount: 100,
+            // currency missing -> 'USD'
+            created_at: '2026-03-11T00:00:00Z',
+            status: 'pending',
+            // metadata missing -> {}
+          },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listUnmatchedTransactions()
+
+      expect(result.success).toBe(true)
+      expect(result.unmatchedCount).toBe(2)
+      expect(result.transactions).toHaveLength(2)
+
+      const t1 = result.transactions[0]
+      expect(t1.id).toBe('t_1')
+      expect(t1.referenceId).toBe('ref_1')
+      expect(t1.description).toBe('Payment from client')
+      expect(t1.amount).toBe(5000)
+      expect(t1.currency).toBe('USD')
+      expect(t1.createdAt).toBe('2026-03-10T00:00:00Z')
+      expect(t1.status).toBe('pending')
+      expect(t1.metadata).toEqual({ source: 'import' })
+
+      const t2 = result.transactions[1]
+      expect(t2.referenceId).toBeNull()
+      expect(t2.description).toBeNull()
+      expect(t2.currency).toBe('USD')
+      expect(t2.metadata).toEqual({})
+    })
+
+    it('listUnmatchedTransactions defaults unmatchedCount to 0', async () => {
+      const fn = mockFetch({ success: true, transactions: [] })
+      const sdk = createClient(fn)
+      const result = await sdk.listUnmatchedTransactions()
+
+      expect(result.unmatchedCount).toBe(0)
+    })
+
+    // --- RECONCILIATION SNAPSHOT ---
+
+    it('getReconciliationSnapshot maps all nested snapshot fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        snapshot: {
+          id: 'snap_1',
+          period_start: '2026-01-01',
+          period_end: '2026-01-31',
+          integrity_hash: 'abc123def',
+          integrity_valid: true,
+          summary: {
+            total_matched: 50,
+            total_unmatched: 3,
+            matched_amount: 500000,
+            unmatched_amount: 15000,
+          },
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getReconciliationSnapshot('period_jan')
+
+      expect(result.success).toBe(true)
+      expect(result.snapshot.id).toBe('snap_1')
+      expect(result.snapshot.periodStart).toBe('2026-01-01')
+      expect(result.snapshot.periodEnd).toBe('2026-01-31')
+      expect(result.snapshot.integrityHash).toBe('abc123def')
+      expect(result.snapshot.integrityValid).toBe(true)
+      expect(result.snapshot.summary.totalMatched).toBe(50)
+      expect(result.snapshot.summary.totalUnmatched).toBe(3)
+      expect(result.snapshot.summary.matchedAmount).toBe(500000)
+      expect(result.snapshot.summary.unmatchedAmount).toBe(15000)
+    })
+
+    it('getReconciliationSnapshot defaults summary fields to 0', async () => {
+      const fn = mockFetch({
+        success: true,
+        snapshot: {
+          id: 'snap_2',
+          period_start: '2026-02-01',
+          period_end: '2026-02-28',
+          integrity_hash: 'xyz',
+          integrity_valid: false,
+          // summary missing
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getReconciliationSnapshot('period_feb')
+
+      expect(result.snapshot.integrityValid).toBe(false)
+      expect(result.snapshot.summary.totalMatched).toBe(0)
+      expect(result.snapshot.summary.totalUnmatched).toBe(0)
+      expect(result.snapshot.summary.matchedAmount).toBe(0)
+      expect(result.snapshot.summary.unmatchedAmount).toBe(0)
+    })
+
+    // --- AUTO MATCH ---
+
+    it('autoMatchBankTransaction maps result with match', async () => {
+      const fn = mockFetch({
+        success: true,
+        result: {
+          matched: true,
+          match_type: 'exact_amount',
+          matched_transaction_id: 'txn_matched',
+          bank_aggregator_transaction_id: 'bat_1',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.autoMatchBankTransaction('bat_1')
+
+      expect(result.success).toBe(true)
+      expect(result.result.matched).toBe(true)
+      expect(result.result.matchType).toBe('exact_amount')
+      expect(result.result.matchedTransactionId).toBe('txn_matched')
+      expect(result.result.bankAggregatorTransactionId).toBe('bat_1')
+    })
+
+    it('autoMatchBankTransaction handles no match with null fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        result: {
+          matched: false,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.autoMatchBankTransaction('bat_2')
+
+      expect(result.result.matched).toBe(false)
+      expect(result.result.matchType).toBeNull()
+      expect(result.result.matchedTransactionId).toBeNull()
+      expect(result.result.bankAggregatorTransactionId).toBe('bat_2') // falls back to input
+    })
+
+    it('autoMatchBankTransaction defaults when result is null', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.autoMatchBankTransaction('bat_3')
+
+      expect(result.result.matched).toBe(false)
+      expect(result.result.bankAggregatorTransactionId).toBe('bat_3')
+    })
+
+    // --- COMPLIANCE OVERVIEW: exhaustive field mapping ---
+
+    it('getComplianceOverview maps every overview field', async () => {
+      const fn = mockFetch({
+        success: true,
+        overview: {
+          window_days: 7,
+          access_window_hours: 12,
+          total_events: 500,
+          unique_ips: 15,
+          unique_actors: 8,
+          high_risk_events: 3,
+          critical_risk_events: 1,
+          failed_auth_events: 2,
+          payouts_failed: 4,
+          refunds_recorded: 10,
+          dispute_events: 1,
+        },
+        note: 'Monitoring active',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getComplianceOverview({ days: 7, hours: 12 })
+
+      expect(result.overview.windowDays).toBe(7)
+      expect(result.overview.accessWindowHours).toBe(12)
+      expect(result.overview.totalEvents).toBe(500)
+      expect(result.overview.uniqueIps).toBe(15)
+      expect(result.overview.uniqueActors).toBe(8)
+      expect(result.overview.highRiskEvents).toBe(3)
+      expect(result.overview.criticalRiskEvents).toBe(1)
+      expect(result.overview.failedAuthEvents).toBe(2)
+      expect(result.overview.payoutsFailed).toBe(4)
+      expect(result.overview.refundsRecorded).toBe(10)
+      expect(result.overview.disputeEvents).toBe(1)
+      expect(result.note).toBe('Monitoring active')
+    })
+
+    // --- FRAUD POLICY: deleteFraudPolicy and listFraudPolicies ---
+
+    it('deleteFraudPolicy maps deleted boolean and policyId', async () => {
+      const fn = mockFetch({
+        success: true,
+        deleted: true,
+        policy_id: 'fp_del',
+      })
+      vi.stubGlobal('fetch', fn)
+      const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+      const result = await sdk.deleteFraudPolicy('fp_del')
+
+      expect(result.success).toBe(true)
+      expect(result.deleted).toBe(true)
+      expect(result.policyId).toBe('fp_del')
+    })
+
+    it('listFraudPolicies maps all policy fields including null fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        policies: [
+          {
+            id: 'fp_1',
+            type: 'velocity_limit',
+            severity: 'soft',
+            priority: 5,
+            is_active: true,
+            config: { max_per_day: 10 },
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: '2026-02-01T00:00:00Z',
+          },
+          {
+            id: 'fp_2',
+            type: 'budget_cap',
+            severity: 'hard',
+            priority: 1,
+            is_active: false,
+            // config missing -> {}
+            // created_at missing -> null
+            // updated_at missing -> null
+          },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.listFraudPolicies()
+
+      expect(result.policies).toHaveLength(2)
+      expect(result.policies[0].id).toBe('fp_1')
+      expect(result.policies[0].type).toBe('velocity_limit')
+      expect(result.policies[0].severity).toBe('soft')
+      expect(result.policies[0].priority).toBe(5)
+      expect(result.policies[0].isActive).toBe(true)
+      expect(result.policies[0].config).toEqual({ max_per_day: 10 })
+      expect(result.policies[0].createdAt).toBe('2026-01-01T00:00:00Z')
+      expect(result.policies[0].updatedAt).toBe('2026-02-01T00:00:00Z')
+
+      expect(result.policies[1].isActive).toBe(false)
+      expect(result.policies[1].config).toEqual({})
+      expect(result.policies[1].createdAt).toBeNull()
+      expect(result.policies[1].updatedAt).toBeNull()
+    })
+
+    // --- createFraudPolicy full field mapping ---
+
+    it('createFraudPolicy maps all fields with null fallbacks', async () => {
+      const fn = mockFetch({
+        success: true,
+        policy: {
+          id: 'fp_new',
+          type: 'amount_threshold',
+          severity: 'hard',
+          priority: 1,
+          is_active: false,
+          // config missing -> {}
+          // created_at missing -> null
+          // updated_at missing -> null
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createFraudPolicy({
+        policyType: 'amount_threshold',
+        config: { max: 100000 },
+        severity: 'hard',
+        priority: 1,
+      })
+
+      expect(result.policy.id).toBe('fp_new')
+      expect(result.policy.isActive).toBe(false)
+      expect(result.policy.config).toEqual({})
+      expect(result.policy.createdAt).toBeNull()
+      expect(result.policy.updatedAt).toBeNull()
+    })
+
+    // --- GENERATE TAX SUMMARY: with null sharedTaxProfile ---
+
+    it('generateTaxSummary with null sharedTaxProfile', async () => {
+      const fn = mockFetch({
+        success: true,
+        tax_year: 2025,
+        note: 'preliminary',
+        summaries: [{
+          participant_id: 'p_1',
+          linked_user_id: null,
+          gross_earnings: 400,
+          refunds_issued: 0,
+          net_earnings: 400,
+          total_paid_out: 300,
+          requires_1099: false,
+          shared_tax_profile: null,
+        }],
+        totals: {
+          total_gross: 400,
+          total_refunds: 0,
+          total_net: 400,
+          total_paid: 300,
+          participants_requiring_1099: 0,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.generateTaxSummary(2025)
+
+      expect(result.summaries[0].linkedUserId).toBeNull()
+      expect(result.summaries[0].requires1099).toBe(false)
+      expect(result.summaries[0].sharedTaxProfile).toBeNull()
+      expect(result.totals.totalRefunds).toBe(0)
+      expect(result.totals.totalPaid).toBe(300)
+    })
+
+    // --- CALCULATE TAX: null sharedTaxProfile ---
+
+    it('calculateTaxForParticipant with null linked_user_id and null shared_tax_profile', async () => {
+      const fn = mockFetch({
+        success: true,
+        calculation: {
+          participant_id: 'p_no_link',
+          tax_year: 2025,
+          gross_payments: 500,
+          transaction_count: 2,
+          requires_1099: false,
+          monthly_totals: { '2025-06': 250, '2025-07': 250 },
+          threshold: 600,
+          linked_user_id: null,
+          shared_tax_profile: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.calculateTaxForParticipant('p_no_link', 2025)
+
+      expect(result.calculation.participantId).toBe('p_no_link')
+      expect(result.calculation.linkedUserId).toBeNull()
+      expect(result.calculation.sharedTaxProfile).toBeNull()
+      expect(result.calculation.requires1099).toBe(false)
+      expect(result.calculation.monthlyTotals).toEqual({ '2025-06': 250, '2025-07': 250 })
+    })
+
+    // --- WEBHOOK: createWebhookEndpoint, updateWebhookEndpoint, testWebhookEndpoint ---
+
+    it('createWebhookEndpoint maps secret and message', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'wh_new',
+          url: 'https://example.com/hook',
+          description: 'New hook',
+          events: ['*'],
+          is_active: true,
+          created_at: '2026-03-10',
+          secret_rotated_at: null,
+          secret: 'whsec_new_secret',
+        },
+        message: 'Endpoint created',
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createWebhookEndpoint({
+        url: 'https://example.com/hook',
+        description: 'New hook',
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.data.id).toBe('wh_new')
+      expect(result.data.secret).toBe('whsec_new_secret')
+      expect(result.data.isActive).toBe(true)
+      expect(result.message).toBe('Endpoint created')
+    })
+
+    it('createWebhookEndpoint returns null secret when missing', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: { id: 'wh_no_secret', url: 'https://example.com', events: [], is_active: false, created_at: '' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createWebhookEndpoint({ url: 'https://example.com' })
+
+      expect(result.data.secret).toBeNull()
+      expect(result.message).toBeUndefined()
+    })
+
+    it('updateWebhookEndpoint maps response', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          id: 'wh_upd',
+          url: 'https://example.com/updated',
+          description: 'Updated',
+          events: ['sale.completed'],
+          is_active: false,
+          created_at: '2026-03-10',
+          secret_rotated_at: null,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.updateWebhookEndpoint('wh_upd', {
+        url: 'https://example.com/updated',
+        isActive: false,
+      })
+
+      const body = JSON.parse(fn.mock.calls[0][1].body)
+      expect(body.is_active).toBe(false)
+      expect(result.data.id).toBe('wh_upd')
+      expect(result.data.isActive).toBe(false)
+    })
+
+    it('testWebhookEndpoint maps delivery info with number types', async () => {
+      const fn = mockFetch({
+        success: true,
+        data: {
+          delivered: true,
+          status: 200,
+          response_time_ms: 150,
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.testWebhookEndpoint('wh_test')
+
+      expect(result.success).toBe(true)
+      expect(result.data.delivered).toBe(true)
+      expect(result.data.status).toBe(200)
+      expect(result.data.responseTimeMs).toBe(150)
+      expect(result.error).toBeUndefined()
+    })
+
+    it('testWebhookEndpoint returns null for non-number status', async () => {
+      const fn = mockFetch({
+        success: false,
+        error: 'Connection refused',
+        data: {
+          delivered: false,
+          status: 'n/a',
+          response_time_ms: 'timeout',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.testWebhookEndpoint('wh_fail')
+
+      expect(result.data.delivered).toBe(false)
+      expect(result.data.status).toBeNull()
+      expect(result.data.responseTimeMs).toBeNull()
+      expect(result.error).toBe('Connection refused')
+    })
+
+    // --- PARTICIPANT: getParticipantPayoutEligibility defaults ---
+
+    it('getParticipantPayoutEligibility defaults when eligibility is null', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.getParticipantPayoutEligibility('p_none')
+
+      expect(result.eligibility.participantId).toBe('p_none')
+      expect(result.eligibility.eligible).toBe(false)
+      expect(result.eligibility.availableBalance).toBe(0)
+      expect(result.eligibility.issues).toEqual([])
+      expect(result.eligibility.requirements).toEqual({})
+    })
+
+    // --- getSummary: aggregation logic ---
+
+    it('getSummary aggregates participant balances', async () => {
+      const fn = mockFetch({
+        success: true,
+        participants: [
+          { ledger_balance: 100, held_amount: 10, available_balance: 90 },
+          { ledger_balance: 200, held_amount: 20, available_balance: 180 },
+          { ledger_balance: 0, held_amount: 0, available_balance: 0 },
+        ],
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getSummary()
+
+      expect(result.success).toBe(true)
+      expect(result.data.total_ledger_balance).toBe(300)
+      expect(result.data.total_held_amount).toBe(30)
+      expect(result.data.total_available_balance).toBe(270)
+      expect(result.data.participant_count).toBe(3)
+    })
+
+    it('getSummary handles empty participants array', async () => {
+      const fn = mockFetch({ success: true, participants: [] })
+      const sdk = createClient(fn)
+      const result = await sdk.getSummary()
+
+      expect(result.data.total_ledger_balance).toBe(0)
+      expect(result.data.total_held_amount).toBe(0)
+      expect(result.data.total_available_balance).toBe(0)
+      expect(result.data.participant_count).toBe(0)
+    })
+
+    it('getSummary handles missing participants key', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.getSummary()
+
+      expect(result.data.participant_count).toBe(0)
+    })
+
+    // --- ESCROW SUMMARY ---
+
+    it('getEscrowSummary returns empty object when summary missing', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn)
+      const result = await sdk.getEscrowSummary()
+
+      expect(result.success).toBe(true)
+      expect(result.summary).toEqual({})
+    })
+
+    // --- PREFLIGHT CONVENIENCE METHODS ---
+
+    it('preflightAndRecordExpense returns only preflight when blocked', async () => {
+      const fn = mockFetch({
+        success: true,
+        cached: false,
+        message: 'blocked',
+        decision: {
+          id: 'dec_blocked',
+          decision: 'blocked',
+          violated_policies: [{ policy_id: 'p1', policy_type: 'budget_cap', severity: 'hard', reason: 'over limit' }],
+          expires_at: '2026-03-20',
+          created_at: '2026-03-16',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.preflightAndRecordExpense(
+        { idempotencyKey: 'ik_1', amount: 50000 },
+        { referenceId: 'exp_1', amount: 50000 },
+      )
+
+      expect(result.preflight.decision.decision).toBe('blocked')
+      expect(result.transaction).toBeUndefined()
+      expect(fn).toHaveBeenCalledTimes(1)
+    })
+
+    it('preflightAndRecordExpense records expense when allowed', async () => {
+      const preflightFn = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true, status: 200,
+          json: () => Promise.resolve({
+            success: true, cached: false, message: 'allowed',
+            decision: { id: 'dec_allow', decision: 'allowed', violated_policies: [], expires_at: '2026-03-20', created_at: '2026-03-16' },
+          }),
+          text: () => Promise.resolve(''),
+          headers: new Map(),
+        })
+        .mockResolvedValueOnce({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ success: true, transaction_id: 'txn_exp' }),
+          text: () => Promise.resolve(''),
+          headers: new Map(),
+        })
+      const sdk = createClient(preflightFn)
+      const result = await sdk.preflightAndRecordExpense(
+        { idempotencyKey: 'ik_2', amount: 1000 },
+        { referenceId: 'exp_2', amount: 1000 },
+      )
+
+      expect(result.preflight.decision.decision).toBe('allowed')
+      expect(result.transaction).toBeDefined()
+      expect(result.transaction.transaction_id).toBe('txn_exp')
+
+      // Verify the expense was called with the decision id
+      const expenseBody = JSON.parse(preflightFn.mock.calls[1][1].body)
+      expect(expenseBody.authorization_decision_id).toBe('dec_allow')
+    })
+
+    it('preflightAndRecordBill returns only preflight when blocked', async () => {
+      const fn = mockFetch({
+        success: true, cached: false, message: 'blocked',
+        decision: { id: 'dec_b', decision: 'blocked', violated_policies: [], expires_at: null, created_at: '2026-03-16' },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.preflightAndRecordBill(
+        { idempotencyKey: 'ik_3', amount: 10000 },
+        { amount: 10000, description: 'Bill', vendorName: 'V' },
+      )
+
+      expect(result.preflight.decision.decision).toBe('blocked')
+      expect(result.transaction).toBeUndefined()
+    })
+
+    // --- requestGetRaw error path (used by exportTaxDocuments CSV) ---
+
+    it('exportTaxDocuments CSV throws on non-OK response', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('{"error":"Internal error"}'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+
+      await expect(sdk.exportTaxDocuments(2025, 'csv')).rejects.toThrow('Internal error')
+    })
+
+    it('exportTaxDocuments CSV throws with raw text when JSON parse fails', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: () => Promise.resolve('Bad Gateway'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+
+      await expect(sdk.exportTaxDocuments(2025, 'csv')).rejects.toThrow('Bad Gateway')
+    })
+
+    // --- requestRaw error path (used by exportReport CSV) ---
+
+    it('exportReport CSV throws on non-OK response with JSON error', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve('{"error":"Forbidden"}'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+
+      try {
+        await sdk.exportReport({ reportType: 'transaction_detail', format: 'csv' })
+        expect.unreachable('should have thrown')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(SoledgicError)
+        expect(err.message).toBe('Forbidden')
+      }
+    })
+
+    it('exportReport CSV throws with raw text when JSON parse fails', async () => {
+      const fn = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Gateway Timeout'),
+        headers: new Headers({}),
+      })
+      const sdk = createClient(fn)
+
+      try {
+        await sdk.exportReport({ reportType: 'transaction_detail', format: 'csv' })
+        expect.unreachable('should have thrown')
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(SoledgicError)
+        expect(err.message).toBe('Gateway Timeout')
+      }
+    })
+
+    // --- requestDelete error path ---
+
+    it('unmatchTransaction throws on non-OK DELETE response', async () => {
+      const fn = mockFetch({ error: 'Not found' }, 404)
+      vi.stubGlobal('fetch', fn)
+      const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+
+      await expect(sdk.unmatchTransaction('txn_bad')).rejects.toThrow('Not found')
+    })
+
+    // --- apiVersion whitespace trim ---
+
+    it('apiVersion trims whitespace and falls back to default', async () => {
+      const fn = mockFetch({ success: true })
+      const sdk = createClient(fn, { apiVersion: '   ' })
+      await sdk.runHealthCheck()
+
+      const headers = fn.mock.calls[0][1].headers
+      expect(headers['Soledgic-Version']).toBe('2026-03-01')
+    })
+
+    // --- getParticipant with null fallback fields ---
+
+    it('getParticipant maps null fallbacks for all optional fields', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: {
+          id: 'p_sparse',
+          // all nullable fields missing
+          ledger_balance: 0,
+          held_amount: 0,
+          available_balance: 0,
+          holds: [],
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getParticipant('p_sparse')
+
+      expect(result.participant.linkedUserId).toBeNull()
+      expect(result.participant.name).toBeNull()
+      expect(result.participant.tier).toBeNull()
+      expect(result.participant.customSplitPercent).toBeNull()
+      expect(result.participant.holds).toEqual([])
+    })
+
+    it('getParticipant maps hold with null reason and releaseDate', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: {
+          id: 'p_holds',
+          ledger_balance: 100,
+          held_amount: 50,
+          available_balance: 50,
+          holds: [
+            { amount: 50, status: 'held' },
+          ],
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.getParticipant('p_holds')
+
+      expect(result.participant.holds[0].reason).toBeNull()
+      expect(result.participant.holds[0].releaseDate).toBeNull()
+      expect(result.participant.holds[0].amount).toBe(50)
+      expect(result.participant.holds[0].status).toBe('held')
+    })
+
+    // --- createParticipant with linked_user_id ---
+
+    it('createParticipant maps linked_user_id null fallback', async () => {
+      const fn = mockFetch({
+        success: true,
+        participant: {
+          id: 'p_no_link',
+          account_id: 'acct_no_link',
+          // linked_user_id missing -> null
+          display_name: 'NoLink',
+          email: 'no@link.com',
+          default_split_percent: 70,
+          payout_preferences: {},
+          created_at: '2026-03-16',
+        },
+      })
+      const sdk = createClient(fn)
+      const result = await sdk.createParticipant({ participantId: 'p_no_link' })
+
+      expect(result.participant.linkedUserId).toBeNull()
+      expect(result.participant.displayName).toBe('NoLink')
+      expect(result.participant.payoutPreferences).toEqual({})
+    })
+  })
 })

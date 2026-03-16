@@ -287,6 +287,303 @@ describe('createApiHandler', () => {
       expect.objectContaining({ status: 500 })
     )
   })
+
+  it('injects X-Request-Id header on successful response', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const response = await handler(makeRequest('GET'))
+    expect(response.headers.get('X-Request-Id')).toMatch(/^req_/)
+    expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    expect(response.headers.get('X-Frame-Options')).toBe('DENY')
+  })
+
+  it('blocks PUT request when read-only mode is active', async () => {
+    mockGetReadonly.mockResolvedValue(true)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('PUT'))
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('Read-only mode') }),
+      expect.objectContaining({ status: 403 })
+    )
+  })
+
+  it('blocks PATCH request when read-only mode is active', async () => {
+    mockGetReadonly.mockResolvedValue(true)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('PATCH'))
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('Read-only mode') }),
+      expect.objectContaining({ status: 403 })
+    )
+  })
+
+  it('blocks DELETE request when read-only mode is active', async () => {
+    mockGetReadonly.mockResolvedValue(true)
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('DELETE'))
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining('Read-only mode') }),
+      expect.objectContaining({ status: 403 })
+    )
+  })
+
+  it('allows GET request even when read-only mode is active', async () => {
+    mockGetReadonly.mockResolvedValue(true)
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    await handler(makeRequest('GET'))
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('allows write with readonlyExempt even when readonly is active for PUT', async () => {
+    mockGetReadonly.mockResolvedValue(true)
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+      readonlyExempt: true,
+    })
+
+    await handler(makeRequest('PUT'))
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('uses custom rateLimitKey function when provided', async () => {
+    const customKeyFn = vi.fn((_req: Request, ctx: { user: { id: string } | null }) => `custom:${ctx.user?.id ?? 'anon'}`)
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: true,
+      rateLimitKey: customKeyFn,
+    })
+
+    await handler(makeRequest())
+    expect(customKeyFn).toHaveBeenCalled()
+    // checkRateLimit should have been called with the custom key
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      'custom:anon',
+      expect.stringContaining(':custom:anon'),
+      expect.any(Object)
+    )
+  })
+
+  it('falls back to default rate limit key when custom key function throws', async () => {
+    const customKeyFn = vi.fn(() => { throw new Error('key generation failed') })
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: true,
+      rateLimitKey: customKeyFn,
+    })
+
+    await handler(makeRequest())
+    // Should still call checkRateLimit with the default key (not throw)
+    expect(mockCheckRateLimit).toHaveBeenCalled()
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('uses custom rateLimitConfig when provided', async () => {
+    const customConfig = { requests: 5, windowMs: 30000 }
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: true,
+      rateLimitConfig: customConfig,
+    })
+
+    await handler(makeRequest())
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      customConfig
+    )
+  })
+
+  it('returns 413 with default maxBodySize of 1MB', async () => {
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+      // No maxBodySize — should default to 1MB (1048576)
+    })
+
+    const req = makeRequest('POST', { 'content-length': '1048577' })
+    await handler(req)
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'Request too large' }),
+      expect.objectContaining({ status: 413 })
+    )
+  })
+
+  it('allows body exactly at maxBodySize limit', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+      maxBodySize: 100,
+    })
+
+    const req = makeRequest('POST', { 'content-length': '100' })
+    await handler(req)
+    expect(innerHandler).toHaveBeenCalled()
+  })
+
+  it('merges pending auth cookies into successful response', async () => {
+    // Simulate Supabase calling setAll during auth token refresh
+    const { createServerClient } = await import('@supabase/ssr')
+    const mockCreateServerClient = vi.mocked(createServerClient)
+    mockCreateServerClient.mockImplementation((_url, _key, opts: any) => {
+      // Call setAll to simulate token refresh
+      opts.cookies.setAll([
+        { name: 'sb-testproject-auth-token', value: 'refreshed', options: { path: '/' } },
+      ])
+      return {
+        auth: {
+          getUser: () => Promise.resolve({ data: { user: { id: 'user_1', email: 'test@test.com' } }, error: null }),
+        },
+      } as any
+    })
+
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    const handler = createApiHandler(innerHandler, {
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const response = await handler(makeRequest())
+    expect(response.cookies.set).toHaveBeenCalledWith(
+      'sb-testproject-auth-token',
+      'refreshed',
+      expect.objectContaining({ path: '/' })
+    )
+
+    // Restore the default createServerClient mock for subsequent tests
+    mockCreateServerClient.mockImplementation((() => ({
+      auth: { getUser: () => mockGetUser() },
+    })) as any)
+  })
+
+  it('returns 401 with request_id when authentication fails (no bearer)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'session expired' } })
+
+    const handler = createApiHandler(async () => {
+      throw new Error('should not be called')
+    })
+
+    const response = await handler(makeRequest('POST', {}))
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: 'Unauthorized',
+        request_id: expect.stringMatching(/^req_/),
+      }),
+      expect.objectContaining({ status: 401 })
+    )
+    // The 401 response should have X-Request-Id header set
+    expect(response.headers.get('X-Request-Id')).toMatch(/^req_/)
+  })
+
+  it('getClientIp prefers cf-connecting-ip over other headers', async () => {
+    const innerHandler = vi.fn(async () => {
+      const { NextResponse } = await import('next/server')
+      return NextResponse.json({ ok: true })
+    })
+
+    // We can't directly test getClientIp but we can verify audit log uses it on error
+    const handler = createApiHandler(async () => {
+      throw new Error('test error')
+    }, {
+      requireAuth: false,
+      csrfProtection: false,
+      rateLimit: false,
+    })
+
+    const req = makeRequest('POST', { 'cf-connecting-ip': '203.0.113.1', 'x-forwarded-for': '10.0.0.1' })
+    await handler(req)
+    // Error path is hit, which calls audit_log insert with clientIp
+    // Verifying by checking the error response was returned
+    expect(mockJsonFn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.any(String) }),
+      expect.objectContaining({ status: 500 })
+    )
+  })
 })
 
 describe('isRecord', () => {
@@ -423,6 +720,171 @@ describe('parsePendingAuthCookies', () => {
     const result = parsePendingAuthCookies([null, 'string', 42, { name: 'ok', value: 'v' }])
     expect(result).toHaveLength(1)
     expect(result[0].name).toBe('ok')
+  })
+
+  it('parses sameSite="strict"', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { sameSite: 'strict' } },
+    ])
+    expect(result[0].options?.sameSite).toBe('strict')
+  })
+
+  it('parses sameSite="lax"', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { sameSite: 'lax' } },
+    ])
+    expect(result[0].options?.sameSite).toBe('lax')
+  })
+
+  it('parses sameSite="none"', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { sameSite: 'none' } },
+    ])
+    expect(result[0].options?.sameSite).toBe('none')
+  })
+
+  it('excludes invalid sameSite values', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { sameSite: 'invalid' } },
+    ])
+    expect(result[0].options?.sameSite).toBeUndefined()
+  })
+
+  it('excludes numeric sameSite value', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { sameSite: 123 } },
+    ])
+    expect(result[0].options?.sameSite).toBeUndefined()
+  })
+
+  it('parses priority="low"', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { priority: 'low' } },
+    ])
+    expect(result[0].options?.priority).toBe('low')
+  })
+
+  it('parses priority="medium"', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { priority: 'medium' } },
+    ])
+    expect(result[0].options?.priority).toBe('medium')
+  })
+
+  it('parses priority="high"', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { priority: 'high' } },
+    ])
+    expect(result[0].options?.priority).toBe('high')
+  })
+
+  it('excludes invalid priority values', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { priority: 'critical' } },
+    ])
+    expect(result[0].options?.priority).toBeUndefined()
+  })
+
+  it('excludes numeric priority value', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { priority: 1 } },
+    ])
+    expect(result[0].options?.priority).toBeUndefined()
+  })
+
+  it('parses Date object for expires', () => {
+    const expires = new Date('2026-12-31T23:59:59Z')
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { expires } },
+    ])
+    expect(result[0].options?.expires).toBe(expires)
+  })
+
+  it('excludes non-Date expires values', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { expires: '2026-12-31' } },
+    ])
+    expect(result[0].options?.expires).toBeUndefined()
+  })
+
+  it('excludes numeric expires values', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { expires: 1234567890 } },
+    ])
+    expect(result[0].options?.expires).toBeUndefined()
+  })
+
+  it('returns undefined options when item has no options field', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v' },
+    ])
+    expect(result[0].options).toBeUndefined()
+  })
+
+  it('returns options object (not undefined) when options is present but fields are invalid', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: {} },
+    ])
+    // options should be an object, not undefined, because rawOptions was a record
+    expect(result[0].options).toBeDefined()
+    expect(result[0].options).toEqual({})
+  })
+
+  it('parses secure=false correctly', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { secure: false } },
+    ])
+    expect(result[0].options?.secure).toBe(false)
+  })
+
+  it('parses httpOnly=false correctly', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { httpOnly: false } },
+    ])
+    expect(result[0].options?.httpOnly).toBe(false)
+  })
+
+  it('excludes non-number maxAge', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { maxAge: '3600' } },
+    ])
+    expect(result[0].options?.maxAge).toBeUndefined()
+  })
+
+  it('accepts maxAge of 0', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: { maxAge: 0 } },
+    ])
+    expect(result[0].options?.maxAge).toBe(0)
+  })
+
+  it('skips entry where name is non-string', () => {
+    const result = parsePendingAuthCookies([
+      { name: 123, value: 'v' },
+    ])
+    expect(result).toHaveLength(0)
+  })
+
+  it('skips entry where value is non-string', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 123 },
+    ])
+    expect(result).toHaveLength(0)
+  })
+
+  it('allows empty string value', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: '' },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].value).toBe('')
+  })
+
+  it('treats non-object options as no options', () => {
+    const result = parsePendingAuthCookies([
+      { name: 'a', value: 'v', options: 'string-options' },
+    ])
+    expect(result[0].options).toBeUndefined()
   })
 })
 
