@@ -889,6 +889,80 @@ describe('Soledgic SDK', () => {
     expect(isValid).toBe(true)
   })
 
+  it('webhooks.verifySignature rejects wrong secret', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const payload = '{"event":"test"}'
+    const timestamp = 1_762_000_000
+    const header = await buildWebhookSignature(payload, 'correct_secret', timestamp)
+    const isValid = await sdk.webhooks.verifySignature(payload, header, 'wrong_secret', { now: timestamp })
+    expect(isValid).toBe(false)
+  })
+
+  it('webhooks.verifySignature rejects expired timestamp', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const payload = '{"event":"test"}'
+    const oldTimestamp = 1_700_000_000
+    const header = await buildWebhookSignature(payload, 'whsec_test', oldTimestamp)
+    const isValid = await sdk.webhooks.verifySignature(payload, header, 'whsec_test', {
+      toleranceSeconds: 300,
+      now: oldTimestamp + 301, // 1 second past tolerance
+    })
+    expect(isValid).toBe(false)
+  })
+
+  it('webhooks.verifySignature accepts timestamp at exact tolerance boundary', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const payload = '{"event":"test"}'
+    const timestamp = 1_762_000_000
+    const header = await buildWebhookSignature(payload, 'whsec_test', timestamp)
+    const isValid = await sdk.webhooks.verifySignature(payload, header, 'whsec_test', {
+      toleranceSeconds: 300,
+      now: timestamp + 300, // exactly at boundary
+    })
+    expect(isValid).toBe(true)
+  })
+
+  it('webhooks.verifySignature rejects empty signature header', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const isValid = await sdk.webhooks.verifySignature('payload', '', 'secret')
+    expect(isValid).toBe(false)
+  })
+
+  it('webhooks.verifySignature rejects header with no v1 signatures', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const isValid = await sdk.webhooks.verifySignature('payload', 't=12345', 'secret')
+    expect(isValid).toBe(false)
+  })
+
+  it('webhooks.verifySignature supports legacy sha256= format', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const payload = 'test_payload'
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode('legacy_secret'),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    )
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))
+    const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('')
+    const isValid = await sdk.webhooks.verifySignature(payload, `sha256=${hex}`, 'legacy_secret')
+    expect(isValid).toBe(true)
+  })
+
+  it('webhooks.verifySignature rejects wrong legacy signature', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const isValid = await sdk.webhooks.verifySignature('payload', 'sha256=deadbeef', 'secret')
+    expect(isValid).toBe(false)
+  })
+
+  it('webhooks.verifySignature handles ArrayBuffer payload', async () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const payload = '{"event":"test"}'
+    const buffer = new TextEncoder().encode(payload).buffer
+    const timestamp = 1_762_000_000
+    const header = await buildWebhookSignature(payload, 'whsec_test', timestamp)
+    const isValid = await sdk.webhooks.verifySignature(buffer, header, 'whsec_test', { now: timestamp })
+    expect(isValid).toBe(true)
+  })
+
   it('webhooks.parseEvent normalizes event payloads', () => {
     const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
     const event = sdk.webhooks.parseEvent<{ payout_id: string }>(JSON.stringify({
@@ -898,6 +972,38 @@ describe('Soledgic SDK', () => {
 
     expect(event.type).toBe('payout.executed')
     expect(event.data?.payout_id).toBe('po_1')
+  })
+
+  it('webhooks.parseEvent extracts id, createdAt, livemode', () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const event = sdk.webhooks.parseEvent(JSON.stringify({
+      id: 'evt_123',
+      type: 'sale.completed',
+      created_at: '2026-01-15T00:00:00Z',
+      livemode: true,
+      data: { sale_id: 's1' },
+    }))
+    expect(event.id).toBe('evt_123')
+    expect(event.type).toBe('sale.completed')
+    expect(event.createdAt).toBe('2026-01-15T00:00:00Z')
+    expect(event.livemode).toBe(true)
+    expect(event.raw).toHaveProperty('type', 'sale.completed')
+  })
+
+  it('webhooks.parseEvent returns null for missing fields', () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const event = sdk.webhooks.parseEvent(JSON.stringify({}))
+    expect(event.id).toBeNull()
+    expect(event.type).toBe('unknown')
+    expect(event.createdAt).toBeNull()
+    expect(event.livemode).toBeNull()
+    expect(event.data).toBeNull()
+  })
+
+  it('webhooks.parseEvent uses event field as fallback for type', () => {
+    const sdk = new Soledgic({ apiKey: API_KEY, baseUrl: BASE_URL })
+    const event = sdk.webhooks.parseEvent(JSON.stringify({ event: 'refund.created' }))
+    expect(event.type).toBe('refund.created')
   })
 
   it('listWebhookEndpoints maps webhook endpoints to camelCase', async () => {
