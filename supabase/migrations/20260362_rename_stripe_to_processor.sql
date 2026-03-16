@@ -19,8 +19,10 @@ ALTER TABLE public.release_queue RENAME COLUMN stripe_error TO processor_error;
 ALTER TABLE public.release_queue RENAME COLUMN recipient_stripe_account_id TO recipient_processor_account_id;
 
 -- ============================================================================
--- 3. Recreate complete_fund_release with correct parameter name
+-- 3. Drop + recreate complete_fund_release with correct parameter name
+-- (PG does not allow renaming params via CREATE OR REPLACE)
 -- ============================================================================
+DROP FUNCTION IF EXISTS public.complete_fund_release(uuid, text, uuid);
 CREATE OR REPLACE FUNCTION public.complete_fund_release(
   p_release_id UUID,
   p_processor_transfer_id TEXT,
@@ -65,8 +67,9 @@ END;
 $function$;
 
 -- ============================================================================
--- 4. Recreate complete_release with correct parameter name
+-- 4. Drop + recreate complete_release with correct parameter name
 -- ============================================================================
+DROP FUNCTION IF EXISTS public.complete_release(uuid, text, uuid);
 CREATE OR REPLACE FUNCTION public.complete_release(
   p_release_id UUID,
   p_processor_transfer_id TEXT,
