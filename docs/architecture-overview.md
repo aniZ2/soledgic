@@ -287,7 +287,7 @@ npm install @soledgic/sdk
 import Soledgic from '@soledgic/sdk'
 
 const soledgic = new Soledgic({
-  apiKey: 'sk_live_...',
+  apiKey: 'slk_live_...',
   baseUrl: 'https://api.soledgic.com/v1',
   apiVersion: '2026-03-01',
 })

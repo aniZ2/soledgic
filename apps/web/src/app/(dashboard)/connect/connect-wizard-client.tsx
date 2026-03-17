@@ -376,7 +376,7 @@ export function ConnectWizardClient({
           <div className="bg-card border border-border rounded-lg p-6">
             <h3 className="text-sm font-semibold text-foreground mb-2">Test vs Live Mode</h3>
             <p className="text-sm text-muted-foreground">
-              Test mode uses <code className="text-xs bg-muted px-1.5 py-0.5 rounded">sk_test_</code> keys and a separate dataset. Switch to live mode from the sidebar toggle when you&apos;re ready for production.
+              Test mode uses <code className="text-xs bg-muted px-1.5 py-0.5 rounded">slk_test_</code> keys and a separate dataset. Switch to live mode from the sidebar toggle when you&apos;re ready for production.
             </p>
           </div>
 

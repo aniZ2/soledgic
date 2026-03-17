@@ -432,7 +432,7 @@ supabase secrets set BLOCKED_IPS=1.2.3.4,5.6.7.8
 
 # Enable allowlist (nuclear option)
 supabase secrets set ALLOWLIST_MODE=true
-supabase secrets set ALLOWED_API_KEYS=sk_live_xxx
+supabase secrets set ALLOWED_API_KEYS=slk_live_xxx
 
 # Rotate API key
 supabase db execute "SELECT rotate_api_key('ledger-uuid'::UUID)"

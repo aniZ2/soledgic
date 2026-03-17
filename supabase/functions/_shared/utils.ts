@@ -345,7 +345,8 @@ function sanitizeErrorMessage(message: string): string {
     .replace(/\/[^\s]+/g, '[path]')           // File paths
     .replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, '[ip]')  // IP addresses
     .replace(/eyJ[A-Za-z0-9_-]+/g, '[token]') // JWT tokens
-    .replace(/sk_[a-zA-Z0-9]+/g, '[key]')     // API keys
+    .replace(/slk_[a-zA-Z0-9_]+/g, '[key]')    // Soledgic API keys
+    .replace(/sk_[a-zA-Z0-9]+/g, '[key]')     // Stripe API keys
     .replace(/whsec_[a-zA-Z0-9]+/g, '[secret]') // Webhook secrets
     .substring(0, 200) // Limit length
 }
@@ -413,10 +414,10 @@ export function getSupabaseClient(): SupabaseClient {
 
 /**
  * Generate a cryptographically secure API key
- * Format: sk_live_<32 random hex chars> or sk_test_<32 random hex chars>
+ * Format: slk_live_<32 random hex chars> or slk_test_<32 random hex chars>
  */
 export function generateApiKey(isProduction = false): string {
-  const prefix = isProduction ? 'sk_live_' : 'sk_test_'
+  const prefix = isProduction ? 'slk_live_' : 'slk_test_'
   const randomBytes = new Uint8Array(16) // 128 bits of entropy
   crypto.getRandomValues(randomBytes)
   const hex = Array.from(randomBytes)
@@ -470,7 +471,7 @@ export async function validateApiKey(
   if (!apiKey) return null
   
   // Basic format validation
-  if (!apiKey.startsWith('sk_')) {
+  if (!apiKey.startsWith('slk_') && !apiKey.startsWith('sk_')) {
     console.warn(`[${requestId}] Invalid API key format`)
     return null
   }

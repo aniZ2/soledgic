@@ -18,7 +18,7 @@ Soledgic now supports two powerful automation features:
 ```typescript
 import Soledgic from '@soledgic/sdk'
 
-const ledger = new Soledgic('sk_live_...')
+const ledger = new Soledgic('slk_live_...')
 
 // Configure auto-email
 await ledger.configureEmail({

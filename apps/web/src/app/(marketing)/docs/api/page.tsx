@@ -219,7 +219,7 @@ function buildCurlExample(entry: ApiEndpointDoc): string {
   const headers: string[] = []
 
   if (entry.auth === 'API key') {
-    headers.push('  -H "x-api-key: sk_test_YOUR_API_KEY"')
+    headers.push('  -H "x-api-key: slk_test_YOUR_API_KEY"')
   } else if (entry.auth === 'Public/JWT') {
     headers.push('  -H "Authorization: Bearer YOUR_JWT_TOKEN"')
   } else if (entry.auth === 'Webhook signature') {

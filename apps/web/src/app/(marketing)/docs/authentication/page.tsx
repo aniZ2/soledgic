@@ -18,7 +18,7 @@ export default function AuthenticationPage() {
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-6">
           <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/participants \\
-  -H "x-api-key: sk_test_abc123..." \\
+  -H "x-api-key: slk_test_abc123..." \\
   -H "Content-Type: application/json" \\
   -d '{"participant_id": "creator_456"}'`}
           </pre>
@@ -36,7 +36,7 @@ export default function AuthenticationPage() {
           <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
             <h3 className="font-semibold text-amber-600 mb-2">Test Mode</h3>
             <p className="text-sm text-muted-foreground mb-2">
-              Keys start with <code className="bg-amber-500/20 px-1 rounded">sk_test_</code>
+              Keys start with <code className="bg-amber-500/20 px-1 rounded">slk_test_</code>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Sandbox ledger state</li>
@@ -47,7 +47,7 @@ export default function AuthenticationPage() {
           <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
             <h3 className="font-semibold text-green-600 mb-2">Live Mode</h3>
             <p className="text-sm text-muted-foreground mb-2">
-              Keys start with <code className="bg-green-500/20 px-1 rounded">sk_live_</code>
+              Keys start with <code className="bg-green-500/20 px-1 rounded">slk_live_</code>
             </p>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Production treasury state</li>
@@ -106,7 +106,7 @@ export default function AuthenticationPage() {
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-2">.env</p>
             <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
-              <pre className="text-sm text-slate-300">SOLEDGIC_API_KEY=sk_test_abc123...</pre>
+              <pre className="text-sm text-slate-300">SOLEDGIC_API_KEY=slk_test_abc123...</pre>
             </div>
           </div>
 

@@ -3,8 +3,9 @@
 // Create a new ledger for a business (standard or marketplace mode)
 // MIGRATED TO createHandler (no auth required - rate limited by IP)
 
-import { 
+import {
   createHandler,
+  generateApiKey,
   hashApiKey,
   jsonResponse,
   errorResponse,
@@ -54,13 +55,7 @@ function getDefaultSettings(mode: LedgerMode, overrides?: CreateLedgerRequest['s
   }
 }
 
-// Generate secure random API key
-function generateApiKey(): string {
-  const bytes = new Uint8Array(24)
-  crypto.getRandomValues(bytes)
-  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-  return `sk_live_${hex}`
-}
+// Uses shared generateApiKey from utils.ts (slk_test_* / slk_live_* prefix)
 
 const handler = createHandler(
   { 

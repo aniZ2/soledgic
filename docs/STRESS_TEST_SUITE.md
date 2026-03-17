@@ -644,8 +644,8 @@ describe('Rate Limit Handling', () => {
 
   it('should not affect other tenants', async () => {
     // While tenant A is rate limited
-    const tenantA = new Soledgic('sk_test_tenant_a')
-    const tenantB = new Soledgic('sk_test_tenant_b')
+    const tenantA = new Soledgic('slk_test_tenant_a')
+    const tenantB = new Soledgic('slk_test_tenant_b')
 
     // Exhaust tenant A's rate limit
     await Promise.all(Array(200).fill().map(() => 

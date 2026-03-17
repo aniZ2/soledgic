@@ -62,7 +62,7 @@ export default function DocsPage() {
         </div>
         <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/participants \\
-  -H "x-api-key: sk_test_your_api_key" \\
+  -H "x-api-key: slk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{
     "participant_id": "creator_456",

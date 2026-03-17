@@ -159,7 +159,7 @@ Schedule 1-hour technical call to cover:
 1. **Authentication**
    ```javascript
    // Show API key usage
-   const soledgic = new Soledgic('sk_live_customer_xxx')
+   const soledgic = new Soledgic('slk_live_customer_xxx')
    ```
 
 2. **Recording Sales**
@@ -218,7 +218,7 @@ Schedule 1-hour technical call to cover:
 
 Provide test API key:
 ```
-sk_test_customer_xxxxxxxxxxxxxxxxxxxxxxxx
+slk_test_customer_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Test scenarios to complete:
@@ -466,7 +466,7 @@ Hi [Name],
 
 Welcome to Soledgic! Your account is ready.
 
-Your API Key: sk_live_xxxxx...
+Your API Key: slk_live_xxxxx...
 Dashboard: https://app.soledgic.com/dashboard
 Documentation: https://docs.soledgic.com
 

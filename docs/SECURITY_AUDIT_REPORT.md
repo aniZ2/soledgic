@@ -314,7 +314,7 @@ const SECURITY_HEADERS = {
 **Resolution:** Added cryptographically secure API key generation:
 ```typescript
 export function generateApiKey(isProduction = false): string {
-  const prefix = isProduction ? 'sk_live_' : 'sk_test_'
+  const prefix = isProduction ? 'slk_live_' : 'slk_test_'
   const randomBytes = new Uint8Array(16) // 128 bits of entropy
   crypto.getRandomValues(randomBytes)
   return `${prefix}${hex}`
@@ -499,7 +499,7 @@ SELECT cron.schedule('cleanup-rate-limits', '0 * * * *', 'SELECT cleanup_rate_li
 
 ### 6. API Key Generation ✅
 - Cryptographically secure: `crypto.getRandomValues(new Uint8Array(16))`
-- Format: `sk_live_<32 hex chars>` or `sk_test_<32 hex chars>`
+- Format: `slk_live_<32 hex chars>` or `slk_test_<32 hex chars>`
 - Both TypeScript and SQL implementations
 
 ### 7. Additional Validation Functions ✅

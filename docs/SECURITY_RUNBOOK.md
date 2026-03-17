@@ -35,7 +35,7 @@ BLOCKED_COUNTRIES=KP,IR
 
 # Emergency Mode - Block all non-allowlisted API keys
 ALLOWLIST_MODE=true
-ALLOWED_API_KEYS=sk_live_xxx,sk_live_yyy
+ALLOWED_API_KEYS=slk_live_xxx,slk_live_yyy
 
 # Maintenance Mode - Return 503 for all endpoints
 MAINTENANCE_MODE=true
@@ -104,7 +104,7 @@ The security-alerts function monitors these thresholds:
 4. **Enable Allowlist Mode (if severe)**
    ```bash
    ALLOWLIST_MODE=true
-   ALLOWED_API_KEYS=sk_live_known_good_key
+   ALLOWED_API_KEYS=slk_live_known_good_key
    ```
 
 ### Brute Force Attack (API Keys)

@@ -123,6 +123,6 @@ Before switching from sandbox to production:
 - [ ] `PROCESSOR_NAME` is set (not DUMMY_V1)
 - [ ] `PROCESSOR_PAYOUT_SOURCE_ID` is a production funding instrument
 - [ ] `PROCESSOR_WEBHOOK_SIGNING_KEY` is configured (not just token auth)
-- [ ] All ledgers have production API keys (not `sk_test_*`)
+- [ ] All ledgers have production API keys (not `slk_test_*`)
 - [ ] Webhook endpoints use HTTPS
 - [ ] CSRF_ALLOWED_ORIGINS contains only production domains

@@ -173,7 +173,8 @@ function sanitizeError(message: string): string {
     .replace(/\/[^\s]+/g, '[path]')           // File paths
     .replace(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/g, '[ip]')  // IP addresses
     .replace(/eyJ[A-Za-z0-9_-]+/g, '[token]') // JWT tokens
-    .replace(/sk_[a-zA-Z0-9]+/g, '[key]')     // API keys
+    .replace(/slk_[a-zA-Z0-9_]+/g, '[key]')   // Soledgic API keys
+    .replace(/sk_[a-zA-Z0-9]+/g, '[key]')    // Stripe API keys
     .substring(0, 200)
 }
 

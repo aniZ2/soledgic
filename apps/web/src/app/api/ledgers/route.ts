@@ -101,8 +101,8 @@ export const POST = createApiHandler(
 
     // Create paired test + live ledgers
     const ledgerGroupId = crypto.randomUUID()
-    const testApiKey = `sk_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
-    const liveApiKey = `sk_live_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+    const testApiKey = `slk_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+    const liveApiKey = `slk_live_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
 
     const sharedFields = {
       platform_name,

@@ -1529,7 +1529,7 @@ describe('sanitizeError', () => {
     vi.stubEnv('NODE_ENV', 'production')
 
     const handler = createApiHandler(async () => {
-      throw new Error('Bad key sk_live_abcdef123456')
+      throw new Error('Bad key slk_live_abcdef123456')
     }, {
       requireAuth: false,
       csrfProtection: false,
@@ -1538,7 +1538,7 @@ describe('sanitizeError', () => {
 
     await handler(makeRequest())
     const errorBody = mockJsonFn.mock.calls[0][0]
-    expect(errorBody.error).not.toContain('sk_live_abcdef123456')
+    expect(errorBody.error).not.toContain('slk_live_abcdef123456')
     expect(errorBody.error).toContain('[key]')
     vi.stubEnv('NODE_ENV', 'test')
   })

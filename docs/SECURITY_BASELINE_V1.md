@@ -32,7 +32,7 @@ This document certifies that Soledgic API has completed security hardening and e
 |---------|----------------|------|
 | Hash-based storage | SHA-256, plaintext never stored | `utils.ts` |
 | Secure generation | 128-bit entropy via `crypto.getRandomValues()` | `utils.ts` |
-| Key format | `sk_live_*` / `sk_test_*` (48 chars) | `utils.ts` |
+| Key format | `slk_live_*` / `slk_test_*` (48 chars) | `utils.ts` |
 | Rotation support | `rotate_api_key()` SQL function | migrations |
 | Timing-safe comparison | `timingSafeEqual()` | `utils.ts` |
 
@@ -227,7 +227,7 @@ supabase secrets set BLOCKED_IPS=1.2.3.4,5.6.7.8
 
 # Enable allowlist mode (nuclear option)
 supabase secrets set ALLOWLIST_MODE=true
-supabase secrets set ALLOWED_API_KEYS=sk_live_key1,sk_live_key2
+supabase secrets set ALLOWED_API_KEYS=slk_live_key1,slk_live_key2
 ```
 
 ---

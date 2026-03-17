@@ -15,7 +15,7 @@ Deno.test('sanitizeForAudit: redacts sensitive field names', () => {
     account_number: '123456789',
     routing_number: '021000021',
     ssn: '123-45-6789',
-    api_key: 'sk_live_secret',
+    api_key: 'slk_live_secret',
     password: 'hunter2',
   }
   const result = sanitizeForAudit(input)

@@ -20,7 +20,13 @@ Deno.test('scrubPII: redacts JWT tokens', () => {
   assertEquals(result.includes('[TOKEN]'), true)
 })
 
-Deno.test('scrubPII: redacts API keys (sk_ prefix)', () => {
+Deno.test('scrubPII: redacts Soledgic API keys (slk_ prefix)', () => {
+  const result = scrubPII('key is slk_live_abc123def456')
+  assertEquals(result.includes('slk_'), false)
+  assertEquals(result.includes('[KEY]'), true)
+})
+
+Deno.test('scrubPII: redacts Stripe API keys (sk_ prefix)', () => {
   const result = scrubPII('key is sk_live_abc123def456')
   assertEquals(result.includes('sk_'), false)
   assertEquals(result.includes('[KEY]'), true)

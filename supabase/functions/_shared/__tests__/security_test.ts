@@ -64,16 +64,16 @@ Deno.test('timingSafeEqual: handles special characters', () => {
 // generateApiKey
 // ============================================================================
 
-Deno.test('generateApiKey: test key has sk_test_ prefix', () => {
+Deno.test('generateApiKey: test key has slk_test_ prefix', () => {
   const key = generateApiKey(false)
-  assertEquals(key.startsWith('sk_test_'), true)
-  assertEquals(key.length, 8 + 32) // prefix + 32 hex chars
+  assertEquals(key.startsWith('slk_test_'), true)
+  assertEquals(key.length, 9 + 32) // prefix + 32 hex chars
 })
 
-Deno.test('generateApiKey: live key has sk_live_ prefix', () => {
+Deno.test('generateApiKey: live key has slk_live_ prefix', () => {
   const key = generateApiKey(true)
-  assertEquals(key.startsWith('sk_live_'), true)
-  assertEquals(key.length, 8 + 32)
+  assertEquals(key.startsWith('slk_live_'), true)
+  assertEquals(key.length, 9 + 32)
 })
 
 Deno.test('generateApiKey: generates unique keys', () => {
@@ -87,20 +87,20 @@ Deno.test('generateApiKey: generates unique keys', () => {
 // ============================================================================
 
 Deno.test('hashApiKey: produces 64-char hex string (SHA-256)', async () => {
-  const hash = await hashApiKey('sk_test_abc123')
+  const hash = await hashApiKey('slk_test_abc123')
   assertEquals(hash.length, 64)
   assertEquals(/^[0-9a-f]{64}$/.test(hash), true)
 })
 
 Deno.test('hashApiKey: same input produces same hash', async () => {
-  const hash1 = await hashApiKey('sk_test_abc123')
-  const hash2 = await hashApiKey('sk_test_abc123')
+  const hash1 = await hashApiKey('slk_test_abc123')
+  const hash2 = await hashApiKey('slk_test_abc123')
   assertEquals(hash1, hash2)
 })
 
 Deno.test('hashApiKey: different inputs produce different hashes', async () => {
-  const hash1 = await hashApiKey('sk_test_abc123')
-  const hash2 = await hashApiKey('sk_test_abc124')
+  const hash1 = await hashApiKey('slk_test_abc123')
+  const hash2 = await hashApiKey('slk_test_abc124')
   assertNotEquals(hash1, hash2)
 })
 

@@ -7,6 +7,7 @@ const PII_PATTERNS: [RegExp, string][] = [
   [/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]'],
   [/\b\d{2}-\d{7}\b/g, '[EIN]'],
   [/eyJ[A-Za-z0-9_-]+/g, '[TOKEN]'],
+  [/slk_[a-zA-Z0-9_]+/g, '[KEY]'],
   [/sk_[a-zA-Z0-9]+/g, '[KEY]'],
   [/whsec_[a-zA-Z0-9]+/g, '[SECRET]'],
   [/sntrys_[a-zA-Z0-9]+/g, '[SECRET]'],

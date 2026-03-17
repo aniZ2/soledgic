@@ -8,6 +8,8 @@ echo "Checking for hardcoded secrets..."
 
 # Patterns to detect
 PATTERNS=(
+  'slk_live_[a-zA-Z0-9]{32,}'
+  'slk_test_[a-zA-Z0-9]{20,}'
   'sk_live_[a-zA-Z0-9]{32,}'
   'sk_test_[a-zA-Z0-9]{20,}'
   'whsec_[a-zA-Z0-9]{20,}'

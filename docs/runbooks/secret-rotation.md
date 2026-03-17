@@ -10,7 +10,7 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase (auto-managed) | Only rotate via Supabase dashboard |
 | `RESEND_API_KEY` | Supabase env + Vercel env | Emails stop until updated |
 | `CRON_SECRET` | Supabase env + pg_cron jobs (inlined) | `process-webhooks` and `security-alerts` cron jobs 401 until both sides updated |
-| API keys (`sk_test_*`, `sk_live_*`) | `ledgers.api_key_hash` in DB | Per-ledger, via `generate_api_key()` RPC |
+| API keys (`slk_test_*`, `slk_live_*`) | `ledgers.api_key_hash` in DB | Per-ledger, via `generate_api_key()` RPC |
 | Webhook endpoint secrets | `vault.secrets` | Per-endpoint, via `rotate_webhook_secret()` RPC |
 
 ## Rotating Processor Credentials (Finix)
@@ -178,7 +178,7 @@ SELECT generate_api_key() as new_key;
 
 -- Update the ledger (hash the new key first)
 UPDATE ledgers
-SET api_key_hash = encode(digest('sk_live_NEW_KEY_HERE', 'sha256'), 'hex'),
+SET api_key_hash = encode(digest('slk_live_NEW_KEY_HERE', 'sha256'), 'hex'),
     updated_at = NOW()
 WHERE id = 'LEDGER_UUID';
 ```

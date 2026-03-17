@@ -35,7 +35,7 @@ export default function QuickstartPage() {
           <Link href="/settings/api-keys" className="text-primary hover:underline">
             Settings → API Keys
           </Link>
-          . Use <code className="bg-muted px-1.5 py-0.5 rounded text-sm">sk_test_*</code> while you are integrating.
+          . Use <code className="bg-muted px-1.5 py-0.5 rounded text-sm">slk_test_*</code> while you are integrating.
         </p>
       </section>
 
@@ -50,7 +50,7 @@ export default function QuickstartPage() {
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/participants \\
-  -H "x-api-key: sk_test_YOUR_API_KEY" \\
+  -H "x-api-key: slk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "participant_id": "creator_456",
@@ -87,7 +87,7 @@ export default function QuickstartPage() {
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/checkout-sessions \\
-  -H "x-api-key: sk_test_YOUR_API_KEY" \\
+  -H "x-api-key: slk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "participant_id": "creator_456",
@@ -128,13 +128,13 @@ export default function QuickstartPage() {
           <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
             <pre className="text-sm text-slate-300">
 {`curl -X GET "${API_BASE_URL}/v1/wallets?owner_id=creator_456&wallet_type=creator_earnings" \\
-  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+  -H "x-api-key: slk_test_YOUR_API_KEY"`}
             </pre>
           </div>
           <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
             <pre className="text-sm text-slate-300">
 {`curl -X GET "${API_BASE_URL}/v1/holds?participant_id=creator_456" \\
-  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+  -H "x-api-key: slk_test_YOUR_API_KEY"`}
             </pre>
           </div>
         </div>
@@ -151,13 +151,13 @@ export default function QuickstartPage() {
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
 {`curl -X GET "${API_BASE_URL}/v1/participants/creator_456/payout-eligibility" \\
-  -H "x-api-key: sk_test_YOUR_API_KEY"`}
+  -H "x-api-key: slk_test_YOUR_API_KEY"`}
           </pre>
         </div>
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/payouts \\
-  -H "x-api-key: sk_test_YOUR_API_KEY" \\
+  -H "x-api-key: slk_test_YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "participant_id": "creator_456",

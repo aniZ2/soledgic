@@ -827,7 +827,7 @@ UPDATE api_keys SET revoked_at = NOW() WHERE ledger_id = 'xxx';
 
 -- Rotate primary key
 UPDATE ledgers 
-SET api_key = 'sk_live_' || encode(gen_random_bytes(24), 'hex'),
+SET api_key = 'slk_live_' || encode(gen_random_bytes(24), 'hex'),
     api_key_last_used_at = NULL
 WHERE id = 'xxx';
 ```

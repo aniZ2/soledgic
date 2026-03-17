@@ -170,7 +170,7 @@ WHERE key LIKE '%0a885204%'
 2. **Verify the block is working:**
 ```bash
 curl -X GET "https://api.soledgic.com/v1/participants" \
-  -H "x-api-key: sk_live_test" \
+  -H "x-api-key: slk_live_test" \
   -H "X-Forwarded-For: 203.0.113.42"
 # Should return 403 Forbidden
 ```

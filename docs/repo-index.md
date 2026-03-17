@@ -1580,7 +1580,7 @@ SERVICE/RPC/ENTRYPOINT blocks remain accurate.
 2. **secret-scan** — TruffleHog v3.88.0 (verified secrets only)
 3. **codeql** — CodeQL Analysis (JavaScript + TypeScript)
 4. **security-headers** — Checks CSP, HSTS, X-Content-Type-Options, X-Frame-Options, X-XSS-Protection in next.config.js
-5. **hardcoded-secrets** — Regex scan for sk_live_*, sk_test_*, whsec_*, SUPABASE_SERVICE_ROLE_KEY
+5. **hardcoded-secrets** — Regex scan for slk_live_*, slk_test_*, sk_live_*, sk_test_*, whsec_*, SUPABASE_SERVICE_ROLE_KEY
 6. **sql-injection** — Detects string concatenation in SQL queries
 7. **unit-tests** — Deno unit tests + Vitest (SDK + web) + validate repo index + `npm run graph:health -- --enforce`
 8. **security-gate** — Runs `scripts/security-gate.sh --ci` (7 checks)

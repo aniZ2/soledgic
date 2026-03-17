@@ -152,7 +152,7 @@ console.log({
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/participants \\
-  -H "x-api-key: sk_test_your_api_key" \\
+  -H "x-api-key: slk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{
     "participant_id": "creator_456",
@@ -165,7 +165,7 @@ console.log({
         <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto mb-4">
           <pre className="text-sm text-slate-300">
 {`curl -X POST ${API_BASE_URL}/v1/checkout-sessions \\
-  -H "x-api-key: sk_test_your_api_key" \\
+  -H "x-api-key: slk_test_your_api_key" \\
   -H "Content-Type: application/json" \\
   -d '{
     "participant_id": "creator_456",
