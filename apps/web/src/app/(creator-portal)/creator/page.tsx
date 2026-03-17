@@ -279,12 +279,7 @@ export default async function CreatorDashboardPage() {
               </div>
               <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalHeldFunds)}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {(() => {
-                  const delay = connectedAccountRows[0]?.payout_delay_days ?? 7
-                  if (delay <= 7) return `Held for standard ${delay}-day clearing period`
-                  if (delay <= 10) return `Held for ${delay}-day clearing period. Recent activity may affect timelines.`
-                  return `Held for ${delay}-day clearing period. Maintaining low refund rates helps reduce hold times.`
-                })()}
+                Held for {connectedAccountRows[0]?.payout_delay_days ?? 7}-day clearing period
               </p>
             </div>
           )}
