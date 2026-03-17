@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { User, Mail, Plus } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { DeleteCreatorButton } from '@/components/creators/delete-creator-button'
 
 export default async function CreatorsPage() {
   const supabase = await createClient()
@@ -155,6 +156,13 @@ export default async function CreatorsPage() {
                     </code>
                   </div>
                 </div>
+                {!livemode && (
+                  <DeleteCreatorButton
+                    ledgerId={ledger.id}
+                    creatorId={creator.entity_id}
+                    creatorName={creator.name}
+                  />
+                )}
               </div>
 
               <div className="space-y-3">
