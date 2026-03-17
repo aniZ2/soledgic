@@ -8,7 +8,7 @@ import { callLedgerFunction } from '@/lib/ledger-functions-client'
 import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
 import Link from 'next/link'
-import { ArrowLeft, Upload, Check, AlertCircle, ChevronRight, ArrowRight } from 'lucide-react'
+import { ArrowLeft, Upload, Check, CheckCircle2, AlertCircle, ChevronRight, ArrowRight } from 'lucide-react'
 
 interface ParsedTransaction {
   date: string
@@ -34,9 +34,17 @@ interface ParseResult {
 interface ImportResult {
   imported: number
   skipped: number
-  auto_matched?: number
-  needs_review?: number
+  matched: number
+  unmatched: number
+  session_id?: string
   errors?: string[]
+  balance?: {
+    opening: number
+    closing_expected: number
+    closing_computed: number
+    discrepancy: number
+    verified: boolean
+  } | null
 }
 
 const BANK_PRESETS = [
@@ -158,13 +166,18 @@ export default function ImportTransactionsPage() {
     setError(null)
 
     try {
-      // Step 1: Import transactions
+      // Step 1: Import transactions with balance verification + auto-matching
       const res = await callLedgerFunction('import-transactions', {
         ledgerId,
         method: 'POST',
         body: {
           action: 'import',
           transactions: parseResult.all_transactions,
+          format: parseResult.format,
+          opening_balance: parseResult.opening_balance,
+          closing_balance: parseResult.closing_balance,
+          currency: parseResult.currency,
+          auto_match: true,
         },
       })
       const data = await res.json()
@@ -173,9 +186,11 @@ export default function ImportTransactionsPage() {
         const result: ImportResult = {
           imported: data.data.imported,
           skipped: data.data.skipped,
+          matched: data.data.matched || 0,
+          unmatched: data.data.unmatched || data.data.imported,
+          session_id: data.data.session_id,
           errors: data.data.errors,
-          auto_matched: 0,
-          needs_review: data.data.imported,
+          balance: data.data.balance || null,
         }
 
         setImportResult(result)
@@ -476,14 +491,14 @@ export default function ImportTransactionsPage() {
         </div>
       )}
 
-      {/* Step 4: Done - Enhanced Summary */}
+      {/* Step 4: Done - Full Results */}
       {step === 'done' && importResult && (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="p-8 text-center border-b border-border">
             <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <Check className="w-8 h-8 text-green-500" />
             </div>
-            <h2 className="text-2xl font-semibold text-foreground">Import Complete!</h2>
+            <h2 className="text-2xl font-semibold text-foreground">Import Complete</h2>
           </div>
 
           {/* Summary Stats */}
@@ -493,11 +508,11 @@ export default function ImportTransactionsPage() {
               <p className="text-sm text-muted-foreground mt-1">Imported</p>
             </div>
             <div className="p-6 text-center">
-              <p className="text-3xl font-bold text-green-600">{importResult.auto_matched || 0}</p>
+              <p className="text-3xl font-bold text-green-600">{importResult.matched}</p>
               <p className="text-sm text-muted-foreground mt-1">Auto-Matched</p>
             </div>
             <div className="p-6 text-center">
-              <p className="text-3xl font-bold text-yellow-600">{importResult.needs_review || 0}</p>
+              <p className="text-3xl font-bold text-yellow-600">{importResult.unmatched}</p>
               <p className="text-sm text-muted-foreground mt-1">Need Review</p>
             </div>
             <div className="p-6 text-center">
@@ -506,27 +521,69 @@ export default function ImportTransactionsPage() {
             </div>
           </div>
 
+          {/* Balance Verification */}
+          {importResult.balance && (
+            <div className={`p-5 border-t ${
+              importResult.balance.verified ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'
+            }`}>
+              <div className="flex items-center gap-3 mb-3">
+                {importResult.balance.verified ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                    <p className="font-medium text-green-600">Balance Verified</p>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    <p className="font-medium text-red-600">Balance Discrepancy Detected</p>
+                  </>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Opening Balance</p>
+                  <p className="font-mono text-foreground">{formatCurrency(importResult.balance.opening)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Expected Closing</p>
+                  <p className="font-mono text-foreground">{formatCurrency(importResult.balance.closing_expected)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Computed Closing</p>
+                  <p className={`font-mono ${importResult.balance.verified ? 'text-foreground' : 'text-red-600'}`}>
+                    {formatCurrency(importResult.balance.closing_computed)}
+                    {!importResult.balance.verified && (
+                      <span className="ml-2 text-xs">
+                        (off by {formatCurrency(Math.abs(importResult.balance.discrepancy))})
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Status Messages */}
           <div className="p-6 border-t border-border space-y-3">
-            {importResult.auto_matched && importResult.auto_matched > 0 && (
+            {importResult.matched > 0 && (
               <div className="flex items-center gap-3 text-sm">
-                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                <div className="w-2 h-2 rounded-full bg-green-500" />
                 <span className="text-foreground">
-                  {importResult.auto_matched} transactions automatically matched to ledger entries
+                  {importResult.matched} transactions automatically matched to ledger entries
                 </span>
               </div>
             )}
-            {importResult.needs_review && importResult.needs_review > 0 && (
+            {importResult.unmatched > 0 && (
               <div className="flex items-center gap-3 text-sm">
-                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                <div className="w-2 h-2 rounded-full bg-yellow-500" />
                 <span className="text-foreground">
-                  {importResult.needs_review} transactions need manual review
+                  {importResult.unmatched} transactions need manual review
                 </span>
               </div>
             )}
             {importResult.skipped > 0 && (
               <div className="flex items-center gap-3 text-sm">
-                <div className="w-2 h-2 rounded-full bg-muted-foreground"></div>
+                <div className="w-2 h-2 rounded-full bg-muted-foreground" />
                 <span className="text-muted-foreground">
                   {importResult.skipped} duplicate transactions were skipped
                 </span>
@@ -548,7 +605,7 @@ export default function ImportTransactionsPage() {
 
           {/* Actions */}
           <div className="p-6 border-t border-border flex justify-center gap-4">
-            {(importResult.needs_review || 0) > 0 ? (
+            {importResult.unmatched > 0 ? (
               <Link
                 href="/dashboard/reconciliation"
                 className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"

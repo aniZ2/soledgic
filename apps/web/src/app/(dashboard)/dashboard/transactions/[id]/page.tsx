@@ -58,6 +58,16 @@ interface LinkedTransactionWithRelation extends LinkedTransactionRow {
   relation: 'reverses' | 'reversed_by'
 }
 
+interface GraphLink {
+  id: string
+  transaction_type: string
+  amount: number
+  status: string
+  created_at: string
+  link_type: string
+  direction: 'outgoing' | 'incoming'
+}
+
 interface AuditLogRow {
   id: string
   action: string
@@ -123,6 +133,41 @@ export default async function TransactionDetailPage({
       .eq('id', transaction.reversed_by)
     const related = (data as LinkedTransactionRow[] | null) ?? []
     linkedTransactions.push(...related.map((t): LinkedTransactionWithRelation => ({ ...t, relation: 'reversed_by' })))
+  }
+
+  // Get transaction graph edges (refund→sale, fee→charge, payout→batch, etc.)
+  const graphLinks: GraphLink[] = []
+  const linkedIds = new Set(linkedTransactions.map(t => t.id))
+
+  const [{ data: outgoingLinks }, { data: incomingLinks }] = await Promise.all([
+    supabase
+      .from('transaction_links')
+      .select('target_id, link_type')
+      .eq('source_id', transaction.id),
+    supabase
+      .from('transaction_links')
+      .select('source_id, link_type')
+      .eq('target_id', transaction.id),
+  ])
+
+  const graphTargetIds = [
+    ...((outgoingLinks || []) as Array<{ target_id: string; link_type: string }>).map(l => ({ id: l.target_id, link_type: l.link_type, direction: 'outgoing' as const })),
+    ...((incomingLinks || []) as Array<{ source_id: string; link_type: string }>).map(l => ({ id: l.source_id, link_type: l.link_type, direction: 'incoming' as const })),
+  ].filter(l => !linkedIds.has(l.id)) // don't duplicate reversal links
+
+  if (graphTargetIds.length > 0) {
+    const uniqueIds = [...new Set(graphTargetIds.map(l => l.id))]
+    const { data: graphTxns } = await supabase
+      .from('transactions')
+      .select('id, transaction_type, amount, status, created_at')
+      .in('id', uniqueIds)
+
+    for (const txn of (graphTxns || []) as LinkedTransactionRow[]) {
+      const link = graphTargetIds.find(l => l.id === txn.id)
+      if (link) {
+        graphLinks.push({ ...txn, link_type: link.link_type, direction: link.direction })
+      }
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -302,7 +347,7 @@ export default async function TransactionDetailPage({
         </div>
 
         {/* Linked Transactions */}
-        {linkedTransactions.length > 0 && (
+        {(linkedTransactions.length > 0 || graphLinks.length > 0) && (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-muted/30">
               <h2 className="font-semibold text-foreground">Linked Transactions</h2>
@@ -321,6 +366,31 @@ export default async function TransactionDetailPage({
                     <p className="text-sm text-muted-foreground">
                       {linked.relation === 'reverses' ? 'This transaction reverses' : 'Reversed by'} this entry
                     </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-mono">{formatCurrency(linked.amount)}</span>
+                    <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </Link>
+              ))}
+              {graphLinks.map((linked) => (
+                <Link
+                  key={`${linked.id}-${linked.link_type}`}
+                  href={`/dashboard/transactions/${linked.id}`}
+                  className="px-6 py-4 flex items-center justify-between hover:bg-muted/30"
+                >
+                  <div>
+                    <p className="font-medium text-foreground capitalize">
+                      {linked.transaction_type}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs px-1.5 py-0.5 bg-muted rounded text-muted-foreground">
+                        {linked.link_type.replace(/_/g, ' ')}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {linked.direction === 'outgoing' ? 'from this transaction' : 'to this transaction'}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="font-mono">{formatCurrency(linked.amount)}</span>
