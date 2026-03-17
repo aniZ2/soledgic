@@ -91,6 +91,19 @@ export async function stripeRequest<T = Record<string, unknown>>(
   options: StripeRequestOptions = {}
 ): Promise<StripeResponse<T>> {
   const { method = 'GET', params, idempotencyKey } = options
+
+  // SAFETY: Never send raw card numbers to Stripe. Block at the client level.
+  if (params) {
+    const json = JSON.stringify(params)
+    if (/\b\d{13,19}\b/.test(json) && /card.*number|number.*card/i.test(json)) {
+      return {
+        ok: false,
+        status: 0,
+        error: { type: 'safety_block', message: 'Raw card numbers must never be sent to Stripe. Use tokens (tok_visa) or Payment Methods.' },
+      }
+    }
+  }
+
   const secretKey = getSecretKey()
 
   if (!secretKey) {
