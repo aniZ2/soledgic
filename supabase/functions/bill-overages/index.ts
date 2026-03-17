@@ -655,7 +655,7 @@ Deno.serve(async (req: Request) => {
       continue
     }
 
-    const provider = getPaymentProvider('card', { processor: { merchantId } })
+    const provider = getPaymentProvider('card', { processor: { merchantId }, livemode: true })
     const checkout = await provider.createPaymentIntent({
       amount: amountCents,
       currency: 'USD',

@@ -6,6 +6,7 @@ export interface StripeRequestOptions {
   method?: 'GET' | 'POST' | 'DELETE'
   params?: Record<string, unknown>
   idempotencyKey?: string
+  livemode?: boolean
 }
 
 export interface StripeError {
@@ -28,7 +29,11 @@ function getTimeoutMs(): number {
   return Math.floor(raw)
 }
 
-function getSecretKey(): string | null {
+function getSecretKey(livemode?: boolean): string | null {
+  if (livemode === false) {
+    const testKey = (Deno.env.get('STRIPE_TEST_SECRET_KEY') || '').trim()
+    if (testKey) return testKey
+  }
   const key = (Deno.env.get('STRIPE_SECRET_KEY') || '').trim()
   return key || null
 }
@@ -119,7 +124,7 @@ export async function stripeRequest<T = Record<string, unknown>>(
   path: string,
   options: StripeRequestOptions = {}
 ): Promise<StripeResponse<T>> {
-  const { method = 'GET', params, idempotencyKey } = options
+  const { method = 'GET', params, idempotencyKey, livemode } = options
 
   // SAFETY: Never send raw card numbers to Stripe. Block at the client level.
   if (params) {
@@ -138,14 +143,28 @@ export async function stripeRequest<T = Record<string, unknown>>(
     }
   }
 
-  const secretKey = getSecretKey()
+  const secretKey = getSecretKey(livemode)
 
   if (!secretKey) {
+    const keyName = livemode === false ? 'STRIPE_TEST_SECRET_KEY (or STRIPE_SECRET_KEY)' : 'STRIPE_SECRET_KEY'
     return {
       ok: false,
       status: 0,
-      error: { type: 'configuration_error', message: 'STRIPE_SECRET_KEY is not configured' },
+      error: { type: 'configuration_error', message: `${keyName} is not configured` },
     }
+  }
+
+  // Cross-check: prevent live key in test mode (hard block — never allow real money in sandbox)
+  if (livemode === false && secretKey.startsWith('sk_live_')) {
+    return {
+      ok: false,
+      status: 0,
+      error: { type: 'configuration_error', message: 'STRIPE_TEST_SECRET_KEY resolves to a live key — refusing test-mode request' },
+    }
+  }
+  // Warn but allow live-mode using test key (Soledgic may still be in Stripe sandbox)
+  if (livemode === true && secretKey.startsWith('sk_test_')) {
+    console.warn('STRIPE_SECRET_KEY is a test key but livemode=true — Soledgic is likely still in Stripe sandbox mode')
   }
 
   const headers: Record<string, string> = {

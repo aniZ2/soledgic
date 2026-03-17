@@ -56,7 +56,7 @@ const handler = createHandler(
       mode: payload.mode as 'ledger_only' | 'processor_refund' | undefined,
       processor_payment_id: typeof payload.processor_payment_id === 'string' ? payload.processor_payment_id : undefined,
       metadata: payload.metadata as Record<string, any> | undefined,
-    }, requestId, getPaymentProvider('card'))
+    }, requestId, getPaymentProvider('card', { livemode: ledger.livemode }))
 
     return respondWithResult(req, requestId, response)
   },

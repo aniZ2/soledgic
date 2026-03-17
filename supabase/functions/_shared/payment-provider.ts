@@ -96,6 +96,7 @@ export interface ProcessorProviderConfig {
 
 export interface PaymentProviderFactoryOptions {
   processor?: ProcessorProviderConfig
+  livemode?: boolean
 }
 
 // ============================================================================
@@ -453,7 +454,7 @@ export function getPaymentProvider(
   const backend = resolvePaymentProviderBackend()
 
   if (backend === 'stripe') {
-    return new StripePaymentProvider()
+    return new StripePaymentProvider(options.livemode)
   }
 
   const cfg = options.processor || options.processor === null ? options.processor || {} : {}

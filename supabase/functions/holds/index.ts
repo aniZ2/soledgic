@@ -71,7 +71,7 @@ const handler = createHandler(
       const response = await releaseHeldFundsResponse(req, supabase, ledger, {
         entry_id: segments[0],
         execute_transfer: payload.execute_transfer !== false,
-      }, requestId, getPaymentProvider('card'))
+      }, requestId, getPaymentProvider('card', { livemode: ledger.livemode }))
 
       return respondWithResult(req, requestId, response)
     }

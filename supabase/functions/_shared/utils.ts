@@ -480,7 +480,7 @@ export async function validateApiKey(
   
   const { data: ledger, error } = await supabase
     .from('ledgers')
-    .select('id, business_name, ledger_mode, status, settings, organization_id')
+    .select('id, business_name, ledger_mode, livemode, status, settings, organization_id')
     .eq('api_key_hash', keyHash)
     .single()
   
@@ -1010,7 +1010,7 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         if (internalLedgerId) {
           const { data: internalLedger, error: internalLedgerError } = await supabase
             .from('ledgers')
-            .select('id, business_name, ledger_mode, status, settings, organization_id')
+            .select('id, business_name, ledger_mode, livemode, status, settings, organization_id')
             .eq('id', internalLedgerId)
             .single()
 

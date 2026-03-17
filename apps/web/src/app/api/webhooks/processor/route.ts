@@ -36,6 +36,11 @@ function getStripeWebhookSecret(): string | null {
   return secret.length > 0 ? secret : null
 }
 
+function getStripeTestWebhookSecret(): string | null {
+  const secret = (process.env.STRIPE_TEST_WEBHOOK_SECRET || '').trim()
+  return secret.length > 0 ? secret : null
+}
+
 function isStripeProvider(): boolean {
   return (process.env.PAYMENT_PROVIDER || '').toLowerCase().trim() === 'stripe'
 }
@@ -183,14 +188,21 @@ function authorizeWebhook(
   const stripeSecret = getStripeWebhookSecret()
   const stripeSignature = (request.headers.get('stripe-signature') || '').trim()
 
-  if (stripeSecret && stripeSignature) {
+  if ((stripeSecret || getStripeTestWebhookSecret()) && stripeSignature) {
     if (rawBody === undefined) {
       return { ok: false, mode: 'signature', error: 'Request body required for signature verification' }
     }
-    const result = verifyStripeSignature(rawBody, stripeSignature, stripeSecret)
-    return result.valid
-      ? { ok: true, mode: 'signature' }
-      : { ok: false, mode: 'signature', error: result.error }
+    // Try live secret first, then test secret (Stripe test/live webhooks use different signing keys)
+    if (stripeSecret) {
+      const result = verifyStripeSignature(rawBody, stripeSignature, stripeSecret)
+      if (result.valid) return { ok: true, mode: 'signature' }
+    }
+    const testSecret = getStripeTestWebhookSecret()
+    if (testSecret) {
+      const result = verifyStripeSignature(rawBody, stripeSignature, testSecret)
+      if (result.valid) return { ok: true, mode: 'signature' }
+    }
+    return { ok: false, mode: 'signature', error: 'Signature mismatch (tried live and test secrets)' }
   }
 
   // If Stripe is the configured provider and we have a secret but no stripe-signature header,

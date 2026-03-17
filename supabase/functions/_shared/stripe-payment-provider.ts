@@ -38,6 +38,12 @@ function mapStripeStatus(status: string | undefined): string {
 }
 
 export class StripePaymentProvider implements PaymentProvider {
+  private readonly livemode: boolean | undefined
+
+  constructor(livemode?: boolean) {
+    this.livemode = livemode
+  }
+
   async createPaymentIntent(params: PaymentIntentParams): Promise<PaymentIntentResult> {
     // Detect charge vs payout flow by presence of destination_id.
     // Charge → POST /v1/payment_intents (or /v1/charges for simple flows)
@@ -69,6 +75,7 @@ export class StripePaymentProvider implements PaymentProvider {
       method: 'POST',
       params: stripeParams,
       idempotencyKey: params.idempotency_id,
+      livemode: this.livemode,
     })
 
     if (!resp.ok || !resp.data) {
@@ -113,6 +120,7 @@ export class StripePaymentProvider implements PaymentProvider {
       method: 'POST',
       params: stripeParams,
       idempotencyKey: params.idempotency_id,
+      livemode: this.livemode,
     })
 
     if (!resp.ok || !resp.data) {
@@ -137,7 +145,7 @@ export class StripePaymentProvider implements PaymentProvider {
   async capturePayment(paymentIntentId: string): Promise<CaptureResult> {
     const resp = await stripeRequest<Record<string, unknown>>(
       `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}/capture`,
-      { method: 'POST' }
+      { method: 'POST', livemode: this.livemode }
     )
 
     if (!resp.ok || !resp.data) {
@@ -176,6 +184,7 @@ export class StripePaymentProvider implements PaymentProvider {
       method: 'POST',
       params: stripeParams,
       idempotencyKey: params.idempotency_id,
+      livemode: this.livemode,
     })
 
     if (!resp.ok || !resp.data) {
@@ -199,7 +208,8 @@ export class StripePaymentProvider implements PaymentProvider {
   async getPaymentStatus(paymentIntentId: string): Promise<PaymentStatus> {
     // Try payment_intent first, fall back to transfer
     const resp = await stripeRequest<Record<string, unknown>>(
-      `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`
+      `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`,
+      { livemode: this.livemode }
     )
 
     if (resp.ok && resp.data) {
@@ -217,7 +227,8 @@ export class StripePaymentProvider implements PaymentProvider {
     // If payment_intent lookup fails with 404, try transfers
     if (resp.status === 404 || paymentIntentId.startsWith('tr_')) {
       const transferResp = await stripeRequest<Record<string, unknown>>(
-        `/v1/transfers/${encodeURIComponent(paymentIntentId)}`
+        `/v1/transfers/${encodeURIComponent(paymentIntentId)}`,
+        { livemode: this.livemode }
       )
 
       if (transferResp.ok && transferResp.data) {

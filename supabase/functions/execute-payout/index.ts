@@ -53,6 +53,7 @@ interface CreatorPayoutDetails {
   creator_name: string
   amount: number
   currency: string
+  livemode?: boolean
   payout_method?: {
     rail: PayoutRail
     account_id?: string
@@ -124,7 +125,7 @@ class CardProcessorRail implements PaymentRail {
     }
     const processorName = processorNameRaw || 'DUMMY_V1'
 
-    const provider = getPaymentProvider('card')
+    const provider = getPaymentProvider('card', { livemode: payout.livemode })
     const result = await provider.createPaymentIntent({
       amount: Math.round(payout.amount * 100),
       currency: payout.currency.toUpperCase(),
@@ -625,6 +626,7 @@ async function executeSinglePayout(
     creator_name: creatorEntry.accounts.name,
     amount: payout.amount,
     currency: (ledger.settings as any)?.currency || 'USD',
+    livemode: ledger.livemode,
     payout_method: creatorMeta.payout_method,
   }
 
