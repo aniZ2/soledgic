@@ -10,6 +10,7 @@ import {
   validateString,
   validateUUID,
 } from './utils.ts'
+import { autoLinkTransaction } from './transaction-graph.ts'
 import {
   ResourceResult,
   resourceError,
@@ -243,6 +244,13 @@ export async function processPayoutResponse(
   const netToParticipant = result.net_to_creator!
   const previousBalance = result.previous_balance!
   const newBalance = result.new_balance!
+
+  // Build transaction graph edge: payout (no reverses, but metadata may link to parent)
+  void autoLinkTransaction(supabase, ledger.id, {
+    id: transactionId,
+    transaction_type: 'payout',
+    metadata: sanitizedMetadata,
+  })
 
   await createAuditLog(supabase, req, {
     ledger_id: ledger.id,

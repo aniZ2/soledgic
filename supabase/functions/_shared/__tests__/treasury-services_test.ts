@@ -232,11 +232,10 @@ Deno.test('recordRefundResponse: allows refunding remaining balance after a reve
         }
       }
 
-      if (table === 'audit_log') {
+      if (table === 'audit_log' || table === 'transaction_links') {
         return {
-          insert() {
-            return Promise.resolve({ error: null })
-          },
+          insert() { return Promise.resolve({ error: null }) },
+          upsert() { return Promise.resolve({ error: null }) },
         }
       }
 
@@ -375,6 +374,10 @@ Deno.test('listRefundsResponse: maps refunds and supports sale filters', async (
         }
       }
 
+      if (table === 'transaction_links') {
+        return { upsert() { return Promise.resolve({ error: null }) } }
+      }
+
       throw new Error(`Unexpected table access in test: ${table}`)
     },
   } as any
@@ -497,6 +500,10 @@ Deno.test('listRefundsResponse: includes pending processor refunds in the public
         }
       }
 
+      if (table === 'transaction_links') {
+        return { upsert() { return Promise.resolve({ error: null }) } }
+      }
+
       throw new Error(`Unexpected table access in test: ${table}#${tableCalls[table]}`)
     },
   } as any
@@ -553,6 +560,9 @@ Deno.test('recordRefundResponse: requires processor_payment_id for processor ref
             not() { return Promise.resolve({ data: [], error: null }) },
           }
         }
+      }
+      if (table === 'transaction_links') {
+        return { upsert() { return Promise.resolve({ error: null }) } }
       }
       throw new Error(`Unexpected table access: ${table}`)
     },

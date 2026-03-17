@@ -18,6 +18,7 @@ import {
   getClientIp
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { autoLinkTransaction } from '../_shared/transaction-graph.ts'
 
 interface ReversalRequest {
   transaction_id: string
@@ -345,6 +346,13 @@ const handler = createHandler(
       console.error('Failed to create reversal:', reversalError)
       return errorResponse('Failed to create reversal', 500, req)
     }
+
+    // Build transaction graph edge: reversal → original transaction
+    void autoLinkTransaction(supabase, ledger.id, {
+      id: reversalTx.id,
+      transaction_type: 'reversal',
+      reverses: transactionId,
+    })
 
     // Create reversed entries (flip debits to credits)
     const reversalEntries = originalTx.entries.map((entry: any) => ({

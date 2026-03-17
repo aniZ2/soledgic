@@ -9,6 +9,7 @@ import {
   validateString,
 } from './utils.ts'
 import type { PaymentProvider } from './payment-provider.ts'
+import { autoLinkTransaction } from './transaction-graph.ts'
 import {
   ResourceResult,
   resourceError,
@@ -606,6 +607,13 @@ export async function recordRefundResponse(
       risk_score: 20,
     }, requestId)
 
+    // Build transaction graph edge: refund → original sale
+    void autoLinkTransaction(supabase, ledger.id, {
+      id: reservedRow.out_transaction_id,
+      transaction_type: 'refund',
+      reverses: originalSale.id,
+    })
+
     Promise.resolve(
       supabase.rpc('queue_webhook', {
         p_ledger_id: ledger.id,
@@ -740,6 +748,13 @@ export async function recordRefundResponse(
     response_status: 200,
     risk_score: 20,
   }, requestId)
+
+  // Build transaction graph edge: refund → original sale
+  void autoLinkTransaction(supabase, ledger.id, {
+    id: refundRow.out_transaction_id,
+    transaction_type: 'refund',
+    reverses: originalSale.id,
+  })
 
   Promise.resolve(
     supabase.rpc('queue_webhook', {

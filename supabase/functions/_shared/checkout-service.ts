@@ -11,6 +11,7 @@ import {
   validateUrl,
 } from './utils.ts'
 import type { PaymentProvider } from './payment-provider.ts'
+import { autoLinkTransaction } from './transaction-graph.ts'
 import {
   ResourceResult,
   resourceError,
@@ -342,6 +343,12 @@ export async function createCheckoutResponse(
     }
 
     if (saleBooked && saleTransactionId) {
+      // Build transaction graph node for this sale (no edges yet — edges created when refunds/payouts reference it)
+      void autoLinkTransaction(supabase, ledger.id, {
+        id: saleTransactionId,
+        transaction_type: 'sale',
+      })
+
       supabase.rpc('queue_webhook', {
         p_ledger_id: ledger.id,
         p_event_type: 'checkout.completed',
