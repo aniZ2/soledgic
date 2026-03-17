@@ -1254,7 +1254,7 @@ export interface AuditLogEntry {
   action: string
   entity_type?: string
   entity_id?: string
-  actor_type: 'api' | 'system' | 'admin' | 'webhook'
+  actor_type: 'api' | 'system' | 'admin' | 'webhook' | 'automation'
   actor_id?: string
   request_body?: Record<string, any>
   response_status?: number
@@ -1275,19 +1275,32 @@ export async function createAuditLog(
   try {
     const clientIp = getClientIp(req)
     const userAgent = req.headers.get('user-agent')
-    
+
+    // Auto-detect actor from request headers (allows automation to self-identify)
+    // Headers: x-actor-type (api|system|admin|webhook|automation), x-actor-id, x-actor-source
+    const headerActorType = req.headers.get('x-actor-type')?.trim().toLowerCase()
+    const headerActorId = req.headers.get('x-actor-id')?.trim()
+    const headerActorSource = req.headers.get('x-actor-source')?.trim()
+    const VALID_ACTOR_TYPES = new Set(['api', 'system', 'admin', 'webhook', 'automation'])
+    const resolvedActorType = (headerActorType && VALID_ACTOR_TYPES.has(headerActorType))
+      ? headerActorType
+      : entry.actor_type
+    const resolvedActorId = headerActorId || entry.actor_id
+    const resolvedActorSource = headerActorSource || null
+
     // M2 FIX: Sanitize request_body to remove PII before logging
-    const sanitizedBody = entry.request_body 
+    const sanitizedBody = entry.request_body
       ? sanitizeForAudit(entry.request_body)
       : null
-    
+
     await supabase.from('audit_log').insert({
       ledger_id: entry.ledger_id,
       action: entry.action,
       entity_type: entry.entity_type,
       entity_id: entry.entity_id,
-      actor_type: entry.actor_type,
-      actor_id: entry.actor_id,
+      actor_type: resolvedActorType,
+      actor_id: resolvedActorId,
+      actor_source: resolvedActorSource,
       ip_address: clientIp,
       user_agent: userAgent?.substring(0, 500),  // Truncate to prevent overflow
       request_id: requestId,
