@@ -134,16 +134,6 @@
       "reason": "Processor webhook normalization only used by the inbox processor"
     },
     {
-      "id": "SVC_BANK_AGGREGATOR",
-      "module": "supabase/functions/_shared/bank-aggregator-provider.ts",
-      "allowed": [
-        "supabase/functions/bank-aggregator/",
-        "supabase/functions/bank-aggregator-webhooks/",
-        "supabase/functions/sync-bank-feeds/"
-      ],
-      "reason": "Bank aggregator holds Teller tokens — limit blast radius"
-    },
-    {
       "id": "WEB_PROCESSOR",
       "module": "apps/web/src/lib/processor.ts",
       "allowed": [

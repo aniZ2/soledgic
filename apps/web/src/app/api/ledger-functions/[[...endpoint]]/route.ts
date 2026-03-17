@@ -36,7 +36,6 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'reconciliations',
   'fraud',
   'compliance',
-  'bank-aggregator',
   'invoices',
   'configure-alerts',
   'manage-budgets',
@@ -56,7 +55,6 @@ const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
   'import-transactions',
   'send-statements',
   'delete-creator',
-  'bank-aggregator',
   'configure-alerts',
   'fraud',
   'manage-contractors',
@@ -71,7 +69,6 @@ const STEP_UP_ENDPOINT_ROOTS = new Set([
   'reverse-transaction',
   'execute-payout',
   'transfers',
-  'bank-aggregator',
   'record-income',
   'record-transfer',
   'record-adjustment',
@@ -128,15 +125,6 @@ function getSensitiveActionLabel(
     if (action === 'generate_batch_file') return 'generate payout batch files'
     if (action === 'execute') return 'execute payouts'
     if (action === 'configure_rail') return 'configure payout rails'
-    return null
-  }
-
-  if (endpointRoot === 'bank-aggregator') {
-    if (action === 'get_connect_config' || action === 'store_enrollment') {
-      return 'connect bank accounts'
-    }
-    if (action === 'sync') return 'sync bank transactions'
-    if (action === 'disconnect') return 'disconnect bank accounts'
     return null
   }
 

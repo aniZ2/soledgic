@@ -84,11 +84,6 @@ deploy import-bank-statement
 deploy upload-receipt
 deploy process-webhooks
 
-echo "[12/12] Bank Aggregator (3)..."
-deploy bank-aggregator
-deploy sync-bank-feeds
-deploy bank-aggregator-webhooks
-
 echo ""
 echo "=========================================="
 echo "✅ Deployment Complete"
