@@ -15,6 +15,8 @@ import {
   sanitizeForAudit
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { checkLargeTransaction } from '../_shared/risk-engine.ts'
+import { loadOrgCapabilities, getDailyVolume, checkDailyVolumeAllowed } from '../_shared/capabilities.ts'
 
 interface SaleRequest {
   reference_id: string
@@ -97,11 +99,23 @@ const handler = createHandler(
     const feeCents = split.fee_cents
 
     // ========================================================================
+    // CAPABILITY GATE: daily volume limit
+    // ========================================================================
+    const caps = await loadOrgCapabilities(supabase, ledger.organization_id)
+    if (caps.max_daily_volume_cents !== -1) {
+      const dailyVol = await getDailyVolume(supabase, ledger.id)
+      const volCheck = checkDailyVolumeAllowed(caps, dailyVol, amount)
+      if (!volCheck.allowed) {
+        return errorResponse(volCheck.reason || 'Daily volume limit exceeded', 403, req, requestId)
+      }
+    }
+
+    // ========================================================================
     // ATOMIC TRANSACTION (C1/C2 Fix)
     // ========================================================================
     // All inserts happen in single database transaction
     // If anything fails, entire operation rolls back
-    
+
     const { data: result, error: txError } = await supabase.rpc('record_sale_atomic', {
       p_ledger_id: ledger.id,
       p_reference_id: referenceId,
@@ -160,6 +174,36 @@ const handler = createHandler(
     const transactionId = txResult?.out_transaction_id || txResult?.transaction_id
     // Recompute from entries to avoid depending on account-balance trigger timing.
     const creatorBalance = await getCreatorLiveBalance(supabase, ledger.id, creatorId)
+
+    // Risk signal: flag large sales
+    if (ledger.organization_id) {
+      void checkLargeTransaction(supabase, ledger.id, ledger.organization_id, amount, 'sale', referenceId, transactionId)
+    }
+
+    // Recalculate creator risk score after every sale (mandatory for all platforms)
+    void supabase.rpc('update_creator_risk_score', {
+      p_ledger_id: ledger.id,
+      p_creator_id: creatorId,
+    }).catch((err: unknown) => {
+      console.error(`[${requestId}] Failed to update creator risk score:`, err)
+    })
+
+    // Reserve hold: if org has reserve_percent > 0, hold that % of creator earnings
+    if (caps.reserve_percent > 0 && creatorCents > 0) {
+      const reserveAmount = Math.round(creatorCents * caps.reserve_percent / 100)
+      if (reserveAmount > 0) {
+        void supabase.rpc('apply_payout_hold', {
+          p_ledger_id: ledger.id,
+          p_creator_id: creatorId,
+          p_transaction_id: transactionId,
+          p_amount: reserveAmount / 100, // RPC expects major units
+          p_delay_days: 90, // reserve held for 90 days (chargeback window)
+          p_reason: 'reserve',
+        }).catch((err: unknown) => {
+          console.error(`[${requestId}] Failed to apply sale reserve hold:`, err)
+        })
+      }
+    }
 
     // ========================================================================
     // AUDIT LOG

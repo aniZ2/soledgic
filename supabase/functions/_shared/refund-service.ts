@@ -15,6 +15,7 @@ import {
   resourceError,
   resourceOk,
 } from './treasury-resource.ts'
+import { checkRefundRate } from './risk-engine.ts'
 
 export interface RefundRequest {
   original_sale_reference: string
@@ -637,6 +638,20 @@ export async function recordRefundResponse(
       }
     })
 
+    // Risk signal: check if refund rate is elevated (fire-and-forget)
+    if (ledger.organization_id) {
+      void checkRefundRate(supabase, ledger.id, ledger.organization_id, reservedRow.out_transaction_id)
+    }
+
+    // Recalculate creator risk score after every refund (mandatory)
+    const processorRefundCreatorId = (originalSale.metadata as Record<string, unknown> | null)?.creator_id
+    if (processorRefundCreatorId) {
+      void supabase.rpc('update_creator_risk_score', {
+        p_ledger_id: ledger.id,
+        p_creator_id: String(processorRefundCreatorId),
+      }).catch(() => {})
+    }
+
     return resourceOk({
       success: true,
       refund: {
@@ -778,6 +793,20 @@ export async function recordRefundResponse(
       console.error(`[${requestId}] Failed to queue refund webhook:`, error)
     }
   })
+
+  // Risk signal: check if refund rate is elevated (ledger-only path)
+  if (ledger.organization_id) {
+    void checkRefundRate(supabase, ledger.id, ledger.organization_id, refundRow.out_transaction_id)
+  }
+
+  // Recalculate creator risk score after every refund (mandatory)
+  const ledgerRefundCreatorId = (originalSale.metadata as Record<string, unknown> | null)?.creator_id
+  if (ledgerRefundCreatorId) {
+    void supabase.rpc('update_creator_risk_score', {
+      p_ledger_id: ledger.id,
+      p_creator_id: String(ledgerRefundCreatorId),
+    }).catch(() => {})
+  }
 
   return resourceOk({
     success: true,

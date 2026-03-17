@@ -7,6 +7,8 @@ interface ConnectedAccountRow {
   ledger_id: string
   entity_id: string
   display_name: string | null
+  kyc_status: string | null
+  payout_delay_days: number | null
   ledger: {
     business_name: string
   } | null
@@ -49,12 +51,15 @@ export default async function CreatorDashboardPage() {
       ledger_id,
       entity_id,
       display_name,
+      kyc_status,
+      payout_delay_days,
       ledger:ledgers(business_name)
     `)
     .eq('email', creatorEmail)
     .eq('is_active', true)
 
   const connectedAccountRows = (connectedAccounts as ConnectedAccountRow[] | null) ?? []
+  const needsKyc = connectedAccountRows.length === 0 || connectedAccountRows.some((a) => a.kyc_status !== 'approved')
 
   let totalCredits = 0
   let totalDebits = 0
@@ -204,6 +209,29 @@ export default async function CreatorDashboardPage() {
         </p>
       </div>
 
+      {/* KYC Verification Banner */}
+      {needsKyc && (
+        <div className="mb-6 bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                Verify your identity to unlock payouts
+              </p>
+              <p className="text-sm text-amber-600/80 dark:text-amber-400/80 mt-1">
+                Complete identity verification now so you can withdraw funds as soon as you&apos;re ready. This is required by financial regulations.
+              </p>
+              <Link
+                href="/creator/verification"
+                className="inline-block mt-3 text-sm font-medium text-amber-700 dark:text-amber-300 underline hover:no-underline"
+              >
+                Start verification
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-card border border-border rounded-lg p-6">
@@ -251,7 +279,7 @@ export default async function CreatorDashboardPage() {
               </div>
               <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalHeldFunds)}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Funds held pending release conditions
+                Held for {connectedAccountRows[0]?.payout_delay_days ?? 7}-day payout clearing period
               </p>
             </div>
           )}

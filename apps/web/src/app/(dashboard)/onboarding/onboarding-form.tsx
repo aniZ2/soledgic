@@ -2,14 +2,24 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Copy, CheckCircle, Eye, EyeOff, Receipt, ArrowRight, Landmark } from 'lucide-react'
+import { Check, Copy, CheckCircle, Eye, EyeOff, Receipt, ArrowRight, Landmark, ShieldCheck } from 'lucide-react'
 import { createOrganizationWithLedger } from './actions'
+import type { BusinessInfoInput } from '@/lib/org-provisioning'
 
 type LedgerMode = 'standard' | 'marketplace'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
+
+const BUSINESS_TYPES = [
+  { value: 'individual', label: 'Individual' },
+  { value: 'sole_proprietor', label: 'Sole Proprietor' },
+  { value: 'llc', label: 'LLC' },
+  { value: 'corporation', label: 'Corporation' },
+  { value: 'partnership', label: 'Partnership' },
+  { value: 'nonprofit', label: 'Nonprofit' },
+] as const
 
 const plans = [
   {
@@ -33,19 +43,37 @@ const plans = [
   },
 ]
 
+const TOTAL_STEPS = 6
+
 export default function OnboardingForm() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Form state
+  // Step 1: org name
   const [orgName, setOrgName] = useState('')
+
+  // Step 2: business info
+  const [businessType, setBusinessType] = useState('')
+  const [legalName, setLegalName] = useState('')
+  const [taxId, setTaxId] = useState('')
+  const [addressLine1, setAddressLine1] = useState('')
+  const [addressLine2, setAddressLine2] = useState('')
+  const [city, setCity] = useState('')
+  const [state, setState] = useState('')
+  const [zip, setZip] = useState('')
+  const [country, setCountry] = useState('US')
+  const [contactName, setContactName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+
+  // Step 3: ledger
   const [ledgerName, setLedgerName] = useState('')
   const [ledgerMode, setLedgerMode] = useState<LedgerMode>('marketplace')
   const [selectedPlan, setSelectedPlan] = useState('pro')
 
-  // API key state (shown after org creation)
+  // Step 5: API key state
   const [testApiKey, setTestApiKey] = useState<string | null>(null)
   const [liveApiKey, setLiveApiKey] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
@@ -61,6 +89,25 @@ export default function OnboardingForm() {
     setRevealedKeys((prev) => ({ ...prev, [label]: !prev[label] }))
   }
 
+  const businessInfoComplete = businessType && legalName.trim() && contactName.trim() && contactEmail.trim()
+
+  const buildBusinessInfo = (): BusinessInfoInput => ({
+    businessType,
+    legalName: legalName.trim(),
+    taxId: taxId.trim() || undefined,
+    primaryContactName: contactName.trim(),
+    primaryContactEmail: contactEmail.trim(),
+    primaryContactPhone: contactPhone.trim() || undefined,
+    businessAddress: {
+      line1: addressLine1.trim() || undefined,
+      line2: addressLine2.trim() || undefined,
+      city: city.trim() || undefined,
+      state: state.trim() || undefined,
+      zip: zip.trim() || undefined,
+      country: country.trim() || undefined,
+    },
+  })
+
   const handleCreateOrganization = async () => {
     setError(null)
     setLoading(true)
@@ -71,6 +118,7 @@ export default function OnboardingForm() {
         selectedPlan,
         ledgerName,
         ledgerMode,
+        businessInfo: buildBusinessInfo(),
       })
 
       if (result.error) {
@@ -79,17 +127,15 @@ export default function OnboardingForm() {
         return
       }
 
-      // Show API keys before redirecting
       const data = result.data
       if (data?.testApiKey || data?.liveApiKey) {
         setTestApiKey(data.testApiKey ?? null)
         setLiveApiKey(data.liveApiKey ?? null)
         setLoading(false)
-        setStep(4)
+        setStep(5)
         return
       }
 
-      // Fallback: if no keys returned, proceed directly
       router.replace('/connect')
 
     } catch (err: unknown) {
@@ -103,7 +149,7 @@ export default function OnboardingForm() {
       <div className="w-full max-w-2xl">
         {/* Progress */}
         <div className="flex items-center justify-center mb-8">
-          {[1, 2, 3, 4, 5].map((s) => (
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((s) => (
             <div key={s} className="flex items-center">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -114,7 +160,7 @@ export default function OnboardingForm() {
               >
                 {s}
               </div>
-              {s < 5 && (
+              {s < TOTAL_STEPS && (
                 <div
                   className={`w-12 h-0.5 ${
                     step > s ? 'bg-primary' : 'bg-muted'
@@ -161,8 +207,159 @@ export default function OnboardingForm() {
             </>
           )}
 
-          {/* Step 2: Ledger */}
+          {/* Step 2: Business Information */}
           {step === 2 && (
+            <>
+              <h1 className="text-2xl font-bold text-foreground mb-2">
+                Business information
+              </h1>
+              <p className="text-muted-foreground mb-8">
+                Required for compliance verification. This information will be reviewed before live access is granted.
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Business type
+                  </label>
+                  <select
+                    value={businessType}
+                    onChange={(e) => setBusinessType(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  >
+                    <option value="">Select business type</option>
+                    {BUSINESS_TYPES.map((bt) => (
+                      <option key={bt.value} value={bt.value}>{bt.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Legal name
+                  </label>
+                  <input
+                    type="text"
+                    value={legalName}
+                    onChange={(e) => setLegalName(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Acme Corp LLC"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    EIN / Tax ID
+                  </label>
+                  <input
+                    type="text"
+                    value={taxId}
+                    onChange={(e) => setTaxId(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="XX-XXXXXXX"
+                  />
+                </div>
+
+                {/* Business Address */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-foreground">
+                    Business address
+                  </label>
+                  <input
+                    type="text"
+                    value={addressLine1}
+                    onChange={(e) => setAddressLine1(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Address line 1"
+                  />
+                  <input
+                    type="text"
+                    value={addressLine2}
+                    onChange={(e) => setAddressLine2(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Address line 2 (optional)"
+                  />
+                  <div className="grid grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      placeholder="City"
+                    />
+                    <input
+                      type="text"
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      placeholder="State"
+                    />
+                    <input
+                      type="text"
+                      value={zip}
+                      onChange={(e) => setZip(e.target.value)}
+                      className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      placeholder="ZIP"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Country"
+                  />
+                </div>
+
+                {/* Primary Contact */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-foreground">
+                    Primary contact
+                  </label>
+                  <input
+                    type="text"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Full name"
+                  />
+                  <input
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Email address"
+                  />
+                  <input
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    className="w-full border border-border rounded-md py-2 px-3 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="Phone number (optional)"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setStep(1)}
+                    className="flex-1 border border-border rounded-md py-2.5 px-4 font-medium hover:bg-accent transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setStep(3)}
+                    disabled={!businessInfoComplete}
+                    className="flex-1 bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Step 3: Ledger */}
+          {step === 3 && (
             <>
               <h1 className="text-2xl font-bold text-foreground mb-2">
                 Create your first ledger
@@ -223,13 +420,13 @@ export default function OnboardingForm() {
 
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setStep(1)}
+                    onClick={() => setStep(2)}
                     className="flex-1 border border-border rounded-md py-2.5 px-4 font-medium hover:bg-accent transition-colors"
                   >
                     Back
                   </button>
                   <button
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep(4)}
                     disabled={!ledgerName.trim()}
                     className="flex-1 bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -240,8 +437,8 @@ export default function OnboardingForm() {
             </>
           )}
 
-          {/* Step 3: Plan */}
-          {step === 3 && (
+          {/* Step 4: Plan */}
+          {step === 4 && (
             <>
               <h1 className="text-2xl font-bold text-foreground mb-2">
                 Review your setup
@@ -306,7 +503,7 @@ export default function OnboardingForm() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(3)}
                   disabled={loading}
                   className="flex-1 border border-border rounded-md py-2.5 px-4 font-medium hover:bg-accent transition-colors disabled:opacity-50"
                 >
@@ -323,8 +520,8 @@ export default function OnboardingForm() {
             </>
           )}
 
-          {/* Step 4: API Keys */}
-          {step === 4 && (
+          {/* Step 5: API Keys */}
+          {step === 5 && (
             <>
               <div className="flex items-center gap-3 mb-2">
                 <CheckCircle className="w-6 h-6 text-green-500" />
@@ -371,7 +568,7 @@ export default function OnboardingForm() {
                   </div>
                 )}
 
-                {liveApiKey && (
+                {liveApiKey ? (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
                       Live API Key
@@ -403,6 +600,20 @@ export default function OnboardingForm() {
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Use this key for production traffic</p>
                   </div>
+                ) : (
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-md p-4">
+                    <div className="flex items-start gap-3">
+                      <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                          Complete verification to go live
+                        </p>
+                        <p className="text-sm text-blue-600/80 dark:text-blue-400/80 mt-1">
+                          Your business information is under review. Once approved, your live API key will be available in Settings &gt; Verification.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -413,7 +624,7 @@ export default function OnboardingForm() {
               </div>
 
               <button
-                onClick={() => setStep(5)}
+                onClick={() => setStep(6)}
                 className="w-full bg-primary text-primary-foreground rounded-md py-2.5 px-4 font-medium hover:bg-primary/90 transition-colors"
               >
                 Continue
@@ -421,8 +632,8 @@ export default function OnboardingForm() {
             </>
           )}
 
-          {/* Step 5: Expense Tracking (Optional) */}
-          {step === 5 && (
+          {/* Step 6: Expense Tracking (Optional) */}
+          {step === 6 && (
             <>
               <h1 className="text-2xl font-bold text-foreground mb-2">
                 Integrate expenses

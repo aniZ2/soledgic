@@ -5,6 +5,23 @@ import { ensureEcosystemForOrganization } from '@/lib/ecosystem-server'
 
 export type ProvisionLedgerMode = 'standard' | 'marketplace'
 
+export interface BusinessInfoInput {
+  businessType?: string
+  legalName?: string
+  taxId?: string
+  primaryContactName?: string
+  primaryContactEmail?: string
+  primaryContactPhone?: string
+  businessAddress?: {
+    line1?: string
+    line2?: string
+    city?: string
+    state?: string
+    zip?: string
+    country?: string
+  }
+}
+
 export interface ProvisionOrganizationInput {
   userId: string
   userEmail?: string | null
@@ -13,6 +30,7 @@ export interface ProvisionOrganizationInput {
   ledgerName?: string
   ledgerMode?: ProvisionLedgerMode
   reuseIfSlugExists?: boolean
+  businessInfo?: BusinessInfoInput
 }
 
 export interface ProvisionOrganizationResult {
@@ -153,18 +171,32 @@ async function ensureOrganization(input: ProvisionOrganizationInput) {
       continue
     }
 
+    const insertPayload: Record<string, unknown> = {
+      name: organizationName,
+      slug,
+      owner_id: input.userId,
+      current_member_count: 0,
+      current_ledger_count: 0,
+      settings: {
+        billing: buildDefaultBillingSettingsForOwner(input.userEmail),
+      },
+    }
+
+    // Store business info fields for KYC if provided
+    if (input.businessInfo) {
+      const bi = input.businessInfo
+      if (bi.businessType) insertPayload.business_type = bi.businessType
+      if (bi.legalName) insertPayload.legal_name = bi.legalName
+      if (bi.taxId) insertPayload.tax_id = bi.taxId
+      if (bi.primaryContactName) insertPayload.primary_contact_name = bi.primaryContactName
+      if (bi.primaryContactEmail) insertPayload.primary_contact_email = bi.primaryContactEmail
+      if (bi.primaryContactPhone) insertPayload.primary_contact_phone = bi.primaryContactPhone
+      if (bi.businessAddress) insertPayload.business_address = bi.businessAddress
+    }
+
     const { data: created, error: createError } = await supabase
       .from('organizations')
-      .insert({
-        name: organizationName,
-        slug,
-        owner_id: input.userId,
-        current_member_count: 0,
-        current_ledger_count: 0,
-        settings: {
-          billing: buildDefaultBillingSettingsForOwner(input.userEmail),
-        },
-      })
+      .insert(insertPayload)
       .select('id')
       .single()
 
@@ -527,7 +559,12 @@ async function ensureLedgerPair(input: ProvisionOrganizationInput, organizationI
     generatedTestApiKey = await ensureLedgerApiKey(testLedger.id, false, input.userId)
   }
 
-  if (!liveLedger.api_key_hash) {
+  // Only generate a live key if the org is NOT brand-new (i.e. no business info
+  // was submitted, meaning this is a re-provisioning of an existing/grandfathered org).
+  // New orgs with businessInfo start with kyc_status='pending' and get their live key
+  // only after admin approval.
+  const skipLiveKey = Boolean(input.businessInfo)
+  if (!liveLedger.api_key_hash && !skipLiveKey) {
     generatedLiveApiKey = await ensureLedgerApiKey(liveLedger.id, true, input.userId)
   }
 

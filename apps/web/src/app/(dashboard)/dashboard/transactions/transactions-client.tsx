@@ -32,7 +32,7 @@ interface TransactionsClientProps {
   transactions: Transaction[]
 }
 
-const TRANSACTION_TYPES = ['sale', 'income', 'payout', 'refund', 'transfer', 'adjustment']
+const TRANSACTION_TYPES = ['sale', 'income', 'payout', 'refund', 'transfer', 'adjustment', 'deposit', 'withdrawal']
 const STATUSES = ['completed', 'pending', 'voided', 'reversed', 'draft']
 
 export function TransactionsClient({ ledger, transactions }: TransactionsClientProps) {
@@ -383,9 +383,9 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
                 <td className="px-6 py-4 whitespace-nowrap">
                   <Link href={`/dashboard/transactions/${tx.id}`} className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded flex items-center justify-center ${
-                      tx.transaction_type === 'sale' || tx.transaction_type === 'income'
+                      tx.transaction_type === 'sale' || tx.transaction_type === 'income' || tx.transaction_type === 'deposit'
                         ? 'bg-green-500/10'
-                        : tx.transaction_type === 'payout'
+                        : tx.transaction_type === 'payout' || tx.transaction_type === 'withdrawal'
                         ? 'bg-blue-500/10'
                         : tx.transaction_type === 'refund'
                         ? 'bg-red-500/10'
@@ -393,7 +393,7 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
                         ? 'bg-blue-500/10'
                         : 'bg-muted'
                     }`}>
-                      {tx.transaction_type === 'sale' || tx.transaction_type === 'income' ? (
+                      {tx.transaction_type === 'sale' || tx.transaction_type === 'income' || tx.transaction_type === 'deposit' ? (
                         <ArrowDownRight className="w-4 h-4 text-green-500" />
                       ) : tx.transaction_type === 'transfer' ? (
                         <ArrowRightLeft className="w-4 h-4 text-blue-500" />
@@ -435,12 +435,12 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   <span className={`font-medium ${
-                    tx.transaction_type === 'sale' || tx.transaction_type === 'income' ? 'text-green-600' :
-                    tx.transaction_type === 'refund' ? 'text-red-600' :
+                    tx.transaction_type === 'sale' || tx.transaction_type === 'income' || tx.transaction_type === 'deposit' ? 'text-green-600' :
+                    tx.transaction_type === 'refund' || tx.transaction_type === 'withdrawal' ? 'text-red-600' :
                     'text-foreground'
                   }`}>
-                    {tx.transaction_type === 'sale' || tx.transaction_type === 'income' ? '+' :
-                     tx.transaction_type === 'payout' || tx.transaction_type === 'refund' ? '-' : ''}
+                    {tx.transaction_type === 'sale' || tx.transaction_type === 'income' || tx.transaction_type === 'deposit' ? '+' :
+                     tx.transaction_type === 'payout' || tx.transaction_type === 'refund' || tx.transaction_type === 'withdrawal' ? '-' : ''}
                     {formatCurrency(tx.amount)}
                   </span>
                 </td>

@@ -453,6 +453,196 @@ for (const call of rpcCalls) {
 
 ok(`${rpcCalls.length} RPC calls checked, ${rpcErrors} unknown params, ${rpcWarnings} missing required params`)
 
+// ── 11. Wiring completeness check ────────────────────────────────────
+// Verifies that infrastructure systems (risk signals, capabilities,
+// KYC gates) are actually wired into the execution paths that need them.
+console.log('\nWiring Completeness:')
+
+function fileContains(filePath, pattern) {
+  if (!existsSync(filePath)) return false
+  return readFileSync(filePath, 'utf-8').includes(pattern)
+}
+
+const WIRING_CHECKS = [
+  // Risk engine: signal functions must be imported and called in money-moving paths
+  {
+    label: 'risk-engine imported in payout-service',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'risk-engine.ts',
+  },
+  {
+    label: 'risk-engine imported in wallet-service',
+    file: 'supabase/functions/_shared/wallet-service.ts',
+    pattern: 'risk-engine.ts',
+  },
+  {
+    label: 'risk-engine imported in refund-service',
+    file: 'supabase/functions/_shared/refund-service.ts',
+    pattern: 'risk-engine.ts',
+  },
+  {
+    label: 'risk-engine imported in record-sale',
+    file: 'supabase/functions/record-sale/index.ts',
+    pattern: 'risk-engine.ts',
+  },
+  // Capabilities: must be enforced before payouts
+  {
+    label: 'capabilities enforced in payout-service',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'checkPayoutAllowed',
+  },
+  {
+    label: 'capabilities module imported in payout-service',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'capabilities.ts',
+  },
+  // KYC gates: must exist in livemode toggle, server action, API keys, and payouts
+  {
+    label: 'KYC gate in livemode toggle',
+    file: 'apps/web/src/components/livemode-toggle.tsx',
+    pattern: 'kycStatus',
+  },
+  {
+    label: 'KYC gate in livemode server action',
+    file: 'apps/web/src/lib/livemode-server.ts',
+    pattern: 'kyc_status',
+  },
+  {
+    label: 'KYC gate in API key rotation',
+    file: 'apps/web/src/app/api/settings/api-keys/route.ts',
+    pattern: 'kyc_status',
+  },
+  {
+    label: 'KYC gate in payout-service (creator level)',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'creator_kyc_required',
+  },
+  // Processor reconciliation: must be in proxy allowlist
+  {
+    label: 'processor-reconciliation in proxy allowlist',
+    file: 'apps/web/src/app/api/ledger-functions/[[...endpoint]]/route.ts',
+    pattern: 'processor-reconciliation',
+  },
+  // Navigation: admin pages must be linked
+  {
+    label: 'admin compliance page in navigation',
+    file: 'apps/web/src/lib/navigation.ts',
+    pattern: '/dashboard/admin/compliance',
+  },
+  {
+    label: 'admin risk page in navigation',
+    file: 'apps/web/src/lib/navigation.ts',
+    pattern: '/dashboard/admin/risk',
+  },
+  {
+    label: 'creator verification in navigation',
+    file: 'apps/web/src/lib/navigation.ts',
+    pattern: '/creator/verification',
+  },
+  {
+    label: 'verification settings in settings index',
+    file: 'apps/web/src/app/(dashboard)/settings/page.tsx',
+    pattern: '/settings/verification',
+  },
+  // Creator verification API must exist (page depends on it)
+  {
+    label: 'creator verification API route exists',
+    file: 'apps/web/src/app/api/creator/verification/route.ts',
+    pattern: 'createApiHandler',
+  },
+  // Auto-action wiring: risk engine must apply capability changes
+  {
+    label: 'risk engine auto-actions apply capabilities',
+    file: 'supabase/functions/_shared/risk-engine.ts',
+    pattern: 'applyAutoAction',
+  },
+  // Platform admin auth on admin endpoints
+  {
+    label: 'compliance admin uses platform operator auth',
+    file: 'apps/web/src/app/api/admin/compliance/route.ts',
+    pattern: 'isPlatformOperatorUser',
+  },
+  {
+    label: 'risk admin uses platform operator auth',
+    file: 'apps/web/src/app/api/admin/risk/route.ts',
+    pattern: 'isPlatformOperatorUser',
+  },
+  // Refund rate check fires on both refund paths (processor + ledger-only)
+  {
+    label: 'refund rate check on ledger-only refund path',
+    file: 'supabase/functions/_shared/refund-service.ts',
+    pattern: 'checkRefundRate(supabase, ledger.id, ledger.organization_id, refundRow.out_transaction_id)',
+  },
+  // Daily volume enforcement in record-sale
+  {
+    label: 'daily volume capability enforced in record-sale',
+    file: 'supabase/functions/record-sale/index.ts',
+    pattern: 'checkDailyVolumeAllowed',
+  },
+  // Rolling payout delay wired into payout-service
+  {
+    label: 'rolling payout delay applied after payout RPC',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'apply_payout_hold',
+  },
+  // Creator risk score recalculated on payout
+  {
+    label: 'creator risk score updated on payout',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'update_creator_risk_score',
+  },
+  // Platform risk signal ingestion endpoint
+  {
+    label: 'platform risk signal ingestion in fraud router',
+    file: 'supabase/functions/fraud/index.ts',
+    pattern: 'recordRiskSignal',
+  },
+  // Creator risk score updated on every money event (mandatory for all platforms)
+  {
+    label: 'creator risk score updated on record-sale',
+    file: 'supabase/functions/record-sale/index.ts',
+    pattern: 'update_creator_risk_score',
+  },
+  {
+    label: 'creator risk score updated on refund (processor path)',
+    file: 'supabase/functions/_shared/refund-service.ts',
+    pattern: 'processorRefundCreatorId',
+  },
+  {
+    label: 'creator risk score updated on refund (ledger path)',
+    file: 'supabase/functions/_shared/refund-service.ts',
+    pattern: 'ledgerRefundCreatorId',
+  },
+  {
+    label: 'creator risk score updated on wallet purchase',
+    file: 'supabase/functions/_shared/wallet-service.ts',
+    pattern: 'update_creator_risk_score',
+  },
+  // Reserve hold on sales (configurable per org via reserve_percent)
+  {
+    label: 'reserve hold applied on sale when reserve_percent > 0',
+    file: 'supabase/functions/record-sale/index.ts',
+    pattern: 'reserve_percent',
+  },
+  // Org floor enforced on payout delay
+  {
+    label: 'org min_payout_delay_days enforced as floor in payout',
+    file: 'supabase/functions/_shared/payout-service.ts',
+    pattern: 'min_payout_delay_days',
+  },
+]
+
+let wiringPasses = 0
+for (const check of WIRING_CHECKS) {
+  const fullPath = join(ROOT, check.file)
+  if (fileContains(fullPath, check.pattern)) {
+    wiringPasses++
+  } else {
+    error(`WIRING: ${check.label} — "${check.pattern}" not found in ${check.file}`)
+  }
+}
+ok(`${wiringPasses}/${WIRING_CHECKS.length} wiring checks passed`)
+
 // ── Summary ─────────────────────────────────────────────────────────
 console.log(
   `\n${errors === 0 ? '\x1b[32m' : '\x1b[31m'}` +

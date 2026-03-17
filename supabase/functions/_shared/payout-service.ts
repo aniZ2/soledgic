@@ -16,6 +16,8 @@ import {
   resourceError,
   resourceOk,
 } from './treasury-resource.ts'
+import { loadOrgCapabilities, getDailyPayoutTotal, checkPayoutAllowed } from './capabilities.ts'
+import { recordRiskSignal, checkLargeTransaction } from './risk-engine.ts'
 
 export interface PayoutRequest {
   wallet_id?: string
@@ -127,6 +129,28 @@ export async function processPayoutResponse(
     participantId = String(walletAccount.entity_id)
   }
 
+  // Creator KYC gate: block live-mode payouts if creator is not KYC-approved
+  if (ledger.livemode) {
+    const { data: connectedAccount } = await supabase
+      .from('connected_accounts')
+      .select('kyc_status')
+      .eq('ledger_id', ledger.id)
+      .eq('entity_id', participantId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    const creatorKycStatus = connectedAccount?.kyc_status
+    // Block if: no connected_account exists, or status is not approved
+    if (!creatorKycStatus || creatorKycStatus !== 'approved') {
+      return resourceError(
+        'Creator has not completed identity verification. Payouts require KYC approval.',
+        403,
+        {},
+        'creator_kyc_required',
+      )
+    }
+  }
+
   if (!participantId) {
     return resourceError('Invalid participant_id: must be 1-100 alphanumeric characters', 400, {}, 'invalid_participant_id')
   }
@@ -155,6 +179,14 @@ export async function processPayoutResponse(
   }
   if (body.metadata?.notes) {
     sanitizedMetadata.notes = validateString(body.metadata.notes, 500)
+  }
+
+  // Capabilities gate: check org-level payout limits
+  const caps = await loadOrgCapabilities(supabase, ledger.organization_id)
+  const dailyTotal = await getDailyPayoutTotal(supabase, ledger.id)
+  const capCheck = checkPayoutAllowed(caps, amount, dailyTotal)
+  if (!capCheck.allowed) {
+    return resourceError(capCheck.reason || 'Payout blocked by organization limits', 403, {}, 'capability_blocked')
   }
 
   const { data: rpcResult, error: rpcError } = await callProcessPayoutRpcWithRetry(supabase, {
@@ -244,6 +276,51 @@ export async function processPayoutResponse(
   const netToParticipant = result.net_to_creator!
   const previousBalance = result.previous_balance!
   const newBalance = result.new_balance!
+
+  // Risk signal: flag large payouts (after RPC so we have transactionId)
+  if (ledger.organization_id) {
+    void checkLargeTransaction(supabase, ledger.id, ledger.organization_id, amount, 'payout', referenceId, transactionId)
+  }
+
+  // Rolling payout delay: hold funds based on creator's risk-adjusted delay period.
+  // Recalculate creator risk score, then apply hold if delay > 0.
+  if (ledger.livemode) {
+    void (async () => {
+      try {
+        // Recalculate risk score from recent transaction history
+        await supabase.rpc('update_creator_risk_score', {
+          p_ledger_id: ledger.id,
+          p_creator_id: participantId,
+        })
+
+        // Get the (possibly updated) delay
+        const { data: creatorAccount } = await supabase
+          .from('connected_accounts')
+          .select('payout_delay_days')
+          .eq('ledger_id', ledger.id)
+          .eq('entity_id', participantId)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        // Effective delay = max(org floor, creator risk-based delay)
+        const creatorDelay = creatorAccount?.payout_delay_days ?? 7
+        const orgFloor = caps.min_payout_delay_days
+        const delayDays = Math.max(creatorDelay, orgFloor)
+        if (delayDays > 0) {
+          await supabase.rpc('apply_payout_hold', {
+            p_ledger_id: ledger.id,
+            p_creator_id: participantId,
+            p_transaction_id: transactionId,
+            p_amount: payoutAmount / 100, // RPC expects major units
+            p_delay_days: delayDays,
+            p_reason: 'rolling_delay',
+          })
+        }
+      } catch (err) {
+        console.error(`[${requestId}] Failed to apply payout hold:`, err)
+      }
+    })()
+  }
 
   // Build transaction graph edge: payout (no reverses, but metadata may link to parent)
   void autoLinkTransaction(supabase, ledger.id, {

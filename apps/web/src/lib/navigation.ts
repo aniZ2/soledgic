@@ -67,6 +67,13 @@ export const dashboardNavigation: NavSection[] = [
     ],
   },
   {
+    label: 'Admin',
+    items: [
+      { name: 'KYC/KYB Review', href: '/dashboard/admin/compliance', icon: ShieldCheck },
+      { name: 'Risk Monitor', href: '/dashboard/admin/risk', icon: ShieldAlert },
+    ],
+  },
+  {
     label: null,
     items: [
       { name: 'Billing', href: '/billing', icon: CreditCard },
@@ -94,6 +101,7 @@ export const creatorPortalNavigation: NavSection[] = [
       { name: 'Earnings', href: '/creator/earnings', icon: Wallet },
       { name: 'Statements', href: '/creator/statements', icon: FileText },
       { name: 'Payouts', href: '/creator/payouts', icon: Receipt },
+      { name: 'Verification', href: '/creator/verification', icon: ShieldCheck },
       { name: 'Settings', href: '/creator/settings', icon: Settings },
     ],
   },

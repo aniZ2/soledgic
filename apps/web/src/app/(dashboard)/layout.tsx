@@ -11,7 +11,8 @@ import { isOverLedgerLimit } from '@/lib/entitlements'
 import { NotificationBell } from '@/components/notifications/notification-bell'
 import { MobileNav } from '@/components/mobile-nav'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { dashboardNavigation } from '@/lib/navigation'
+import { dashboardNavigation, type NavSection } from '@/lib/navigation'
+import { isPlatformOperatorUser } from '@/lib/internal-platforms'
 
 interface OrganizationSummary {
   id: string
@@ -22,6 +23,7 @@ interface OrganizationSummary {
   trial_ends_at: string | null
   max_ledgers: number
   current_ledger_count: number
+  kyc_status: string | null
 }
 
 function toStringValue(value: unknown): string | null {
@@ -65,6 +67,7 @@ function normalizeOrganization(value: unknown): OrganizationSummary | null {
     trial_ends_at: toNullableStringValue(record.trial_ends_at),
     max_ledgers: toNumberValue(record.max_ledgers, -1),
     current_ledger_count: toNumberValue(record.current_ledger_count, 0),
+    kyc_status: toNullableStringValue(record.kyc_status),
   }
 }
 
@@ -95,7 +98,8 @@ export default async function DashboardLayout({
         status,
         trial_ends_at,
         max_ledgers,
-        current_ledger_count
+        current_ledger_count,
+        kyc_status
       )
     `)
     .eq('user_id', user.id)
@@ -126,6 +130,13 @@ export default async function DashboardLayout({
   const livemode = await getLivemode()
   const activeLedgerGroupId = await getActiveLedgerGroupId()
   const readonly = await getReadonly()
+  const isPlatformAdmin = isPlatformOperatorUser(user)
+
+  // Filter nav: hide Admin section from non-platform operators
+  const filteredNavigation: NavSection[] = dashboardNavigation.filter((section) => {
+    if (section.label === 'Admin' && !isPlatformAdmin) return false
+    return true
+  })
 
   return (
     <div className="min-h-screen bg-background">
@@ -166,11 +177,11 @@ export default async function DashboardLayout({
 
         {/* Test / Live Toggle */}
         <div className="px-4 py-2 border-b border-border flex-shrink-0">
-          <LiveModeToggle initialLivemode={livemode} activeLedgerGroupId={activeLedgerGroupId} />
+          <LiveModeToggle initialLivemode={livemode} activeLedgerGroupId={activeLedgerGroupId} kycStatus={org.kyc_status} />
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-4">
-          {dashboardNavigation.map((section, idx) => (
+          {filteredNavigation.map((section, idx) => (
             <div key={section.label ?? `section-${idx}`}>
               {section.label && (
                 <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -250,6 +261,18 @@ export default async function DashboardLayout({
               update billing
             </Link>{' '}
             to continue paid usage.
+          </div>
+        )}
+        {org.kyc_status && org.kyc_status !== 'approved' && (
+          <div className="sticky top-0 z-[9] bg-blue-600 text-white text-center text-sm font-medium py-2 px-4">
+            {org.kyc_status === 'suspended'
+              ? 'Your account has been suspended. Contact support for assistance.'
+              : org.kyc_status === 'under_review'
+                ? 'Your business verification is under review. Live mode will be available once approved.'
+                : org.kyc_status === 'rejected'
+                  ? <>Your verification was not approved. <Link href="/settings/verification" className="underline hover:no-underline">Update your information</Link> and resubmit.</>
+                  : <>Complete business verification to access live mode. <Link href="/settings/verification" className="underline hover:no-underline">Start verification</Link></>
+            }
           </div>
         )}
         {isOverLedgerLimit(org) && (

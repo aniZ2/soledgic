@@ -74,7 +74,7 @@ async function isOwnerOrAdmin(userId: string): Promise<boolean> {
 export async function setLivemodeAction(
   livemode: boolean,
   activeLedgerGroupId: string | null
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; error?: string }> {
   const userId = await getAuthenticatedUserId()
   if (!userId) {
     return { success: false }
@@ -82,6 +82,29 @@ export async function setLivemodeAction(
 
   if (activeLedgerGroupId && !isUuid(activeLedgerGroupId)) {
     return { success: false }
+  }
+
+  // Block switching to live mode if org KYC is not approved
+  if (livemode) {
+    const supabase = await createClient()
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .single()
+
+    if (membership) {
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('kyc_status')
+        .eq('id', membership.organization_id)
+        .single()
+
+      if (org?.kyc_status && org.kyc_status !== 'approved') {
+        return { success: false, error: 'Complete business verification to access live mode' }
+      }
+    }
   }
 
   const cookieStore = await cookies()

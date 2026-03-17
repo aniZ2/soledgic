@@ -59,6 +59,23 @@ export default async function CreatorsPage() {
     .eq('is_active', true)
     .order('name')
 
+  // Get risk data from connected_accounts (risk_score, payout_delay_days, kyc_status)
+  const { data: connectedAccountsRaw } = await supabase
+    .from('connected_accounts')
+    .select('entity_id, risk_score, risk_flags, payout_delay_days, kyc_status')
+    .eq('ledger_id', ledger.id)
+    .eq('is_active', true)
+
+  const riskByEntityId = new Map<string, { risk_score: number; risk_flags: string[]; payout_delay_days: number; kyc_status: string | null }>()
+  for (const ca of connectedAccountsRaw || []) {
+    riskByEntityId.set(ca.entity_id, {
+      risk_score: ca.risk_score ?? 0,
+      risk_flags: ca.risk_flags ?? [],
+      payout_delay_days: ca.payout_delay_days ?? 7,
+      kyc_status: ca.kyc_status,
+    })
+  }
+
   // Get balances for each creator
   const creatorsWithBalances = await Promise.all(
     (creators || []).map(async (creator) => {
@@ -79,10 +96,15 @@ export default async function CreatorsPage() {
         .select('id', { count: 'exact', head: true })
         .eq('account_id', creator.id)
 
+      const risk = riskByEntityId.get(creator.entity_id)
       return {
         ...creator,
         balance: Math.round(balance * 100) / 100,
         transactionCount: txCount || 0,
+        riskScore: risk?.risk_score ?? 0,
+        riskFlags: risk?.risk_flags ?? [],
+        payoutDelayDays: risk?.payout_delay_days ?? 7,
+        kycStatus: risk?.kyc_status ?? 'pending',
       }
     })
   )
@@ -190,6 +212,30 @@ export default async function CreatorsPage() {
                 <div className="flex items-center justify-between py-2 border-t border-border">
                   <span className="text-sm text-muted-foreground">Since</span>
                   <span className="text-sm text-foreground">{formatDate(creator.created_at)}</span>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-t border-border">
+                  <span className="text-sm text-muted-foreground">Risk</span>
+                  <span className={`text-sm font-medium ${
+                    creator.riskScore >= 60 ? 'text-red-600' :
+                    creator.riskScore >= 30 ? 'text-orange-600' :
+                    creator.riskScore >= 10 ? 'text-yellow-600' :
+                    'text-green-600'
+                  }`}>
+                    {creator.riskScore >= 60 ? 'High' : creator.riskScore >= 30 ? 'Elevated' : creator.riskScore >= 10 ? 'Low' : 'Clean'}
+                    {' '}({creator.riskScore})
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-t border-border">
+                  <span className="text-sm text-muted-foreground">KYC</span>
+                  <span className={`text-xs px-2 py-0.5 rounded capitalize ${
+                    creator.kycStatus === 'approved' ? 'bg-green-500/10 text-green-700 dark:text-green-400' :
+                    creator.kycStatus === 'pending' ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400' :
+                    'bg-muted text-muted-foreground'
+                  }`}>
+                    {creator.kycStatus}
+                  </span>
                 </div>
               </div>
 

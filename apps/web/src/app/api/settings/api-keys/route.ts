@@ -121,7 +121,19 @@ export const GET = createApiHandler(
       // Non-blocking: api_keys may not exist in older environments.
     }
 
+    // Check org KYC status for the kyc_required flag
+    let kycRequired = false
+    const { data: orgData } = await serviceClient
+      .from('organizations')
+      .select('kyc_status')
+      .eq('id', membership.organization_id)
+      .single()
+    if (orgData?.kyc_status && orgData.kyc_status !== 'approved') {
+      kycRequired = true
+    }
+
     return NextResponse.json({
+      kyc_required: kycRequired,
       ledgers: (ledgers || []).map((ledger) => ({
         id: ledger.id,
         business_name: ledger.business_name,
@@ -187,6 +199,22 @@ export const POST = createApiHandler(
         { error: 'API keys are hidden by design. Rotate to generate a new key.' },
         { status: 410 }
       )
+    }
+
+    // Block live key rotation if KYC not approved
+    if (ledger.livemode) {
+      const { data: orgData } = await serviceClient
+        .from('organizations')
+        .select('kyc_status')
+        .eq('id', membership.organization_id)
+        .single()
+
+      if (orgData?.kyc_status && orgData.kyc_status !== 'approved') {
+        return NextResponse.json(
+          { error: 'Complete business verification before managing live API keys' },
+          { status: 403 }
+        )
+      }
     }
 
     const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'rotate API keys')

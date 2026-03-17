@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Key, CreditCard, Building, Users, Bell, Shield, Wrench, Fingerprint, Network } from 'lucide-react'
+import { Key, CreditCard, Building, Users, Bell, Shield, Wrench, Fingerprint, Network, ShieldCheck } from 'lucide-react'
 
 export default async function SettingsPage() {
   const settingsGroups = [
@@ -57,6 +57,12 @@ export default async function SettingsPage() {
           description: 'Two-factor authentication and security settings',
           href: '/settings/security',
           icon: Shield,
+        },
+        {
+          name: 'Verification',
+          description: 'Business verification status and compliance documents',
+          href: '/settings/verification',
+          icon: ShieldCheck,
         },
         {
           name: 'Identity',

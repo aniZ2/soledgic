@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { provisionOrganizationWithLedgers } from '@/lib/org-provisioning'
+import { provisionOrganizationWithLedgers, type BusinessInfoInput } from '@/lib/org-provisioning'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -12,10 +12,11 @@ export async function createOrganizationWithLedger(input: {
   selectedPlan: string
   ledgerName: string
   ledgerMode: 'standard' | 'marketplace'
+  businessInfo?: BusinessInfoInput
 }) {
   const supabase = await createClient()
 
-  const { orgName, ledgerName, ledgerMode } = input
+  const { orgName, ledgerName, ledgerMode, businessInfo } = input
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
@@ -36,6 +37,7 @@ export async function createOrganizationWithLedger(input: {
       organizationSlug: slug,
       ledgerName,
       ledgerMode,
+      businessInfo,
     })
     return { success: true, data }
   } catch (error: unknown) {

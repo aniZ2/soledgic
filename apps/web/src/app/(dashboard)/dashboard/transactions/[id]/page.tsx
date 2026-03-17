@@ -44,6 +44,8 @@ interface TransactionRow {
   created_at: string
   metadata: TransactionMetadata | null
   entries: TransactionEntry[] | null
+  risk_score: number | null
+  risk_flags: string[] | null
 }
 
 interface LinkedTransactionRow {
@@ -220,8 +222,8 @@ export default async function TransactionDetailPage({
           </div>
           <div className="text-right">
             <p className={`text-3xl font-bold ${
-              transaction.transaction_type === 'sale' ? 'text-green-600' :
-              transaction.transaction_type === 'refund' ? 'text-red-600' :
+              transaction.transaction_type === 'sale' || transaction.transaction_type === 'deposit' ? 'text-green-600' :
+              transaction.transaction_type === 'refund' || transaction.transaction_type === 'withdrawal' ? 'text-red-600' :
               'text-foreground'
             }`}>
               {formatCurrency(transaction.amount)}
@@ -275,6 +277,30 @@ export default async function TransactionDetailPage({
               <div>
                 <p className="text-xs text-muted-foreground uppercase mb-1">Creator ID</p>
                 <code className="text-sm bg-muted px-2 py-1 rounded">{transaction.metadata.creator_id}</code>
+              </div>
+            )}
+            {(transaction.risk_score != null && transaction.risk_score > 0) && (
+              <div>
+                <p className="text-xs text-muted-foreground uppercase mb-1">Risk Score</p>
+                <span className={`text-sm font-medium ${
+                  transaction.risk_score >= 60 ? 'text-red-600' :
+                  transaction.risk_score >= 30 ? 'text-orange-600' :
+                  'text-yellow-600'
+                }`}>
+                  {transaction.risk_score}
+                </span>
+              </div>
+            )}
+            {transaction.risk_flags && transaction.risk_flags.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground uppercase mb-1">Risk Flags</p>
+                <div className="flex flex-wrap gap-1">
+                  {transaction.risk_flags.map((flag) => (
+                    <span key={flag} className="text-xs px-2 py-0.5 rounded bg-red-500/10 text-red-700 dark:text-red-400">
+                      {flag.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
             {transaction.metadata?.breakdown && (

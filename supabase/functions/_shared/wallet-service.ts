@@ -15,6 +15,7 @@ import {
   resourceError,
   resourceOk,
 } from './treasury-resource.ts'
+import { checkRapidTopupWithdraw, checkLargeTransaction } from './risk-engine.ts'
 
 export type WalletType = 'consumer_credit' | 'creator_earnings'
 export type WalletScopeType = 'customer' | 'participant'
@@ -591,6 +592,12 @@ async function depositToUserWalletAccountResponse(
   const balance = Number(row?.out_wallet_balance ?? 0)
   const walletId = row?.out_wallet_account_id
 
+  // Risk signals: rapid topup-withdraw pattern + large transaction
+  if (ledger.organization_id) {
+    void checkRapidTopupWithdraw(supabase, ledger.id, ledger.organization_id, ownerId, 'deposit', transactionId, referenceId)
+    void checkLargeTransaction(supabase, ledger.id, ledger.organization_id, amount, 'deposit', referenceId, transactionId)
+  }
+
   await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
     action: 'wallet_deposit',
@@ -670,6 +677,12 @@ async function withdrawFromUserWalletAccountResponse(
   const row = Array.isArray(result) ? result[0] : result
   const transactionId = row?.out_transaction_id
   const balance = Number(row?.out_wallet_balance ?? 0)
+
+  // Risk signals: rapid topup-withdraw pattern + large transaction
+  if (ledger.organization_id) {
+    void checkRapidTopupWithdraw(supabase, ledger.id, ledger.organization_id, ownerId, 'withdrawal', transactionId, referenceId)
+    void checkLargeTransaction(supabase, ledger.id, ledger.organization_id, amount, 'withdrawal', referenceId, transactionId)
+  }
 
   await createAuditLog(supabase, req, {
     ledger_id: ledger.id,
@@ -1189,6 +1202,17 @@ export async function purchaseFromWalletByIdResponse(
 
   const withdrawRow = Array.isArray(withdrawResult) ? withdrawResult[0] : withdrawResult
   const newBalance = Number(withdrawRow?.out_wallet_balance ?? 0)
+
+  // Risk signal: large wallet purchase
+  if (ledger.organization_id) {
+    void checkLargeTransaction(supabase, ledger.id, ledger.organization_id, amount, 'wallet_purchase', referenceId, saleTransactionId)
+  }
+
+  // Recalculate creator risk score after every wallet purchase (mandatory)
+  void supabase.rpc('update_creator_risk_score', {
+    p_ledger_id: ledger.id,
+    p_creator_id: creatorId,
+  }).catch(() => {})
 
   // Step 3: Create transaction graph edge (purchase → sale)
   const { autoLinkTransaction } = await import('./transaction-graph.ts')
