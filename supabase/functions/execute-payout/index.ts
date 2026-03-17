@@ -3,7 +3,6 @@
 // Shared-merchant invariant: card rail uses platform-managed credentials only.
 // SECURITY HARDENED VERSION
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   createHandler,
   jsonResponse,
@@ -13,7 +12,7 @@ import {
   createAuditLog
 } from '../_shared/utils.ts'
 import { getPaymentProvider } from '../_shared/payment-provider.ts'
-import { sendACH, getTransactionStatus as getMercuryTxnStatus, type SendACHInput } from '../_shared/mercury-client.ts'
+import { sendACH, getTransactionStatus as getMercuryTxnStatus } from '../_shared/mercury-client.ts'
 
 // ============================================================================
 // TYPES
@@ -521,6 +520,10 @@ const RAILS: Record<PayoutRail, PaymentRail> = {
 function normalizeRail(value?: string | null): PayoutRail | null {
   if (!value) return null
   switch (value) {
+    case 'ach':
+    case 'bank':
+    case 'mercury':
+      return 'ach'
     case 'card':
     case 'processor':
     case 'primary':

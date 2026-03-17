@@ -100,6 +100,13 @@ const handler = createHandler(
     }
 
     // ── Execute platform payout ──────────────────────────────
+    // Extra gate: require x-actor-type header to be 'admin' or actor source to be 'soledgic-dashboard'
+    // This prevents API key holders from triggering payouts without dashboard context
+    const actorType = req.headers.get('x-actor-type') || ''
+    const actorSource = req.headers.get('x-actor-source') || ''
+    if (actorType !== 'admin' && actorSource !== 'soledgic-dashboard') {
+      return errorResponse('Platform payouts require admin authorization via dashboard', 403, req, requestId)
+    }
 
     if (!ledger.organization_id) {
       return errorResponse('Organization not found for this ledger', 400, req, requestId)
@@ -164,19 +171,7 @@ const handler = createHandler(
       return errorResponse('Platform or cash account not initialized', 500, req, requestId)
     }
 
-    // Send ACH via Mercury
-    const achResult = await sendACH({
-      recipientId: mercuryRecipientId,
-      amountDollars: requestedCents / 100,
-      description,
-      idempotencyKey: `platform_${refId}`,
-    })
-
-    if (!achResult.success) {
-      return errorResponse(achResult.error || 'Mercury ACH transfer failed', 502, req, requestId)
-    }
-
-    // Book the ledger transaction
+    // Step 1: Book the ledger transaction FIRST (safe — can be voided if ACH fails)
     const amountMajor = requestedCents / 100
     const { data: txn, error: txnError } = await supabase
       .from('transactions')
@@ -188,10 +183,9 @@ const handler = createHandler(
         description,
         amount: amountMajor,
         currency: 'USD',
-        status: 'completed',
+        status: 'pending',
         metadata: {
           organization_id: ledger.organization_id,
-          mercury_transaction_id: achResult.transactionId,
           rail: 'ach',
         },
       })
@@ -199,16 +193,51 @@ const handler = createHandler(
       .single()
 
     if (txnError) {
-      // ACH was sent but ledger booking failed — critical, needs manual reconciliation
-      console.error(`[${requestId}] CRITICAL: Mercury ACH sent but ledger booking failed`, txnError)
-      return errorResponse('Payment sent but ledger booking failed. Contact support.', 500, req, requestId)
+      return errorResponse('Failed to create payout transaction', 500, req, requestId)
     }
 
     // Double-entry: debit platform_revenue, credit cash (money leaving)
-    await supabase.from('entries').insert([
+    const { error: entriesError } = await supabase.from('entries').insert([
       { transaction_id: txn.id, account_id: platformAccount.id, entry_type: 'debit', amount: amountMajor },
       { transaction_id: txn.id, account_id: cashAccount.id, entry_type: 'credit', amount: amountMajor },
     ])
+
+    if (entriesError) {
+      // Void the transaction if entries fail
+      await supabase.from('transactions').update({ status: 'voided' }).eq('id', txn.id)
+      return errorResponse('Failed to create ledger entries', 500, req, requestId)
+    }
+
+    // Step 2: Send ACH via Mercury (ledger is booked, safe to attempt)
+    const achResult = await sendACH({
+      recipientId: mercuryRecipientId,
+      amountDollars: requestedCents / 100,
+      description,
+      idempotencyKey: `platform_${refId}`,
+    })
+
+    if (!achResult.success) {
+      // ACH failed — void the ledger transaction (money never left)
+      await supabase.from('transactions').update({
+        status: 'voided',
+        metadata: {
+          organization_id: ledger.organization_id,
+          rail: 'ach',
+          voided_reason: achResult.error || 'Mercury ACH transfer failed',
+        },
+      }).eq('id', txn.id)
+      return errorResponse(achResult.error || 'Mercury ACH transfer failed', 502, req, requestId)
+    }
+
+    // Step 3: Mark transaction completed with Mercury reference
+    await supabase.from('transactions').update({
+      status: 'completed',
+      metadata: {
+        organization_id: ledger.organization_id,
+        mercury_transaction_id: achResult.transactionId,
+        rail: 'ach',
+      },
+    }).eq('id', txn.id)
 
     await createAuditLog(supabase, req, {
       ledger_id: ledger.id,

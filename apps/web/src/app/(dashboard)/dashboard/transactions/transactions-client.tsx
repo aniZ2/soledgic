@@ -385,7 +385,7 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
                     <div className={`w-8 h-8 rounded flex items-center justify-center ${
                       tx.transaction_type === 'sale' || tx.transaction_type === 'income' || tx.transaction_type === 'deposit'
                         ? 'bg-green-500/10'
-                        : tx.transaction_type === 'payout' || tx.transaction_type === 'withdrawal'
+                        : tx.transaction_type === 'payout' || tx.transaction_type === 'platform_payout' || tx.transaction_type === 'withdrawal'
                         ? 'bg-blue-500/10'
                         : tx.transaction_type === 'refund'
                         ? 'bg-red-500/10'
@@ -440,7 +440,7 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
                     'text-foreground'
                   }`}>
                     {tx.transaction_type === 'sale' || tx.transaction_type === 'income' || tx.transaction_type === 'deposit' ? '+' :
-                     tx.transaction_type === 'payout' || tx.transaction_type === 'refund' || tx.transaction_type === 'withdrawal' ? '-' : ''}
+                     tx.transaction_type === 'payout' || tx.transaction_type === 'platform_payout' || tx.transaction_type === 'refund' || tx.transaction_type === 'withdrawal' ? '-' : ''}
                     {formatCurrency(tx.amount)}
                   </span>
                 </td>
