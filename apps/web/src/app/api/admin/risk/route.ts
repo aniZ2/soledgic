@@ -133,6 +133,23 @@ export const POST = createApiHandler(
         return NextResponse.json({ error: 'Failed to resolve signal' }, { status: 500 })
       }
 
+      // Audit log for signal resolution
+      try {
+        await serviceClient.from('audit_log').insert({
+          ledger_id: null,
+          action: 'risk_signal_resolved',
+          entity_type: 'risk_signal',
+          entity_id: body.signal_id,
+          actor_type: 'user',
+          actor_id: user!.id,
+          request_body: { signal_id: body.signal_id, resolution_note: body.resolution_note || null },
+          response_status: 200,
+          risk_score: 20,
+        })
+      } catch {
+        // Non-blocking
+      }
+
       return NextResponse.json({ success: true })
     }
 

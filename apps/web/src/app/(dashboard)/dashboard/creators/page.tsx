@@ -214,17 +214,30 @@ export default async function CreatorsPage() {
                   <span className="text-sm text-foreground">{formatDate(creator.created_at)}</span>
                 </div>
 
-                <div className="flex items-center justify-between py-2 border-t border-border">
-                  <span className="text-sm text-muted-foreground">Risk</span>
-                  <span className={`text-sm font-medium ${
-                    creator.riskScore >= 60 ? 'text-red-600' :
-                    creator.riskScore >= 30 ? 'text-orange-600' :
-                    creator.riskScore >= 10 ? 'text-yellow-600' :
-                    'text-green-600'
-                  }`}>
-                    {creator.riskScore >= 60 ? 'High' : creator.riskScore >= 30 ? 'Elevated' : creator.riskScore >= 10 ? 'Low' : 'Clean'}
-                    {' '}({creator.riskScore})
-                  </span>
+                <div className="py-2 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Risk</span>
+                    <span className={`text-sm font-medium ${
+                      creator.riskScore >= 60 ? 'text-red-600' :
+                      creator.riskScore >= 30 ? 'text-orange-600' :
+                      creator.riskScore >= 10 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>
+                      {creator.riskScore >= 60 ? 'High' : creator.riskScore >= 30 ? 'Elevated' : creator.riskScore >= 10 ? 'Low' : 'Clean'}
+                    </span>
+                  </div>
+                  {creator.riskFlags.length > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {creator.riskFlags.includes('high_refund_rate') || creator.riskFlags.includes('elevated_refund_rate')
+                        ? 'Elevated refund activity'
+                        : creator.riskFlags.includes('high_dispute_rate') || creator.riskFlags.includes('has_disputes')
+                        ? 'Dispute history detected'
+                        : creator.riskFlags.includes('new_creator')
+                        ? 'New creator — monitoring period'
+                        : creator.riskFlags.map((f) => f.replace(/_/g, ' ')).join(', ')}
+                      {creator.payoutDelayDays > 7 && ` · ${creator.payoutDelayDays}d payout delay`}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between py-2 border-t border-border">
