@@ -14,6 +14,11 @@ This document outlines the security hardening required to operate Soledgic as a 
 - ⚠️ Single API key type (no scopes)
 - ✅ Rate limiting (Redis + Postgres fallback)
 - ⚠️ No tenant-level resource quotas
+- ✅ Cross-ledger boundary guards on identity linking (linkParticipantToUser)
+- ✅ RLS on financial graph tables (transaction_links, payout_batches, payout_batch_items) — service_role only
+- ✅ Ledger-scoped queries in getPayoutBatch (defense in depth)
+- ✅ Audit logging for cross-ledger violations (action: `cross_ledger_violation`, risk_score: 100)
+- ✅ Automated boundary violation alerts via security-alerts cron scanner
 
 ### Target State
 

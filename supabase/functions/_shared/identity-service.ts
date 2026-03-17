@@ -1,6 +1,6 @@
 // SERVICE_ID: SVC_IDENTITY_ENGINE
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { LedgerContext } from './utils.ts'
+import { LedgerContext, createAuditLogAsync, sanitizeForAudit } from './utils.ts'
 
 export interface SharedTaxProfileInput {
   legal_name?: string | null
@@ -59,6 +59,7 @@ export async function linkParticipantToUser(
   userId: string,
   linkSource = 'provisioned',
   metadata: Record<string, unknown> = {},
+  req?: Request,
 ): Promise<{ error: string | null }> {
   // Cross-ledger guard: verify the participant account belongs to this ledger
   const { data: participantAccount } = await supabase
@@ -70,6 +71,22 @@ export async function linkParticipantToUser(
     .maybeSingle()
 
   if (!participantAccount) {
+    if (req) {
+      createAuditLogAsync(supabase, req, {
+        ledger_id: ledger.id,
+        action: 'cross_ledger_violation',
+        entity_type: 'participant',
+        entity_id: participantId,
+        actor_type: 'api',
+        request_body: sanitizeForAudit({
+          attempted_user_id: userId,
+          link_source: linkSource,
+          violation: 'participant_not_in_ledger',
+        }),
+        response_status: 403,
+        risk_score: 100,
+      })
+    }
     return { error: 'Participant does not belong to this ledger' }
   }
 
@@ -103,6 +120,22 @@ export async function linkParticipantToUser(
     }, {
       onConflict: 'ledger_id,participant_id',
     })
+
+  if (!error && req) {
+    createAuditLogAsync(supabase, req, {
+      ledger_id: ledger.id,
+      action: 'participant_identity_linked',
+      entity_type: 'participant',
+      entity_id: participantId,
+      actor_type: 'api',
+      request_body: sanitizeForAudit({
+        user_id: userId,
+        link_source: linkSource,
+      }),
+      response_status: 200,
+      risk_score: 10,
+    })
+  }
 
   return { error: error?.message || null }
 }

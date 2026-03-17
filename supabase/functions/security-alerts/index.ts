@@ -413,7 +413,38 @@ async function checkSecurityMetrics(supabase: any, requestId: string): Promise<S
     })
   }
   
-  // 8. Check for SSRF attempts
+  // 8. Cross-ledger boundary violation scanner
+  const { data: boundaryViolations } = await supabase
+    .from('audit_log')
+    .select('id, ip_address, ledger_id, entity_id, request_body')
+    .eq('action', 'cross_ledger_violation')
+    .gte('created_at', oneHourAgo)
+
+  if (boundaryViolations && boundaryViolations.length > 0) {
+    const uniqueLedgers = new Set(boundaryViolations.map((v: any) => v.ledger_id).filter(Boolean)).size
+    const uniqueIPs = new Set(boundaryViolations.map((v: any) => v.ip_address).filter(Boolean)).size
+
+    alerts.push({
+      type: 'Cross-Ledger Boundary Violations',
+      severity: boundaryViolations.length >= 5 ? 'critical' : 'warning',
+      message: `${boundaryViolations.length} cross-ledger access attempt(s) detected — possible tenant isolation probe`,
+      details: {
+        violation_count: boundaryViolations.length,
+        unique_ledgers_targeted: uniqueLedgers,
+        unique_ips: uniqueIPs,
+        top_ips: getTopIPs(boundaryViolations),
+        violations: boundaryViolations.slice(0, 10).map((v: any) => ({
+          ledger_id: v.ledger_id,
+          entity_id: v.entity_id,
+          violation_type: v.request_body?.violation || 'unknown',
+        })),
+        action_required: 'Review API keys and IPs for unauthorized cross-tenant access attempts',
+      },
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  // 9. Check for SSRF attempts
   const { data: ssrfAttempts } = await supabase
     .from('audit_log')
     .select('id, ip_address, request_body')

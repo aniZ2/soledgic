@@ -148,6 +148,7 @@ export async function createParticipantResponse(
       linkedUserId,
       'provisioned',
       { created_via: 'participants.create' },
+      req,
     )
 
     if (linkResult.error) {

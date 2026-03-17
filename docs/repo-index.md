@@ -454,13 +454,13 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | **fraud-service.ts** | createFraudEvaluationResponse, createFraudPolicyResponse, deleteFraudPolicyResponse, getFraudEvaluationResponse, listFraudPoliciesResponse | fraud | risk_evaluations, risk_policies |
 | **holds-service.ts** | listHeldFundsResponse, getHeldFundsSummaryResponse, releaseHeldFundsResponse | holds | get_held_funds_dashboard, get_held_funds_summary, release_held_funds, escrow_releases/release_queue |
 | **participants-service.ts** | createParticipantResponse, getParticipantBalanceResponse, getParticipantPayoutEligibilityResponse, listParticipantBalancesResponse | participants | accounts, identity-service |
-| **identity-service.ts** | getLinkedUserIdForParticipant, getLinkedUserIdsForParticipants, linkParticipantToUser, upsertSharedTaxProfile, upsertSharedPayoutProfile | participants-service, tax-service, submit-tax-info | participant_identity_links, shared_tax_profiles, shared_payout_profiles |
+| **identity-service.ts** | getLinkedUserIdForParticipant, getLinkedUserIdsForParticipants, linkParticipantToUser (cross-ledger guard + audit), upsertSharedTaxProfile, upsertSharedPayoutProfile | participants-service, tax-service, submit-tax-info | participant_identity_links, shared_tax_profiles, shared_payout_profiles, accounts (ownership check) |
 | **reconciliations-service.ts** | autoMatchReconciliationResponse, createReconciliationMatchResponse, createReconciliationSnapshotResponse, deleteReconciliationMatchResponse, getReconciliationSnapshotResponse, listUnmatchedTransactionsResponse | reconciliations | bank_matches, reconciliation_snapshots, auto_match_bank_aggregator_transaction |
 | **webhook-signing.ts** | buildWebhookHeaders, signWebhookPayload, verifyWebhookSignature | webhooks, process-webhooks | — (crypto only) |
 | **webhook-management.ts** | buildWebhookReplayUpdate, normalizeWebhookDelivery | webhooks | webhook_deliveries |
 | **processor-webhook-adapters.ts** | getProcessorWebhookAdapter, NormalizedProcessorEvent, ProcessorWebhookInboxRow | process-processor-inbox | processor_webhook_inbox |
 | **financial-file-parsers.ts** | parseFinancialFile (OFX, CAMT.053, BAI2, MT940), normalizeMerchant | import-transactions | — |
-| **transaction-graph.ts** | createLink, getTransactionGraph, reconstructPayoutBatch, autoLinkTransaction | checkout, refund, execute-payout, reconcile | transaction_links, payout_batches, payout_batch_items |
+| **transaction-graph.ts** | createLink, getTransactionGraph, getPayoutBatch (ledger-scoped), reconstructPayoutBatch, autoLinkTransaction | checkout, refund, execute-payout, reconcile | transaction_links (RLS: service_role), payout_batches (RLS: service_role), payout_batch_items (RLS: service_role) |
 | **error-tracking.ts** | scrubPII, captureException (Sentry HTTP envelope) | utils.ts | — |
 
 ---

@@ -238,6 +238,13 @@ done
 - ✅ **SSRF protection** - Private IP blocking
 - ✅ **Domain allowlist** - Outbound restrictions
 
+### Cross-Ledger Isolation
+- ✅ **RLS on financial graph tables** - `transaction_links`, `payout_batches`, `payout_batch_items` restricted to `service_role` only
+- ✅ **Ledger ownership guard** - `linkParticipantToUser` verifies participant account belongs to target ledger before identity linking
+- ✅ **Ledger-scoped batch queries** - `getPayoutBatch` filters by `ledger_id` (defense in depth alongside RLS)
+- ✅ **Boundary violation audit trail** - Cross-ledger attempts logged as `cross_ledger_violation` with `risk_score: 100`
+- ✅ **Automated scanner** - `security-alerts` cron detects `cross_ledger_violation` events and fires Slack/email alerts (≥5/hour = critical)
+
 ---
 
 ## Deployment

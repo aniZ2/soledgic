@@ -83,6 +83,7 @@ organizations              # Platform/operator container
 ├── webhook_deliveries     # Delivery attempts, retries, replay state
 │
 ├── participant_identity_links  # Shared user identity above ledger-scoped actors
+│   └── Cross-ledger guard: linkParticipantToUser verifies ownership before linking
 ├── shared_tax_profiles         # Shared W-9 style profile data (limited fields)
 ├── shared_payout_profiles      # Shared payout preferences
 │
