@@ -2,6 +2,28 @@
 echo "Running pre-push security gate..."
 ./scripts/security-gate.sh --pre-push
 
+echo "Running Deno unit tests..."
+# Find test files matching changed shared services
+CHANGED_SHARED=$(git diff --name-only origin/main...HEAD -- 'supabase/functions/_shared/*.ts' 2>/dev/null \
+  | sed 's|.*/||; s|\.ts$||' || true)
+TEST_FILES=""
+for name in $CHANGED_SHARED; do
+  candidates=$(find supabase/functions/_shared/__tests__ -name "${name}_test.ts" -o -name "${name}-test.ts" 2>/dev/null || true)
+  if [ -n "$candidates" ]; then
+    TEST_FILES="$TEST_FILES $candidates"
+  fi
+done
+if [ -n "$TEST_FILES" ]; then
+  echo "  Testing:$TEST_FILES"
+  deno test --no-check --allow-env --allow-read $TEST_FILES || {
+    echo "❌ Deno unit tests failed — push blocked"
+    exit 1
+  }
+  echo "✅ Deno unit tests passed"
+else
+  echo "  No matching Deno test files for changed services — skipping"
+fi
+
 echo "Validating repo index..."
 node scripts/validate-repo-index.mjs
 

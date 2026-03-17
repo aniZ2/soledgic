@@ -241,7 +241,14 @@ echo "--- Check 6: Unit tests ---"
 if [ "$MODE" = "--pre-push" ]; then
   warn "6" "Skipped in --pre-push mode"
 else
-  if npm run test 2>&1; then
+  TESTS_OK=1
+  if ! npm run test 2>&1; then
+    TESTS_OK=0
+  fi
+  if ! npm run test:unit 2>&1; then
+    TESTS_OK=0
+  fi
+  if [ "$TESTS_OK" -eq 1 ]; then
     pass "6" "All unit tests passed"
   else
     fail "6" "Unit tests failed"

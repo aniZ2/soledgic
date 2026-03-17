@@ -895,9 +895,10 @@ FILE: supabase/functions/_shared/identity-service.ts
 RISK: API_SURFACE
 CALLS: (DB queries only)
 CALLED_BY: SVC_TAX_ENGINE, participants-service, submit-tax-info
-WRITES: participant_identity_links, shared_tax_profiles, shared_payout_profiles
-READS: participant_identity_links, shared_tax_profiles, shared_payout_profiles
-CHANGE_IMPACT: participant detail, tax calculations, creator portal auth, backup withholding checks
+WRITES: participant_identity_links, shared_tax_profiles, shared_payout_profiles, audit_log (cross_ledger_violation, participant_identity_linked)
+READS: participant_identity_links, shared_tax_profiles, shared_payout_profiles, accounts (cross-ledger ownership check)
+TESTED_BY: __tests__/identity-service_test.ts
+CHANGE_IMPACT: participant detail, tax calculations, creator portal auth, backup withholding checks, cross-ledger security alerts
 
 SERVICE: SVC_WALLET_ENGINE
 FILE: supabase/functions/_shared/wallet-service.ts
@@ -980,9 +981,10 @@ RISK: API_SURFACE
 CALLS: RPC_GET_RATE_LIMIT_OFFENDERS, EXT_RESEND (email alerts)
 CALLED_BY: CRON (x-cron-secret auth)
 WRITES: security_alerts, audit_log
-READS: audit_log (rate_limited, auth_failed, preauth_rate_limited, blocked_country, ssrf_attempt, handler_error events)
+READS: audit_log (rate_limited, auth_failed, preauth_rate_limited, blocked_country, ssrf_attempt, handler_error, cross_ledger_violation events)
 EXTERNAL: EXT_RESEND (security alert emails)
-CHANGE_IMPACT: security monitoring, alert emails
+TESTED_BY: __tests__/security-alerts_test.ts
+CHANGE_IMPACT: security monitoring, alert emails, admin security events page
 
 SERVICE: SVC_TRANSFER_ROUTER
 FILE: supabase/functions/transfers/index.ts
