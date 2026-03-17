@@ -86,6 +86,35 @@ function parseStripeError(data: Record<string, unknown>): StripeError | undefine
 
 const STRIPE_API_BASE = 'https://api.stripe.com'
 
+/** Detect raw card numbers in any value — catches spaced, dashed, or plain 13-19 digit sequences. */
+function looksLikeCardNumber(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  const stripped = value.replace(/[\s\-]/g, '')
+  return /^\d{13,19}$/.test(stripped)
+}
+
+/** Deep-scan params for anything that smells like raw card data. Returns the offending field name or null. */
+function containsRawCardData(obj: Record<string, unknown>, prefix = ''): string | null {
+  for (const [key, value] of Object.entries(obj)) {
+    const path = prefix ? `${prefix}.${key}` : key
+
+    if (looksLikeCardNumber(value)) return path
+
+    // Check suspicious field names with numeric values
+    const lower = key.toLowerCase()
+    if ((lower === 'number' || lower === 'card_number' || lower === 'pan') && typeof value === 'string' && value.length >= 13) {
+      return path
+    }
+
+    // Recurse into nested objects
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const nested = containsRawCardData(value as Record<string, unknown>, path)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
 export async function stripeRequest<T = Record<string, unknown>>(
   path: string,
   options: StripeRequestOptions = {}
@@ -94,8 +123,13 @@ export async function stripeRequest<T = Record<string, unknown>>(
 
   // SAFETY: Never send raw card numbers to Stripe. Block at the client level.
   if (params) {
-    const json = JSON.stringify(params)
-    if (/\b\d{13,19}\b/.test(json) && /card.*number|number.*card/i.test(json)) {
+    const blocked = containsRawCardData(params)
+    if (blocked) {
+      console.error('BLOCKED RAW CARD DATA ATTEMPT — request rejected before reaching Stripe.', {
+        path,
+        method,
+        field: blocked,
+      })
       return {
         ok: false,
         status: 0,
