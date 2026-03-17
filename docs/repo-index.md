@@ -16,7 +16,7 @@ Creator economy payment platform. Monorepo: Next.js web app + Supabase Edge Func
 
 ```
 CRITICAL_PATH: CHECKOUT_COMPLETION
-  chain: checkout-sessions → SVC_CHECKOUT_ORCHESTRATOR → EXT_FINIX charge → RPC_RECORD_SALE_ATOMIC → TRG_UPDATE_ACCOUNT_BALANCE
+  chain: checkout-sessions → SVC_CHECKOUT_ORCHESTRATOR → EXT_STRIPE charge → RPC_RECORD_SALE_ATOMIC → TRG_UPDATE_ACCOUNT_BALANCE
   invariants: INVARIANT_DOUBLE_ENTRY, INVARIANT_LEDGER_BALANCE
 
 CRITICAL_PATH: REFUND_PROCESSING
@@ -24,7 +24,7 @@ CRITICAL_PATH: REFUND_PROCESSING
   invariants: INVARIANT_REFUND_CAP, INVARIANT_IDEMPOTENCY, INVARIANT_DOUBLE_ENTRY
 
 CRITICAL_PATH: PAYOUT_EXECUTION
-  chain: payouts → SVC_PAYOUT_ENGINE → RPC_PROCESS_PAYOUT_ATOMIC → execute-payout → EXT_FINIX transfer
+  chain: payouts → SVC_PAYOUT_ENGINE → RPC_PROCESS_PAYOUT_ATOMIC → execute-payout → EXT_STRIPE transfer
   invariants: INVARIANT_NONNEGATIVE_BALANCE, INVARIANT_DOUBLE_ENTRY
 
 CRITICAL_PATH: REVERSAL_PROCESSING
@@ -114,6 +114,29 @@ INVARIANT_WEBHOOK_SIGNATURE — timing
   enforcement: REAL-TIME (HMAC computed before HTTP POST)
   detection: none (consumer-side verification)
   gap: none — unsigned webhooks never sent
+```
+
+---
+
+## Deployment Checklist (run on every push)
+
+```
+BEFORE PUSHING:
+  1. Tests pass          → deno test supabase/functions/_shared/__tests__/ --allow-env --allow-net --allow-read
+  2. Type-check          → deno check on modified edge functions
+  3. Next.js type-check  → npx tsc --noEmit (if web app changed)
+
+AFTER git push:
+  4. Deploy migrations   → supabase db push --linked (if supabase/migrations/ changed)
+  5. Deploy functions    → supabase functions deploy --project-ref ocjrcsmoeikxfooeglkt (if edge functions changed)
+  6. Verify deployment   → check Vercel auto-deploy completes, or run `npx vercel --prod`
+
+RULE: Never let migrations sit unapplied. Code that references new tables/RPCs
+will 500 if the migration hasn't been pushed. Deploy migrations IMMEDIATELY
+after push, before verifying anything else.
+
+RULE: After deploying edge functions, verify with a direct curl to the Supabase
+function URL to confirm the new code is live (functions cache secrets at boot).
 ```
 
 ---
