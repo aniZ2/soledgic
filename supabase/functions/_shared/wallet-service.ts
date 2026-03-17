@@ -549,6 +549,11 @@ async function depositToUserWalletAccountResponse(
     return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
+  // Enforce $10 minimum top-up
+  if (amount < MIN_TOPUP_CENTS) {
+    return resourceError(`Minimum top-up is $${(MIN_TOPUP_CENTS / 100).toFixed(2)}`, 400, {}, 'below_minimum_topup')
+  }
+
   const referenceId = validateId(body.reference_id, 255)
   if (!referenceId) {
     return resourceError('Invalid reference_id: must be 1-255 alphanumeric characters', 400, {}, 'invalid_reference_id')
@@ -1004,6 +1009,230 @@ async function mapWalletRpcError(
 
   console.error('Wallet RPC error:', rpcError)
   return resourceError('Wallet operation failed', 500, {}, 'wallet_operation_failed')
+}
+
+// ============================================================================
+// WALLET PURCHASE (atomic: wallet debit + sale recording + creator split)
+// ============================================================================
+
+const MIN_TOPUP_CENTS = 1000 // $10.00 minimum wallet top-up
+
+export interface WalletPurchaseRequest {
+  amount?: number           // Purchase amount in cents
+  reference_id?: string     // Idempotency key
+  creator_id?: string       // Creator/author receiving the split
+  creator_percent?: number  // Creator's share (0-100)
+  product_id?: string       // Product identifier
+  product_name?: string     // Product display name
+  description?: string
+  metadata?: Record<string, unknown>
+}
+
+export async function purchaseFromWalletByIdResponse(
+  req: Request,
+  supabase: SupabaseClient,
+  ledger: LedgerContext,
+  walletId: string,
+  body: WalletPurchaseRequest,
+  requestId: string,
+): Promise<ResourceResult> {
+  const amount = validateAmount(body.amount)
+  if (amount === null || amount <= 0) {
+    return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
+  }
+
+  const referenceId = validateId(body.reference_id, 255)
+  if (!referenceId) {
+    return resourceError('Invalid reference_id', 400, {}, 'invalid_reference_id')
+  }
+
+  const creatorId = validateId(body.creator_id, 100)
+  if (!creatorId) {
+    return resourceError('Invalid creator_id', 400, {}, 'invalid_creator_id')
+  }
+
+  const creatorPercent = typeof body.creator_percent === 'number' ? body.creator_percent : 80
+  if (creatorPercent < 0 || creatorPercent > 100) {
+    return resourceError('creator_percent must be 0-100', 400, {}, 'invalid_creator_percent')
+  }
+
+  // Idempotency check
+  const duplicate = await checkDuplicateReference(supabase, ledger.id, referenceId)
+  if (duplicate) {
+    return resourceOk({
+      success: false,
+      idempotent: true,
+      error: 'Duplicate reference_id',
+      error_code: 'duplicate_reference_id',
+      transaction_id: duplicate.id,
+    }, 409)
+  }
+
+  // Fetch wallet and validate
+  const { data: wallet } = await supabase
+    .from('accounts')
+    .select('id, entity_id, metadata, balance')
+    .eq('id', walletId)
+    .eq('ledger_id', ledger.id)
+    .eq('account_type', 'user_wallet')
+    .eq('is_active', true)
+    .single()
+
+  if (!wallet) {
+    return resourceError('Wallet not found', 404, {}, 'wallet_not_found')
+  }
+
+  const walletMeta = (wallet.metadata || {}) as Record<string, unknown>
+  if (walletMeta.redeemable === false) {
+    return resourceError('Wallet is not redeemable. Top up with at least $10 first.', 422, {}, 'wallet_not_redeemable')
+  }
+
+  // Check wallet balance
+  const { data: balanceEntries } = await supabase
+    .from('entries')
+    .select('entry_type, amount, transactions!inner(status)')
+    .eq('account_id', walletId)
+    .not('transactions.status', 'in', '("voided","reversed")')
+
+  let walletBalance = 0
+  for (const e of balanceEntries || []) {
+    walletBalance += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
+  }
+  const walletBalanceCents = Math.round(walletBalance * 100)
+
+  if (walletBalanceCents < amount) {
+    return resourceOk({
+      success: false,
+      error: `Insufficient balance. Available: $${(walletBalanceCents / 100).toFixed(2)}, Required: $${(amount / 100).toFixed(2)}`,
+      error_code: 'insufficient_balance',
+      available_cents: walletBalanceCents,
+      required_cents: amount,
+    }, 422)
+  }
+
+  // Step 1: Record the sale (creator split)
+  const { data: splitResult, error: splitError } = await supabase.rpc('calculate_sale_split', {
+    p_gross_cents: amount,
+    p_creator_percent: creatorPercent,
+    p_processing_fee_cents: 0,
+  })
+
+  if (splitError || !splitResult?.[0]) {
+    return resourceError('Failed to calculate split', 500, {}, 'split_calculation_failed')
+  }
+
+  const split = splitResult[0]
+
+  const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
+    p_ledger_id: ledger.id,
+    p_reference_id: referenceId,
+    p_creator_id: creatorId,
+    p_gross_amount: amount,
+    p_creator_amount: split.creator_cents,
+    p_platform_amount: split.platform_cents,
+    p_processing_fee: 0,
+    p_product_id: body.product_id || null,
+    p_product_name: body.product_name || null,
+    p_metadata: {
+      ...(body.metadata || {}),
+      payment_source: 'wallet',
+      wallet_id: walletId,
+      buyer_id: wallet.entity_id,
+    },
+  })
+
+  if (saleError) {
+    const msg = String(saleError.message || '')
+    if (saleError.code === '23505' || msg.includes('duplicate')) {
+      return resourceOk({
+        success: false,
+        idempotent: true,
+        error: 'Duplicate reference_id',
+        error_code: 'duplicate_reference_id',
+      }, 409)
+    }
+    console.error(`[${requestId}] Sale recording failed:`, saleError)
+    return resourceError('Failed to record sale', 500, {}, 'sale_recording_failed')
+  }
+
+  const saleRow = Array.isArray(saleResult) ? saleResult[0] : saleResult
+  const saleTransactionId = saleRow?.out_transaction_id
+
+  // Step 2: Debit the wallet
+  const withdrawRef = `${referenceId}_wallet_debit`
+  const { data: withdrawResult, error: withdrawError } = await supabase.rpc('wallet_withdraw_atomic', {
+    p_ledger_id: ledger.id,
+    p_user_id: wallet.entity_id,
+    p_amount: amount,
+    p_reference_id: withdrawRef,
+    p_description: body.description || `Purchase: ${body.product_name || body.product_id || referenceId}`,
+    p_metadata: {
+      purchase_reference: referenceId,
+      sale_transaction_id: saleTransactionId,
+      product_id: body.product_id,
+    },
+  })
+
+  if (withdrawError) {
+    // Sale was recorded but wallet debit failed — void the sale
+    console.error(`[${requestId}] Wallet debit failed after sale — voiding sale:`, withdrawError)
+    try {
+      await supabase.rpc('void_transaction_atomic', {
+        p_ledger_id: ledger.id,
+        p_transaction_id: saleTransactionId,
+        p_reason: `Wallet debit failed: ${withdrawError.message}`,
+      })
+    } catch { /* best-effort void */ }
+
+    return mapWalletRpcError(withdrawError, ledger.id, withdrawRef, supabase)
+  }
+
+  const withdrawRow = Array.isArray(withdrawResult) ? withdrawResult[0] : withdrawResult
+  const newBalance = Number(withdrawRow?.out_wallet_balance ?? 0)
+
+  // Step 3: Create transaction graph edge (purchase → sale)
+  const { autoLinkTransaction } = await import('./transaction-graph.ts')
+  void autoLinkTransaction(supabase, ledger.id, {
+    id: saleTransactionId,
+    transaction_type: 'sale',
+    metadata: { wallet_purchase: true },
+  })
+
+  // Audit log
+  await createAuditLog(supabase, req, {
+    ledger_id: ledger.id,
+    action: 'wallet_purchase',
+    entity_type: 'transaction',
+    entity_id: saleTransactionId,
+    actor_type: 'api',
+    request_body: sanitizeForAudit({
+      wallet_id: walletId,
+      buyer_id: wallet.entity_id,
+      creator_id: creatorId,
+      amount_cents: amount,
+      creator_cents: split.creator_cents,
+      platform_cents: split.platform_cents,
+      product_id: body.product_id,
+    }),
+    response_status: 200,
+    risk_score: 15,
+  }, requestId)
+
+  return resourceOk({
+    success: true,
+    purchase: {
+      transaction_id: saleTransactionId,
+      reference_id: referenceId,
+      amount_cents: amount,
+      creator_id: creatorId,
+      creator_amount_cents: split.creator_cents,
+      platform_amount_cents: split.platform_cents,
+      wallet_id: walletId,
+      wallet_balance_cents: Math.round(newBalance * 100),
+      product_id: body.product_id || null,
+      product_name: body.product_name || null,
+    },
+  })
 }
 
 async function checkDuplicateReference(

@@ -21,6 +21,7 @@ import {
   topUpWalletByIdResponse,
   withdrawFromWalletByIdResponse,
   withdrawFromWalletResponse,
+  purchaseFromWalletByIdResponse,
 } from '../_shared/wallet-service.ts'
 import { validateUUID } from '../_shared/utils.ts'
 
@@ -126,6 +127,32 @@ const handler = createHandler(
             description: typeof payload.description === 'string' ? payload.description : undefined,
             metadata: payload.metadata as Record<string, unknown> | undefined,
           }, requestId)
+      return respondWithResult(req, requestId, response)
+    }
+
+    if (segments.length === 2 && segments[1] === 'purchase') {
+      if (req.method !== 'POST') {
+        return errorResponse('Method not allowed', 405, req, requestId)
+      }
+      if (!walletId) {
+        return errorResponse('Wallet ID must be a UUID', 400, req, requestId)
+      }
+
+      const payload = asJsonObject(body)
+      if (!payload) {
+        return errorResponse('Invalid JSON body', 400, req, requestId)
+      }
+
+      const response = await purchaseFromWalletByIdResponse(req, supabase, ledger, walletId, {
+        amount: typeof payload.amount === 'number' ? payload.amount : undefined,
+        reference_id: typeof payload.reference_id === 'string' ? payload.reference_id : undefined,
+        creator_id: typeof payload.creator_id === 'string' ? payload.creator_id : undefined,
+        creator_percent: typeof payload.creator_percent === 'number' ? payload.creator_percent : undefined,
+        product_id: typeof payload.product_id === 'string' ? payload.product_id : undefined,
+        product_name: typeof payload.product_name === 'string' ? payload.product_name : undefined,
+        description: typeof payload.description === 'string' ? payload.description : undefined,
+        metadata: payload.metadata as Record<string, unknown> | undefined,
+      }, requestId)
       return respondWithResult(req, requestId, response)
     }
 
