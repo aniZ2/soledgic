@@ -1071,7 +1071,7 @@ const RAW_API_ENDPOINT_CATALOG: ApiEndpointDoc[] = [
       {
         "in": "body",
         "name": "format",
-        "type": "'csv' | 'ofx' | 'qfx' | 'auto'",
+        "type": "'csv' | 'ofx' | 'qfx' | 'camt053' | 'bai2' | 'mt940' | 'auto'",
         "required": false
       },
       {

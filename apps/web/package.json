@@ -19,6 +19,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^6.9.2",
+    "stripe": "^17.7.0",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

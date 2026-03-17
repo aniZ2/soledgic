@@ -1,3 +1,5 @@
+import { isStripeConfigured } from './stripe'
+
 const PUBLIC_PRICING_URL = 'https://soledgic.com/pricing'
 
 type JsonRecord = Record<string, unknown>
@@ -44,6 +46,15 @@ interface ProcessorErrorBody {
 
 function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function isStripePaymentProvider(): boolean {
+  return (process.env.PAYMENT_PROVIDER || '').toLowerCase().trim() === 'stripe'
+}
+
+export function isProcessorConfigured(): boolean {
+  if (isStripePaymentProvider()) return isStripeConfigured()
+  return Boolean(process.env.PROCESSOR_USERNAME && process.env.PROCESSOR_PASSWORD)
 }
 
 function getProcessorRequestTimeoutMs(): number {

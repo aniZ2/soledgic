@@ -9,6 +9,7 @@ export interface PlanConfig {
   overage_transaction_price?: number // cents per additional transaction
   features: string[]
   contact_sales?: boolean
+  stripe_price_id?: string | null // Stripe Price ID (price_xxx) for checkout
 }
 
 // Snapshot of the prior multi-tier pricing model. Kept for future experiments.

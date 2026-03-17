@@ -6,12 +6,17 @@
 // - Merchant selection is platform-managed (env) and cannot be overridden.
 // - Requests must provide a buyer payment method id for charge-side flows.
 
+import { StripePaymentProvider } from './stripe-payment-provider.ts'
+
 // ============================================================================
 // TYPES
 // ============================================================================
 
 // Public provider names are whitelabeled.
 export type PaymentProviderName = 'card'
+
+// Active payment provider backend (env-driven).
+export type PaymentProviderBackend = 'stripe' | 'finix'
 
 export interface PaymentIntentParams {
   amount: number // In smallest currency unit (cents)
@@ -431,10 +436,26 @@ export function normalizePaymentProviderName(value: unknown): PaymentProviderNam
   return null
 }
 
+/**
+ * Resolve which payment provider backend to use.
+ * Checks PAYMENT_PROVIDER env var: 'stripe' | 'finix'. Defaults to 'stripe'.
+ */
+export function resolvePaymentProviderBackend(): PaymentProviderBackend {
+  const raw = (Deno.env.get('PAYMENT_PROVIDER') || '').toLowerCase().trim()
+  if (raw === 'finix') return 'finix'
+  return 'stripe'
+}
+
 export function getPaymentProvider(
   _name: PaymentProviderName,
   options: PaymentProviderFactoryOptions = {}
 ): PaymentProvider {
+  const backend = resolvePaymentProviderBackend()
+
+  if (backend === 'stripe') {
+    return new StripePaymentProvider()
+  }
+
   const cfg = options.processor || options.processor === null ? options.processor || {} : {}
   return new CardPaymentProvider(cfg)
 }

@@ -281,9 +281,24 @@ class GenericJsonAdapter implements ProcessorWebhookAdapter {
 
 export function getProcessorWebhookAdapter(): ProcessorWebhookAdapter {
   const configured = (Deno.env.get('PROCESSOR_WEBHOOK_ADAPTER') || '').toLowerCase().trim()
-  if (!configured || configured === 'auto' || configured === 'generic') return new GenericJsonAdapter()
+  if (!configured || configured === 'auto' || configured === 'generic') {
+    // Auto-detect: use Stripe adapter when PAYMENT_PROVIDER=stripe
+    const provider = (Deno.env.get('PAYMENT_PROVIDER') || '').toLowerCase().trim()
+    if (provider === 'stripe') {
+      const { StripeWebhookAdapter } = _stripeAdapterModule
+      return new StripeWebhookAdapter()
+    }
+    return new GenericJsonAdapter()
+  }
 
-  // Future: plug in additional adapters behind this switch.
+  if (configured === 'stripe') {
+    const { StripeWebhookAdapter } = _stripeAdapterModule
+    return new StripeWebhookAdapter()
+  }
+
   return new GenericJsonAdapter()
 }
+
+import { StripeWebhookAdapter as _StripeWebhookAdapterClass } from './stripe-webhook-adapter.ts'
+const _stripeAdapterModule = { StripeWebhookAdapter: _StripeWebhookAdapterClass }
 

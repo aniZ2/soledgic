@@ -4,6 +4,17 @@ import { createClient } from '@/lib/supabase/server'
 import { PLANS } from '@/lib/plans'
 import { type BillingPricingMode, isAutoChargeEnabled, isBillingBypassed, parseBillingSettings, resolveBillingMode } from '@/lib/billing-policy'
 import { isPlatformOperatorUser } from '@/lib/internal-platforms'
+import {
+  isStripeConfigured,
+  findOrCreateCustomer,
+  createCheckoutSession,
+  createBillingPortalSession,
+  cancelSubscription,
+  resumeSubscription,
+  listInvoices,
+  listPaymentMethods,
+} from '@/lib/stripe'
+import { getPublicAppUrl } from '@/lib/public-url'
 
 const DUNNING_RETRY_SCHEDULE_DAYS = [0, 3, 7] as const
 const MAX_DUNNING_ATTEMPTS = DUNNING_RETRY_SCHEDULE_DAYS.length
@@ -39,6 +50,8 @@ interface OrganizationRecord {
   max_transactions_per_month: number | null
   overage_transaction_price: number | null
   settings: JsonRecord | null
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
 }
 
 interface BillingOverageChargeRow {
@@ -82,6 +95,8 @@ function parseOrganization(value: unknown): OrganizationRecord | null {
     overage_transaction_price:
       typeof value.overage_transaction_price === 'number' ? value.overage_transaction_price : null,
     settings: isJsonRecord(value.settings) ? value.settings : null,
+    stripe_customer_id: typeof value.stripe_customer_id === 'string' ? value.stripe_customer_id : null,
+    stripe_subscription_id: typeof value.stripe_subscription_id === 'string' ? value.stripe_subscription_id : null,
   }
 }
 
@@ -221,10 +236,10 @@ export const POST = createApiHandler(
         return handleGetPlans()
       }
       case 'get_invoices': {
-        return NextResponse.json({ success: true, data: [] })
+        return handleGetInvoices(org)
       }
       case 'get_payment_methods': {
-        return NextResponse.json({ success: true, data: [] })
+        return handleGetPaymentMethods(org)
       }
       case 'activate_free_plan': {
         return handleActivateFreePlan(org, body.plan_id)
@@ -232,11 +247,17 @@ export const POST = createApiHandler(
       case 'update_billing_policy': {
         return handleUpdateBillingPolicy(org, body.pricing_mode, user!, canManageOperatorModes)
       }
-      case 'create_checkout_session':
-      case 'create_portal_session':
-      case 'cancel_subscription':
+      case 'create_checkout_session': {
+        return handleCreateCheckoutSession(org, body.plan_id, user!)
+      }
+      case 'create_portal_session': {
+        return handleCreatePortalSession(org, user!)
+      }
+      case 'cancel_subscription': {
+        return handleCancelSubscription(org)
+      }
       case 'resume_subscription': {
-        return disabledSubscriptionBilling()
+        return handleResumeSubscription(org)
       }
       default: {
         return NextResponse.json({ error: `Unknown action: ${body.action}` }, { status: 400 })
@@ -331,7 +352,7 @@ async function handleGetSubscriptionCore(org: OrganizationRecord, isOwner: boole
 
   // Shared-merchant model: processing is platform-managed (env-configured),
   // not configured per workspace.
-  const processorConnected = Boolean(
+  const processorConnected = isStripeConfigured() || Boolean(
     process.env.PROCESSOR_USERNAME &&
       process.env.PROCESSOR_PASSWORD &&
       process.env.PROCESSOR_MERCHANT_ID
@@ -581,4 +602,222 @@ async function handleActivateFreePlan(org: OrganizationRecord, planId?: string) 
   }
 
   return NextResponse.json({ success: true, data: { activated: true, plan: planId } })
+}
+
+// ============================================================================
+// Stripe-powered billing actions
+// ============================================================================
+
+async function ensureStripeCustomer(
+  org: OrganizationRecord,
+  user: { id: string; email?: string }
+): Promise<{ customerId: string; error?: string }> {
+  if (!isStripeConfigured()) {
+    return { customerId: '', error: 'Stripe is not configured' }
+  }
+
+  try {
+    const customer = await findOrCreateCustomer({
+      email: user.email || '',
+      name: org.name,
+      organizationId: org.id,
+      existingCustomerId: org.stripe_customer_id,
+    })
+
+    // Persist customer ID if it's new or changed
+    if (customer.id !== org.stripe_customer_id) {
+      const supabase = await createClient()
+      await supabase
+        .from('organizations')
+        .update({ stripe_customer_id: customer.id })
+        .eq('id', org.id)
+    }
+
+    return { customerId: customer.id }
+  } catch (error: unknown) {
+    return {
+      customerId: '',
+      error: error instanceof Error ? error.message : 'Failed to create Stripe customer',
+    }
+  }
+}
+
+async function handleCreateCheckoutSession(
+  org: OrganizationRecord,
+  planId: string | undefined,
+  user: { id: string; email?: string }
+) {
+  if (!isStripeConfigured()) return disabledSubscriptionBilling()
+
+  if (!planId) {
+    return NextResponse.json({ error: 'plan_id is required' }, { status: 400 })
+  }
+
+  const plan = PLANS[planId]
+  if (!plan) {
+    return NextResponse.json({ error: 'Invalid plan_id' }, { status: 400 })
+  }
+
+  if (!plan.stripe_price_id) {
+    return NextResponse.json(
+      { error: 'This plan does not have Stripe pricing configured yet' },
+      { status: 400 }
+    )
+  }
+
+  const { customerId, error: customerError } = await ensureStripeCustomer(org, user)
+  if (customerError) {
+    return NextResponse.json({ error: customerError }, { status: 500 })
+  }
+
+  try {
+    const appUrl = getPublicAppUrl()
+    const session = await createCheckoutSession({
+      customerId,
+      priceId: plan.stripe_price_id,
+      successUrl: `${appUrl}/billing?checkout=success`,
+      cancelUrl: `${appUrl}/billing?checkout=canceled`,
+      organizationId: org.id,
+    })
+
+    return NextResponse.json({ success: true, data: { url: session.url } })
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create checkout session' },
+      { status: 500 }
+    )
+  }
+}
+
+async function handleCreatePortalSession(
+  org: OrganizationRecord,
+  user: { id: string; email?: string }
+) {
+  if (!isStripeConfigured()) return disabledSubscriptionBilling()
+
+  const { customerId, error: customerError } = await ensureStripeCustomer(org, user)
+  if (customerError) {
+    return NextResponse.json({ error: customerError }, { status: 500 })
+  }
+
+  try {
+    const appUrl = getPublicAppUrl()
+    const session = await createBillingPortalSession({
+      customerId,
+      returnUrl: `${appUrl}/billing`,
+    })
+
+    return NextResponse.json({ success: true, data: { url: session.url } })
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create portal session' },
+      { status: 500 }
+    )
+  }
+}
+
+async function handleCancelSubscription(org: OrganizationRecord) {
+  if (!isStripeConfigured()) return disabledSubscriptionBilling()
+
+  if (!org.stripe_subscription_id) {
+    return NextResponse.json({ error: 'No active subscription found' }, { status: 400 })
+  }
+
+  try {
+    const subscription = await cancelSubscription(org.stripe_subscription_id)
+    return NextResponse.json({
+      success: true,
+      data: {
+        status: subscription.status,
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        current_period_end: subscription.current_period_end
+          ? new Date(subscription.current_period_end * 1000).toISOString()
+          : null,
+      },
+    })
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to cancel subscription' },
+      { status: 500 }
+    )
+  }
+}
+
+async function handleResumeSubscription(org: OrganizationRecord) {
+  if (!isStripeConfigured()) return disabledSubscriptionBilling()
+
+  if (!org.stripe_subscription_id) {
+    return NextResponse.json({ error: 'No subscription found' }, { status: 400 })
+  }
+
+  try {
+    const subscription = await resumeSubscription(org.stripe_subscription_id)
+    return NextResponse.json({
+      success: true,
+      data: {
+        status: subscription.status,
+        cancel_at_period_end: subscription.cancel_at_period_end,
+      },
+    })
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to resume subscription' },
+      { status: 500 }
+    )
+  }
+}
+
+async function handleGetInvoices(org: OrganizationRecord) {
+  if (!isStripeConfigured() || !org.stripe_customer_id) {
+    return NextResponse.json({ success: true, data: [] })
+  }
+
+  try {
+    const invoices = await listInvoices(org.stripe_customer_id)
+    const data = invoices.map((inv) => ({
+      id: inv.id,
+      number: inv.number,
+      status: inv.status,
+      amount_due: inv.amount_due,
+      amount_paid: inv.amount_paid,
+      currency: inv.currency,
+      period_start: inv.period_start
+        ? new Date(inv.period_start * 1000).toISOString()
+        : null,
+      period_end: inv.period_end
+        ? new Date(inv.period_end * 1000).toISOString()
+        : null,
+      hosted_invoice_url: inv.hosted_invoice_url,
+      invoice_pdf: inv.invoice_pdf,
+      created: inv.created
+        ? new Date(inv.created * 1000).toISOString()
+        : null,
+    }))
+
+    return NextResponse.json({ success: true, data })
+  } catch {
+    return NextResponse.json({ success: true, data: [] })
+  }
+}
+
+async function handleGetPaymentMethods(org: OrganizationRecord) {
+  if (!isStripeConfigured() || !org.stripe_customer_id) {
+    return NextResponse.json({ success: true, data: [] })
+  }
+
+  try {
+    const methods = await listPaymentMethods(org.stripe_customer_id)
+    const data = methods.map((pm) => ({
+      id: pm.id,
+      type: pm.type,
+      brand: pm.card?.brand || null,
+      last4: pm.card?.last4 || null,
+      exp_month: pm.card?.exp_month || null,
+      exp_year: pm.card?.exp_year || null,
+    }))
+
+    return NextResponse.json({ success: true, data })
+  } catch {
+    return NextResponse.json({ success: true, data: [] })
+  }
 }

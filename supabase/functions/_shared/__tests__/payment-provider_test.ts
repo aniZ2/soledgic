@@ -4,6 +4,10 @@ import {
   getPaymentProvider,
 } from '../payment-provider.ts'
 
+// These tests exercise CardPaymentProvider (Finix). Force the factory to use Finix.
+const _origPaymentProvider = Deno.env.get('PAYMENT_PROVIDER')
+Deno.env.set('PAYMENT_PROVIDER', 'finix')
+
 // ==========================================================================
 // normalizePaymentProviderName
 // ==========================================================================

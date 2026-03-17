@@ -10,7 +10,8 @@
 // - Uses idempotent DB claim via claim_overage_billing_charge()
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { getPaymentProvider } from '../_shared/payment-provider.ts'
+import { getPaymentProvider, resolvePaymentProviderBackend } from '../_shared/payment-provider.ts'
+import { stripeRequest } from '../_shared/stripe-rest.ts'
 import { getCorsHeaders, timingSafeEqual } from '../_shared/utils.ts'
 
 // Retry cadence for failed monthly overage charges.
@@ -510,6 +511,119 @@ Deno.serve(async (req: Request) => {
       continue
     }
 
+    // Route to Stripe invoice items or Finix charge based on PAYMENT_PROVIDER
+    const paymentBackend = resolvePaymentProviderBackend()
+
+    if (paymentBackend === 'stripe') {
+      // Stripe billing path: create invoice item on the org's Stripe customer
+      const stripeCustomerId = (() => {
+        const s = org.settings && typeof org.settings === 'object' ? org.settings : {} as Record<string, any>
+        const b = s.billing && typeof s.billing === 'object' ? s.billing : {} as Record<string, any>
+        return typeof b.stripe_customer_id === 'string' ? b.stripe_customer_id.trim() : ''
+      })() || (() => {
+        // Also check org-level column
+        const raw = (org as any).stripe_customer_id
+        return typeof raw === 'string' ? raw.trim() : ''
+      })()
+
+      if (!stripeCustomerId) {
+        await supabase
+          .from('billing_overage_charges')
+          .update({
+            status: 'failed',
+            error: 'Stripe customer not configured. Org must complete billing setup.',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', chargeId)
+
+        if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+          await supabase.from('organizations').update({ status: 'past_due' }).eq('id', org.id)
+        }
+
+        failed++
+        results.push({
+          organization_id: org.id,
+          status: 'failed',
+          charge_id: chargeId,
+          error: 'stripe_customer_not_configured',
+          attempts: attemptNumber,
+          retries_remaining: retriesRemaining,
+          next_retry_at: nextRetryAt,
+        })
+        continue
+      }
+
+      const invoiceItemResp = await stripeRequest<Record<string, unknown>>('/v1/invoiceitems', {
+        method: 'POST',
+        params: {
+          customer: stripeCustomerId,
+          amount: amountCents,
+          currency: 'usd',
+          description: `Soledgic overage billing (${periodStart} to ${periodEnd})`,
+          metadata: {
+            soledgic_billing_charge_id: chargeId,
+            soledgic_organization_id: org.id,
+            soledgic_period_start: periodStart,
+            soledgic_period_end: periodEnd,
+          },
+        },
+        idempotencyKey: `billing_${chargeId}`,
+      })
+
+      if (!invoiceItemResp.ok || !invoiceItemResp.data) {
+        await supabase
+          .from('billing_overage_charges')
+          .update({
+            status: 'failed',
+            error: invoiceItemResp.error?.message || 'Stripe invoice item creation failed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', chargeId)
+
+        if (attemptNumber >= MAX_DUNNING_ATTEMPTS) {
+          await supabase.from('organizations').update({ status: 'past_due' }).eq('id', org.id)
+        }
+
+        failed++
+        results.push({
+          organization_id: org.id,
+          status: 'failed',
+          charge_id: chargeId,
+          error: invoiceItemResp.error?.message || 'stripe_invoice_item_failed',
+          attempts: attemptNumber,
+          retries_remaining: retriesRemaining,
+          next_retry_at: nextRetryAt,
+        })
+        continue
+      }
+
+      const invoiceItemId = String(invoiceItemResp.data.id || '')
+      await supabase
+        .from('billing_overage_charges')
+        .update({
+          status: 'succeeded',
+          processor_payment_id: invoiceItemId,
+          raw: invoiceItemResp.data || {},
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', chargeId)
+
+      if (orgStatus === 'past_due') {
+        await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id)
+      }
+
+      charged++
+      results.push({
+        organization_id: org.id,
+        status: 'succeeded',
+        charge_id: chargeId,
+        processor_payment_id: invoiceItemId,
+        amount_cents: amountCents,
+      })
+      continue
+    }
+
+    // Finix charge path (legacy)
     const merchantId = platformMerchantId
     if (!merchantId) {
       await supabase

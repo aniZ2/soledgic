@@ -4,10 +4,10 @@
 // SECURITY HARDENED VERSION
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { 
-  createHandler, 
-  jsonResponse, 
-  errorResponse, 
+import {
+  createHandler,
+  jsonResponse,
+  errorResponse,
   LedgerContext,
   isProduction,
   createAuditLog

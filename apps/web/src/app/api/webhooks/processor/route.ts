@@ -31,6 +31,57 @@ function getConfiguredSigningKey(): string | null {
   return key.length > 0 ? key : null
 }
 
+function getStripeWebhookSecret(): string | null {
+  const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim()
+  return secret.length > 0 ? secret : null
+}
+
+function isStripeProvider(): boolean {
+  return (process.env.PAYMENT_PROVIDER || '').toLowerCase().trim() === 'stripe'
+}
+
+function verifyStripeSignature(
+  rawBody: string,
+  signatureHeader: string,
+  secret: string,
+): { valid: boolean; error?: string } {
+  // Stripe-Signature format: "t=<timestamp>,v1=<hex>,v0=<hex>"
+  const parts: Record<string, string> = {}
+  for (const segment of signatureHeader.split(',')) {
+    const idx = segment.indexOf('=')
+    if (idx < 0) continue
+    const k = segment.slice(0, idx).trim()
+    const v = segment.slice(idx + 1).trim()
+    if (k && v) parts[k] = v
+  }
+
+  const timestamp = parts['t']
+  const sig = parts['v1']
+
+  if (!timestamp || !sig) {
+    return { valid: false, error: 'Malformed Stripe-Signature header' }
+  }
+
+  const tsSeconds = Number(timestamp)
+  const tsMs = tsSeconds * 1000
+  if (!Number.isFinite(tsMs) || Math.abs(Date.now() - tsMs) > SIGNATURE_MAX_AGE_MS) {
+    return { valid: false, error: 'Webhook timestamp outside tolerance window' }
+  }
+
+  const expected = createHmac('sha256', secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex')
+
+  const sigBuf = Buffer.from(sig, 'hex')
+  const expectedBuf = Buffer.from(expected, 'hex')
+
+  if (sigBuf.length !== expectedBuf.length || !timingSafeEqual(sigBuf, expectedBuf)) {
+    return { valid: false, error: 'Signature mismatch' }
+  }
+
+  return { valid: true }
+}
+
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000 // 5 minutes
 
 function verifyFinixSignature(
@@ -128,7 +179,27 @@ function authorizeWebhook(
   request: Request,
   rawBody?: string,
 ): { ok: boolean; mode: 'signature' | 'token' | 'disabled'; error?: string } {
-  // Signature verification takes priority when signing key is configured.
+  // Stripe signature verification: check stripe-signature header when Stripe is configured.
+  const stripeSecret = getStripeWebhookSecret()
+  const stripeSignature = (request.headers.get('stripe-signature') || '').trim()
+
+  if (stripeSecret && stripeSignature) {
+    if (rawBody === undefined) {
+      return { ok: false, mode: 'signature', error: 'Request body required for signature verification' }
+    }
+    const result = verifyStripeSignature(rawBody, stripeSignature, stripeSecret)
+    return result.valid
+      ? { ok: true, mode: 'signature' }
+      : { ok: false, mode: 'signature', error: result.error }
+  }
+
+  // If Stripe is the configured provider and we have a secret but no stripe-signature header,
+  // check if this might be a Stripe webhook missing its signature.
+  if (stripeSecret && isStripeProvider() && !stripeSignature) {
+    // Fall through to Finix/token auth — this allows both providers during migration
+  }
+
+  // Finix signature verification takes priority when signing key is configured.
   // Fail closed: if a signing key is set, a valid signature is mandatory.
   const signingKey = getConfiguredSigningKey()
 

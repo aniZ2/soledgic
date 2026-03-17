@@ -1394,10 +1394,14 @@ paths:
                     - "csv"
                     - "ofx"
                     - "qfx"
+                    - "camt053"
+                    - "bai2"
+                    - "mt940"
                     - "auto"
+                  description: "File format (auto-detected if omitted or 'auto')"
                 data:
                   type: "string"
-                  description: "Raw file content"
+                  description: "Base64-encoded file content"
                 mapping:
                   type: "object"
                   additionalProperties: true

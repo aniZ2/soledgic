@@ -15,7 +15,7 @@ Reconciliation answers one question: **Does our internal ledger match external r
 | Source | What It Contains | How It Gets In |
 |--------|------------------|----------------|
 | **Payment Processor** | Charges, refunds, payouts, disputes | Webhooks (automatic) |
-| **Bank** | Deposits, withdrawals, transfers | CSV import or Bank Feed (manual/automatic) |
+| **Bank** | Deposits, withdrawals, transfers | File import (CSV, OFX, QFX, CAMT.053, BAI2, MT940) |
 | **Ledger** | Your accounting entries | API calls or webhook processing |
 
 ---
@@ -26,15 +26,15 @@ Every transaction in Soledgic has up to three records:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ENTRY #1: Payment Processor's Record (Immutable)                       │
-│ You cannot edit this. Payment Processor controls it.                   │
-│ Stored in: processor_events.raw_data                           │
+│ ENTRY #1: Payment Processor's Record (Immutable)            │
+│ You cannot edit this. Payment Processor controls it.        │
+│ Stored in: processor_events.raw_data                        │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ ENTRY #2: Your Ledger (Internal)                            │
-│ Created from Payment Processor webhook or API call.                    │
+│ Created from Payment Processor webhook or API call.         │
 │ Stored in: transactions + entries tables                    │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -42,7 +42,7 @@ Every transaction in Soledgic has up to three records:
 ┌─────────────────────────────────────────────────────────────┐
 │ ENTRY #3: Bank Statement (External)                         │
 │ Your bank's record of the same money.                       │
-│ Stored in: bank_aggregator_transactions                          │
+│ Stored in: bank_transactions                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -83,23 +83,66 @@ When Payment Processor events arrive, Soledgic:
 
 ## Bank Reconciliation
 
-### Import Methods
+### Supported File Formats
 
-1. **Bank Feed** (automatic) - Connect bank account, transactions sync daily
-2. **CSV Import** (manual) - Upload bank export file
+Soledgic's universal ingestion layer accepts bank exports in any of these formats:
 
-### Supported Banks
+| Format | Description | Typical Source |
+|--------|-------------|----------------|
+| **CSV** | Comma-separated values | Any bank (Chase, BofA, Wells Fargo, Mercury, Relay, etc.) |
+| **OFX/QFX** | Open Financial Exchange | US bank download (Quicken format) |
+| **CAMT.053** | ISO 20022 XML bank statement | European/international banks, SWIFT |
+| **BAI2** | Cash management reporting | US commercial/business banks |
+| **MT940** | SWIFT bank statement | International banks |
 
-Chase, Bank of America, Wells Fargo, Citi, Mercury, Relay, or any bank with CSV export.
+All formats are auto-detected — just upload the file and Soledgic identifies the format automatically.
+
+### How Import Works
+
+```
+Bank export file (any format)
+         │
+    Auto-detect format
+         │
+    Format-specific parser
+         │
+    Normalized transactions
+    { date, amount, description, reference }
+         │
+    Deduplication check
+         │
+    bank_transactions table
+         │
+    Auto-match engine
+```
 
 ### Deduplication
 
-Every imported transaction gets a SHA-256 hash:
+Every imported transaction gets a fingerprint:
+
 ```
-hash = SHA256(date + amount + description + reference + row_index)
+if FITID exists (OFX/QFX)
+    reference = FITID (bank's unique transaction ID)
+
+fingerprint = SHA256(date + amount + description + reference + account_name + row_index)
+stored as: provider_transaction_id = "import_<fingerprint>"
 ```
 
-Same transaction imported twice? Second import is skipped.
+Same transaction imported twice? Second import is skipped. Overlapping statement date ranges are safe.
+
+### Bank Template Matching (CSV only)
+
+For CSV files, Soledgic auto-detects the bank from column headers:
+
+| Bank | Key Headers |
+|------|-------------|
+| Chase | `Posting Date`, `Description`, `Amount` |
+| Bank of America | `Date`, `Description`, `Amount` |
+| Wells Fargo | Positional (no headers) |
+| Mercury | `Date`, `Description`, `Amount` |
+| Relay | `Date`, `Description`, `Amount`, `Account Name`, `Reference` |
+
+Unknown CSV formats fall back to a generic mapper or manual column mapping.
 
 ---
 
@@ -162,7 +205,7 @@ Daily automated checks verify:
 │  RECONCILIATION                                             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  [Bank] [Payment Processor]                                            │
+│  [Bank] [Payment Processor]                                 │
 │                                                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
 │  │ Matched     │  │ Unmatched   │  │ Excluded    │         │
@@ -184,6 +227,17 @@ Daily automated checks verify:
 ## API Quick Reference
 
 ```typescript
+// Parse and preview a bank export file (any format)
+await soledgic.parseImportFile({
+  format: 'auto',  // auto-detects: csv, ofx, qfx, camt053, bai2, mt940
+  data: base64EncodedFile
+})
+
+// Import parsed transactions
+await soledgic.importTransactions({
+  transactions: parsedTransactions
+})
+
 // Run auto-matching for Payment Processor payouts
 await soledgic.matchPayoutsToBank()
 // { matched: 5, unmatched_payouts: 2, unmatched_deposits: 1 }
@@ -194,12 +248,6 @@ await soledgic.getPayoutReconciliation()
 // Run health check
 await soledgic.runHealthCheck()
 // { status: 'healthy', passed: 10, warnings: 0, failed: 0 }
-
-// Import bank transactions
-await soledgic.importTransactions({
-  format: 'csv',
-  data: base64EncodedFile
-})
 ```
 
 ---

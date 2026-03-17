@@ -226,16 +226,16 @@ CRITICAL_PATH: WEBHOOK_DELIVERY
 
 ```
 ENV: production
-  EXT_FINIX: live processor (sk_live_* API keys)
+  EXT_STRIPE: live processor (default, PAYMENT_PROVIDER=stripe)
+  EXT_FINIX: legacy processor (PAYMENT_PROVIDER=finix)
   EXT_RESEND: live email delivery
-  EXT_TELLER: live bank aggregation
   write_gates: SOLEDGIC_ALLOW_WRITES + SOLEDGIC_ALLOW_LIVE_WRITES (MCP)
   crons: all active (process-webhooks, scheduled-payouts, ops-monitor, etc.)
 
 ENV: test / staging
-  EXT_FINIX: sandbox processor (sk_test_* API keys)
+  EXT_STRIPE: sandbox processor (sk_test_* API keys)
+  EXT_FINIX: sandbox (if PAYMENT_PROVIDER=finix)
   EXT_RESEND: sandbox (emails not delivered)
-  EXT_TELLER: sandbox
   crons: active but hitting sandbox
 
 ENV: local
@@ -377,14 +377,14 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | `webhooks` | createHandler (API key) | POST | webhook-signing.ts, webhook-management.ts | webhook_endpoints, webhook_deliveries, rotate_webhook_secret |
 | `process-webhooks` | x-cron-secret (cron) | POST | webhook-signing.ts | get_pending_webhooks, mark_webhook_delivered/failed |
 | `process-processor-inbox` | Bearer service-role | POST | processor-webhook-adapters.ts | claim_processor_webhook_inbox, payout/refund/dispute handlers |
-| `bank-aggregator-webhooks` | (webhook signature) | POST | bank-aggregator-provider.ts | bank_aggregator_transactions |
+| ~~bank-aggregator-webhooks~~ | _removed_ | — | — | — |
 
 ### Banking & Aggregation
 
 | Function | Auth | Methods | Shared Service | Key RPCs |
 |---|---|---|---|---|
-| `bank-aggregator` | createHandler (API key) | POST | bank-aggregator-provider.ts | bank_connections, store_bank_aggregator_token_in_vault |
-| `sync-bank-feeds` | cron / service-role | POST | bank-aggregator-provider.ts | bank_aggregator_transactions |
+| ~~bank-aggregator~~ | _removed_ | — | — | — |
+| ~~sync-bank-feeds~~ | _removed_ | — | — | — |
 | `import-bank-statement` | createHandler (API key) | POST | (inline) | bank_statement_lines, bank_statements |
 | `manage-bank-accounts` | createHandler (API key) | POST | (inline) | bank_accounts table |
 
@@ -436,7 +436,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | **webhook-signing.ts** | buildWebhookHeaders, signWebhookPayload, verifyWebhookSignature | webhooks, process-webhooks | — (crypto only) |
 | **webhook-management.ts** | buildWebhookReplayUpdate, normalizeWebhookDelivery | webhooks | webhook_deliveries |
 | **processor-webhook-adapters.ts** | getProcessorWebhookAdapter, NormalizedProcessorEvent, ProcessorWebhookInboxRow | process-processor-inbox | processor_webhook_inbox |
-| **bank-aggregator-provider.ts** | getBankAggregatorProvider (Teller integration) | bank-aggregator, bank-aggregator-webhooks, sync-bank-feeds | bank_connections, store_bank_aggregator_token_in_vault |
+| **financial-file-parsers.ts** | parseFinancialFile (OFX, CAMT.053, BAI2, MT940) | import-transactions | — |
 | **error-tracking.ts** | scrubPII, captureException (Sentry HTTP envelope) | utils.ts | — |
 
 ---
@@ -591,7 +591,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Ledger new sale | `/ledgers/[id]/sales/new` | record-sale |
 | Ledger reports | `/ledgers/[id]/reports` | profit-loss, trial-balance |
 | New ledger | `/ledgers/new` | create-ledger |
-| Connect | `/connect` | bank-aggregator |
+| ~~Connect~~ | `/connect` | _removed (Teller)_ |
 | Billing | `/billing` | billing |
 
 ### Dashboard Settings (`/dashboard/settings/` and `/settings/`)
@@ -1056,11 +1056,11 @@ CHANGE_IMPACT: Creator statement emails, email configuration
 SERVICE: SVC_IMPORT_ENGINE
 FILE: supabase/functions/import-transactions/index.ts
 RISK: CRITICAL_LEDGER
-CALLS: (inline CSV/OFX parsing, bank_transactions INSERT)
+CALLS: financial-file-parsers.ts (OFX/QFX, CAMT.053, BAI2, MT940), inline CSV parsing, bank_transactions INSERT
 CALLED_BY: SDK importTransactions, parseImportFile, getImportTemplates, saveImportTemplate
 READS: bank_connections, import_templates
 WRITES: bank_transactions, import_templates
-TESTED_BY: _shared/__tests__/import-transactions_test.ts (58 tests)
+TESTED_BY: _shared/__tests__/import-transactions_test.ts (58 tests), _shared/__tests__/financial-file-parsers_test.ts (27 tests)
 CHANGE_IMPACT: Bank transaction imports, CSV parsing
 
 SERVICE: SVC_PREFLIGHT_AUTH
@@ -1277,10 +1277,12 @@ EXT_RESEND — Email delivery (https://api.resend.com/emails)
     sendPayoutProcessedEmail — creator payout confirmation
     sendSecurityAlertEmail — new_login / password_changed / api_key_created alerts
 
-EXT_TELLER — Bank aggregator (account linking, transaction sync)
-  adapter: bank-aggregator-provider.ts
-  auth: token stored in Supabase Vault
-  webhook: bank-aggregator-webhooks (signature verification)
+EXT_STRIPE — Payment processor (default, charges/refunds/payouts)
+  adapter: stripe-rest.ts (Deno edge functions), stripe.ts (Next.js)
+  provider: stripe-payment-provider.ts implements PaymentProvider
+  webhook: stripe-webhook-adapter.ts, stripe-billing webhook route
+  auth: STRIPE_SECRET_KEY (Bearer), STRIPE_WEBHOOK_SECRET (signature)
+  env: PAYMENT_PROVIDER=stripe (default) or finix
 
 EXT_SENTRY — Error tracking
   adapter: error-tracking.ts (HTTP envelope, no SDK)
@@ -1424,6 +1426,7 @@ Deno tests: 447 tests across 24 test files (supabase/functions/_shared/__tests__
   payment-provider_test.ts (16 tests) — SVC_PAYMENT_PROVIDER unit tests
   frozen-statements_test.ts (46 tests) — frozen statement generation/retrieval
   import-transactions_test.ts (58 tests) — import engine parsing/validation
+  financial-file-parsers_test.ts (27 tests) — OFX, CAMT.053, BAI2, MT940 parsers
   preflight-authorization_test.ts (31 tests) — preflight auth flows
   send-statements_test.ts (28 tests) — statement email delivery
   generate-pdf_test.ts (22 tests) — PDF generation
@@ -1434,7 +1437,7 @@ Deno tests: 447 tests across 24 test files (supabase/functions/_shared/__tests__
   compliance-service_test.ts (11 tests) — compliance monitoring
   participants-service_test.ts (11 tests) — participant management
   identity-service_test.ts (10 tests) — identity engine
-  bank-aggregator-provider_test.ts (6 tests) — bank aggregator
+  ~~bank-aggregator-provider_test.ts~~ — _removed_ (Teller dropped)
 
 Web app tests (Vitest): 492 tests across 24 test files (apps/web/src/lib/)
   api-handler.test.ts (141 tests), rate-limit.test.ts (69 tests),

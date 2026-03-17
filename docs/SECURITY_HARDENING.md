@@ -190,7 +190,7 @@ done
 ### Imports & Utilities (6)
 | Function | Description |
 |----------|-------------|
-| `import-transactions` | CSV/OFX transaction import |
+| `import-transactions` | Bank file import (CSV, OFX, QFX, CAMT.053, BAI2, MT940) |
 | `import-bank-statement` | Bank statement import |
 | `upload-receipt` | Receipt image upload |
 | `processor` | Payment Processor transaction management |

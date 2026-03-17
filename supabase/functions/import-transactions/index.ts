@@ -3,25 +3,32 @@
 // POST /import-transactions - Parse and import bank exports (CSV, OFX)
 // SECURITY HARDENED VERSION
 
-import { 
+import {
   createHandler,
-  jsonResponse, 
-  errorResponse, 
-  validateString, 
+  jsonResponse,
+  errorResponse,
+  validateString,
   getClientIp,
   LedgerContext
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { detectFileFormat, parseFinancialFile, type FileFormat } from '../_shared/financial-file-parsers.ts'
 
 interface ImportRequest {
-  action: 'parse_preview' | 'import' | 'get_templates' | 'save_template'
-  format?: 'csv' | 'ofx' | 'qfx' | 'auto'
+  action: 'parse_preview' | 'import' | 'get_templates' | 'save_template' | 'get_sessions'
+  format?: 'csv' | 'ofx' | 'qfx' | 'camt053' | 'bai2' | 'mt940' | 'auto'
   data?: string
   mapping?: ColumnMapping
   template_id?: string
   template?: ImportTemplate
   transactions?: ParsedTransaction[]
   account_name?: string
+  file_name?: string
+  // Balance fields from parsed file (for verification)
+  opening_balance?: number
+  closing_balance?: number
+  currency?: string
+  auto_match?: boolean  // Run tiered auto-matching after import (default: true)
 }
 
 interface ColumnMapping { date: number | string; description: number | string; amount: number | string; debit?: number | string; credit?: number | string; balance?: number | string; reference?: number | string; account_name?: number | string; status?: number | string; date_format?: string }
@@ -37,7 +44,7 @@ const BANK_TEMPLATES: Record<string, ImportTemplate> = {
   'generic': { name: 'Generic CSV', bank_name: 'Unknown', format: 'csv', mapping: { date: 0, description: 1, amount: 2 }, skip_rows: 1 },
 }
 
-const VALID_ACTIONS = ['parse_preview', 'import', 'get_templates', 'save_template']
+const VALID_ACTIONS = ['parse_preview', 'import', 'get_templates', 'save_template', 'get_sessions']
 
 async function generateTxnHash(txn: ParsedTransaction): Promise<string> {
   const parts = [txn.date, txn.amount.toFixed(2), txn.description.substring(0, 100).toLowerCase().trim(), txn.reference || '', txn.account_name || '', txn.row_index?.toString() || '']
@@ -67,14 +74,33 @@ const handler = createHandler(
       case 'parse_preview': {
         if (!body.data) return errorResponse('No file data provided', 400, req)
         const fileContent = atob(body.data)
-        const format = body.format || detectFormat(fileContent)
-        
-        let parsed: ParsedTransaction[], headers: string[] = [], detectedTemplate: string | null = null
-        if (format === 'csv') { const result = parseCSV(fileContent, body.mapping); parsed = result.transactions; headers = result.headers; detectedTemplate = result.detectedTemplate }
-        else if (format === 'ofx' || format === 'qfx') parsed = parseOFX(fileContent)
-        else return errorResponse('Unsupported format', 400, req)
+        const detectedFormat = (body.format && body.format !== 'auto')
+          ? body.format as FileFormat
+          : detectFileFormat(fileContent)
 
-        return jsonResponse({ success: true, data: { format, detected_template: detectedTemplate, headers, row_count: parsed.length, preview: parsed.slice(0, 10), all_transactions: parsed, account_names: [...new Set(parsed.map(t => t.account_name).filter(Boolean))] } }, 200, req)
+        // CSV uses the existing template-aware parser
+        if (detectedFormat === 'csv') {
+          const result = parseCSV(fileContent, body.mapping)
+          return jsonResponse({ success: true, data: { format: 'csv', detected_template: result.detectedTemplate, headers: result.headers, row_count: result.transactions.length, preview: result.transactions.slice(0, 10), all_transactions: result.transactions, account_names: [...new Set(result.transactions.map(t => t.account_name).filter(Boolean))] } }, 200, req)
+        }
+
+        // All other formats (OFX, QFX, CAMT.053, BAI2, MT940) use the universal parser
+        if (detectedFormat === 'unknown') return errorResponse('Unsupported file format', 400, req)
+
+        const result = parseFinancialFile(fileContent, detectedFormat)
+        return jsonResponse({ success: true, data: {
+          format: result.format,
+          detected_template: null,
+          headers: [],
+          row_count: result.transactions.length,
+          preview: result.transactions.slice(0, 10),
+          all_transactions: result.transactions,
+          account_names: result.accounts,
+          currency: result.currency,
+          opening_balance: result.opening_balance,
+          closing_balance: result.closing_balance,
+          statement_date: result.statement_date,
+        } }, 200, req)
       }
 
       case 'import': {
@@ -89,7 +115,6 @@ const handler = createHandler(
         for (const acc of accounts || []) accountNameMap.set(acc.name.toLowerCase(), acc.id)
 
         // Ensure a stable "manual import" bank connection exists for this ledger.
-        // bank_transactions requires bank_connection_id, even for CSV imports.
         const providerAccountId = 'manual_import'
         const connectionName = body.account_name?.trim() || 'Manual Import'
         const linkedAccountId = accountNameMap.get(connectionName.toLowerCase()) || null
@@ -133,14 +158,41 @@ const handler = createHandler(
           bankConnectionId = insertedConn.id as string
         }
 
+        // ── Create import session ────────────────────────────────
+        const fileFormat = body.format || 'csv'
+        const { data: session } = await supabase
+          .from('import_sessions')
+          .insert({
+            ledger_id: ledger.id,
+            file_name: body.file_name || null,
+            file_format: fileFormat,
+            row_count: body.transactions.length,
+            opening_balance: body.opening_balance ?? null,
+            closing_balance: body.closing_balance ?? null,
+            currency: body.currency || 'USD',
+            status: 'pending',
+          } as any)
+          .select('id')
+          .single()
+
+        const sessionId = (session?.id as string) || null
+
+        // ── Import transactions ──────────────────────────────────
         let imported = 0, skipped = 0
         const errors: string[] = [], seenHashes = new Set<string>()
+        const importedIds: string[] = []
 
         for (let i = 0; i < body.transactions.length; i++) {
           const txn = body.transactions[i]
           txn.row_index = i
           try {
-            let txnHash = await generateTxnHash(txn)
+            // Use FITID/reference as primary fingerprint when available
+            let txnHash: string
+            if (txn.reference && txn.reference.length > 3) {
+              txnHash = `ref_${txn.reference}`
+            } else {
+              txnHash = await generateTxnHash(txn)
+            }
             if (seenHashes.has(txnHash)) txnHash = `${txnHash}_${i}`
             seenHashes.add(txnHash)
 
@@ -152,7 +204,7 @@ const handler = createHandler(
               .maybeSingle()
             if (existing) { skipped++; continue }
 
-            await supabase.from('bank_transactions').insert({
+            const { data: inserted } = await supabase.from('bank_transactions').insert({
               ledger_id: ledger.id,
               bank_connection_id: bankConnectionId,
               provider_transaction_id: txnHash,
@@ -162,21 +214,111 @@ const handler = createHandler(
               name: txn.description,
               merchant_name: extractMerchant(txn.description),
               reconciliation_status: 'unmatched',
+              import_session_id: sessionId,
               raw_data: {
-                source: 'csv_import',
+                source: 'file_import',
+                format: fileFormat,
                 account_name: txn.account_name,
                 reference: txn.reference,
                 row_index: txn.row_index,
                 ...txn.raw_data,
               },
-            } as any)
+            } as any).select('id').single()
+
             imported++
+            if (inserted?.id) importedIds.push(inserted.id as string)
           } catch (err: any) { errors.push(`Row ${i + 1}: ${err.message}`) }
         }
 
-        supabase.from('audit_log').insert({ ledger_id: ledger.id, action: 'import_transactions', entity_type: 'batch', actor_type: 'api', ip_address: getClientIp(req), request_body: { imported, skipped, errors: errors.length } }).then(() => {}).catch(() => {})
+        // ── Balance verification ─────────────────────────────────
+        let balanceVerified: boolean | null = null
+        let computedClosing: number | null = null
+        let balanceDiscrepancy: number | null = null
 
-        return jsonResponse({ success: true, data: { imported, skipped, errors: errors.slice(0, 10) } }, 200, req)
+        if (typeof body.opening_balance === 'number' && typeof body.closing_balance === 'number') {
+          const txnSum = body.transactions.reduce((sum, t) => sum + (t.amount || 0), 0)
+          computedClosing = Math.round((body.opening_balance + txnSum) * 100) / 100
+          balanceDiscrepancy = Math.round((computedClosing - body.closing_balance) * 100) / 100
+          balanceVerified = Math.abs(balanceDiscrepancy) < 0.02 // ±$0.01 tolerance
+        }
+
+        // ── Auto-match imported transactions ─────────────────────
+        let matched = 0
+        const shouldAutoMatch = body.auto_match !== false // default true
+
+        if (shouldAutoMatch && importedIds.length > 0) {
+          for (const txnId of importedIds) {
+            try {
+              const { data: matchResult } = await supabase.rpc(
+                'auto_match_bank_aggregator_transaction',
+                { p_bank_aggregator_txn_id: txnId }
+              )
+              const result = typeof matchResult === 'object' ? matchResult : null
+              if ((result as any)?.matched) matched++
+            } catch {
+              // Non-fatal — transaction stays unmatched
+            }
+          }
+        }
+
+        // ── Update import session ────────────────────────────────
+        if (sessionId) {
+          await supabase
+            .from('import_sessions')
+            .update({
+              imported_count: imported,
+              skipped_count: skipped,
+              matched_count: matched,
+              unmatched_count: imported - matched,
+              computed_closing_balance: computedClosing,
+              balance_verified: balanceVerified,
+              balance_discrepancy: balanceDiscrepancy,
+              status: errors.length > 0 && imported === 0 ? 'failed' : 'imported',
+              error: errors.length > 0 ? errors.slice(0, 5).join('; ') : null,
+              completed_at: new Date().toISOString(),
+            } as any)
+            .eq('id', sessionId)
+        }
+
+        // Audit log (fire-and-forget)
+        void supabase.from('audit_log').insert({
+          ledger_id: ledger.id,
+          action: 'import_transactions',
+          entity_type: 'batch',
+          actor_type: 'api',
+          ip_address: getClientIp(req),
+          request_body: { imported, skipped, matched, errors: errors.length, session_id: sessionId, balance_verified: balanceVerified },
+        } as any)
+
+        return jsonResponse({
+          success: true,
+          data: {
+            session_id: sessionId,
+            imported,
+            skipped,
+            matched,
+            unmatched: imported - matched,
+            errors: errors.slice(0, 10),
+            balance: balanceVerified !== null ? {
+              opening: body.opening_balance,
+              closing_expected: body.closing_balance,
+              closing_computed: computedClosing,
+              discrepancy: balanceDiscrepancy,
+              verified: balanceVerified,
+            } : null,
+          },
+        }, 200, req)
+      }
+
+      case 'get_sessions': {
+        const { data: sessions } = await supabase
+          .from('import_sessions')
+          .select('*')
+          .eq('ledger_id', ledger.id)
+          .order('created_at', { ascending: false })
+          .limit(50)
+
+        return jsonResponse({ success: true, data: sessions || [] }, 200, req)
       }
 
       case 'save_template': {

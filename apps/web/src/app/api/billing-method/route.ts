@@ -7,6 +7,11 @@ import {
   fetchProcessorIdentity,
   fetchProcessorPaymentInstrumentsForIdentity,
 } from '@/lib/processor'
+import {
+  isStripeConfigured,
+  findOrCreateCustomer,
+  createBillingPortalSession,
+} from '@/lib/stripe'
 
 interface BillingMethodRequest {
   action: 'status' | 'create_setup_link' | 'save_billing_method'
@@ -32,6 +37,8 @@ interface OrganizationSettings {
     last_setup_state?: string | null
     last_setup_state_expires_at?: string | null
     last_updated_at?: string | null
+
+    stripe_customer_id?: string | null
   }
   [key: string]: unknown
 }
@@ -289,6 +296,47 @@ export const POST = createApiHandler(
     }
 
     if (body.action === 'create_setup_link') {
+      // When Stripe is the payment provider, redirect to Stripe Billing Portal
+      // where the customer can manage their payment methods directly.
+      if (isStripeConfigured() && (process.env.PAYMENT_PROVIDER || '').toLowerCase().trim() === 'stripe') {
+        try {
+          const supabase = await createClient()
+          const { data: { user: authUser } } = await supabase.auth.getUser()
+          const orgSettings = organization.settings || {}
+          const billingObj = isJsonRecord(orgSettings.billing) ? orgSettings.billing : {}
+          const existingCustomerId = typeof billingObj.stripe_customer_id === 'string'
+            ? billingObj.stripe_customer_id
+            : null
+
+          const customer = await findOrCreateCustomer({
+            email: authUser?.email || '',
+            name: organization.name,
+            organizationId: organization.id,
+            existingCustomerId,
+          })
+
+          if (customer.id !== existingCustomerId) {
+            await saveBillingSettings(organization.id, {
+              stripe_customer_id: customer.id,
+            } as Partial<OrganizationSettings['billing']>)
+          }
+
+          const appUrl = getAppUrl()
+          const session = await createBillingPortalSession({
+            customerId: customer.id,
+            returnUrl: `${appUrl}/billing?billing_setup=success`,
+          })
+
+          return NextResponse.json({ success: true, data: { url: session.url } })
+        } catch (error: unknown) {
+          return NextResponse.json(
+            { error: error instanceof Error ? error.message : 'Failed to create billing setup link' },
+            { status: 500 }
+          )
+        }
+      }
+
+      // Finix onboarding flow (legacy)
       const onboardingFormId = normalizeOnboardingFormId(
         process.env.PROCESSOR_BILLING_ONBOARDING_FORM_ID ||
           process.env.PROCESSOR_ONBOARDING_FORM_ID ||

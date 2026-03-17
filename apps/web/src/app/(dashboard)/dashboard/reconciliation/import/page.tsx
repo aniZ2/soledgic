@@ -24,6 +24,11 @@ interface ParseResult {
   row_count: number
   preview: ParsedTransaction[]
   all_transactions: ParsedTransaction[]
+  account_names?: string[]
+  currency?: string
+  opening_balance?: number
+  closing_balance?: number
+  statement_date?: string
 }
 
 interface ImportResult {
@@ -127,8 +132,9 @@ export default function ImportTransactionsPage() {
         if (data.success) {
           setParseResult(data.data)
           
-          // Auto-set mapping if template detected
-          if (data.data.detected_template && data.data.detected_template !== 'generic') {
+          // Non-CSV formats (OFX, CAMT, BAI2, MT940) skip column mapping
+          const fmt = data.data.format || ''
+          if (fmt !== 'csv' || (data.data.detected_template && data.data.detected_template !== 'generic')) {
             setStep('preview')
           } else {
             setStep('map')
@@ -206,7 +212,7 @@ export default function ImportTransactionsPage() {
 
         <h1 className="text-3xl font-bold text-foreground">Import Bank Transactions</h1>
         <p className="text-muted-foreground mt-1">
-          Upload a CSV or OFX file from your bank
+          Upload a bank export file
         </p>
       </div>
 
@@ -253,12 +259,12 @@ export default function ImportTransactionsPage() {
                 Drop your bank export here
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Supports CSV, OFX, and QFX formats
+                Supports CSV, OFX, QFX, CAMT.053, BAI2, and MT940
               </p>
               <label className="inline-block">
                 <input
                   type="file"
-                  accept=".csv,.ofx,.qfx"
+                  accept=".csv,.ofx,.qfx,.xml,.bai,.bai2,.txt,.sta,.mt940"
                   onChange={handleFileSelect}
                   className="hidden"
                 />

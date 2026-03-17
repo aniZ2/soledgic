@@ -66,6 +66,9 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
+        "npm:@stryker-mutator/core@^9.6.0",
+        "npm:@stryker-mutator/typescript-checker@^9.6.0",
+        "npm:@stryker-mutator/vitest-runner@^9.6.0",
         "npm:@supabase/supabase-js@^2.98.0",
         "npm:@vitest/coverage-v8@^4.0.18",
         "npm:dotenv@^17.3.1",
