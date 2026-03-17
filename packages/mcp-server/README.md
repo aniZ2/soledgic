@@ -20,7 +20,7 @@ Or launch it via the repo wrapper:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SOLEDGIC_API_KEY` | Yes | — | API key (`sk_live_*` or `sk_test_*`) |
+| `SOLEDGIC_API_KEY` | Yes | — | API key (`slk_live_*` or `slk_test_*`) |
 | `SOLEDGIC_BASE_URL` | No | `https://api.soledgic.com/v1` | API base URL |
 | `SOLEDGIC_ALLOW_WRITES` | No | `false` | Enable write operations |
 | `SOLEDGIC_ALLOW_LIVE_WRITES` | No | `false` | Enable writes with live keys |
@@ -46,7 +46,7 @@ Run `./scripts/run-soledgic-mcp.sh --help` for the full contract.
 This server handles financial operations. Multiple safety gates are enforced:
 
 1. **Write gate** — All mutating tools blocked unless `SOLEDGIC_ALLOW_WRITES=true`
-2. **Live gate** — Writes with `sk_live_*` keys require `SOLEDGIC_ALLOW_LIVE_WRITES=true`
+2. **Live gate** — Writes with `slk_live_*` keys require `SOLEDGIC_ALLOW_LIVE_WRITES=true`
 3. **Confirmation gate** — Every write tool requires `confirm: true` in the call arguments
 4. **Idempotency** — Financial write tools require a unique `idempotency_key`
 5. **Tool allowlist** — Restrict available tools via `SOLEDGIC_ALLOWED_TOOLS`

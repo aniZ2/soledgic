@@ -409,7 +409,7 @@ function errorResult(text: string, auditPartial?: Partial<AuditEntry>) {
 }
 
 function isLiveKey(key: string): boolean {
-  return key.startsWith('sk_live_')
+  return key.startsWith('slk_live_') || key.startsWith('sk_live_')
 }
 
 function getAmountFromArgs(args: Record<string, unknown>): number | null {
@@ -492,10 +492,10 @@ export function registerTools(server: Server) {
         )
       }
 
-      // ── Gate 2: SOLEDGIC_ALLOW_LIVE_WRITES (for sk_live_* keys) ──
+      // ── Gate 2: SOLEDGIC_ALLOW_LIVE_WRITES (for slk_live_* keys) ──
       if (isMutatingCall && isLiveKey(apiKey) && !allowLiveWrites) {
         return errorResult(
-          'Live writes are disabled. You are using a live API key (sk_live_*). Set SOLEDGIC_ALLOW_LIVE_WRITES=true to enable writes against production.',
+          'Live writes are disabled. You are using a live API key (slk_live_*). Set SOLEDGIC_ALLOW_LIVE_WRITES=true to enable writes against production.',
           { ...auditBase, error: 'live writes disabled' },
         )
       }

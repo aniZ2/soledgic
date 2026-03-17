@@ -13,9 +13,9 @@ if (!apiKey) {
 }
 
 // Validate key format
-if (!/^sk_(live|test)_[a-zA-Z0-9]+$/.test(apiKey)) {
+if (!/^slk_(live|test)_[a-zA-Z0-9]+$/.test(apiKey) && !/^sk_(live|test)_[a-zA-Z0-9]+$/.test(apiKey)) {
   process.stderr.write(
-    'FATAL: SOLEDGIC_API_KEY must match sk_live_* or sk_test_* format.\n',
+    'FATAL: SOLEDGIC_API_KEY must match slk_live_* or slk_test_* format.\n',
   )
   process.exit(1)
 }
@@ -36,7 +36,7 @@ const allowedTools = allowedToolsRaw
 
 // ─── Security summary (stderr only) ─────────────────────────────
 
-const isLive = apiKey.startsWith('sk_live_')
+const isLive = apiKey.startsWith('slk_live_') || apiKey.startsWith('sk_live_')
 process.stderr.write(
   JSON.stringify({
     event: 'mcp_server_start',
