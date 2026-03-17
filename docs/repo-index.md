@@ -436,7 +436,8 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | **webhook-signing.ts** | buildWebhookHeaders, signWebhookPayload, verifyWebhookSignature | webhooks, process-webhooks | — (crypto only) |
 | **webhook-management.ts** | buildWebhookReplayUpdate, normalizeWebhookDelivery | webhooks | webhook_deliveries |
 | **processor-webhook-adapters.ts** | getProcessorWebhookAdapter, NormalizedProcessorEvent, ProcessorWebhookInboxRow | process-processor-inbox | processor_webhook_inbox |
-| **financial-file-parsers.ts** | parseFinancialFile (OFX, CAMT.053, BAI2, MT940) | import-transactions | — |
+| **financial-file-parsers.ts** | parseFinancialFile (OFX, CAMT.053, BAI2, MT940), normalizeMerchant | import-transactions | — |
+| **transaction-graph.ts** | createLink, getTransactionGraph, reconstructPayoutBatch, autoLinkTransaction | checkout, refund, execute-payout, reconcile | transaction_links, payout_batches, payout_batch_items |
 | **error-tracking.ts** | scrubPII, captureException (Sentry HTTP envelope) | utils.ts | — |
 
 ---
@@ -474,13 +475,17 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 - **contractor_payments** — 1099-reportable payments
 
 ### Reconciliation & Banking
-- **bank_matches** — Ledger-to-bank transaction matches
+- **bank_matches** — Ledger-to-bank transaction matches (with confidence scores)
 - **reconciliation_snapshots** — Frozen reconciliation state with integrity hash
-- **bank_connections** — Aggregator connections (Teller)
-- **bank_aggregator_transactions** — Synced bank feed transactions (added post-baseline)
+- **bank_connections** — Bank connection state (manual imports, future aggregators)
+- **bank_aggregator_transactions** — Synced bank feed transactions
 - **bank_statement_lines** — Manual CSV-imported bank lines
-- **bank_transactions** — Legacy reconciliation table
+- **bank_transactions** — Imported bank transactions (CSV, OFX, CAMT, BAI2, MT940)
 - **auto_match_rules** — Rule-based auto-matching config
+- **import_sessions** — Tracks file uploads with row counts, balance verification, match progress
+- **transaction_links** — Directed graph edges between transactions (refund→sale, fee→charge, charge→payout)
+- **payout_batches** — Reconstructed payout batches (gross/fees/refunds/net + bank match)
+- **payout_batch_items** — Individual charges/refunds/fees within a payout batch
 
 ### Webhooks
 - **webhook_endpoints** — Registered webhook URLs with secrets
@@ -528,7 +533,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 **Wallets:** wallet_deposit_atomic, wallet_withdraw_atomic, wallet_transfer_atomic
 **Tax:** compute_tax_year_summaries, generate_1099_documents, calculate_1099_totals, export_1099_summary, populate_tax_document_withholding
 **Reports:** calculate_trial_balance, create_trial_balance_snapshot, export_general_ledger, export_profit_loss, export_trial_balance, account_balances_as_of, account_balances_for_period, calculate_runway, diagnose_balance_sheet
-**Reconciliation:** auto_match_bank_aggregator_transaction, auto_match_bank_lines
+**Reconciliation:** auto_match_bank_aggregator_transaction (3-pass tiered matching), get_transaction_graph (recursive traversal), reconstruct_payout_batch (batch→bank deposit matching), _record_match (helper)
 **Periods:** close_accounting_period, is_period_closed, check_period_lock
 **Health:** run_ledger_health_check, run_all_health_checks, check_balance_equation, check_balance_invariants, check_double_entry_balance, verify_ledger_integrity, run_money_invariants
 **Webhooks:** get_pending_webhooks, mark_webhook_delivered, mark_webhook_failed, queue_webhook, rotate_webhook_secret
@@ -1426,7 +1431,8 @@ Deno tests: 447 tests across 24 test files (supabase/functions/_shared/__tests__
   payment-provider_test.ts (16 tests) — SVC_PAYMENT_PROVIDER unit tests
   frozen-statements_test.ts (46 tests) — frozen statement generation/retrieval
   import-transactions_test.ts (58 tests) — import engine parsing/validation
-  financial-file-parsers_test.ts (27 tests) — OFX, CAMT.053, BAI2, MT940 parsers
+  financial-file-parsers_test.ts (34 tests) — OFX, CAMT.053, BAI2, MT940 parsers + merchant normalization
+  transaction-graph_test.ts (10 tests) — graph link types, auto-linking logic
   preflight-authorization_test.ts (31 tests) — preflight auth flows
   send-statements_test.ts (28 tests) — statement email delivery
   generate-pdf_test.ts (22 tests) — PDF generation
