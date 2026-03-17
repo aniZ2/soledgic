@@ -649,7 +649,7 @@ export async function recordRefundResponse(
       void supabase.rpc('update_creator_risk_score', {
         p_ledger_id: ledger.id,
         p_creator_id: String(processorRefundCreatorId),
-      }).catch(() => {})
+      }).then(() => {}, () => {})
     }
 
     return resourceOk({
@@ -805,7 +805,7 @@ export async function recordRefundResponse(
     void supabase.rpc('update_creator_risk_score', {
       p_ledger_id: ledger.id,
       p_creator_id: String(ledgerRefundCreatorId),
-    }).catch(() => {})
+    }).then(() => {}, () => {})
   }
 
   return resourceOk({

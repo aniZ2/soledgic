@@ -65,7 +65,7 @@ Deno.test('checkout: split uses default 80/20 when no overrides exist', async ()
         }
       }
       if (table === 'audit_log') {
-        return { insert() { return Promise.resolve({ error: null }) } }
+        const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
       }
       throw new Error(`Unexpected table: ${table}`)
     },
@@ -134,7 +134,7 @@ Deno.test('checkout: split uses product_splits override when available', async (
         }
       }
       if (table === 'audit_log') {
-        return { insert() { return Promise.resolve({ error: null }) } }
+        const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
       }
       throw new Error(`Unexpected table: ${table}`)
     },
@@ -206,7 +206,7 @@ Deno.test('checkout: split uses ledger default_split_percent setting', async () 
         }
       }
       if (table === 'audit_log') {
-        return { insert() { return Promise.resolve({ error: null }) } }
+        const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
       }
       throw new Error(`Unexpected table: ${table}`)
     },
@@ -360,7 +360,8 @@ Deno.test('payout: returns 409 on idempotency conflict', async () => {
       throw new Error(`Unexpected RPC: ${fn}`)
     },
     from() {
-      return { insert() { return Promise.resolve({ error: null }) } }
+      const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }
+      return chain
     },
   } as any
 
@@ -393,7 +394,7 @@ Deno.test('payout: exhausts retries on persistent transient errors', async () =>
       throw new Error(`Unexpected RPC: ${fn}`)
     },
     from() {
-      return { insert() { return Promise.resolve({ error: null }) } }
+      const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
     },
   } as any
 
@@ -427,7 +428,7 @@ Deno.test('payout: maps insufficient_balance status to 400 with details', async 
       throw new Error(`Unexpected RPC: ${fn}`)
     },
     from() {
-      return { insert() { return Promise.resolve({ error: null }) } }
+      const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
     },
   } as any
 
@@ -459,9 +460,7 @@ Deno.test('payout: maps duplicate reference_id to 409', async () => {
       throw new Error(`Unexpected RPC: ${fn}`)
     },
     from() {
-      return {
-        insert() { return Promise.resolve({ error: null }) },
-      }
+      const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
     },
   } as any
 
@@ -504,7 +503,7 @@ Deno.test('payout: maps creator_not_found RPC status to 404', async () => {
       throw new Error(`Unexpected RPC: ${fn}`)
     },
     from() {
-      return { insert() { return Promise.resolve({ error: null }) } }
+      const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }; return chain
     },
   } as any
 

@@ -161,9 +161,13 @@ const allMigrationSql = migrations
   .map((f) => readFileSync(join(migrationsDir, f), 'utf-8'))
   .join('\n')
 const createTableRegex = /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(?:public\.)?(\w+)/gi
+const createViewRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF NOT EXISTS\s+)?(?:public\.)?(\w+)/gi
 const tablesInMigrations = new Set()
 let ctMatch
 while ((ctMatch = createTableRegex.exec(allMigrationSql)) !== null) {
+  tablesInMigrations.add(ctMatch[1].toLowerCase())
+}
+while ((ctMatch = createViewRegex.exec(allMigrationSql)) !== null) {
   tablesInMigrations.add(ctMatch[1].toLowerCase())
 }
 

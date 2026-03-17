@@ -437,6 +437,7 @@ export interface LedgerContext {
   id: string
   business_name: string
   ledger_mode: string
+  livemode: boolean
   status: string
   settings: any
   organization_id?: string

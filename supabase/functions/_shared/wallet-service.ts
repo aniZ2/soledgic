@@ -1212,7 +1212,7 @@ export async function purchaseFromWalletByIdResponse(
   void supabase.rpc('update_creator_risk_score', {
     p_ledger_id: ledger.id,
     p_creator_id: creatorId,
-  }).catch(() => {})
+  }).then(() => {}, () => {})
 
   // Step 3: Create transaction graph edge (purchase → sale)
   const { autoLinkTransaction } = await import('./transaction-graph.ts')

@@ -319,6 +319,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 |---|---|---|---|---|
 | `payouts` | createHandler (API key) | POST | payout-service.ts | process_payout_atomic |
 | `execute-payout` | createHandler (API key) | POST | payment-provider.ts | Finix transfer via CardProcessorRail, NACHA generation |
+| `platform-payouts` | createHandler (API key) + admin-only | POST | mercury-client.ts | Mercury ACH — platform → org bank transfers |
 | `scheduled-payouts` | Bearer service-role / cron | POST | (inline, cron) | Batch payout execution on schedule |
 
 ### Participants & Identity
@@ -420,6 +421,8 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | `security-alerts` | createHandler (API key) | POST | (inline) | security_alerts table |
 | `send-breach-alert` | createHandler (API key) | POST | (inline) | Resend email for breach alerts |
 | `configure-alerts` | createHandler (API key) | POST | (inline) | alert_configurations |
+| `processor-reconciliation` | x-cron-secret / service-role | POST | (inline) | transactions vs processor_events comparison |
+| `release-expired-holds` | x-cron-secret (cron) | POST | (inline) | entries, escrow_releases — auto-release elapsed holds |
 
 ### Billing & Settings
 
@@ -461,6 +464,9 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | **processor-webhook-adapters.ts** | getProcessorWebhookAdapter, NormalizedProcessorEvent, ProcessorWebhookInboxRow | process-processor-inbox | processor_webhook_inbox |
 | **financial-file-parsers.ts** | parseFinancialFile (OFX, CAMT.053, BAI2, MT940), normalizeMerchant | import-transactions | — |
 | **transaction-graph.ts** | createLink, getTransactionGraph, getPayoutBatch (ledger-scoped), reconstructPayoutBatch, autoLinkTransaction | checkout, refund, execute-payout, reconcile | transaction_links (RLS: service_role), payout_batches (RLS: service_role), payout_batch_items (RLS: service_role) |
+| **capabilities.ts** | loadOrgCapabilities, getDailyPayoutTotal, checkPayoutAllowed, getDailyVolume, checkDailyVolumeAllowed | payout-service, record-sale | organizations, transactions |
+| **mercury-client.ts** | sendACH, getTransactionStatus, createRecipient, getRecipient, listRecipients | platform-payouts, execute-payout | — (Mercury API external) |
+| **risk-engine.ts** | recordRiskSignal, checkRefundRate, checkRapidTopupWithdraw, checkLargeTransaction | record-sale, refund-service, payout-service, wallet-service, fraud | risk_signals, organizations (capabilities patch) |
 | **error-tracking.ts** | scrubPII, captureException (Sentry HTTP envelope) | utils.ts | — |
 
 ---
@@ -606,6 +612,9 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Reconciliation import | `/dashboard/reconciliation/import` | import-bank-statement |
 | Contractors | `/dashboard/contractors` | manage-contractors |
 | Compliance | `/dashboard/compliance` | compliance |
+| KYC/KYB Review (admin) | `/dashboard/admin/compliance` | organizations (kyc_status), compliance_documents |
+| Risk Monitor (admin) | `/dashboard/admin/risk` | risk_signals, org_risk_summary, connected_accounts |
+| Security Events (admin) | `/dashboard/admin/security-events` | security_alerts, audit_log (cross_ledger_violation) |
 | Reports hub | `/dashboard/reports` | — |
 | P&L report | `/dashboard/reports/profit-loss` | profit-loss |
 | Trial balance | `/dashboard/reports/trial-balance` | trial-balance |
@@ -645,6 +654,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Security | `/settings/security` | — |
 | Splits | `/settings/splits` | manage-splits |
 | Team | `/settings/team` | team API |
+| Verification | `/settings/verification` | KYC/KYB document upload, organizations.kyc_status |
 | Audit log | `/settings/audit-log` | audit_log queries |
 
 ### Creator Portal (`apps/web/src/app/(creator-portal)/creator/`)

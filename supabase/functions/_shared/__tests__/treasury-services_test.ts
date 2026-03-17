@@ -74,11 +74,8 @@ Deno.test('processPayoutResponse: retries transient RPC failures before succeedi
       throw new Error(`Unexpected RPC in payout retry test: ${fn}`)
     },
     from() {
-      return {
-        insert() {
-          return Promise.resolve({ error: null })
-        },
-      }
+      const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }
+      return chain
     },
   } as any
 
