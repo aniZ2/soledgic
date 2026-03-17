@@ -915,7 +915,7 @@ Known failure paths **not covered** by this matrix (future work):
 
 | Gap | Reason |
 |-----|--------|
-| Bank aggregator feed staleness | No stale-detection mechanism exists; bank feed goes silent without alert |
+| Bank import reconciliation gap | No alert when unmatched bank transactions exceed age threshold; relies on health-check #5 |
 | Dispute hold RPC failure | Error currently swallowed in `process-processor-inbox` dispute handler; no retry or alert |
 | SSRF DNS rebinding timing window | Hard to simulate deterministically; `process-webhooks` validates DNS at delivery time but a fast rebind could theoretically slip through |
 | Partial NACHA file upload | `execute-payout` manual rail writes to storage bucket; storage failure mid-write is not tested |

@@ -37,7 +37,7 @@ describe('Bank Feed Amount Mismatch', () => {
       amount: 10000, // $100.00
     })
 
-    // Simulate bank feed with different amount
+    // Simulate bank import with different amount
     const bankTx = {
       id: 'bank_001',
       amount: 9950, // $99.50 (bank may have deducted fee)
@@ -111,7 +111,7 @@ describe('Duplicate Bank Entries', () => {
 
 ### Scenario 1.3: Missing Bank Entries
 
-**Condition:** Ledger shows transactions that never appear in bank feed.
+**Condition:** Ledger shows transactions that never appear in bank import.
 
 **Expected Behavior:**
 - Flag as "unreconciled" indefinitely
@@ -128,7 +128,7 @@ describe('Missing Bank Entries', () => {
     await ledger.recordSale({ referenceId: 'has_bank_match', ... })
     await ledger.recordSale({ referenceId: 'no_bank_match', ... })
 
-    // Import partial bank feed (missing one)
+    // Import partial bank import (missing one)
     await ledger.importBankFeed([
       { id: 'bank_1', amount: ..., ... }
       // Missing entry for 'no_bank_match'

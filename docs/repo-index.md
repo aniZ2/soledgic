@@ -6,7 +6,7 @@ type: reference
 
 # Soledgic Repository Index
 
-Creator economy payment platform. Monorepo: Next.js web app + Supabase Edge Functions + Finix payment processor. Double-entry ledger with 71 edge function dirs (70 services + _shared), 90+ tables, 150 SDK methods.
+Creator economy payment platform. Monorepo: Next.js web app + Supabase Edge Functions + Stripe payment processor (Finix legacy). Double-entry ledger with 68 edge function dirs (67 services + _shared), 90+ tables, 150 SDK methods.
 
 **Domains:** Checkout, Sales, Refunds, Reversals, Payouts, Wallets, Tax/1099, Compliance, Reconciliation, Invoices, Webhooks, Billing
 
@@ -266,7 +266,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 
 **Key proxy paths:**
 - `/v1/*` — public API proxy (`apps/web/src/app/api/v1/[[...path]]/route.ts`), injects `Authorization` from anon key
-- `/api/ledger-functions/[[...endpoint]]` — internal dashboard proxy, allowlisted endpoints, injects service-role auth
+- `/api/ledger-functions/[[...endpoint]]` — internal dashboard proxy, allowlisted endpoints, injects Supabase anon key + internal function token auth
 
 ---
 
