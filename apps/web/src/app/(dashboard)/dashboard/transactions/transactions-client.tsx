@@ -32,7 +32,7 @@ interface TransactionsClientProps {
   transactions: Transaction[]
 }
 
-const TRANSACTION_TYPES = ['sale', 'income', 'payout', 'refund', 'transfer', 'adjustment', 'deposit', 'withdrawal']
+const TRANSACTION_TYPES = ['sale', 'income', 'payout', 'platform_payout', 'refund', 'transfer', 'adjustment', 'deposit', 'withdrawal']
 const STATUSES = ['completed', 'pending', 'voided', 'reversed', 'draft']
 
 export function TransactionsClient({ ledger, transactions }: TransactionsClientProps) {

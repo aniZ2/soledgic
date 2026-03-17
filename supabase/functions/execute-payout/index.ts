@@ -13,13 +13,14 @@ import {
   createAuditLog
 } from '../_shared/utils.ts'
 import { getPaymentProvider } from '../_shared/payment-provider.ts'
+import { sendACH, getTransactionStatus as getMercuryTxnStatus, type SendACHInput } from '../_shared/mercury-client.ts'
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 // Public rail names are whitelabeled.
-type PayoutRail = 'card' | 'wise' | 'manual' | 'crypto'
+type PayoutRail = 'card' | 'ach' | 'wise' | 'manual' | 'crypto'
 
 interface PayoutRequest {
   action: 'execute' | 'batch_execute' | 'get_status' | 'configure_rail' | 'list_rails' | 'generate_batch_file'
@@ -414,6 +415,91 @@ class DisabledAliasRail implements PaymentRail {
 }
 
 // ============================================================================
+// MERCURY ACH RAIL (direct bank transfer via Mercury API)
+// ============================================================================
+
+class MercuryACHRail implements PaymentRail {
+  name: PayoutRail = 'ach'
+
+  private mapMercuryStatus(status: string | undefined): PayoutResult['status'] {
+    const s = String(status || '').toLowerCase()
+    if (s === 'sent' || s === 'completed') return 'completed'
+    if (s === 'failed' || s === 'cancelled') return 'failed'
+    if (s === 'pending') return 'pending'
+    return 'processing'
+  }
+
+  async execute(payout: CreatorPayoutDetails, _config: RailConfig): Promise<PayoutResult> {
+    // Mercury recipient ID must be stored in the creator's payout method
+    const mercuryRecipientId = payout.payout_method?.account_id || null
+    if (!mercuryRecipientId) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: 'No Mercury recipient configured for this creator. Set up bank account first.',
+      }
+    }
+
+    const result = await sendACH({
+      recipientId: mercuryRecipientId,
+      amountDollars: payout.amount, // amount is already in major units
+      description: `Payout to ${payout.creator_name} (${payout.payout_id})`,
+      idempotencyKey: `payout_${payout.payout_id}`,
+    })
+
+    if (!result.success) {
+      return {
+        success: false,
+        payout_id: payout.payout_id,
+        rail: this.name,
+        status: 'failed',
+        error: result.error || 'Mercury ACH transfer failed',
+      }
+    }
+
+    return {
+      success: true,
+      payout_id: payout.payout_id,
+      rail: this.name,
+      external_id: result.transactionId,
+      status: this.mapMercuryStatus(result.status),
+      metadata: { mercury_transaction_id: result.transactionId },
+    }
+  }
+
+  async getStatus(externalId: string, _config: RailConfig): Promise<PayoutResult> {
+    const txn = await getMercuryTxnStatus(externalId)
+    if (!txn) {
+      return {
+        success: false,
+        payout_id: '',
+        rail: this.name,
+        external_id: externalId,
+        status: 'failed',
+        error: 'Mercury transaction not found',
+      }
+    }
+
+    return {
+      success: true,
+      payout_id: '',
+      rail: this.name,
+      external_id: externalId,
+      status: this.mapMercuryStatus(txn.status),
+    }
+  }
+
+  validateConfig(_config: RailConfig): { valid: boolean; errors: string[] } {
+    const errors: string[] = []
+    if (!Deno.env.get('MERCURY_API_KEY')?.trim()) errors.push('MERCURY_API_KEY required')
+    if (!Deno.env.get('MERCURY_ACCOUNT_ID')?.trim()) errors.push('MERCURY_ACCOUNT_ID required')
+    return { valid: errors.length === 0, errors }
+  }
+}
+
+// ============================================================================
 // RAIL REGISTRY
 // ============================================================================
 
@@ -421,6 +507,7 @@ const ALLOW_LEGACY_MANUAL_RAIL_ALIASES =
   (Deno.env.get('ALLOW_LEGACY_MANUAL_RAIL_ALIASES') || '').trim().toLowerCase() === 'true'
 
 const RAILS: Record<PayoutRail, PaymentRail> = {
+  ach: new MercuryACHRail(),
   card: new CardProcessorRail(),
   manual: new ManualBankFileRail('manual'),
   wise: ALLOW_LEGACY_MANUAL_RAIL_ALIASES
@@ -472,10 +559,11 @@ function pickDefaultRail(configs: RailConfig[]): PayoutRail {
       .map(c => normalizeRail(String((c as any).rail)) )
       .filter(Boolean) as PayoutRail[]
   )
-  if (enabledRails.has('card')) return 'card'
+  if (enabledRails.has('ach')) return 'ach'
   if (enabledRails.has('manual')) return 'manual'
-  // Card processor is the active default integration when no explicit rail is configured.
-  return 'card'
+  if (enabledRails.has('card')) return 'card'
+  // Mercury ACH is the default payout rail.
+  return 'ach'
 }
 
 // Shared-merchant invariant: do not merge per-organization processor settings into rails.

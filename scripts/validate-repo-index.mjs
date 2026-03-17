@@ -630,6 +630,24 @@ const WIRING_CHECKS = [
     file: 'supabase/functions/_shared/payout-service.ts',
     pattern: 'min_payout_delay_days',
   },
+  // Mercury ACH rail registered in execute-payout
+  {
+    label: 'Mercury ACH rail in payout executor',
+    file: 'supabase/functions/execute-payout/index.ts',
+    pattern: 'MercuryACHRail',
+  },
+  // Mercury client imported in execute-payout
+  {
+    label: 'Mercury client imported in execute-payout',
+    file: 'supabase/functions/execute-payout/index.ts',
+    pattern: 'mercury-client.ts',
+  },
+  // Platform payouts endpoint in proxy allowlist
+  {
+    label: 'platform-payouts in proxy allowlist',
+    file: 'apps/web/src/app/api/ledger-functions/[[...endpoint]]/route.ts',
+    pattern: 'platform-payouts',
+  },
 ]
 
 let wiringPasses = 0

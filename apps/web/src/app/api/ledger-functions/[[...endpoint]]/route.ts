@@ -44,6 +44,7 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'manage-contractors',
   'manage-bank-accounts',
   'processor-reconciliation',
+  'platform-payouts',
 ])
 
 const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
@@ -60,6 +61,7 @@ const OWNER_ADMIN_ONLY_ENDPOINT_ROOTS = new Set([
   'fraud',
   'manage-contractors',
   'processor-reconciliation',
+  'platform-payouts',
 ])
 
 const STEP_UP_ENDPOINT_ROOTS = new Set([
