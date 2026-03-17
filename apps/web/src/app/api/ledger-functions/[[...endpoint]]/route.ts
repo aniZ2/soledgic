@@ -280,7 +280,14 @@ async function proxyLedgerFunction(
     )
   }
 
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseAnonKey) {
+    return NextResponse.json({ error: 'Supabase anon key is not configured' }, { status: 503 })
+  }
+
   const headers = new Headers()
+  headers.set('Authorization', `Bearer ${supabaseAnonKey}`)
+  headers.set('apikey', supabaseAnonKey)
   headers.set('x-soledgic-internal-token', internalToken)
   headers.set('x-ledger-id', ledgerId)
   headers.set('Soledgic-Version', DEFAULT_SOLEDGIC_API_VERSION)
