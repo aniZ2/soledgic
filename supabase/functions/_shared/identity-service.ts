@@ -60,6 +60,19 @@ export async function linkParticipantToUser(
   linkSource = 'provisioned',
   metadata: Record<string, unknown> = {},
 ): Promise<{ error: string | null }> {
+  // Cross-ledger guard: verify the participant account belongs to this ledger
+  const { data: participantAccount } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('ledger_id', ledger.id)
+    .eq('entity_id', participantId)
+    .eq('entity_type', 'creator')
+    .maybeSingle()
+
+  if (!participantAccount) {
+    return { error: 'Participant does not belong to this ledger' }
+  }
+
   let membershipId: string | null = null
 
   if (ledger.organization_id) {

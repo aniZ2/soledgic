@@ -188,22 +188,25 @@ export async function reconstructPayoutBatch(
  */
 export async function getPayoutBatch(
   supabase: SupabaseClient,
+  ledgerId: string,
   batchId: string,
 ): Promise<{
   batch: Record<string, unknown> | null
   items: Record<string, unknown>[]
   error?: string
 }> {
-  const [{ data: batch, error: batchErr }, { data: items, error: itemsErr }] = await Promise.all([
+  const [{ data: batch, error: batchErr }, { data: items }] = await Promise.all([
     supabase
       .from('payout_batches')
       .select('*')
       .eq('id', batchId)
+      .eq('ledger_id', ledgerId)
       .single(),
     supabase
       .from('payout_batch_items')
       .select('*, transaction:transactions(id, description, amount, transaction_type, created_at)')
       .eq('batch_id', batchId)
+      .eq('ledger_id', ledgerId)
       .order('created_at'),
   ])
 
