@@ -71,6 +71,7 @@ export const dashboardNavigation: NavSection[] = [
     items: [
       { name: 'KYC/KYB Review', href: '/dashboard/admin/compliance', icon: ShieldCheck },
       { name: 'Risk Monitor', href: '/dashboard/admin/risk', icon: ShieldAlert },
+      { name: 'Security Events', href: '/dashboard/admin/security-events', icon: Shield },
     ],
   },
   {

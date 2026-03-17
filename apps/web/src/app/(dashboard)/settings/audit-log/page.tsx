@@ -24,6 +24,7 @@ interface AuditEntry {
 
 const ACTIONS = [
   'api_error',
+  'cross_ledger_violation',
   'webhook_invalid_signature',
   'webhook_replay_attempt',
   'payout_initiated',
@@ -35,6 +36,7 @@ const ACTIONS = [
   'webhook_secret_rotated',
   'health_check_alert',
   'health_check_cron',
+  'participant_identity_linked',
   'security_alert',
 ]
 
