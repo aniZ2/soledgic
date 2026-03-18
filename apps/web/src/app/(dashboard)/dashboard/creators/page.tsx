@@ -133,13 +133,7 @@ export default async function CreatorsPage() {
             {creatorsWithBalances.length} creators in {ledger.business_name}
           </p>
         </div>
-        <Link
-          href="/dashboard/creators/new"
-          className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Creator
-        </Link>
+        {/* Creators are registered via platform API (POST /v1/participants) */}
       </div>
 
       {creatorsWithBalances.length === 0 ? (
@@ -147,14 +141,13 @@ export default async function CreatorsPage() {
           <User className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-foreground mb-2">No creators yet</h2>
           <p className="text-muted-foreground mb-6">
-            Add your first creator to start tracking their sales and payouts.
+            Creators appear here automatically when your platform registers them via the API.
           </p>
           <Link
-            href="/dashboard/creators/new"
+            href="/connect"
             className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-md hover:bg-primary/90 transition-colors"
           >
-            <Plus className="w-5 h-5" />
-            Add Your First Creator
+            Set Up API Integration
           </Link>
         </div>
       ) : (

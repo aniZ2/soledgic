@@ -51,17 +51,17 @@ export const dashboardNavigation: NavSection[] = [
     items: [
       { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
       { name: 'Creators', href: '/dashboard/creators', icon: Users },
-      { name: 'Contractors', href: '/dashboard/contractors', icon: HardHat },
       { name: 'Earnings', href: '/dashboard/earnings', icon: TrendingUp },
       { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
-      { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
-      { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
     ],
   },
   {
     label: 'Books',
     items: [
       { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
+      { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
+      { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
+      { name: 'Contractors', href: '/dashboard/contractors', icon: HardHat },
       { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
       { name: 'Holds', href: '/dashboard/holds', icon: HandCoins },
       { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },

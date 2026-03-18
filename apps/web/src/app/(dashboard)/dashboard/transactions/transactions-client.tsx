@@ -147,70 +147,7 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
           </p>
         </div>
 
-        {/* Action Menu */}
-        <div className="relative">
-          <button
-            onClick={() => setShowActionMenu(!showActionMenu)}
-            className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Record Transaction
-            <ChevronDown className="w-4 h-4" />
-          </button>
-
-          {showActionMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-10"
-                onClick={() => setShowActionMenu(false)}
-              />
-              <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-lg z-20">
-                <div className="py-1">
-                  <button
-                    onClick={() => { setIncomeModalOpen(true); setShowActionMenu(false) }}
-                    className="w-full px-4 py-2 text-left hover:bg-accent flex items-center gap-3"
-                  >
-                    <DollarSign className="w-4 h-4 text-green-500" />
-                    <div>
-                      <p className="font-medium text-foreground">Record Income</p>
-                      <p className="text-xs text-muted-foreground">Non-sale revenue</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => { setRefundModalOpen(true); setShowActionMenu(false) }}
-                    className="w-full px-4 py-2 text-left hover:bg-accent flex items-center gap-3"
-                  >
-                    <RotateCcw className="w-4 h-4 text-red-500" />
-                    <div>
-                      <p className="font-medium text-foreground">Record Refund</p>
-                      <p className="text-xs text-muted-foreground">Refund a sale</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => { setTransferModalOpen(true); setShowActionMenu(false) }}
-                    className="w-full px-4 py-2 text-left hover:bg-accent flex items-center gap-3"
-                  >
-                    <ArrowRightLeft className="w-4 h-4 text-blue-500" />
-                    <div>
-                      <p className="font-medium text-foreground">Record Transfer</p>
-                      <p className="text-xs text-muted-foreground">Move between accounts</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => { setAdjustmentModalOpen(true); setShowActionMenu(false) }}
-                    className="w-full px-4 py-2 text-left hover:bg-accent flex items-center gap-3"
-                  >
-                    <FileEdit className="w-4 h-4 text-purple-500" />
-                    <div>
-                      <p className="font-medium text-foreground">Record Adjustment</p>
-                      <p className="text-xs text-muted-foreground">Journal entry</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        {/* Platform transactions are API-driven — manual entry is in Books/Ledgers */}
       </div>
 
       {/* Search & Filters */}
