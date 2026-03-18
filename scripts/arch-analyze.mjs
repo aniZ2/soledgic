@@ -110,7 +110,24 @@ for (const svc of criticalServices) {
   }
 }
 
-// ── 3. Dead Exports Detection ───────────────────────────────────────
+// ── 3. Unwired Function Detection ────────────────────────────────────
+// Classifies unused exports by domain importance:
+//   @critical-path tag in comment → HIGH (unwired critical function)
+//   Financial function names      → MEDIUM (unwired financial primitive)
+//   Everything else               → LOW (dead export)
+
+const FINANCIAL_KEYWORDS = [
+  'payout', 'payment', 'charge', 'refund', 'transfer', 'deposit',
+  'withdraw', 'balance', 'settlement', 'reconcil', 'ledger',
+  'credit', 'debit', 'invoice', 'billing', 'recipient', 'merchant',
+]
+
+// Functions called internally within same file (not cross-file imports)
+const INTERNAL_HELPERS = new Set([
+  'isDevelopment', 'isIpBlocked', 'isCountryBlocked', 'getRequestCountry',
+  'isApiKeyAllowed', 'maintenanceResponse', 'rateLimitedResponse',
+  'forbiddenResponse', 'checkPreAuthRateLimit', 'createLinks',
+])
 
 if (existsSync(sharedDir)) {
   const sharedFiles = readdirSync(sharedDir).filter(f => f.endsWith('.ts') && !f.startsWith('__'))
@@ -118,17 +135,25 @@ if (existsSync(sharedDir)) {
   for (const file of sharedFiles) {
     try {
       const content = readFileSync(join(sharedDir, file), 'utf-8')
-      const exportMatches = [...content.matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)]
 
-      for (const [, funcName] of exportMatches) {
-        // Search ALL code: edge functions, shared services, SDK, web app, tests
+      // Find all exported functions with their preceding comments
+      const exportRegex = /(?:\/\*\*[\s\S]*?\*\/\s*)?export\s+(?:async\s+)?function\s+(\w+)/g
+      const exportMatches = [...content.matchAll(exportRegex)]
+
+      for (const match of exportMatches) {
+        const funcName = match[1]
+        const fullMatch = match[0]
+
+        if (INTERNAL_HELPERS.has(funcName)) continue
+
+        // Search all code for this function
         const searchDirs = [
           join(ROOT, 'supabase/functions'),
           join(ROOT, 'sdk/typescript/src'),
           join(ROOT, 'apps/web/src'),
         ]
         const allCode = searchDirs.flatMap(d => readDir(d))
-          .filter(f => !f.endsWith(file)) // exclude the defining file
+          .filter(f => !f.endsWith(file))
 
         let found = false
         for (const codeFile of allCode) {
@@ -139,16 +164,21 @@ if (existsSync(sharedDir)) {
         }
 
         if (!found) {
-          // Skip functions used internally within the same file (called by createHandler etc.)
-          const internalHelpers = [
-            // utils.ts: called by createHandler internally
-            'isDevelopment', 'isIpBlocked', 'isCountryBlocked', 'getRequestCountry',
-            'isApiKeyAllowed', 'maintenanceResponse', 'rateLimitedResponse',
-            'forbiddenResponse', 'checkPreAuthRateLimit',
-            // transaction-graph.ts: called by autoLinkTransaction internally
-            'createLinks',
-          ]
-          if (!internalHelpers.includes(funcName)) {
+          // Check for @critical-path tag
+          const hasCriticalTag = fullMatch.includes('@critical-path')
+
+          // Check if function name suggests financial operation
+          const funcLower = funcName.toLowerCase()
+          const isFinancial = FINANCIAL_KEYWORDS.some(kw => funcLower.includes(kw))
+
+          if (hasCriticalTag) {
+            // Extract the critical path name from the tag
+            const pathMatch = fullMatch.match(/@critical-path\s+(\S+)/)
+            const pathName = pathMatch ? pathMatch[1] : 'unknown'
+            addSignal('HIGH', 'unwired_critical', `${file}: ${funcName} is tagged @critical-path(${pathName}) but not wired into any flow`, `Integrate into the ${pathName} pipeline — this primitive was designed for a specific money flow`, { file, function: funcName, criticalPath: pathName })
+          } else if (isFinancial) {
+            addSignal('MEDIUM', 'unwired_financial', `${file}: financial primitive '${funcName}' exists but is not called`, `Wire into the appropriate flow (payout, reconciliation, checkout) or remove if obsolete`, { file, function: funcName })
+          } else {
             addSignal('LOW', 'dead_export', `${file}: exported function '${funcName}' is never imported`, `Remove or mark as internal`, { file, function: funcName })
           }
         }

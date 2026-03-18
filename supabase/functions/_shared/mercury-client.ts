@@ -64,6 +64,7 @@ export interface CreateRecipientInput {
   accountType?: 'businessChecking' | 'personalChecking' | 'businessSavings' | 'personalSavings'
 }
 
+/** @critical-path payout — recipient setup for ACH disbursements */
 export async function createRecipient(input: CreateRecipientInput): Promise<{ success: boolean; recipientId?: string; error?: string }> {
   const { ok, data } = await mercuryFetch('/recipients', {
     method: 'POST',
@@ -119,6 +120,7 @@ export interface SendACHInput {
   idempotencyKey?: string
 }
 
+/** @critical-path payout — executes ACH transfer to creator/org bank account */
 export async function sendACH(input: SendACHInput): Promise<{ success: boolean; transactionId?: string; status?: string; error?: string }> {
   const accountId = getAccountId()
 

@@ -94,6 +94,7 @@ async function callProcessPayoutRpcWithRetry(
   return lastResult
 }
 
+/** @critical-path payout — main entry point for creator payout execution */
 export async function processPayoutResponse(
   req: Request,
   supabase: SupabaseClient,

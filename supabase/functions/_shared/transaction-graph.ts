@@ -55,6 +55,7 @@ export interface PayoutBatchResult {
 /**
  * Create a directed edge between two transactions.
  * Idempotent — duplicate links are ignored.
+ * @critical-path reconciliation — links financial events for audit trail
  */
 export async function createLink(
   supabase: SupabaseClient,
@@ -113,6 +114,7 @@ export async function createLinks(
 /**
  * Get all transactions related to a given transaction (bidirectional traversal).
  * Uses the recursive SQL function `get_transaction_graph`.
+ * @critical-path reconciliation — traces money flow through linked events
  */
 export async function getTransactionGraph(
   supabase: SupabaseClient,
@@ -164,6 +166,7 @@ export async function getDirectLinks(
 /**
  * Reconstruct a payout batch: find the charges that make up a processor payout
  * and match the net amount to a bank deposit.
+ * @critical-path reconciliation — matches processor payouts to bank deposits
  */
 export async function reconstructPayoutBatch(
   supabase: SupabaseClient,
@@ -185,6 +188,7 @@ export async function reconstructPayoutBatch(
 
 /**
  * Get a payout batch with its items.
+ * @critical-path reconciliation — inspects payout batch contents
  */
 export async function getPayoutBatch(
   supabase: SupabaseClient,
