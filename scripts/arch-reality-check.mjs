@@ -15,6 +15,7 @@
 
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
+import childProcess from 'child_process'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
 
@@ -384,6 +385,114 @@ for (const v of criticalEnvVars) {
     fail(`${v} missing from .env.example — deploy will fail silently`)
     missingEnv++
   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// RULE 13: Deployed env vars must match code requirements
+// ════════════════════════════════════════════════════════════════════
+console.log('\n\x1b[1m13. Deployment Verification\x1b[0m')
+
+try {
+  const { execSync } = childProcess
+  const secretsOutput = execSync('supabase secrets list 2>/dev/null', { encoding: 'utf-8', cwd: ROOT, timeout: 15000 })
+
+  const deployedSecrets = [
+    'STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET', 'STRIPE_TEST_WEBHOOK_SECRET',
+    'CRON_SECRET', 'RESEND_API_KEY',
+  ]
+
+  for (const secret of deployedSecrets) {
+    if (secretsOutput.includes(secret)) {
+      pass(`${secret} deployed to Supabase`)
+    } else {
+      fail(`${secret} NOT deployed — edge functions will fail`)
+    }
+  }
+} catch {
+  warn('Could not verify Supabase secrets (CLI not available)')
+}
+
+// ════════════════════════════════════════════════════════════════════
+// RULE 14: SDK must be publish-ready
+// ════════════════════════════════════════════════════════════════════
+console.log('\n\x1b[1m14. SDK Readiness\x1b[0m')
+
+const sdkPkg = readFile('sdk/typescript/package.json')
+if (sdkPkg) {
+  try {
+    const pkg = JSON.parse(sdkPkg)
+    if (pkg.name && pkg.version && pkg.main) {
+      pass(`SDK package configured: ${pkg.name}@${pkg.version}`)
+    } else {
+      fail('SDK package.json missing name, version, or main')
+    }
+  } catch { fail('SDK package.json is invalid JSON') }
+
+  const sdkDist = readFile('sdk/typescript/dist/index.js')
+  if (sdkDist) {
+    pass('SDK dist/ is built')
+  } else {
+    fail('SDK dist/ not built — run `cd sdk/typescript && npm run build`')
+  }
+
+  // Check if published (look for npm registry entry)
+  try {
+    const { execSync } = childProcess
+    const npmInfo = execSync('npm view @soledgic/sdk version 2>/dev/null', { encoding: 'utf-8', timeout: 10000 }).trim()
+    if (npmInfo) {
+      pass(`SDK published to npm: v${npmInfo}`)
+    } else {
+      warn('SDK not published to npm — platforms cannot install it')
+    }
+  } catch {
+    warn('SDK not published to npm — run `cd sdk/typescript && npm publish --access public`')
+  }
+} else {
+  fail('SDK package.json not found')
+}
+
+// ════════════════════════════════════════════════════════════════════
+// RULE 15: Demo/seed data tooling must exist
+// ════════════════════════════════════════════════════════════════════
+console.log('\n\x1b[1m15. Developer Experience\x1b[0m')
+
+const seedScript = readFile('scripts/seed-demo-data.mjs')
+if (seedScript) {
+  pass('Demo data seed script exists (npm run seed:demo)')
+} else {
+  fail('No demo data seed script — new signups see empty dashboards')
+}
+
+const openApiSpec = readFile('docs/openapi.yaml')
+if (openApiSpec) {
+  pass('OpenAPI spec exists (docs/openapi.yaml)')
+} else {
+  warn('OpenAPI spec not found — API documentation may be incomplete')
+}
+
+// ════════════════════════════════════════════════════════════════════
+// RULE 16: Legal pages must have content
+// ════════════════════════════════════════════════════════════════════
+console.log('\n\x1b[1m16. Legal & Compliance\x1b[0m')
+
+const termsPage = readFile('apps/web/src/app/terms/page.tsx') || readFile('apps/web/src/app/(marketing)/terms/page.tsx')
+const privacyPage = readFile('apps/web/src/app/privacy/page.tsx') || readFile('apps/web/src/app/(marketing)/privacy/page.tsx')
+
+if (termsPage && termsPage.length > 500) {
+  pass('Terms of service page has content')
+} else if (termsPage) {
+  warn('Terms of service page exists but may be a placeholder')
+} else {
+  fail('No terms of service page')
+}
+
+if (privacyPage && privacyPage.length > 500) {
+  pass('Privacy policy page has content')
+} else if (privacyPage) {
+  warn('Privacy policy page exists but may be a placeholder')
+} else {
+  fail('No privacy policy page')
 }
 
 // ════════════════════════════════════════════════════════════════════
