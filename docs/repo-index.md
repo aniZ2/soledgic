@@ -616,6 +616,8 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | KYC/KYB Review (admin) | `/dashboard/admin/compliance` | organizations (kyc_status), compliance_documents |
 | Risk Monitor (admin) | `/dashboard/admin/risk` | risk_signals, org_risk_summary, connected_accounts |
 | Security Events (admin) | `/dashboard/admin/security-events` | security_alerts, audit_log (cross_ledger_violation) |
+| Platform Payouts (admin) | `/dashboard/admin/platform-payouts` | platform-payouts edge function (Mercury ACH) |
+| Earnings | `/dashboard/earnings` | earnings edge function (per-creator period breakdown) |
 | Reports hub | `/dashboard/reports` | — |
 | P&L report | `/dashboard/reports/profit-loss` | profit-loss |
 | Trial balance | `/dashboard/reports/trial-balance` | trial-balance |

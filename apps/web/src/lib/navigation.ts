@@ -22,6 +22,8 @@ import {
   Landmark,
   HandCoins,
   HardHat,
+  TrendingUp,
+  Banknote,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -50,6 +52,7 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'Transactions', href: '/dashboard/transactions', icon: ArrowLeftRight },
       { name: 'Creators', href: '/dashboard/creators', icon: Users },
       { name: 'Contractors', href: '/dashboard/contractors', icon: HardHat },
+      { name: 'Earnings', href: '/dashboard/earnings', icon: TrendingUp },
       { name: 'Payouts', href: '/dashboard/payouts', icon: Wallet },
       { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
       { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
@@ -72,6 +75,7 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'KYC/KYB Review', href: '/dashboard/admin/compliance', icon: ShieldCheck },
       { name: 'Risk Monitor', href: '/dashboard/admin/risk', icon: ShieldAlert },
       { name: 'Security Events', href: '/dashboard/admin/security-events', icon: Shield },
+      { name: 'Platform Payouts', href: '/dashboard/admin/platform-payouts', icon: Banknote },
     ],
   },
   {
