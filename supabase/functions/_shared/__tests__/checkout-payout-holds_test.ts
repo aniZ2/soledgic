@@ -600,3 +600,176 @@ Deno.test('holds list: rejects invalid participant_id', async () => {
   assertEquals(result.status, 400)
   assertEquals(result.body.error_code, 'invalid_participant_id')
 })
+
+// ==========================================================================
+// HOLDS AUTHORITY ENFORCEMENT — releaseHeldFundsResponse authority checks
+// ==========================================================================
+
+Deno.test('holds authority: system hold blocks platform_api release (403)', async () => {
+  const validUuid = '550e8400-e29b-41d4-a716-446655440010'
+  const supabase = {
+    from(table: string) {
+      if (table === 'entries') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { hold_source: 'soledgic_system' },
+              error: null,
+            })
+          },
+        }
+      }
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) } }
+      return chain
+    },
+  } as any
+
+  const result = await releaseHeldFundsResponse(
+    req, supabase, ledger, { entry_id: validUuid }, requestId, undefined, 'platform_api',
+  )
+
+  assertEquals(result.status, 403)
+  assertEquals(result.body.error_code, 'insufficient_authority')
+})
+
+Deno.test('holds authority: org_operator hold blocks platform_api release (403)', async () => {
+  const validUuid = '550e8400-e29b-41d4-a716-446655440011'
+  const supabase = {
+    from(table: string) {
+      if (table === 'entries') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { hold_source: 'org_operator' },
+              error: null,
+            })
+          },
+        }
+      }
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) } }
+      return chain
+    },
+  } as any
+
+  const result = await releaseHeldFundsResponse(
+    req, supabase, ledger, { entry_id: validUuid }, requestId, undefined, 'platform_api',
+  )
+
+  assertEquals(result.status, 403)
+  assertEquals(result.body.error_code, 'insufficient_authority')
+})
+
+Deno.test('holds authority: platform_api hold allows platform_api release', async () => {
+  const validUuid = '550e8400-e29b-41d4-a716-446655440012'
+  const supabase = {
+    from(table: string) {
+      if (table === 'entries') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { hold_source: 'platform_api' },
+              error: null,
+            })
+          },
+        }
+      }
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }
+      return chain
+    },
+    rpc() {
+      return Promise.resolve({
+        data: { release_id: 'rel_1', rpc_used: 'release_held_funds' },
+        error: null,
+      })
+    },
+  } as any
+
+  // This should NOT return 403 — it passes the authority check.
+  // It will proceed to requestRelease which calls the RPC.
+  // The RPC mock returns success, but execute_transfer=false skips provider.
+  const result = await releaseHeldFundsResponse(
+    req, supabase, ledger, { entry_id: validUuid, execute_transfer: false }, requestId, undefined, 'platform_api',
+  )
+
+  // Should pass authority check (not 403)
+  assertEquals(result.status !== 403, true, `Expected non-403 but got ${result.status}`)
+})
+
+Deno.test('holds authority: soledgic_system can release system hold', async () => {
+  const validUuid = '550e8400-e29b-41d4-a716-446655440013'
+  const supabase = {
+    from(table: string) {
+      if (table === 'entries') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { hold_source: 'soledgic_system' },
+              error: null,
+            })
+          },
+        }
+      }
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }
+      return chain
+    },
+    rpc() {
+      return Promise.resolve({
+        data: { release_id: 'rel_2', rpc_used: 'release_held_funds' },
+        error: null,
+      })
+    },
+  } as any
+
+  const result = await releaseHeldFundsResponse(
+    req, supabase, ledger, { entry_id: validUuid, execute_transfer: false }, requestId, undefined, 'soledgic_system',
+  )
+
+  // soledgic_system can override soledgic_system — should not be 403
+  assertEquals(result.status !== 403, true, `Expected non-403 but got ${result.status}`)
+})
+
+Deno.test('holds authority: missing hold_source defaults to platform_api (backward compat)', async () => {
+  const validUuid = '550e8400-e29b-41d4-a716-446655440014'
+  const supabase = {
+    from(table: string) {
+      if (table === 'entries') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              // hold_source is null/missing — old hold without authority tag
+              data: { hold_source: null },
+              error: null,
+            })
+          },
+        }
+      }
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }
+      return chain
+    },
+    rpc() {
+      return Promise.resolve({
+        data: { release_id: 'rel_3', rpc_used: 'release_held_funds' },
+        error: null,
+      })
+    },
+  } as any
+
+  // platform_api caller should be able to release a hold with no hold_source
+  // because the authority check only fires when holdEntry.hold_source is truthy
+  const result = await releaseHeldFundsResponse(
+    req, supabase, ledger, { entry_id: validUuid, execute_transfer: false }, requestId, undefined, 'platform_api',
+  )
+
+  // Missing hold_source skips authority check entirely — should not be 403
+  assertEquals(result.status !== 403, true, `Expected non-403 but got ${result.status}`)
+})
