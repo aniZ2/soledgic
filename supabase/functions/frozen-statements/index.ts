@@ -80,16 +80,29 @@ const handler = createHandler(
         let totalAssets = 0, totalLiabilities = 0, totalEquity = 0
         let totalRevenue = 0, totalExpenses = 0
 
+        // Batch fetch all entries for all accounts (avoid N+1)
+        const accountIds = (accounts || []).map((a) => a.id)
+        const { data: allEntries } = accountIds.length > 0
+          ? await supabase
+              .from('entries')
+              .select('account_id, entry_type, amount, transactions!inner(created_at, status)')
+              .in('account_id', accountIds)
+              .not('transactions.status', 'in', '("voided","reversed")')
+              .lte('transactions.created_at', period.period_end + 'T23:59:59')
+          : { data: [] }
+
+        const entriesByAccount = new Map<string, typeof allEntries>()
+        for (const e of allEntries || []) {
+          const list = entriesByAccount.get(e.account_id) || []
+          list.push(e)
+          entriesByAccount.set(e.account_id, list)
+        }
+
         for (const account of accounts || []) {
-          const { data: entries } = await supabase
-            .from('entries')
-            .select('entry_type, amount, transactions!inner(created_at, status)')
-            .eq('account_id', account.id)
-            .not('transactions.status', 'in', '("voided","reversed")')
-            .lte('transactions.created_at', period.period_end + 'T23:59:59')
+          const entries = entriesByAccount.get(account.id) || []
 
           let debits = 0, credits = 0
-          for (const e of entries || []) {
+          for (const e of entries) {
             if (e.entry_type === 'debit') debits += Number(e.amount)
             else credits += Number(e.amount)
           }

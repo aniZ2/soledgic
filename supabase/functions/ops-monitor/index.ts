@@ -4,6 +4,7 @@
 // Designed for cron invocation or manual ops checks
 
 import {
+  getCorsHeaders,
   jsonResponse,
   errorResponse,
   timingSafeEqual,
@@ -194,13 +195,7 @@ function buildOpsEmailHtml(
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-cron-secret',
-      },
-    })
+    return new Response(null, { headers: getCorsHeaders(req) })
   }
 
   const requestId = crypto.randomUUID()

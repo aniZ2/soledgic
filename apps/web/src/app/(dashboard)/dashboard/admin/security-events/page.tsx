@@ -103,7 +103,7 @@ export default function AdminSecurityEventsPage() {
         ))
       }
     } catch {
-      // silent
+      setError('Failed to acknowledge alert')
     }
   }
 

@@ -73,20 +73,30 @@ const handler = createHandler(
       }
 
       for (const account of accounts || []) {
-        const { data: entries } = await supabase
-          .from('entries')
-          .select('entry_type, amount, transactions!inner(status)')
-          .eq('account_id', account.id)
-          .eq('transactions.status', 'completed')
+        // Use database SUM to avoid float accumulation errors
+        const [{ data: creditSum }, { data: debitSum }] = await Promise.all([
+          supabase.rpc('sum_entries_by_type', { p_account_id: account.id, p_entry_type: 'credit' }),
+          supabase.rpc('sum_entries_by_type', { p_account_id: account.id, p_entry_type: 'debit' }),
+        ]).catch(() => [{ data: null }, { data: null }])
 
-        let bal = 0
-        for (const e of entries || []) {
-          bal += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
+        // Fallback to client-side if RPC not available
+        let bal: number
+        if (creditSum !== null && debitSum !== null) {
+          bal = Math.round((Number(creditSum || 0) - Number(debitSum || 0)) * 100) / 100
+        } else {
+          const { data: entries } = await supabase
+            .from('entries')
+            .select('entry_type, amount, transactions!inner(status)')
+            .eq('account_id', account.id)
+            .eq('transactions.status', 'completed')
+          bal = 0
+          for (const e of entries || []) {
+            bal += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
+          }
+          bal = Math.round(bal * 100) / 100
         }
-        bal = Math.round(bal * 100) / 100
 
         if (account.account_type === 'user_wallet') {
-          // Wallet stores credits as dollar-equivalent for ledger consistency
           result.credits = Math.round(bal * CREDITS_PER_DOLLAR)
           result.credits_usd_value = bal
         } else {

@@ -28,43 +28,28 @@ interface LedgerSummary {
 }
 
 const handler = createHandler(
-  { endpoint: 'list-ledgers', requireAuth: false, rateLimit: true },
+  { endpoint: 'list-ledgers', requireAuth: true, rateLimit: true },
   async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, _body: any) => {
     // Only allow GET
     if (req.method !== 'GET') {
       return errorResponse('Method not allowed', 405, req)
     }
 
-    const ownerEmail = req.headers.get('x-owner-email')
-    const apiKey = req.headers.get('x-api-key')
-
-    if (!ownerEmail && !apiKey) {
-      return errorResponse('Missing x-owner-email or x-api-key header', 401, req)
+    if (!ledger) {
+      return errorResponse('API key required', 401, req)
     }
 
-    let ownerEmailToUse: string
+    // Get owner_email from authenticated ledger
+    const { data: ledgerData } = await supabase
+      .from('ledgers')
+      .select('owner_email')
+      .eq('id', ledger.id)
+      .single()
 
-    if (apiKey && ledger) {
-      // Get owner_email from ledger
-      const { data: ledgerData } = await supabase
-        .from('ledgers')
-        .select('owner_email')
-        .eq('id', ledger.id)
-        .single()
-
-      if (!ledgerData?.owner_email) {
-        return errorResponse('Ledger owner not found', 404, req)
-      }
-      ownerEmailToUse = ledgerData.owner_email
-    } else if (ownerEmail) {
-      const validatedEmail = validateEmail(ownerEmail)
-      if (!validatedEmail) {
-        return errorResponse('Invalid email format', 400, req)
-      }
-      ownerEmailToUse = validatedEmail
-    } else {
-      return errorResponse('Invalid authentication', 401, req)
+    if (!ledgerData?.owner_email) {
+      return errorResponse('Ledger owner not found', 404, req)
     }
+    const ownerEmailToUse = ledgerData.owner_email
 
     const { data: ledgers, error } = await supabase
       .from('ledgers')
@@ -77,53 +62,52 @@ const handler = createHandler(
       return errorResponse('Failed to fetch ledgers', 500, req)
     }
 
-    // Get stats for each ledger
-    const ledgerSummaries: LedgerSummary[] = await Promise.all(
-      (ledgers || []).map(async (l) => {
-        const { count: accountCount } = await supabase
-          .from('accounts')
-          .select('*', { count: 'exact', head: true })
-          .eq('ledger_id', l.id)
+    // Get stats in bulk (avoid N+1)
+    const ledgerIds = (ledgers || []).map((l) => l.id)
+    const statsMap = new Map<string, { revenue: number; expenses: number; accounts: number; transactions: number }>()
 
-        const { count: transactionCount } = await supabase
-          .from('transactions')
-          .select('*', { count: 'exact', head: true })
-          .eq('ledger_id', l.id)
+    if (ledgerIds.length > 0) {
+      // Batch: account counts
+      const { data: accountCounts } = await supabase
+        .from('accounts')
+        .select('ledger_id')
+        .in('ledger_id', ledgerIds)
 
-        const { data: sales } = await supabase
-          .from('transactions')
-          .select('amount')
-          .eq('ledger_id', l.id)
-          .eq('transaction_type', 'sale')
-          .eq('status', 'completed')
+      // Batch: transaction summaries (type + amount in one query)
+      const { data: txnSummaries } = await supabase
+        .from('transactions')
+        .select('ledger_id, transaction_type, amount, status')
+        .in('ledger_id', ledgerIds)
+        .eq('status', 'completed')
+        .in('transaction_type', ['sale', 'expense'])
 
-        const totalRevenue = sales?.reduce((sum, t) => sum + Number(t.amount), 0) || 0
+      for (const id of ledgerIds) {
+        const acctCount = (accountCounts || []).filter((a) => a.ledger_id === id).length
+        const txns = (txnSummaries || []).filter((t) => t.ledger_id === id)
+        const revenue = txns.filter((t) => t.transaction_type === 'sale').reduce((s, t) => s + Number(t.amount), 0)
+        const expenses = txns.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
 
-        const { data: expenses } = await supabase
-          .from('transactions')
-          .select('amount')
-          .eq('ledger_id', l.id)
-          .eq('transaction_type', 'expense')
-          .eq('status', 'completed')
+        statsMap.set(id, { revenue, expenses, accounts: acctCount, transactions: txns.length })
+      }
+    }
 
-        const totalExpenses = expenses?.reduce((sum, t) => sum + Number(t.amount), 0) || 0
-
-        return {
-          id: l.id,
-          business_name: l.business_name,
-          ledger_mode: l.ledger_mode,
-          status: l.status,
-          created_at: l.created_at,
-          stats: {
-            total_revenue: Math.round(totalRevenue * 100) / 100,
-            total_expenses: Math.round(totalExpenses * 100) / 100,
-            net_income: Math.round((totalRevenue - totalExpenses) * 100) / 100,
-            account_count: accountCount || 0,
-            transaction_count: transactionCount || 0
-          }
-        }
-      })
-    )
+    const ledgerSummaries: LedgerSummary[] = (ledgers || []).map((l) => {
+      const stats = statsMap.get(l.id) || { revenue: 0, expenses: 0, accounts: 0, transactions: 0 }
+      return {
+        id: l.id,
+        business_name: l.business_name,
+        ledger_mode: l.ledger_mode,
+        status: l.status,
+        created_at: l.created_at,
+        stats: {
+          total_revenue: Math.round(stats.revenue * 100) / 100,
+          total_expenses: Math.round(stats.expenses * 100) / 100,
+          net_income: Math.round((stats.revenue - stats.expenses) * 100) / 100,
+          account_count: stats.accounts,
+          transaction_count: stats.transactions,
+        },
+      }
+    })
 
     return jsonResponse({ success: true, ledgers: ledgerSummaries }, 200, req)
   }
