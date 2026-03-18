@@ -468,6 +468,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | **capabilities.ts** | loadOrgCapabilities, getDailyPayoutTotal, checkPayoutAllowed, getDailyVolume, checkDailyVolumeAllowed | payout-service, record-sale | organizations, transactions |
 | **mercury-client.ts** | sendACH, getTransactionStatus, createRecipient, getRecipient, listRecipients | platform-payouts, execute-payout | — (Mercury API external) |
 | **risk-engine.ts** | recordRiskSignal, checkRefundRate, checkRapidTopupWithdraw, checkLargeTransaction | record-sale, refund-service, payout-service, wallet-service, fraud | risk_signals, organizations (capabilities patch) |
+| **authority.ts** | canOverride, toAuthorityLevel, AuthorityLevel | holds-service, risk-engine, capabilities | — (pure logic) |
 | **error-tracking.ts** | scrubPII, captureException (Sentry HTTP envelope) | utils.ts | — |
 
 ---

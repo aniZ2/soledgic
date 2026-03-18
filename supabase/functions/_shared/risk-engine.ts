@@ -88,30 +88,42 @@ async function applyAutoAction(
   if (!action) return
 
   try {
-    // Atomic merge using Postgres jsonb concatenation (||) to avoid read-modify-write race.
-    // The || operator merges top-level keys, with the right side winning on conflict.
-    // This is safe because auto-actions only tighten (set false, set true for review).
+    // Use authority-aware RPC to set capabilities with soledgic_system lock.
+    // This prevents org operators from loosening system-imposed restrictions.
     const patch = action.capabilities
-    const { error: updateError } = await supabase.rpc('jsonb_merge_capabilities', {
-      p_org_id: organizationId,
-      p_patch: patch,
-    })
-
-    // Fallback: if the RPC doesn't exist yet, do the read-modify-write
-    if (updateError) {
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('capabilities')
-        .eq('id', organizationId)
-        .single()
-
-      const current = (org?.capabilities || {}) as Record<string, unknown>
-      const merged = { ...current, ...patch }
-      await supabase
-        .from('organizations')
-        .update({ capabilities: merged })
-        .eq('id', organizationId)
+    for (const [capKey, capValue] of Object.entries(patch)) {
+      await supabase.rpc('set_capability_with_authority', {
+        p_org_id: organizationId,
+        p_key: capKey,
+        p_value: JSON.stringify(capValue),
+        p_authority: 'soledgic_system',
+        p_actor_id: 'risk-engine',
+      }).then(() => {}, () => {
+        // Fallback: direct merge if RPC not available yet
+        supabase
+          .from('organizations')
+          .select('capabilities')
+          .eq('id', organizationId)
+          .single()
+          .then(({ data: org }) => {
+            const current = (org?.capabilities || {}) as Record<string, unknown>
+            supabase
+              .from('organizations')
+              .update({ capabilities: { ...current, [capKey]: capValue } })
+              .eq('id', organizationId)
+          })
+      })
     }
+
+    // Tag the risk signal as system-level (requires system authority to resolve)
+    await supabase
+      .from('risk_signals')
+      .update({
+        signal_authority: 'soledgic_system',
+        requires_system_resolution: true,
+      })
+      .eq('id', signalId)
+      .then(() => {}, () => {})
 
     // Audit trail — so admins know this was automated, not manual
     await supabase.from('audit_log').insert({
@@ -126,6 +138,7 @@ async function applyAutoAction(
         signal_type: signalType,
         severity,
         applied_capabilities: action.capabilities,
+        authority: 'soledgic_system',
       },
       response_status: 200,
       risk_score: severity === 'critical' ? 90 : 70,

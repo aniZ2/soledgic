@@ -546,6 +546,10 @@ Deno.test('holds release: classifies "not found" errors as 409 conflict', async 
         error: { message: 'Entry not found or not held', code: 'P0001' },
       })
     },
+    from() {
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) } }
+      return chain
+    },
   } as any
 
   const result = await releaseHeldFundsResponse(req, supabase, ledger, {
@@ -564,6 +568,10 @@ Deno.test('holds release: classifies "already released" errors as 409 conflict',
         data: null,
         error: { message: 'Entry already released', code: 'P0001' },
       })
+    },
+    from() {
+      const chain: any = { select() { return chain }, eq() { return chain }, maybeSingle() { return Promise.resolve({ data: null, error: null }) } }
+      return chain
     },
   } as any
 

@@ -11,6 +11,7 @@ import {
   resourceError,
   resourceOk,
 } from './treasury-resource.ts'
+import { type AuthorityLevel, canOverride, toAuthorityLevel } from './authority.ts'
 
 type RpcCandidate = {
   name: string
@@ -738,6 +739,7 @@ export async function releaseHeldFundsResponse(
   body: HoldsQueryRequest,
   requestId: string,
   provider?: PaymentProvider,
+  callerAuthority: AuthorityLevel = 'platform_api',
 ): Promise<ResourceResult> {
   const entryId = body.entry_id ? validateId(body.entry_id, 120) : null
   if (!entryId || !isUuidLike(entryId)) {
@@ -745,6 +747,26 @@ export async function releaseHeldFundsResponse(
   }
 
   try {
+    // Authority check: verify caller can release this hold
+    const { data: holdEntry } = await supabase
+      .from('entries')
+      .select('hold_source')
+      .eq('id', entryId)
+      .eq('hold_status', 'held')
+      .maybeSingle()
+
+    if (holdEntry?.hold_source) {
+      const holdAuthority = toAuthorityLevel(holdEntry.hold_source)
+      if (!canOverride(callerAuthority, holdAuthority)) {
+        return resourceError(
+          `This hold was placed by ${holdAuthority} and requires ${holdAuthority} authority to release`,
+          403,
+          {},
+          'insufficient_authority',
+        )
+      }
+    }
+
     const executeTransfer = body.execute_transfer !== false
     const queued = await requestRelease(supabase, entryId)
 
