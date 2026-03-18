@@ -29,3 +29,6 @@ node scripts/validate-repo-index.mjs
 
 echo "Checking architecture health..."
 node scripts/graph-health.mjs --enforce
+
+echo "Running critical path gate..."
+node scripts/arch-critical-path-gate.mjs --full
