@@ -140,6 +140,46 @@
         "apps/web/src/app/api/"
       ],
       "reason": "Finix processor calls must stay in API routes — never in client components"
+    },
+    {
+      "id": "SVC_AUTHORITY",
+      "module": "supabase/functions/_shared/authority.ts",
+      "allowed": [
+        "supabase/functions/_shared/holds-service.ts",
+        "supabase/functions/_shared/risk-engine.ts",
+        "supabase/functions/_shared/capabilities.ts"
+      ],
+      "reason": "Authority hierarchy is a security primitive — only enforcement points may import it"
+    },
+    {
+      "id": "SVC_CAPABILITIES_ENFORCER",
+      "module": "supabase/functions/_shared/capabilities.ts",
+      "allowed": [
+        "supabase/functions/_shared/payout-service.ts",
+        "supabase/functions/record-sale/"
+      ],
+      "reason": "Capability checks gate payouts and sales — must not be bypassed"
+    },
+    {
+      "id": "SVC_RISK_ENGINE",
+      "module": "supabase/functions/_shared/risk-engine.ts",
+      "allowed": [
+        "supabase/functions/_shared/refund-service.ts",
+        "supabase/functions/_shared/payout-service.ts",
+        "supabase/functions/_shared/wallet-service.ts",
+        "supabase/functions/record-sale/",
+        "supabase/functions/fraud/"
+      ],
+      "reason": "Risk signals feed into capabilities and fraud detection — controlled callers only"
+    },
+    {
+      "id": "SVC_MERCURY_CLIENT",
+      "module": "supabase/functions/_shared/mercury-client.ts",
+      "allowed": [
+        "supabase/functions/execute-payout/",
+        "supabase/functions/platform-payouts/"
+      ],
+      "reason": "Mercury ACH client handles real bank transfers — strict access control"
     }
   ]
 }
