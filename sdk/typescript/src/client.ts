@@ -670,13 +670,12 @@ export class Soledgic {
     creatorId?: string
     granularity?: 'monthly' | 'quarterly' | 'daily' | 'total'
   } = {}) {
-    const params = new URLSearchParams()
-    if (options.startDate) params.set('start_date', options.startDate)
-    if (options.endDate) params.set('end_date', options.endDate)
-    if (options.creatorId) params.set('creator_id', options.creatorId)
-    if (options.granularity) params.set('granularity', options.granularity)
-    const qs = params.toString()
-    return this.request(`earnings${qs ? `?${qs}` : ''}`, undefined, 'GET')
+    return this.requestGet('earnings', {
+      start_date: options.startDate,
+      end_date: options.endDate,
+      creator_id: options.creatorId,
+      granularity: options.granularity,
+    })
   }
 
   async getTransactions(startDate?: string, endDate?: string, creatorId?: string) {

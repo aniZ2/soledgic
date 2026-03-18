@@ -19,7 +19,18 @@ export default async function CreatorPortalLayout({
     redirect('/creator/login')
   }
 
-  // Check if user is a creator (has creator_portal access)
+  // Verify user is actually a creator (has a connected_accounts row)
+  const { data: creatorAccount } = await supabase
+    .from('connected_accounts')
+    .select('id')
+    .eq('email', user.email)
+    .eq('is_active', true)
+    .limit(1)
+
+  if (!creatorAccount || creatorAccount.length === 0) {
+    redirect('/login')
+  }
+
   const creatorEmail = user.email
   const creatorName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
 

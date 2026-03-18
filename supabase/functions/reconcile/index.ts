@@ -64,6 +64,10 @@ const handler = createHandler(
           return errorResponse('Transaction not found', 404, req, requestId)
         }
 
+        if (tx.status === 'voided' || tx.status === 'reversed') {
+          return errorResponse('Cannot match a voided or reversed transaction', 400, req, requestId)
+        }
+
         const txDate = tx.created_at?.split('T')[0]
         const { data: lockedPeriod } = await supabase
           .from('accounting_periods')

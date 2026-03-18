@@ -135,23 +135,19 @@ export default function RequestPayoutPage() {
       return
     }
 
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    const { error: insertError } = await supabase
-      .from('payout_requests')
-      .insert({
-        ledger_id: selectedAccountData?.ledger_id,
+    // Server-side validated payout request (prevents client-side amount bypass)
+    const res = await fetch('/api/creator/payout-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         connected_account_id: selectedAccount,
-        recipient_entity_type: 'creator',
-        recipient_entity_id: selectedAccountData?.entity_id,
-        requested_amount: amountCents,
-        status: 'pending',
-        requested_by: user?.id
-      })
+        amount_cents: amountCents,
+      }),
+    })
+    const result = await res.json()
 
-    if (insertError) {
-      setError(insertError.message)
+    if (!res.ok) {
+      setError(result.error || 'Failed to submit payout request')
       setSubmitting(false)
       return
     }
