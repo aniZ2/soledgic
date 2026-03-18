@@ -20,7 +20,7 @@ function hashApiKey(apiKey: string): string {
 }
 
 function makeApiKey(livemode: boolean): string {
-  return `sk_${livemode ? 'live' : 'test'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
+  return `slk_${livemode ? 'live' : 'test'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
 }
 
 async function getActiveMembership(userId: string) {
