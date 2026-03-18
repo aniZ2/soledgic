@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { BookOpen, Key, Code, Lightbulb, Bell, Package, Home, ArrowLeft, Menu, X, Terminal, History } from 'lucide-react'
+import { BookOpen, Key, Code, Lightbulb, Bell, Package, Home, ArrowLeft, Menu, X, Terminal, History, Coins } from 'lucide-react'
 import { useState } from 'react'
 import { ThemeToggle } from '@/components/theme-toggle'
 
@@ -17,6 +17,16 @@ const navigation = [
     icon: Lightbulb,
     children: [
       { name: 'Architecture', href: '/docs/concepts#architecture' },
+    ],
+  },
+  {
+    name: 'Credits',
+    href: '/docs/credits',
+    icon: Coins,
+    children: [
+      { name: 'How Credits Work', href: '/docs/credits#how-credits-work' },
+      { name: 'API Reference', href: '/docs/credits#api-reference' },
+      { name: 'Rules & Limits', href: '/docs/credits#rules' },
     ],
   },
   {
