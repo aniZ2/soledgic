@@ -121,9 +121,14 @@ if (existsSync(sharedDir)) {
       const exportMatches = [...content.matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)]
 
       for (const [, funcName] of exportMatches) {
-        // Search all non-test files for this function name
-        const allCode = readDir(join(ROOT, 'supabase/functions'))
-          .filter(f => !f.includes('__tests__') && !f.endsWith(file))
+        // Search ALL code: edge functions, shared services, SDK, web app, tests
+        const searchDirs = [
+          join(ROOT, 'supabase/functions'),
+          join(ROOT, 'sdk/typescript/src'),
+          join(ROOT, 'apps/web/src'),
+        ]
+        const allCode = searchDirs.flatMap(d => readDir(d))
+          .filter(f => !f.endsWith(file)) // exclude the defining file
 
         let found = false
         for (const codeFile of allCode) {
@@ -134,7 +139,18 @@ if (existsSync(sharedDir)) {
         }
 
         if (!found) {
-          addSignal('LOW', 'dead_export', `${file}: exported function '${funcName}' is never imported`, `Remove or mark as internal`, { file, function: funcName })
+          // Skip functions used internally within the same file (called by createHandler etc.)
+          const internalHelpers = [
+            // utils.ts: called by createHandler internally
+            'isDevelopment', 'isIpBlocked', 'isCountryBlocked', 'getRequestCountry',
+            'isApiKeyAllowed', 'maintenanceResponse', 'rateLimitedResponse',
+            'forbiddenResponse', 'checkPreAuthRateLimit',
+            // transaction-graph.ts: called by autoLinkTransaction internally
+            'createLinks',
+          ]
+          if (!internalHelpers.includes(funcName)) {
+            addSignal('LOW', 'dead_export', `${file}: exported function '${funcName}' is never imported`, `Remove or mark as internal`, { file, function: funcName })
+          }
         }
       }
     } catch { /* skip */ }

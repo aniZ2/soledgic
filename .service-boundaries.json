@@ -144,6 +144,19 @@
       "reason": "Finix processor calls must stay in API routes — never in client components"
     },
     {
+      "id": "SVC_TRANSACTION_GRAPH",
+      "module": "supabase/functions/_shared/transaction-graph.ts",
+      "allowed": [
+        "supabase/functions/_shared/checkout-service.ts",
+        "supabase/functions/_shared/refund-service.ts",
+        "supabase/functions/_shared/payout-service.ts",
+        "supabase/functions/_shared/wallet-service.ts",
+        "supabase/functions/reverse-transaction/",
+        "supabase/functions/reconcile/"
+      ],
+      "reason": "Transaction graph links financial events — only orchestration services and reconciliation may use it"
+    },
+    {
       "id": "SVC_AUTHORITY",
       "module": "supabase/functions/_shared/authority.ts",
       "allowed": [

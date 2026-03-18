@@ -18,7 +18,7 @@ import {
   sanitizeForAudit,
   validateAmount,
 } from '../_shared/utils.ts'
-import { sendACH } from '../_shared/mercury-client.ts'
+import { sendACH, createRecipient, getRecipient, listRecipients, getAccountBalance } from '../_shared/mercury-client.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface PlatformPayoutRequest {
@@ -95,8 +95,54 @@ const handler = createHandler(
       }, 200, req, requestId)
     }
 
+    if (payload.action === 'mercury_balance') {
+      const mercuryBalance = await getAccountBalance()
+      return jsonResponse({ success: true, mercury_balance: mercuryBalance }, 200, req, requestId)
+    }
+
+    if (payload.action === 'list_recipients') {
+      const recipients = await listRecipients()
+      return jsonResponse({ success: true, recipients }, 200, req, requestId)
+    }
+
+    if (payload.action === 'get_recipient') {
+      const recipientId = await getOrgMercuryRecipientId(supabase, ledger.organization_id || '')
+      if (!recipientId) {
+        return jsonResponse({ success: true, recipient: null }, 200, req, requestId)
+      }
+      const recipient = await getRecipient(recipientId)
+      return jsonResponse({ success: true, recipient }, 200, req, requestId)
+    }
+
+    if (payload.action === 'configure_recipient') {
+      const input = body as Record<string, unknown>
+      if (!input.name || !input.account_number || !input.routing_number) {
+        return errorResponse('name, account_number, and routing_number required', 400, req, requestId)
+      }
+      const result = await createRecipient({
+        name: String(input.name),
+        accountNumber: String(input.account_number),
+        routingNumber: String(input.routing_number),
+        email: typeof input.email === 'string' ? input.email : undefined,
+      })
+      if (!result.success) {
+        return errorResponse(result.error || 'Failed to create recipient', 500, req, requestId)
+      }
+      // Store recipient ID in org settings
+      await supabase.rpc('jsonb_merge_capabilities', {
+        p_org_id: ledger.organization_id,
+        p_patch: { payout: { mercury_recipient_id: result.recipientId } },
+      }).then(() => {}, () => {
+        // Fallback: direct update
+        supabase.from('organizations')
+          .update({ settings: { payout: { mercury_recipient_id: result.recipientId } } })
+          .eq('id', ledger.organization_id)
+      })
+      return jsonResponse({ success: true, recipient_id: result.recipientId }, 200, req, requestId)
+    }
+
     if (payload.action !== 'request') {
-      return errorResponse('Invalid action. Use: request, status, history', 400, req, requestId)
+      return errorResponse('Invalid action. Use: request, status, history, mercury_balance, list_recipients, get_recipient, configure_recipient', 400, req, requestId)
     }
 
     // ── Execute platform payout ──────────────────────────────

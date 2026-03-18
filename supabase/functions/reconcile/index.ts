@@ -4,7 +4,7 @@
 // Handles bank reconciliation with snapshot freezing per period
 // MIGRATED TO createHandler
 
-import { 
+import {
   createHandler,
   jsonResponse,
   errorResponse,
@@ -12,8 +12,15 @@ import {
   validateId,
   LedgerContext
 } from '../_shared/utils.ts'
+import {
+  getTransactionGraph,
+  getDirectLinks,
+  reconstructPayoutBatch,
+  getPayoutBatch,
+  createLink,
+} from '../_shared/transaction-graph.ts'
 
-type Action = 'match' | 'unmatch' | 'create_snapshot' | 'get_snapshot' | 'list_unmatched' | 'auto_match'
+type Action = 'match' | 'unmatch' | 'create_snapshot' | 'get_snapshot' | 'list_unmatched' | 'auto_match' | 'transaction_graph' | 'payout_batch'
 
 interface ReconcileRequest {
   action: Action
@@ -364,6 +371,32 @@ const handler = createHandler(
           success: true,
           action: 'auto_match',
           result: matchResult?.[0] ?? { matched: false, match_type: null, matched_transaction_id: null }
+        }, 200, req, requestId)
+      }
+
+      case 'transaction_graph': {
+        const txId = validateId(body.transaction_id, 120)
+        if (!txId) return errorResponse('Invalid transaction_id', 400, req, requestId)
+
+        const graph = await getTransactionGraph(supabase, ledger.id, txId)
+        const links = await getDirectLinks(supabase, ledger.id, txId)
+
+        return jsonResponse({
+          success: true,
+          transaction_id: txId,
+          graph: graph.nodes,
+          direct_links: { outgoing: links.outgoing, incoming: links.incoming },
+        }, 200, req, requestId)
+      }
+
+      case 'payout_batch': {
+        const batchId = validateId(body.batch_id, 120)
+        if (!batchId) return errorResponse('Invalid batch_id', 400, req, requestId)
+
+        const batch = await getPayoutBatch(supabase, ledger.id, batchId)
+        return jsonResponse({
+          success: true,
+          ...batch,
         }, 200, req, requestId)
       }
 
