@@ -665,6 +665,34 @@ for (const check of WIRING_CHECKS) {
 }
 ok(`${wiringPasses}/${WIRING_CHECKS.length} wiring checks passed`)
 
+// ── 12. Git-awareness: files imported but not tracked ───────────────
+console.log('\nGit Tracking:')
+
+try {
+  const { execSync } = await import('node:child_process')
+  const untracked = execSync(
+    'git ls-files --others --exclude-standard -- supabase/functions/ apps/web/src/ sdk/typescript/src/',
+    { encoding: 'utf-8', cwd: ROOT },
+  ).trim()
+
+  const untrackedCode = untracked
+    .split('\n')
+    .filter(f => f && /\.(ts|tsx|js|jsx|mjs|css)$/.test(f))
+
+  if (untrackedCode.length > 0) {
+    for (const f of untrackedCode.slice(0, 10)) {
+      warn(`Untracked source file: ${f}`)
+    }
+    if (untrackedCode.length > 10) {
+      warn(`... and ${untrackedCode.length - 10} more untracked files`)
+    }
+  } else {
+    ok('All source files are tracked by git')
+  }
+} catch {
+  warn('Could not run git ls-files (not a git repo?)')
+}
+
 // ── Summary ─────────────────────────────────────────────────────────
 console.log(
   `\n${errors === 0 ? '\x1b[32m' : '\x1b[31m'}` +
