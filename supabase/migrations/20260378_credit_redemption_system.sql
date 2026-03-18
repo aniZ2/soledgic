@@ -222,10 +222,7 @@ BEGIN
     );
   END IF;
 
-  -- Get accounts
-  SELECT id INTO v_liability_account_id
-  FROM accounts WHERE ledger_id = p_ledger_id AND account_type = 'credits_liability' LIMIT 1;
-
+  -- Get accounts (liability already settled during conversion step)
   SELECT id INTO v_creator_account_id
   FROM accounts WHERE ledger_id = p_ledger_id AND account_type = 'creator_balance' AND entity_id = p_creator_id;
 
@@ -256,15 +253,11 @@ BEGIN
   RETURNING id INTO v_txn_id;
 
   -- Double entry:
-  -- 1. DR user_wallet (credits leave user)
+  -- 1. DR user_spendable_balance (balance leaves user)
   INSERT INTO entries (transaction_id, account_id, entry_type, amount)
   VALUES (v_txn_id, v_spendable_account_id, 'debit', v_amount);
 
-  -- 2. DR credits_liability (liability decreases — promise fulfilled)
-  INSERT INTO entries (transaction_id, account_id, entry_type, amount)
-  VALUES (v_txn_id, v_liability_account_id, 'debit', v_amount);
-
-  -- 3. CR creator_balance (creator earns)
+  -- 2. CR creator_balance (creator earns)
   INSERT INTO entries (transaction_id, account_id, entry_type, amount)
   VALUES (v_txn_id, v_creator_account_id, 'credit', v_creator_share);
 
