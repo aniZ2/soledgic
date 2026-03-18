@@ -12,7 +12,7 @@ import type {
   RefundParams,
   RefundResult,
   PaymentStatus,
-} from './payment-provider.ts'
+} from './payment-provider-types.ts'
 
 const PROVIDER_NAME: PaymentProviderName = 'card'
 

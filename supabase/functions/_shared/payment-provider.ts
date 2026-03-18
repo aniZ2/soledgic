@@ -9,106 +9,22 @@
 import { StripePaymentProvider } from './stripe-payment-provider.ts'
 
 // ============================================================================
-// TYPES
+// TYPES — extracted to payment-provider-types.ts for reduced blast radius.
+// Services that only need types should import from there directly.
 // ============================================================================
 
-// Public provider names are whitelabeled.
-export type PaymentProviderName = 'card'
+export type {
+  PaymentProviderName, PaymentProviderBackend,
+  PaymentIntentParams, PaymentIntentResult, CaptureResult,
+  RefundParams, RefundResult, PaymentStatus,
+  ProcessorProviderConfig, PaymentProviderFactoryOptions,
+  PaymentProvider,
+} from './payment-provider-types.ts'
 
-// Active payment provider backend (env-driven).
-export type PaymentProviderBackend = 'stripe' | 'finix'
-
-export interface PaymentIntentParams {
-  amount: number // In smallest currency unit (cents)
-  currency: string // ISO currency code
-  metadata: Record<string, string>
-  description?: string
-  receipt_email?: string
-  // For charge-side DEBIT flows.
-  payment_method_id?: string
-  // Reserved for CREDIT flows (not used by Soledgic charge-side today).
-  destination_id?: string
-  // Prevents duplicate transfers at the processor level.
-  idempotency_id?: string
-  // CREDIT/payout-specific fields required by Finix.
-  operation_key?: string
-  processor?: string
-}
-
-export interface PaymentIntentResult {
-  success: boolean
-  provider: PaymentProviderName
-  id?: string
-  client_secret?: string
-  status?: string
-  requires_action?: boolean
-  redirect_url?: string
-  error?: string
-  raw?: Record<string, unknown>
-}
-
-export interface CaptureResult {
-  success: boolean
-  provider: PaymentProviderName
-  id?: string
-  amount_captured?: number
-  error?: string
-}
-
-export interface RefundParams {
-  payment_intent_id: string
-  amount?: number
-  reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer'
-  metadata?: Record<string, string>
-  idempotency_id?: string
-}
-
-export interface RefundResult {
-  success: boolean
-  provider: PaymentProviderName
-  refund_id?: string
-  amount?: number
-  status?: string
-  error?: string
-}
-
-export interface PaymentStatus {
-  success: boolean
-  provider: PaymentProviderName
-  id?: string
-  status?: string
-  amount?: number
-  currency?: string
-  error?: string
-}
-
-export interface ProcessorProviderConfig {
-  merchantId?: string | null
-  username?: string | null
-  password?: string | null
-  apiVersion?: string | null
-  versionHeader?: string | null
-  environment?: string | null
-  baseUrl?: string | null
-  transfersPath?: string | null
-  refundsPathTemplate?: string | null
-}
-
-export interface PaymentProviderFactoryOptions {
-  processor?: ProcessorProviderConfig
-  livemode?: boolean
-}
-
-// ============================================================================
-// INTERFACE
-// ============================================================================
-
-export interface PaymentProvider {
-  createPaymentIntent(params: PaymentIntentParams): Promise<PaymentIntentResult>
-  capturePayment(paymentIntentId: string): Promise<CaptureResult>
-  refund(params: RefundParams): Promise<RefundResult>
-  getPaymentStatus(paymentIntentId: string): Promise<PaymentStatus>
-}
+import type {
+  PaymentProviderBackend, ProcessorProviderConfig,
+  PaymentProviderFactoryOptions, PaymentProvider,
+} from './payment-provider-types.ts'
 
 // ============================================================================
 // TAG SANITIZATION (Finix constraints: keys ≤40 chars, values ≤500 chars, ≤50 pairs)
