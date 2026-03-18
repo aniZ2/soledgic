@@ -664,6 +664,21 @@ export class Soledgic {
     return this.request('generate-report', { report_type: 'creator_earnings', start_date: startDate, end_date: endDate })
   }
 
+  async getHistoricalEarnings(options: {
+    startDate?: string
+    endDate?: string
+    creatorId?: string
+    granularity?: 'monthly' | 'quarterly' | 'daily' | 'total'
+  } = {}) {
+    const params = new URLSearchParams()
+    if (options.startDate) params.set('start_date', options.startDate)
+    if (options.endDate) params.set('end_date', options.endDate)
+    if (options.creatorId) params.set('creator_id', options.creatorId)
+    if (options.granularity) params.set('granularity', options.granularity)
+    const qs = params.toString()
+    return this.request(`earnings${qs ? `?${qs}` : ''}`, undefined, 'GET')
+  }
+
   async getTransactions(startDate?: string, endDate?: string, creatorId?: string) {
     return this.request('generate-report', { report_type: 'transaction_history', start_date: startDate, end_date: endDate, creator_id: creatorId })
   }

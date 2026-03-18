@@ -361,6 +361,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Function | Auth | Methods | Shared Service | Key RPCs |
 |---|---|---|---|---|
 | `balance-sheet` | createHandler (API key) | GET | (inline) | account_balances_as_of, check_balance_equation |
+| `earnings` | createHandler (API key) | GET | (inline) | Per-creator historical earnings with monthly/quarterly/daily breakdown |
 | `profit-loss` | createHandler (API key) | GET | (inline) | account_balances_for_period |
 | `trial-balance` | createHandler (API key) | GET | (inline) | calculate_trial_balance, create_trial_balance_snapshot |
 | `generate-report` | createHandler (API key) | POST | (inline) | Various export RPCs |
