@@ -24,6 +24,7 @@ const ALLOWED_ENDPOINT_ROOTS = new Set([
   'send-statements',
   'profit-loss',
   'earnings',
+  'credits',
   'trial-balance',
   'generate-pdf',
   'export-report',

@@ -683,6 +683,34 @@ export class Soledgic {
     return this.request('generate-report', { report_type: 'transaction_history', start_date: startDate, end_date: endDate, creator_id: creatorId })
   }
 
+  // === CREDITS ===
+
+  async issueCredits(userId: string, amountCents: number, options: { reason?: string; referenceId?: string } = {}) {
+    return this.request('credits', {
+      action: 'issue',
+      user_id: userId,
+      amount: amountCents,
+      reason: options.reason,
+      reference_id: options.referenceId,
+    })
+  }
+
+  async redeemCredits(userId: string, creatorId: string, amountCents: number, referenceId: string, options: { description?: string; splitPercent?: number } = {}) {
+    return this.request('credits', {
+      action: 'redeem',
+      user_id: userId,
+      creator_id: creatorId,
+      amount: amountCents,
+      reference_id: referenceId,
+      description: options.description,
+      split_percent: options.splitPercent,
+    })
+  }
+
+  async getCreditBalance(userId: string) {
+    return this.request('credits', { action: 'balance', user_id: userId })
+  }
+
   // === PDF EXPORTS ===
 
   async generatePDF(reportType: 'creator_statement' | 'profit_loss' | 'trial_balance' | '1099', options: {
