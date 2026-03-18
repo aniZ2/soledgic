@@ -94,35 +94,36 @@ if (testGaps.length > 0) {
   ], 'Critical money-moving services without tests are invisible failure points. A bug in payout-service.ts with no tests could drain accounts undetected.')
 }
 
-// Hub growth → propose service splits
-const hubGrowth = signals.filter(s => s.category === 'hub_growth')
+// Hub growth → propose service splits (skip if already split)
+const hubGrowth = signals.filter(s => s.category === 'hub_growth' && s.severity === 'HIGH')
 for (const hub of hubGrowth) {
+  // Skip signals that already note a completed split
+  if (hub.split) continue
+
   const file = hub.file || hub.message?.match(/(\S+\.ts)/)?.[1] || 'unknown'
   const importers = hub.importers || 0
 
   if (file.includes('utils.ts')) {
-    propose('P2', 'architecture', `Split utils.ts (${importers} importers) into focused modules`, [
-      'Extract auth functions → auth.ts (validateApiKey, hashApiKey, generateApiKey)',
-      'Extract rate limiting → rate-limiter.ts (checkRateLimit, checkPreAuthRateLimit)',
-      'Extract validation → validators.ts (validateId, validateAmount, validateEmail, etc.)',
-      'Extract response helpers → responses.ts (jsonResponse, errorResponse, getCorsHeaders)',
-      'Keep createHandler as the main export in utils.ts',
-      'Update imports across all edge functions',
-    ], `utils.ts is a 62KB god-module with ${importers} importers. Any change forces re-testing everything. Splitting reduces blast radius by ~70%.`)
-  } else if (file.includes('treasury-resource.ts')) {
-    propose('P3', 'architecture', `Monitor treasury-resource.ts growth (${importers} importers)`, [
-      'This is a shared type/utility module — high import count is expected',
-      'Only split if it starts accumulating business logic',
-      'Current state: acceptable (types + response helpers)',
-    ], 'Infrastructure modules naturally have high fan-in. Only act if it starts mixing concerns.')
+    propose('P3', 'architecture', `Migrate utils.ts importers to specific modules (${importers} remaining)`, [
+      'validators.ts, network-security.ts, audit.ts already extracted',
+      'Gradually update edge functions to import from specific modules',
+      'Keep utils.ts re-exports for backward compat until migration complete',
+    ], `utils.ts modules have been extracted but importers haven't migrated yet. This is a gradual migration — no urgency.`)
   } else if (file.includes('payment-provider.ts')) {
-    propose('P2', 'architecture', `Split payment-provider.ts types from implementation`, [
-      'Create payment-provider-types.ts with interfaces (PaymentProvider, PaymentIntentParams, etc.)',
-      'Keep factory function and Finix implementation in payment-provider.ts',
-      'Services that only need types import from types file (smaller blast radius)',
-      'Update .service-boundaries.json for the new module',
-    ], `payment-provider.ts is both type definitions AND implementation. Services that just need types pull in the entire Finix/Stripe stack.`)
+    propose('P3', 'architecture', `Migrate payment-provider.ts importers to use types file`, [
+      'payment-provider-types.ts already extracted',
+      'Update services that only need types to import from types file',
+    ], `payment-provider types have been extracted. Migrate importers gradually.`)
   }
+}
+
+// Treasury-resource monitoring (always P3)
+const treasuryHub = signals.find(s => s.category === 'hub_growth' && s.message?.includes('treasury-resource'))
+if (treasuryHub) {
+  propose('P3', 'architecture', `Monitor treasury-resource.ts growth (${treasuryHub.importers || '?'} importers)`, [
+    'This is a shared type/utility module — high import count is expected',
+    'Only split if it starts accumulating business logic',
+  ], 'Infrastructure modules naturally have high fan-in. Only act if it starts mixing concerns.')
 }
 
 // Dead exports → propose cleanup

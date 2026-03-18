@@ -78,13 +78,27 @@ const sharedDir = join(ROOT, 'supabase/functions/_shared')
 if (existsSync(sharedDir)) {
   const sharedFiles = readdirSync(sharedDir).filter(f => f.endsWith('.ts') && !f.startsWith('__'))
 
+  // Check for extracted companion modules (reduces hub signal if split already done)
+  const extractedModules = {
+    'utils.ts': ['validators.ts', 'network-security.ts', 'audit.ts'],
+    'payment-provider.ts': ['payment-provider-types.ts'],
+  }
+
   for (const file of sharedFiles) {
     const fullPath = `supabase/functions/_shared/${file}`
     const importers = countImporters(fullPath)
 
+    // If this module has been split, note it and lower severity
+    const companions = extractedModules[file]
+    const hasSplit = companions && companions.every(c => sharedFiles.includes(c))
+
     if (importers >= 10) {
-      addSignal('HIGH', 'hub_growth', `${file} has ${importers} importers — approaching god-service territory`, `Consider splitting ${file} into smaller, focused modules`, { file: fullPath, importers })
-    } else if (importers >= 7) {
+      if (hasSplit) {
+        addSignal('LOW', 'hub_growth', `${file} has ${importers} importers but has been split into ${companions.join(', ')} — migrate importers gradually`, `Update imports in edge functions to use specific modules`, { file: fullPath, importers, split: true })
+      } else {
+        addSignal('HIGH', 'hub_growth', `${file} has ${importers} importers — approaching god-service territory`, `Consider splitting ${file} into smaller, focused modules`, { file: fullPath, importers })
+      }
+    } else if (importers >= 7 && !hasSplit) {
       addSignal('MEDIUM', 'hub_growth', `${file} has ${importers} importers — monitor for further growth`, `Review if all importers truly need direct access`, { file: fullPath, importers })
     }
   }
@@ -228,17 +242,28 @@ if (existsSync(BOUNDARIES_PATH)) {
 
 // ── 5. Financial Risk Concentration ─────────────────────────────────
 
+// Known patterns that legitimately do direct inserts (not record-* operations)
+const financialExceptionPatterns = [
+  'platform-payouts', 'credits', 'import-bank-statement', 'reconcile',
+  'processor-reconciliation', 'ops-monitor', 'preflight-authorization',
+  'risk-evaluation', 'manage-budgets', 'get-runway', 'upload-receipt',
+  'export-report', 'trial-balance', 'ap-aging', 'ar-aging', 'frozen-statements',
+]
+
 const moneyFiles = readDir(join(ROOT, 'supabase/functions'))
-  .filter(f => !f.includes('__tests__'))
+  .filter(f => !f.includes('__tests__') && !f.includes('_shared'))
   .filter(f => {
     try {
       const content = readFileSync(f, 'utf-8')
-      return content.includes("'transactions'") && (content.includes('.insert(') || content.includes('.update('))
+      const doesDirectInsert = content.includes("'transactions'") && content.includes('.insert(')
+      const usesAtomicRpc = content.includes('record_transaction_atomic') || content.includes('reverse_transaction_atomic')
+      const isException = financialExceptionPatterns.some(p => f.includes(p))
+      return doesDirectInsert && !usesAtomicRpc && !isException
     } catch { return false }
   })
 
-if (moneyFiles.length > 20) {
-  addSignal('MEDIUM', 'financial_spread', `${moneyFiles.length} files write to transactions table — financial logic is spreading`, `Consolidate transaction writes into atomic RPCs to reduce surface area`, { count: moneyFiles.length })
+if (moneyFiles.length > 0) {
+  addSignal('MEDIUM', 'financial_spread', `${moneyFiles.length} non-exception file(s) do direct transaction inserts without atomic RPCs`, `Migrate to record_transaction_atomic RPC`, { count: moneyFiles.length, files: moneyFiles.map(f => relative(ROOT, f)) })
 }
 
 // ── 6. Migration Debt ───────────────────────────────────────────────
