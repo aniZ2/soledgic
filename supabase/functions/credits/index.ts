@@ -57,51 +57,65 @@ const handler = createHandler(
       const userId = validateId(body.user_id, 100)
       if (!userId) return errorResponse('Invalid user_id', 400, req, requestId)
 
-      const { data: accounts } = await supabase
-        .from('accounts')
-        .select('id, account_type')
-        .eq('ledger_id', ledger!.id)
-        .eq('entity_id', userId)
-        .in('account_type', ['user_wallet', 'user_spendable_balance'])
-
+      // Credit balance = sum of liability entries tagged with this user (issued - converted)
+      // Spendable balance = sum of user_spendable_balance entries
       const result: Record<string, unknown> = {
         success: true,
         user_id: userId,
         credits: 0,
+        credits_usd_value: 0,
         spendable_usd: 0,
         conversion_rate: `${CREDITS_PER_DOLLAR} credits = $1`,
       }
 
-      for (const account of accounts || []) {
-        // Use database SUM to avoid float accumulation errors
-        const [{ data: creditSum }, { data: debitSum }] = await Promise.all([
-          supabase.rpc('sum_entries_by_type', { p_account_id: account.id, p_entry_type: 'credit' }),
-          supabase.rpc('sum_entries_by_type', { p_account_id: account.id, p_entry_type: 'debit' }),
-        ]).catch(() => [{ data: null }, { data: null }])
+      // Get liability account for credit balance
+      const { data: liabilityAccount } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('ledger_id', ledger!.id)
+        .eq('account_type', 'credits_liability')
+        .maybeSingle()
 
-        // Fallback to client-side if RPC not available
-        let bal: number
-        if (creditSum !== null && debitSum !== null) {
-          bal = Math.round((Number(creditSum || 0) - Number(debitSum || 0)) * 100) / 100
-        } else {
-          const { data: entries } = await supabase
-            .from('entries')
-            .select('entry_type, amount, transactions!inner(status)')
-            .eq('account_id', account.id)
-            .eq('transactions.status', 'completed')
-          bal = 0
-          for (const e of entries || []) {
-            bal += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
-          }
-          bal = Math.round(bal * 100) / 100
-        }
+      if (liabilityAccount) {
+        // Sum liability entries for this user (credits from issue, debits from convert)
+        const { data: liabilityEntries } = await supabase
+          .from('entries')
+          .select('entry_type, amount, transactions!inner(status, metadata)')
+          .eq('account_id', liabilityAccount.id)
+          .eq('transactions.status', 'completed')
 
-        if (account.account_type === 'user_wallet') {
-          result.credits = Math.round(bal * CREDITS_PER_DOLLAR)
-          result.credits_usd_value = bal
-        } else {
-          result.spendable_usd = bal
+        let creditBal = 0
+        for (const e of liabilityEntries || []) {
+          const txnMeta = (e as any).transactions?.metadata
+          if (txnMeta?.user_id !== userId) continue
+          creditBal += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
         }
+        creditBal = Math.round(creditBal * 100) / 100
+        result.credits = Math.round(creditBal * CREDITS_PER_DOLLAR)
+        result.credits_usd_value = creditBal
+      }
+
+      // Get spendable balance account
+      const { data: spendableAccount } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('ledger_id', ledger!.id)
+        .eq('account_type', 'user_spendable_balance')
+        .eq('entity_id', userId)
+        .maybeSingle()
+
+      if (spendableAccount) {
+        const { data: spendableEntries } = await supabase
+          .from('entries')
+          .select('entry_type, amount, transactions!inner(status)')
+          .eq('account_id', spendableAccount.id)
+          .eq('transactions.status', 'completed')
+
+        let spendBal = 0
+        for (const e of spendableEntries || []) {
+          spendBal += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
+        }
+        result.spendable_usd = Math.round(spendBal * 100) / 100
       }
 
       return jsonResponse(result, 200, req, requestId)

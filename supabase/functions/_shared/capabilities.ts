@@ -60,7 +60,9 @@ export async function loadOrgCapabilities(
 }
 
 /**
- * Get today's total payout amount for the org's ledgers.
+ * Get today's total payout amount across ALL ledgers for the org.
+ * Capabilities are org-level — checking a single ledger allows bypass
+ * by spreading payouts across multiple ledgers.
  */
 export async function getDailyPayoutTotal(
   supabase: SupabaseClient,
@@ -69,10 +71,38 @@ export async function getDailyPayoutTotal(
   const now = new Date()
   const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0))
 
+  // Get all ledger IDs for this org
+  const { data: currentLedger } = await supabase
+    .from('ledgers')
+    .select('organization_id')
+    .eq('id', ledgerId)
+    .single()
+
+  const orgId = currentLedger?.organization_id
+  if (!orgId) {
+    // Fallback: single ledger if org lookup fails
+    const { data } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('ledger_id', ledgerId)
+      .eq('transaction_type', 'payout')
+      .eq('status', 'completed')
+      .gte('created_at', todayStart.toISOString())
+    return (data || []).reduce((sum, t) => sum + Math.round(Number(t.amount) * 100), 0)
+  }
+
+  const { data: orgLedgers } = await supabase
+    .from('ledgers')
+    .select('id')
+    .eq('organization_id', orgId)
+
+  const ledgerIds = (orgLedgers || []).map((l) => l.id)
+  if (ledgerIds.length === 0) return 0
+
   const { data } = await supabase
     .from('transactions')
     .select('amount')
-    .eq('ledger_id', ledgerId)
+    .in('ledger_id', ledgerIds)
     .eq('transaction_type', 'payout')
     .eq('status', 'completed')
     .gte('created_at', todayStart.toISOString())

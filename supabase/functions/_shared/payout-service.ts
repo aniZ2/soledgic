@@ -393,7 +393,7 @@ export async function processPayoutResponse(
             }).format(feesAmount / 100)
           : null
 
-        const safeDisplayName = escapeHtml(creator.display_name) || 'there'
+        const safeDisplayName = escapeHtml(creator.name) || 'there'
         const safePlatformName = escapeHtml((ledger as any).platform_name)
 
         const emailHtml = `
@@ -421,7 +421,7 @@ export async function processPayoutResponse(
           },
           body: JSON.stringify({
             from: Deno.env.get('FROM_EMAIL') || 'Soledgic <noreply@soledgic.com>',
-            to: [creator.email],
+            to: [creator.metadata?.email],
             subject: `Payout of ${formattedAmount} processed`,
             html: emailHtml,
           }),
