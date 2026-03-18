@@ -685,16 +685,27 @@ export class Soledgic {
 
   // === CREDITS ===
 
-  async issueCredits(userId: string, amountCents: number, options: { reason?: string; referenceId?: string } = {}) {
+  /** Issue credits to a user. 1000 credits = $1 USD (Soledgic standard rate). */
+  async issueCredits(userId: string, credits: number, options: { reason?: string; referenceId?: string } = {}) {
     return this.request('credits', {
       action: 'issue',
       user_id: userId,
-      amount: amountCents,
+      credits,
       reason: options.reason,
       reference_id: options.referenceId,
     })
   }
 
+  /** Convert earned credits to spendable balance. Minimum 5000 credits ($5). */
+  async convertCredits(userId: string, credits: number) {
+    return this.request('credits', {
+      action: 'convert',
+      user_id: userId,
+      credits,
+    })
+  }
+
+  /** Spend spendable balance on creator content. Amount in cents. Split applies. */
   async redeemCredits(userId: string, creatorId: string, amountCents: number, referenceId: string, options: { description?: string; splitPercent?: number } = {}) {
     return this.request('credits', {
       action: 'redeem',
@@ -707,6 +718,7 @@ export class Soledgic {
     })
   }
 
+  /** Get user's credit balance (unconverted) and spendable balance (converted). */
   async getCreditBalance(userId: string) {
     return this.request('credits', { action: 'balance', user_id: userId })
   }

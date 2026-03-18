@@ -146,7 +146,7 @@ BEGIN
   INSERT INTO entries (transaction_id, account_id, entry_type, amount)
   VALUES (v_txn_id, v_liability_account_id, 'credit', p_amount_cents / 100.0);
 
-  -- Also credit user wallet (so user can spend)
+  -- Also credit user wallet (so user sees their credit balance)
   -- This is balanced by the liability — not free money
   INSERT INTO entries (transaction_id, account_id, entry_type, amount)
   VALUES (v_txn_id, v_user_wallet_id, 'credit', p_amount_cents / 100.0);
@@ -185,9 +185,8 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_user_wallet_id uuid;
+  v_spendable_account_id uuid;
   v_user_balance numeric;
-  v_liability_account_id uuid;
   v_creator_account_id uuid;
   v_platform_account_id uuid;
   v_txn_id uuid;
@@ -198,21 +197,21 @@ DECLARE
 BEGIN
   v_amount := p_amount_cents / 100.0;
 
-  -- Get user wallet and check balance
-  SELECT id INTO v_user_wallet_id
+  -- Get user SPENDABLE balance (not wallet — wallet holds unconverted credits)
+  SELECT id INTO v_spendable_account_id
   FROM accounts
-  WHERE ledger_id = p_ledger_id AND account_type = 'user_wallet' AND entity_id = p_user_id;
+  WHERE ledger_id = p_ledger_id AND account_type = 'user_spendable_balance' AND entity_id = p_user_id;
 
-  IF v_user_wallet_id IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', 'User wallet not found');
+  IF v_spendable_account_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'No spendable balance — convert credits first');
   END IF;
 
-  -- Calculate user balance
+  -- Calculate spendable balance
   SELECT COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE -amount END), 0)
   INTO v_user_balance
   FROM entries e
   JOIN transactions t ON t.id = e.transaction_id
-  WHERE e.account_id = v_user_wallet_id AND t.status = 'completed';
+  WHERE e.account_id = v_spendable_account_id AND t.status = 'completed';
 
   IF v_user_balance < v_amount THEN
     RETURN jsonb_build_object(
@@ -259,7 +258,7 @@ BEGIN
   -- Double entry:
   -- 1. DR user_wallet (credits leave user)
   INSERT INTO entries (transaction_id, account_id, entry_type, amount)
-  VALUES (v_txn_id, v_user_wallet_id, 'debit', v_amount);
+  VALUES (v_txn_id, v_spendable_account_id, 'debit', v_amount);
 
   -- 2. DR credits_liability (liability decreases — promise fulfilled)
   INSERT INTO entries (transaction_id, account_id, entry_type, amount)
