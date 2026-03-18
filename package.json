@@ -30,6 +30,8 @@
     "arch:analyze": "node scripts/arch-analyze.mjs",
     "arch:analyze:json": "node scripts/arch-analyze.mjs --json",
     "arch:reality-check": "node scripts/arch-reality-check.mjs",
+    "arch:propose": "node scripts/arch-propose.mjs",
+    "arch:propose:json": "node scripts/arch-propose.mjs --json",
     "validate:env": "bash scripts/validate-env.sh",
     "security-gate": "bash scripts/security-gate.sh",
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",
