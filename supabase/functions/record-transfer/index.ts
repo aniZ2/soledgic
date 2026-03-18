@@ -118,40 +118,42 @@ const handler = createHandler(
 
     const transferAmount = amount / 100
 
-    // Create transfer transaction (entry_method: 'manual' -- internal bookkeeping move)
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'transfer',
-        reference_id: referenceId,
-        reference_type: 'internal_transfer',
-        description: description || `${transferType}: ${fromAccount.name} → ${toAccount.name}`,
-        amount: transferAmount,
-        currency: 'USD',
-        status: 'completed',
-        entry_method: 'manual',
-        metadata: {
-          transfer_type: transferType,
-          from_account: fromAccountType,
-          to_account: toAccountType
-        }
-      })
-      .select('id')
-      .single()
+    // Atomic: duplicate check + transaction insert + entries insert with account locking
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: 'transfer',
+      p_reference_id: referenceId,
+      p_reference_type: 'internal_transfer',
+      p_description: description || `${transferType}: ${fromAccount.name} → ${toAccount.name}`,
+      p_amount: transferAmount,
+      p_currency: 'USD',
+      p_status: 'completed',
+      p_entry_method: 'manual',
+      p_metadata: {
+        transfer_type: transferType,
+        from_account: fromAccountType,
+        to_account: toAccountType
+      },
+      p_entries: JSON.stringify([
+        { account_id: toAccount.id, entry_type: 'debit', amount: transferAmount },
+        { account_id: fromAccount.id, entry_type: 'credit', amount: transferAmount },
+      ]),
+      p_authorizing_instrument_id: null,
+    })
 
-    if (txError) {
-      console.error('Failed to create transaction:', txError)
+    if (rpcError) {
+      console.error('Failed to create transaction:', rpcError)
       return errorResponse('Failed to create transfer transaction', 500, req, requestId)
     }
 
-    // Create entries
-    const entries = [
-      { transaction_id: transaction.id, account_id: toAccount.id, entry_type: 'debit', amount: transferAmount },
-      { transaction_id: transaction.id, account_id: fromAccount.id, entry_type: 'credit', amount: transferAmount }
-    ]
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: rpcResult.transaction_id }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create transfer', 500, req, requestId)
+    }
 
-    await supabase.from('entries').insert(entries)
+    const transaction = { id: rpcResult.transaction_id }
 
     // Create transfer record
     const { data: transfer } = await supabase

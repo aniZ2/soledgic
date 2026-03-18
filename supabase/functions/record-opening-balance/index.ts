@@ -109,33 +109,7 @@ const handler = createHandler(
       }, 400, req, requestId)
     }
 
-    // Create transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'opening_balance',
-        reference_id: `opening_${body.as_of_date}`,
-        reference_type: 'opening_balance',
-        description: `Opening balances as of ${body.as_of_date}`,
-        amount: totalAssets,
-        currency: 'USD',
-        status: 'completed',
-        metadata: {
-          source: body.source,
-          source_description: body.source_description ? validateString(body.source_description, 500) : null,
-          as_of_date: body.as_of_date
-        }
-      })
-      .select('id')
-      .single()
-
-    if (txError) {
-      console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create opening balance transaction', 500, req, requestId)
-    }
-
-    // Create entries
+    // Resolve accounts for entries before RPC call
     const entries = []
     for (const bal of body.balances) {
       const accountType = validateId(bal.account_type, 50)!
@@ -180,14 +154,45 @@ const handler = createHandler(
 
       const amount = Math.abs(bal.balance / 100)
       entries.push({
-        transaction_id: transaction.id,
         account_id: account.id,
         entry_type: bal.balance > 0 ? 'debit' : 'credit',
         amount: amount
       })
     }
 
-    await supabase.from('entries').insert(entries)
+    // Atomic: duplicate check + transaction insert + entries insert with account locking
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: 'opening_balance',
+      p_reference_id: `opening_${body.as_of_date}`,
+      p_reference_type: 'opening_balance',
+      p_description: `Opening balances as of ${body.as_of_date}`,
+      p_amount: totalAssets,
+      p_currency: 'USD',
+      p_status: 'completed',
+      p_entry_method: 'manual',
+      p_metadata: {
+        source: body.source,
+        source_description: body.source_description ? validateString(body.source_description, 500) : null,
+        as_of_date: body.as_of_date
+      },
+      p_entries: JSON.stringify(entries),
+      p_authorizing_instrument_id: null,
+    })
+
+    if (rpcError) {
+      console.error('Failed to create transaction:', rpcError)
+      return errorResponse('Failed to create opening balance transaction', 500, req, requestId)
+    }
+
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: rpcResult.transaction_id }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create opening balance', 500, req, requestId)
+    }
+
+    const transaction = { id: rpcResult.transaction_id }
 
     // Record opening balance metadata
     const { data: opening } = await supabase

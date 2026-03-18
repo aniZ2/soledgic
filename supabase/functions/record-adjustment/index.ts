@@ -103,36 +103,7 @@ const handler = createHandler(
       : new Date().toISOString().split('T')[0]
     const totalAmount = totalDebits / 100
 
-    // Create adjustment transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'adjustment',
-        reference_id: `adj_${Date.now()}`,
-        reference_type: 'adjustment_journal',
-        description: `${body.adjustment_type}: ${reason}`,
-        amount: totalAmount,
-        currency: 'USD',
-        status: 'completed',
-        correction_type: body.adjustment_type === 'correction' ? 'adjustment' : null,
-        correction_reason_detail: reason,
-        reverses: body.original_transaction_id ? validateId(body.original_transaction_id, 100) : null,
-        metadata: {
-          adjustment_type: body.adjustment_type,
-          prepared_by: preparedBy,
-          adjustment_date: adjustmentDate
-        }
-      })
-      .select('id')
-      .single()
-
-    if (txError) {
-      console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create adjustment transaction', 500, req, requestId)
-    }
-
-    // Create entries
+    // Resolve accounts for entries before RPC call
     const entryRecords = []
     for (const entry of body.entries) {
       const accountType = validateId(entry.account_type, 50)
@@ -163,14 +134,45 @@ const handler = createHandler(
       }
 
       entryRecords.push({
-        transaction_id: transaction.id,
         account_id: account.id,
         entry_type: entry.entry_type,
         amount: entry.amount / 100
       })
     }
 
-    await supabase.from('entries').insert(entryRecords)
+    // Atomic: duplicate check + transaction insert + entries insert with account locking
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: 'adjustment',
+      p_reference_id: `adj_${Date.now()}`,
+      p_reference_type: 'adjustment',
+      p_description: `${body.adjustment_type}: ${reason}`,
+      p_amount: totalAmount,
+      p_currency: 'USD',
+      p_status: 'completed',
+      p_entry_method: 'manual',
+      p_metadata: {
+        adjustment_type: body.adjustment_type,
+        prepared_by: preparedBy,
+        adjustment_date: adjustmentDate
+      },
+      p_entries: JSON.stringify(entryRecords),
+      p_authorizing_instrument_id: null,
+    })
+
+    if (rpcError) {
+      console.error('Failed to create transaction:', rpcError)
+      return errorResponse('Failed to create adjustment transaction', 500, req, requestId)
+    }
+
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: rpcResult.transaction_id }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create adjustment', 500, req, requestId)
+    }
+
+    const transaction = { id: rpcResult.transaction_id }
 
     // Create adjustment journal record
     const { data: adjustment } = await supabase

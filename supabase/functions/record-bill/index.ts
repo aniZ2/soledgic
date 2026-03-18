@@ -285,59 +285,53 @@ const handler = createHandler(
       }
     }
 
-    // Build insert payload - only include authorizing_instrument_id if we have an instrument
-    const transactionInsert: Record<string, any> = {
-      ledger_id: ledger.id,
-      transaction_type: isPaid ? 'expense' : 'bill',
-      reference_id: body.reference_id ? validateId(body.reference_id, 255) : null,
-      reference_type: 'vendor_bill',
-      description: description,
-      amount: amountInDollars,
-      currency: (ledger.settings as any)?.currency || 'USD',
-      status: 'completed',
-      expense_category_id: expenseCategoryId,
-      merchant_name: vendorName,
-      metadata: transactionMetadata
-    }
-
-    // Only add authorizing_instrument_id if instrument exists (column may not exist in older schemas)
-    if (instrument) {
-      transactionInsert.authorizing_instrument_id = instrument.id
-    }
-
-    // Create transaction with optional instrument linkage
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert(transactionInsert)
-      .select('id')
-      .single()
-
-    if (txError) {
-      console.error('Failed to create transaction:', txError)
-      return errorResponse('Failed to create bill', 500, req, requestId)
-    }
-
-    // Create entries (double-entry integrity preserved - instrument validation has no effect here)
-    let entries = []
+    // Determine credit account based on payment state
     if (isPaid) {
       if (!cashAccount) {
         return errorResponse('Cash account not found', 500, req, requestId)
       }
-      entries = [
-        { transaction_id: transaction.id, account_id: expenseAccount.id, entry_type: 'debit', amount: amountInDollars },
-        { transaction_id: transaction.id, account_id: cashAccount.id, entry_type: 'credit', amount: amountInDollars }
-      ]
     } else {
       if (!apAccount) {
         return errorResponse('Accounts Payable account not found', 500, req, requestId)
       }
-      entries = [
-        { transaction_id: transaction.id, account_id: expenseAccount.id, entry_type: 'debit', amount: amountInDollars },
-        { transaction_id: transaction.id, account_id: apAccount.id, entry_type: 'credit', amount: amountInDollars }
-      ]
     }
 
-    await supabase.from('entries').insert(entries)
+    const creditAccount = isPaid ? cashAccount! : apAccount!
+    const billReferenceId = body.reference_id ? validateId(body.reference_id, 255) : null
+    const currency = (ledger.settings as any)?.currency || 'USD'
+
+    // Atomic: duplicate check + transaction insert + entries insert with account locking
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: isPaid ? 'expense' : 'bill',
+      p_reference_id: billReferenceId,
+      p_reference_type: 'vendor_bill',
+      p_description: description,
+      p_amount: amountInDollars,
+      p_currency: currency,
+      p_status: 'completed',
+      p_entry_method: 'manual',
+      p_metadata: transactionMetadata,
+      p_entries: JSON.stringify([
+        { account_id: expenseAccount.id, entry_type: 'debit', amount: amountInDollars },
+        { account_id: creditAccount.id, entry_type: 'credit', amount: amountInDollars },
+      ]),
+      p_authorizing_instrument_id: instrument?.id || null,
+    })
+
+    if (rpcError) {
+      console.error('Failed to create transaction:', rpcError)
+      return errorResponse('Failed to create bill', 500, req, requestId)
+    }
+
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: rpcResult.transaction_id }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create bill', 500, req, requestId)
+    }
+
+    const transaction = { id: rpcResult.transaction_id }
 
     // ========================================================================
     // SNAP-TO MATCHING: Shadow Ledger Integration
@@ -346,7 +340,6 @@ const handler = createHandler(
     // This does NOT affect double-entry integrity - only adds traceability.
 
     let projectionMatch: ProjectionMatch | null = null
-    const currency = (ledger.settings as any)?.currency || 'USD'
 
     try {
       // Get today's date for matching window (+/- 3 days)

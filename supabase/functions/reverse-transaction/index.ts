@@ -300,34 +300,25 @@ const handler = createHandler(
       ? `reversal_${idempotencyKey}`
       : `reversal_${transactionId}_${reversalAmountCents}`
 
-    // Create reversal transaction
-    const { data: reversalTx, error: reversalError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'reversal',
-        reference_id: reversalRefId,
-        reference_type: 'reversal',
-        description: `Reversal: ${reason}`,
-        amount: reversalAmount,
-        currency: originalTx.currency,
-        status: 'completed',
-        reverses: transactionId,
-        metadata: {
-          original_transaction_id: transactionId,
-          reason: reason,
-          is_partial: reversalRatio < 1,
-          reversal_ratio: reversalRatio,
-          void_type: 'reversing_entry',
-        }
-      })
-      .select('id')
-      .single()
+    // Atomic: reversal transaction + reversed entries + original status update
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('reverse_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_original_transaction_id: transactionId,
+      p_reference_id: reversalRefId,
+      p_reason: reason,
+      p_metadata: {
+        original_transaction_id: transactionId,
+        reason: reason,
+        is_partial: reversalRatio < 1,
+        reversal_ratio: reversalRatio,
+        void_type: 'reversing_entry',
+      },
+    })
 
-    if (reversalError) {
+    if (rpcError) {
       // Handle duplicate reference_id (idempotent retry)
-      const errMsg = String(reversalError.message || '').toLowerCase()
-      if (reversalError.code === '23505' || errMsg.includes('unique') || errMsg.includes('duplicate')) {
+      const errMsg = String(rpcError.message || '').toLowerCase()
+      if (rpcError.code === '23505' || errMsg.includes('unique') || errMsg.includes('duplicate')) {
         const { data: existingReversal } = await supabase
           .from('transactions')
           .select('id')
@@ -343,9 +334,24 @@ const handler = createHandler(
           idempotent: true,
         }, 409, req)
       }
-      console.error('Failed to create reversal:', reversalError)
+      console.error('Failed to create reversal:', rpcError)
       return errorResponse('Failed to create reversal', 500, req)
     }
+
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({
+          success: false,
+          error: 'Duplicate reversal reference',
+          error_code: 'duplicate_reversal_reference',
+          reversal_id: rpcResult.transaction_id || null,
+          idempotent: true,
+        }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create reversal', 500, req)
+    }
+
+    const reversalTx = { id: rpcResult.transaction_id }
 
     // Build transaction graph edge: reversal → original transaction
     void autoLinkTransaction(supabase, ledger.id, {
@@ -353,33 +359,6 @@ const handler = createHandler(
       transaction_type: 'reversal',
       reverses: transactionId,
     })
-
-    // Create reversed entries (flip debits to credits)
-    const reversalEntries = originalTx.entries.map((entry: any) => ({
-      transaction_id: reversalTx.id,
-      account_id: entry.account_id,
-      entry_type: entry.entry_type === 'debit' ? 'credit' : 'debit',
-      amount: Math.round(Number(entry.amount) * reversalRatio * 100) / 100
-    }))
-
-    await supabase.from('entries').insert(reversalEntries)
-
-    // Update original transaction status if fully reversed
-    const totalReversedCents = alreadyReversedCents + reversalAmountCents
-    if (totalReversedCents >= originalAmountCents) {
-      await supabase
-        .from('transactions')
-        .update({
-          status: 'reversed',
-          reversed_by: reversalTx.id,
-          metadata: {
-            ...originalTx.metadata,
-            reversed_at: now,
-            reverse_reason: reason
-          }
-        })
-        .eq('id', transactionId)
-    }
 
     if (originalTx.transaction_type === 'refund') {
       await syncSaleRefundStateAfterRefundReversal(supabase, ledger.id, originalTx)

@@ -57,21 +57,7 @@ const handler = createHandler(
     const receivedTo = body.received_to ? validateId(body.received_to, 50) : 'cash'
     const invoiceId = body.invoice_id ? validateId(body.invoice_id, 255) : null
 
-    // Check duplicate
-    const { data: existingTx } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('ledger_id', ledger.id)
-      .eq('reference_id', referenceId)
-      .single()
-
-    if (existingTx) {
-      return jsonResponse({ 
-        success: false, 
-        error: 'Duplicate reference_id', 
-        transaction_id: existingTx.id 
-      }, 409, req)
-    }
+    // Duplicate check handled atomically inside RPC
 
     const amountDollars = amount / 100
 
@@ -113,42 +99,44 @@ const handler = createHandler(
       revenueAccount = newRevenue
     }
 
-    // Create transaction (entry_method: 'manual' — no processor verification)
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'income',
-        reference_id: referenceId,
-        reference_type: 'income',
-        description: description,
-        amount: amountDollars,
-        currency: 'USD',
-        status: 'completed',
-        entry_method: 'manual',
-        metadata: {
-          category: category,
-          customer_id: customerId,
-          customer_name: customerName,
-          invoice_id: invoiceId,
-          received_to: receivedTo,
-        }
-      })
-      .select('id')
-      .single()
+    // Atomic: duplicate check + transaction insert + entries insert with account locking
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: 'income',
+      p_reference_id: referenceId,
+      p_reference_type: 'income',
+      p_description: description,
+      p_amount: amountDollars,
+      p_currency: 'USD',
+      p_status: 'completed',
+      p_entry_method: 'manual',
+      p_metadata: {
+        category: category,
+        customer_id: customerId,
+        customer_name: customerName,
+        invoice_id: invoiceId,
+        received_to: receivedTo,
+      },
+      p_entries: JSON.stringify([
+        { account_id: cashAccount.id, entry_type: 'debit', amount: amountDollars },
+        { account_id: revenueAccount.id, entry_type: 'credit', amount: amountDollars },
+      ]),
+      p_authorizing_instrument_id: null,
+    })
 
-    if (txError) {
-      console.error('Failed to create income transaction:', txError)
+    if (rpcError) {
+      console.error('Failed to create income transaction:', rpcError)
       return errorResponse('Failed to create income transaction', 500, req)
     }
 
-    // Create entries
-    const entries = [
-      { transaction_id: transaction.id, account_id: cashAccount.id, entry_type: 'debit', amount: amountDollars },
-      { transaction_id: transaction.id, account_id: revenueAccount.id, entry_type: 'credit', amount: amountDollars },
-    ]
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: rpcResult.transaction_id }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create income', 500, req)
+    }
 
-    await supabase.from('entries').insert(entries)
+    const transaction = { id: rpcResult.transaction_id }
 
     // If this pays an invoice, mark it
     if (invoiceId) {

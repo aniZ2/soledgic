@@ -98,21 +98,7 @@ const handler = createHandler(
       }
     }
 
-    // Check duplicate
-    const { data: existingTx } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('ledger_id', ledger.id)
-      .eq('reference_id', referenceId)
-      .single()
-
-    if (existingTx) {
-      return jsonResponse({
-        success: false,
-        error: 'Duplicate reference_id',
-        transaction_id: existingTx.id
-      }, 409, req)
-    }
+    // Duplicate check handled atomically inside RPC
 
     // ========================================================================
     // RISK EVALUATION LINKAGE (Phase 3.1 - Signal Engine)
@@ -317,43 +303,38 @@ const handler = createHandler(
       }
     }
 
-    // Build insert payload - only include authorizing_instrument_id if we have an instrument
-    const transactionInsert: Record<string, any> = {
-      ledger_id: ledger.id,
-      transaction_type: 'expense',
-      reference_id: referenceId,
-      reference_type: 'expense',
-      description: description,
-      amount: amountDollars,
-      currency: 'USD',
-      status: 'completed',
-      entry_method: 'manual',
-      metadata: transactionMetadata
-    }
+    // Atomic: duplicate check + transaction insert + entries insert with account locking
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: 'expense',
+      p_reference_id: referenceId,
+      p_reference_type: 'expense',
+      p_description: description,
+      p_amount: amountDollars,
+      p_currency: 'USD',
+      p_status: 'completed',
+      p_entry_method: 'manual',
+      p_metadata: transactionMetadata,
+      p_entries: JSON.stringify([
+        { account_id: expenseAccount.id, entry_type: 'debit', amount: amountDollars },
+        { account_id: paymentAccount.id, entry_type: 'credit', amount: amountDollars },
+      ]),
+      p_authorizing_instrument_id: instrument?.id || null,
+    })
 
-    // Only add authorizing_instrument_id if instrument exists (column may not exist in older schemas)
-    if (instrument) {
-      transactionInsert.authorizing_instrument_id = instrument.id
-    }
-
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert(transactionInsert)
-      .select('id')
-      .single()
-
-    if (txError) {
-      console.error('Failed to create expense transaction:', txError)
+    if (rpcError) {
+      console.error('Failed to create expense transaction:', rpcError)
       return errorResponse('Failed to create expense transaction', 500, req)
     }
 
-    // Create entries (double-entry integrity preserved - instrument validation has no effect here)
-    const entries = [
-      { transaction_id: transaction.id, account_id: expenseAccount.id, entry_type: 'debit', amount: amountDollars },
-      { transaction_id: transaction.id, account_id: paymentAccount.id, entry_type: 'credit', amount: amountDollars },
-    ]
+    if (!rpcResult?.success) {
+      if (rpcResult?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: rpcResult.transaction_id }, 409, req)
+      }
+      return errorResponse(rpcResult?.error || 'Failed to create expense', 500, req)
+    }
 
-    await supabase.from('entries').insert(entries)
+    const transaction = { id: rpcResult.transaction_id }
 
     // ========================================================================
     // SNAP-TO MATCHING: Shadow Ledger Integration
