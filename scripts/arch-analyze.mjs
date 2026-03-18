@@ -60,13 +60,22 @@ function countImporters(modulePath) {
     ...readDir(join(ROOT, 'apps/web/src')),
   ]
   const moduleName = modulePath.split('/').pop().replace('.ts', '')
+  // Match actual import paths, not just substring (prevents 'audit' matching 'audit_log')
+  const importPatterns = [
+    `from './${moduleName}'`,
+    `from './${moduleName}.ts'`,
+    `from '../_shared/${moduleName}'`,
+    `from '../_shared/${moduleName}.ts'`,
+    `from './${moduleName}.ts'`,
+    `import('./${moduleName}.ts')`,
+  ]
   let count = 0
   for (const file of allFiles) {
     if (file.includes('__tests__') || file.includes('node_modules')) continue
     if (file === join(ROOT, modulePath)) continue
     try {
       const content = readFileSync(file, 'utf-8')
-      if (content.includes(`from '`) && content.includes(moduleName)) count++
+      if (importPatterns.some(p => content.includes(p))) count++
     } catch { /* skip */ }
   }
   return count
@@ -92,13 +101,17 @@ if (existsSync(sharedDir)) {
     const companions = extractedModules[file]
     const hasSplit = companions && companions.every(c => sharedFiles.includes(c))
 
+    // Infrastructure hubs (types/utilities) naturally have high fan-in
+    const infraHubs = ['treasury-resource.ts', 'utils.ts']
+    const isInfraHub = infraHubs.includes(file)
+
     if (importers >= 10) {
-      if (hasSplit) {
-        addSignal('LOW', 'hub_growth', `${file} has ${importers} importers but has been split into ${companions.join(', ')} — migrate importers gradually`, `Update imports in edge functions to use specific modules`, { file: fullPath, importers, split: true })
+      if (hasSplit || isInfraHub) {
+        addSignal('LOW', 'hub_growth', `${file} has ${importers} importers${hasSplit ? ' (split done)' : ' (infrastructure hub)'}`, hasSplit ? `Migrate importers to specific modules` : `Expected for shared type modules`, { file: fullPath, importers, split: hasSplit || false })
       } else {
         addSignal('HIGH', 'hub_growth', `${file} has ${importers} importers — approaching god-service territory`, `Consider splitting ${file} into smaller, focused modules`, { file: fullPath, importers })
       }
-    } else if (importers >= 7 && !hasSplit) {
+    } else if (importers >= 7 && !hasSplit && !isInfraHub) {
       addSignal('MEDIUM', 'hub_growth', `${file} has ${importers} importers — monitor for further growth`, `Review if all importers truly need direct access`, { file: fullPath, importers })
     }
   }
