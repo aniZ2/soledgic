@@ -371,6 +371,37 @@ export async function moveCurrentOrganizationToEcosystem(
     throw new Error('You must be an owner or admin of the target ecosystem')
   }
 
+  // Check if org already belongs to an ecosystem with active identity links
+  const { data: currentOrg } = await supabase
+    .from('organizations')
+    .select('ecosystem_id')
+    .eq('id', organization.organizationId)
+    .single()
+
+  if (currentOrg?.ecosystem_id && currentOrg.ecosystem_id !== String(target.id)) {
+    // Check for participant identity links that could become orphaned
+    const { data: orgLedgers } = await supabase
+      .from('ledgers')
+      .select('id')
+      .eq('organization_id', organization.organizationId)
+
+    const ledgerIds = (orgLedgers || []).map((l: { id: string }) => l.id)
+    if (ledgerIds.length > 0) {
+      const { count: linkCount } = await supabase
+        .from('participant_identity_links')
+        .select('id', { count: 'exact', head: true })
+        .in('ledger_id', ledgerIds)
+        .eq('status', 'active')
+
+      if (linkCount && linkCount > 0) {
+        throw new Error(
+          `This organization has ${linkCount} active identity links in its current ecosystem. ` +
+          'Transferring may orphan these links. Remove or migrate them first.',
+        )
+      }
+    }
+  }
+
   const { error } = await supabase
     .from('organizations')
     .update({ ecosystem_id: String(target.id) })

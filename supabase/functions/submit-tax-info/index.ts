@@ -14,6 +14,7 @@ import {
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   getLinkedUserIdForParticipant,
+  linkParticipantToUser,
   upsertSharedTaxProfile,
 } from '../_shared/identity-service.ts'
 
@@ -117,42 +118,30 @@ const handler = createHandler(
     const addressPostalCode = address.postal_code ? validateString(address.postal_code, 20) : null
     const addressCountry = address.country ? validateString(address.country, 2) : 'US'
 
-    // Supersede any existing active submission
-    await supabase
-      .from('tax_info_submissions')
-      .update({ status: 'superseded', updated_at: new Date().toISOString() })
-      .eq('ledger_id', ledger.id)
-      .eq('entity_id', participantId)
-      .eq('status', 'active')
-
-    // Insert new submission
+    // Atomic supersede + insert via RPC (prevents orphaned submissions)
     const now = new Date().toISOString()
-    const { data: submission, error: insertError } = await supabase
-      .from('tax_info_submissions')
-      .insert({
-        ledger_id: ledger.id,
-        entity_id: participantId,
-        status: 'active',
-        legal_name: legalName,
-        tax_id_type: body.tax_id_type,
-        tax_id_last4: body.tax_id_last4,
-        business_type: body.business_type,
-        address_line1: addressLine1,
-        address_line2: addressLine2,
-        address_city: addressCity,
-        address_state: addressState,
-        address_postal_code: addressPostalCode,
-        address_country: addressCountry,
-        certified_at: now,
-        certified_by: participantId,
-      })
-      .select('id, entity_id, legal_name, tax_id_type, tax_id_last4, business_type, certified_at')
-      .single()
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('submit_tax_info_atomic', {
+      p_ledger_id: ledger.id,
+      p_entity_id: participantId,
+      p_legal_name: legalName,
+      p_tax_id_type: body.tax_id_type,
+      p_tax_id_last4: body.tax_id_last4,
+      p_business_type: body.business_type,
+      p_address_line1: addressLine1,
+      p_address_line2: addressLine2,
+      p_address_city: addressCity,
+      p_address_state: addressState,
+      p_address_postal_code: addressPostalCode,
+      p_address_country: addressCountry,
+      p_certified_by: participantId,
+    })
 
-    if (insertError) {
-      console.error('Failed to submit tax info:', insertError)
+    if (rpcError || !rpcResult?.success) {
+      console.error('Failed to submit tax info:', rpcError || rpcResult?.error)
       return taxInfoError(req, requestId, 'Failed to submit tax info', 500, 'tax_info_submission_failed')
     }
+
+    const submission = { id: rpcResult.submission_id, entity_id: participantId, legal_name: legalName, tax_id_type: body.tax_id_type, tax_id_last4: body.tax_id_last4, business_type: body.business_type, certified_at: now }
 
     // Audit log
     createAuditLogAsync(supabase, req, {
@@ -169,7 +158,18 @@ const handler = createHandler(
       }),
     }, requestId)
 
-    const linkedUserId = await getLinkedUserIdForParticipant(supabase, ledger.id, participantId)
+    // If a user_id is provided and no identity link exists, create it now
+    // This ensures tax info syncs to the global profile even if the link
+    // wasn't established during participant creation
+    let linkedUserId = await getLinkedUserIdForParticipant(supabase, ledger.id, participantId)
+    if (!linkedUserId && body.user_id) {
+      const validUserId = validateId(body.user_id, 100)
+      if (validUserId) {
+        await linkParticipantToUser(supabase, ledger, participantId, validUserId, 'tax_submission', { source: 'submit-tax-info' }, req)
+        linkedUserId = validUserId
+      }
+    }
+
     if (linkedUserId) {
       await upsertSharedTaxProfile(supabase, linkedUserId, {
         legal_name: legalName,
