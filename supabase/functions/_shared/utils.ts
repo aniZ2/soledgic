@@ -471,7 +471,7 @@ export async function validateApiKey(
   if (!apiKey) return null
   
   // Basic format validation
-  if (!apiKey.startsWith('slk_') && !apiKey.startsWith('sk_')) {
+  if (!apiKey.startsWith('slk_')) {
     console.warn(`[${requestId}] Invalid API key format`)
     return null
   }

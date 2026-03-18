@@ -409,7 +409,7 @@ function errorResult(text: string, auditPartial?: Partial<AuditEntry>) {
 }
 
 function isLiveKey(key: string): boolean {
-  return key.startsWith('slk_live_') || key.startsWith('sk_live_')
+  return key.startsWith('slk_live_')
 }
 
 function getAmountFromArgs(args: Record<string, unknown>): number | null {
