@@ -188,7 +188,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 INVALID_KEY_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/record-sale" \
   -H "Authorization: Bearer $ANON_KEY" \
-  -H "x-api-key: sk_test_invalid_key_12345" \
+  -H "x-api-key: slk_test_invalid_key_12345" \
   -H "Content-Type: application/json" \
   -d '{"reference_id": "test", "creator_id": "test", "amount": 100}')
 

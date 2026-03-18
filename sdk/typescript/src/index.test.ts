@@ -3240,7 +3240,7 @@ describe('Soledgic SDK', () => {
     it('createLedger maps response with nested settings', async () => {
       const fn = mockFetch({
         success: true, warning: 'trial mode',
-        ledger: { id: 'l1', business_name: 'Acme', ledger_mode: 'platform', api_key: 'sk_test', status: 'active', created_at: '2026-01-01' },
+        ledger: { id: 'l1', business_name: 'Acme', ledger_mode: 'platform', api_key: 'slk_test', status: 'active', created_at: '2026-01-01' },
       })
       const sdk = createClient(fn)
       const result = await sdk.createLedger({ businessName: 'Acme', ownerEmail: 'a@test.com' })
@@ -3248,7 +3248,7 @@ describe('Soledgic SDK', () => {
       expect(result.ledger.id).toBe('l1')
       expect(result.ledger.businessName).toBe('Acme')
       expect(result.ledger.ledgerMode).toBe('platform')
-      expect(result.ledger.apiKey).toBe('sk_test')
+      expect(result.ledger.apiKey).toBe('slk_test')
       expect(result.warning).toBe('trial mode')
     })
 

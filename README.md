@@ -125,7 +125,7 @@ Create a participant:
 
 ```bash
 curl -X POST "https://api.soledgic.com/v1/participants" \
-  -H "x-api-key: sk_test_YOUR_API_KEY" \
+  -H "x-api-key: slk_test_YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "participant_id": "creator_456",
@@ -139,7 +139,7 @@ Create a hosted checkout session:
 
 ```bash
 curl -X POST "https://api.soledgic.com/v1/checkout-sessions" \
-  -H "x-api-key: sk_test_YOUR_API_KEY" \
+  -H "x-api-key: slk_test_YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "participant_id": "creator_456",
@@ -155,21 +155,21 @@ Fetch wallet state:
 
 ```bash
 curl -X GET "https://api.soledgic.com/v1/wallets?owner_id=creator_456&wallet_type=creator_earnings" \
-  -H "x-api-key: sk_test_YOUR_API_KEY"
+  -H "x-api-key: slk_test_YOUR_API_KEY"
 ```
 
 Check payout eligibility:
 
 ```bash
 curl -X GET "https://api.soledgic.com/v1/participants/creator_456/payout-eligibility" \
-  -H "x-api-key: sk_test_YOUR_API_KEY"
+  -H "x-api-key: slk_test_YOUR_API_KEY"
 ```
 
 Create a payout:
 
 ```bash
 curl -X POST "https://api.soledgic.com/v1/payouts" \
-  -H "x-api-key: sk_test_YOUR_API_KEY" \
+  -H "x-api-key: slk_test_YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "participant_id": "creator_456",

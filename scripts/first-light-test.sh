@@ -81,7 +81,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
   -X GET "$API_URL/participants" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-  -H "x-api-key: sk_test_invalid_key_12345")
+  -H "x-api-key: slk_test_invalid_key_12345")
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 

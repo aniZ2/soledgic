@@ -56,8 +56,8 @@ Deno.test('timingSafeEqual: different lengths return false', () => {
 })
 
 Deno.test('timingSafeEqual: handles special characters', () => {
-  assertEquals(timingSafeEqual('sk_live_abc123', 'sk_live_abc123'), true)
-  assertEquals(timingSafeEqual('sk_live_abc123', 'sk_live_abc124'), false)
+  assertEquals(timingSafeEqual('slk_live_abc123', 'slk_live_abc123'), true)
+  assertEquals(timingSafeEqual('slk_live_abc123', 'slk_live_abc124'), false)
 })
 
 // ============================================================================

@@ -7,7 +7,7 @@ import { SoledgicTestClient } from './test-client'
 function isPlaceholder(value: string | undefined): boolean {
   const v = (value || '').trim().toLowerCase()
   if (!v) return true
-  return v.includes('replace_with') || v.includes('your_') || v === 'sk_test_replace_with_local_key'
+  return v.includes('replace_with') || v.includes('your_') || v === 'slk_test_replace_with_local_key'
 }
 
 export default async function globalSetup() {

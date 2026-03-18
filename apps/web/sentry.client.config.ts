@@ -8,7 +8,8 @@ const PII_PATTERNS = [
   /\b\d{3}-\d{2}-\d{4}\b/g,             // SSN
   /\b\d{2}-\d{7}\b/g,                    // EIN
   /eyJ[A-Za-z0-9_-]+/g,                  // JWT tokens
-  /sk_[a-zA-Z0-9]+/g,                    // API keys (sk_live_*, sk_test_*)
+  /slk_[a-zA-Z0-9_]+/g,                  // Soledgic API keys (slk_live_*, slk_test_*)
+  /sk_[a-zA-Z0-9]+/g,                    // Stripe API keys (sk_live_*, sk_test_*)
   /whsec_[a-zA-Z0-9]+/g,                 // Webhook secrets
   /sntrys_[a-zA-Z0-9]+/g,               // Sentry auth tokens
   /\b[A-Za-z0-9+/]{40,}\b/g,            // Long base64 strings (potential secrets)

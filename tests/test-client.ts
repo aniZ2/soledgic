@@ -665,7 +665,7 @@ export function createServiceClient(): SoledgicServiceClient | null {
 // ============================================================================
 // 
 // Set these in your CI/CD environment or local .env.test file:
-//   TEST_API_KEY_PRIMARY=sk_live_...
+//   TEST_API_KEY_PRIMARY=slk_live_...
 //
 // NEVER hardcode API keys in source code!
 // ============================================================================
@@ -676,8 +676,8 @@ function isPlaceholder(value: string): boolean {
   return (
     v.includes('replace_with') ||
     v.includes('your_') ||
-    v === 'sk_test_replace_with_local_key' ||
-    v === 'sk_test_your_primary_test_key_here'
+    v === 'slk_test_replace_with_local_key' ||
+    v === 'slk_test_your_primary_test_key_here'
   )
 }
 
@@ -701,9 +701,9 @@ export function createTestClient(key: keyof typeof TEST_KEYS = 'primary') {
       `Missing test API key for "${key}". ` +
       `Set TEST_API_KEY_${key.toUpperCase()} environment variable.\n\n` +
       `Example:\n` +
-      `  export TEST_API_KEY_${key.toUpperCase()}=sk_test_real_key_here\n\n` +
+      `  export TEST_API_KEY_${key.toUpperCase()}=slk_test_real_key_here\n\n` +
       `Or add to your .env.test file:\n` +
-      `  TEST_API_KEY_${key.toUpperCase()}=sk_test_real_key_here`
+      `  TEST_API_KEY_${key.toUpperCase()}=slk_test_real_key_here`
     )
   }
   if (!SUPABASE_ANON_KEY) {
