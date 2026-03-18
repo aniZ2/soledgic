@@ -39,11 +39,8 @@ export function isInternalPlatformOperatorEmail(email: string | null | undefined
 
 export function isPlatformOperatorUser(user: User | null | undefined): boolean {
   if (!user) return false
-  const role = typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null
-  if (role === 'platform_admin') {
-    return true
-  }
-
+  // SECURITY: Only use email allowlist (env vars). Never trust user_metadata
+  // because it is writable by the user via supabase.auth.updateUser().
   return isInternalPlatformOperatorEmail(user.email)
 }
 

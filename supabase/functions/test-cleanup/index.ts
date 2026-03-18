@@ -18,6 +18,10 @@ const handler = createHandler(
       return errorResponse('Ledger not found', 401, req, requestId)
     }
 
+    if (ledger.livemode) {
+      return errorResponse('Cannot cleanup live ledger data — test mode only', 403, req, requestId)
+    }
+
     if (req.method !== 'POST') {
       return errorResponse('Method not allowed', 405, req, requestId)
     }

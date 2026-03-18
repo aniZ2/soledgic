@@ -167,103 +167,25 @@ const handler = createHandler(
 
       const amountCents = creditsToUsdCents(credits)
 
-      // Get user wallet balance
-      const { data: wallet } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('ledger_id', ledger!.id)
-        .eq('account_type', 'user_wallet')
-        .eq('entity_id', userId)
-        .maybeSingle()
+      // Atomic RPC: balanced double-entry (DR wallet, CR spendable)
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('convert_credits', {
+        p_ledger_id: ledger!.id,
+        p_user_id: userId,
+        p_amount_cents: amountCents,
+        p_min_conversion_cents: creditsToUsdCents(MIN_CONVERSION_CREDITS),
+      })
 
-      if (!wallet) return errorResponse('No credit balance found', 400, req, requestId)
+      if (rpcError) return errorResponse(rpcError.message, 500, req, requestId)
 
-      const { data: walletEntries } = await supabase
-        .from('entries')
-        .select('entry_type, amount, transactions!inner(status)')
-        .eq('account_id', wallet.id)
-        .eq('transactions.status', 'completed')
-
-      let walletBalance = 0
-      for (const e of walletEntries || []) {
-        walletBalance += e.entry_type === 'credit' ? Number(e.amount) : -Number(e.amount)
-      }
-
-      const usdAmount = amountCents / 100
-      if (walletBalance < usdAmount) {
+      if (!rpcResult?.success) {
         return jsonResponse({
           success: false,
-          error: 'Insufficient credit balance',
-          credits_available: Math.round(walletBalance * CREDITS_PER_DOLLAR),
-          credits_requested: credits,
+          error: rpcResult?.error || 'Failed to convert credits',
+          ...(rpcResult?.balance_cents !== undefined ? {
+            credits_available: rpcResult.balance_cents,
+          } : {}),
         }, 400, req, requestId)
       }
-
-      // Ensure spendable balance account exists
-      let spendableAccountId: string | null = null
-      const { data: spendable } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('ledger_id', ledger!.id)
-        .eq('account_type', 'user_spendable_balance')
-        .eq('entity_id', userId)
-        .maybeSingle()
-
-      if (spendable) {
-        spendableAccountId = spendable.id
-      } else {
-        const { data: newAccount } = await supabase
-          .from('accounts')
-          .insert({
-            ledger_id: ledger!.id,
-            account_type: 'user_spendable_balance',
-            entity_type: 'user',
-            entity_id: userId,
-            name: `User ${userId} Spendable Balance`,
-          })
-          .select('id')
-          .single()
-        spendableAccountId = newAccount?.id || null
-      }
-
-      if (!spendableAccountId) return errorResponse('Failed to create spendable account', 500, req, requestId)
-
-      // Get liability account
-      const { data: liabilityAccount } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('ledger_id', ledger!.id)
-        .eq('account_type', 'credits_liability')
-        .maybeSingle()
-
-      if (!liabilityAccount) return errorResponse('Credits liability account not found', 500, req, requestId)
-
-      // Create conversion transaction
-      const { data: txn, error: txnError } = await supabase
-        .from('transactions')
-        .insert({
-          ledger_id: ledger!.id,
-          reference_id: `credit_convert_${Date.now()}_${userId}`,
-          transaction_type: 'credit_conversion',
-          amount: usdAmount,
-          description: `Convert ${credits} credits to $${usdAmount} spendable balance`,
-          status: 'completed',
-          metadata: { user_id: userId, credits, usd_amount: usdAmount },
-        })
-        .select('id')
-        .single()
-
-      if (txnError || !txn) return errorResponse('Failed to create conversion', 500, req, requestId)
-
-      // Double entry:
-      // DR user_wallet (credits leave)
-      // DR credits_liability (liability decreases)
-      // CR user_spendable_balance (spendable goes up)
-      await Promise.all([
-        supabase.from('entries').insert({ transaction_id: txn.id, account_id: wallet.id, entry_type: 'debit', amount: usdAmount }),
-        supabase.from('entries').insert({ transaction_id: txn.id, account_id: liabilityAccount.id, entry_type: 'debit', amount: usdAmount }),
-        supabase.from('entries').insert({ transaction_id: txn.id, account_id: spendableAccountId, entry_type: 'credit', amount: usdAmount }),
-      ])
 
       createAuditLogAsync(supabase, req, {
         ledger_id: ledger!.id,
@@ -271,7 +193,7 @@ const handler = createHandler(
         entity_type: 'user',
         entity_id: userId,
         actor_type: 'api',
-        request_body: sanitizeForAudit({ user_id: userId, credits, usd_amount: usdAmount }),
+        request_body: sanitizeForAudit({ user_id: userId, credits, usd_amount: rpcResult.spendable_usd }),
         response_status: 200,
         risk_score: 25,
       }, requestId)
@@ -280,8 +202,8 @@ const handler = createHandler(
         success: true,
         user_id: userId,
         credits_converted: credits,
-        spendable_usd: usdAmount,
-        transaction_id: txn.id,
+        spendable_usd: rpcResult.spendable_usd,
+        transaction_id: rpcResult.transaction_id,
       }, 200, req, requestId)
     }
 

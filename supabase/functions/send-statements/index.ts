@@ -116,7 +116,10 @@ const handler = createHandler(
   { endpoint: 'send-statements', requireAuth: true, rateLimit: true },
   async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, body: EmailRequest) => {
     // Also allow cron jobs
-    const isCron = req.headers.get('x-cron-secret') === Deno.env.get('CRON_SECRET')
+    const cronHeader = (req.headers.get('x-cron-secret') || '').trim()
+    const expectedCron = (Deno.env.get('CRON_SECRET') || '').trim()
+    const { timingSafeEqual: tse } = await import('../_shared/utils.ts')
+    const isCron = cronHeader.length > 0 && expectedCron.length > 0 && tse(cronHeader, expectedCron)
     
     if (!ledger && !isCron) {
       return errorResponse('Unauthorized', 401, req)
