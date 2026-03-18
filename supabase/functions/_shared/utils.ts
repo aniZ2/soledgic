@@ -2,21 +2,23 @@
 // Rate limiting (Redis), API key validation, common responses
 // SECURITY HARDENED VERSION v2 - All audit findings addressed
 //
-// NOTE: Validators have been extracted to validators.ts for reduced blast radius.
-// This file re-exports them for backward compatibility. New code should import
-// from validators.ts directly.
+// Modules have been extracted for reduced blast radius. This file re-exports
+// everything for backward compatibility. New code should import from specific
+// modules directly:
+//   validators.ts      — validateAmount, validateId, validateUUID, etc.
+//   network-security.ts — getClientIp, timingSafeEqual, isPrivateIP, SSRF, escapeHtml
+//   audit.ts           — sanitizeForAudit, createAuditLog, AuditLogEntry, logSecurityEvent
 
-// Re-export validators (new code should import from './validators.ts' directly)
+// validators.ts — fully extracted (no duplicate definitions in this file)
 export {
-  validateAmount,
-  validateId,
-  validateUUID,
-  validateEmail,
-  validateString,
-  validateUrl,
-  validateDate,
-  validateInteger,
+  validateAmount, validateId, validateUUID, validateEmail,
+  validateString, validateUrl, validateDate, validateInteger,
 } from './validators.ts'
+
+// network-security.ts and audit.ts exist as alternative import paths.
+// Functions are still defined in this file because createHandler depends
+// on them internally. New standalone code should import from the specific
+// modules directly.
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Ratelimit } from 'https://esm.sh/@upstash/ratelimit@2'
@@ -1127,6 +1129,8 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
 // ============================================================================
 // PII SANITIZATION FOR AUDIT LOGS (M2 FIX)
 // ============================================================================
+// NOTE: Also available from audit.ts and network-security.ts.
+// Kept here because createHandler depends on these internally.
 
 /**
  * Fields that must NEVER appear in audit logs
