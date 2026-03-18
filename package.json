@@ -27,6 +27,8 @@
     "arch:validate-financial": "node scripts/arch-validate-financial.mjs",
     "arch:critical-gate": "node scripts/arch-critical-path-gate.mjs",
     "arch:critical-gate:full": "node scripts/arch-critical-path-gate.mjs --full",
+    "arch:analyze": "node scripts/arch-analyze.mjs",
+    "arch:analyze:json": "node scripts/arch-analyze.mjs --json",
     "validate:env": "bash scripts/validate-env.sh",
     "security-gate": "bash scripts/security-gate.sh",
     "deploy:functions": "npm run security-gate && bash scripts/deploy-all-functions.sh",

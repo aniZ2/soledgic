@@ -8,6 +8,7 @@
         "supabase/functions/_shared/checkout-service.ts",
         "supabase/functions/_shared/refund-service.ts",
         "supabase/functions/_shared/holds-service.ts",
+        "supabase/functions/_shared/stripe-payment-provider.ts",
         "supabase/functions/execute-payout/",
         "supabase/functions/bill-overages/",
         "supabase/functions/checkout-sessions/",
@@ -129,7 +130,8 @@
       "id": "SVC_PROCESSOR_WEBHOOK_ADAPTERS",
       "module": "supabase/functions/_shared/processor-webhook-adapters.ts",
       "allowed": [
-        "supabase/functions/process-processor-inbox/"
+        "supabase/functions/process-processor-inbox/",
+        "supabase/functions/_shared/stripe-webhook-adapter.ts"
       ],
       "reason": "Processor webhook normalization only used by the inbox processor"
     },
