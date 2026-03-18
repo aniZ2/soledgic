@@ -30,6 +30,7 @@
     "arch:analyze": "node scripts/arch-analyze.mjs",
     "arch:analyze:json": "node scripts/arch-analyze.mjs --json",
     "arch:reality-check": "node scripts/arch-reality-check.mjs",
+    "seed:demo": "node scripts/seed-demo-data.mjs",
     "arch:propose": "node scripts/arch-propose.mjs",
     "arch:propose:json": "node scripts/arch-propose.mjs --json",
     "validate:env": "bash scripts/validate-env.sh",
