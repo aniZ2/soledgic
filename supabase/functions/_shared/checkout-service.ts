@@ -155,6 +155,25 @@ export async function createCheckoutResponse(
     const cancelUrl = body.cancel_url ? validateUrl(body.cancel_url) : null
     const sessionExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
 
+    // Idempotency: if key provided, check for existing session first
+    if (idempotencyKey) {
+      const { data: existing } = await supabase
+        .from('checkout_sessions')
+        .select('id, expires_at')
+        .eq('ledger_id', ledger.id)
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle()
+
+      if (existing) {
+        return resourceOk({
+          checkout_session_id: existing.id,
+          checkout_url: `${(Deno.env.get('APP_URL') || 'https://soledgic.com').replace(/\/+$/, '')}/checkout/${existing.id}`,
+          expires_at: existing.expires_at,
+          already_exists: true,
+        })
+      }
+    }
+
     const { data: session, error: sessionError } = await supabase
       .from('checkout_sessions')
       .insert({
@@ -173,6 +192,7 @@ export async function createCheckoutResponse(
         creator_amount: participantAmount,
         platform_amount: platformAmount,
         expires_at: sessionExpiresAt,
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
       })
       .select('id, expires_at')
       .single()
