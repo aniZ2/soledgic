@@ -5,6 +5,7 @@ import { Key, Copy, RefreshCw, Plus, Trash2, Shield } from 'lucide-react'
 import { SensitiveActionModal } from '@/components/settings/sensitive-action-modal'
 import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 import { useSensitiveActionGate } from '@/hooks/use-sensitive-action-gate'
+import { useLivemode } from '@/components/livemode-provider'
 
 interface Ledger {
   id: string
@@ -100,8 +101,10 @@ export default function ApiKeysPage() {
     return ledger.key_preview
   }
 
+  const livemode = useLivemode()
   const testLedgers = ledgers.filter(l => !l.livemode)
   const liveLedgers = ledgers.filter(l => l.livemode)
+  const activeLedgers = livemode ? liveLedgers : testLedgers
 
   if (loading) {
     return (
@@ -197,28 +200,20 @@ export default function ApiKeysPage() {
         </p>
       </div>
 
-      <div className="bg-card border border-amber-500/30 rounded-lg overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-amber-500/30 bg-amber-500/5">
-          <h2 className="text-lg font-semibold text-amber-600">Test API Keys</h2>
+      <div className={`bg-card border ${livemode ? 'border-green-500/30' : 'border-amber-500/30'} rounded-lg overflow-hidden mb-8`}>
+        <div className={`px-6 py-4 border-b ${livemode ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+          <h2 className={`text-lg font-semibold ${livemode ? 'text-green-600' : 'text-amber-600'}`}>
+            {livemode ? 'Live API Keys' : 'Test API Keys'}
+          </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Test keys create sandbox data. No billing impact.
+            {livemode ? 'Live keys affect real data and count toward billing.' : 'Test keys create sandbox data. No billing impact.'}
           </p>
         </div>
-        {renderKeyList(testLedgers)}
+        {renderKeyList(activeLedgers)}
       </div>
 
-      <div className="bg-card border border-green-500/30 rounded-lg overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-green-500/30 bg-green-500/5">
-          <h2 className="text-lg font-semibold text-green-600">Live API Keys</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Live keys affect real data and count toward billing.
-          </p>
-        </div>
-        {renderKeyList(liveLedgers)}
-      </div>
-
-      {/* Scoped Keys */}
-      <ScopedKeysSection ledgers={[...testLedgers, ...liveLedgers]} />
+      {/* Scoped Keys — filtered to current mode */}
+      <ScopedKeysSection ledgers={activeLedgers} />
 
       <div className="bg-card border border-border rounded-lg p-6">
         <h3 className="font-semibold text-foreground mb-4">Usage Example</h3>
