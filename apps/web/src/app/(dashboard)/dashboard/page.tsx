@@ -99,11 +99,11 @@ export default async function DashboardPage() {
     stats.creatorCount = creatorCount || 0
   }
 
-  const formatCurrency = (cents: number) => {
+  const formatCurrency = (dollars: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(cents / 100)
+    }).format(dollars)
   }
 
   const formatDate = (date: string) => {
@@ -262,32 +262,32 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {/* Quick Actions */}
+          {/* Quick Links — monitoring only, no manual entry */}
           <div className="mt-8 bg-card border border-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h2>
+            <h2 className="text-lg font-semibold text-foreground mb-4">Quick Links</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Link
-                href="/dashboard/creators/new"
+                href="/dashboard/creators"
                 className="flex items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/50 transition-colors"
               >
                 <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
                   <Users className="w-5 h-5 text-purple-500" />
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Add Creator</p>
-                  <p className="text-xs text-muted-foreground">Register a new payee</p>
+                  <p className="font-medium text-foreground">Creators</p>
+                  <p className="text-xs text-muted-foreground">View creator activity</p>
                 </div>
               </Link>
               <Link
-                href="/dashboard/transactions"
+                href="/dashboard/earnings"
                 className="flex items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-accent/50 transition-colors"
               >
                 <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
                   <TrendingUp className="w-5 h-5 text-green-500" />
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Transactions</p>
-                  <p className="text-xs text-muted-foreground">View or record transactions</p>
+                  <p className="font-medium text-foreground">Earnings</p>
+                  <p className="text-xs text-muted-foreground">Revenue breakdown</p>
                 </div>
               </Link>
               <Link
@@ -298,8 +298,8 @@ export default async function DashboardPage() {
                   <DollarSign className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Process Payout</p>
-                  <p className="text-xs text-muted-foreground">Pay out earnings</p>
+                  <p className="font-medium text-foreground">Payouts</p>
+                  <p className="text-xs text-muted-foreground">Payout history</p>
                 </div>
               </Link>
             </div>
@@ -308,13 +308,13 @@ export default async function DashboardPage() {
                 href="/connect"
                 className="text-primary hover:underline"
               >
-                View setup guide
+                API setup guide
               </Link>
               <Link
                 href="/settings/api-keys"
                 className="text-muted-foreground hover:text-foreground"
               >
-                API integration →
+                API keys →
               </Link>
             </div>
           </div>
