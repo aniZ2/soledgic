@@ -53,3 +53,4 @@ service-account.json
 # Test output
 coverage/
 test-results/
+.arch-analyze-output.json
