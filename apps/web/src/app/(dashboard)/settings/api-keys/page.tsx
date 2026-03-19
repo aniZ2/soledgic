@@ -352,11 +352,17 @@ function ScopedKeysSection({ ledgers }: { ledgers: Ledger[] }) {
     } catch { /* ignore */ }
   }
 
-  const toggleScope = (scope: string) => {
-    setNewKeyScopes(prev =>
-      prev.includes(scope) ? prev.filter(s => s !== scope) : [...prev, scope]
-    )
+  // One scope per key — selecting a new one replaces the old one
+  const selectScope = (scope: string) => {
+    setNewKeyScopes([scope])
   }
+
+  // Set selectedLedger when ledgers load
+  useEffect(() => {
+    if (ledgers.length > 0 && !selectedLedger) {
+      setSelectedLedger(ledgers[0].id)
+    }
+  }, [ledgers, selectedLedger])
 
   return (
     <div className="bg-card border border-purple-500/30 rounded-lg overflow-hidden mb-8">
@@ -432,15 +438,24 @@ function ScopedKeysSection({ ledgers }: { ledgers: Ledger[] }) {
               {SCOPE_OPTIONS.map(scope => (
                 <button
                   key={scope.value}
-                  onClick={() => toggleScope(scope.value)}
+                  onClick={() => selectScope(scope.value)}
                   className={`p-3 rounded-lg border text-left text-sm transition-colors ${
                     newKeyScopes.includes(scope.value)
-                      ? 'border-purple-500 bg-purple-500/10 text-foreground'
+                      ? 'border-purple-500 bg-purple-500/10 text-foreground ring-2 ring-purple-500/30'
                       : 'border-border text-muted-foreground hover:border-purple-500/50'
                   }`}
                 >
-                  <p className="font-medium">{scope.label}</p>
-                  <p className="text-xs mt-0.5 opacity-70">{scope.desc}</p>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      newKeyScopes.includes(scope.value) ? 'border-purple-500' : 'border-muted-foreground/30'
+                    }`}>
+                      {newKeyScopes.includes(scope.value) && (
+                        <div className="w-2 h-2 rounded-full bg-purple-500" />
+                      )}
+                    </div>
+                    <p className="font-medium">{scope.label}</p>
+                  </div>
+                  <p className="text-xs mt-1 ml-6 opacity-70">{scope.desc}</p>
                 </button>
               ))}
             </div>
