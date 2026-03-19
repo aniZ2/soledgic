@@ -80,15 +80,16 @@ Deno.test('checkout: split uses default 80/20 when no overrides exist', async ()
   assertEquals(result.status, 200)
   const body = result.body as any
   assertEquals(body.success, true)
-  // Default split: 80% creator, 20% platform
+  // Default split: 80% creator, 20% platform, 3.5% Soledgic fee from platform
   assertEquals(body.checkout_session.breakdown.creator_percent, 80)
   assertEquals(body.checkout_session.breakdown.creator_amount, 80) // 10000 * 0.80 / 100
-  assertEquals(body.checkout_session.breakdown.platform_amount, 20) // 10000 * 0.20 / 100
+  assertEquals(body.checkout_session.breakdown.platform_amount, 16.5) // (2000 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5) // 350 / 100
 
   // Verify the session was created with correct split amounts
   assertEquals(insertedSession['creator_percent'], 80)
   assertEquals(insertedSession['creator_amount'], 8000) // in cents
-  assertEquals(insertedSession['platform_amount'], 2000) // in cents
+  assertEquals(insertedSession['platform_amount'], 1650) // in cents (2000 - 350 soledgic fee)
 })
 
 Deno.test('checkout: split uses product_splits override when available', async () => {
@@ -151,7 +152,8 @@ Deno.test('checkout: split uses product_splits override when available', async (
   const body = result.body as any
   assertEquals(body.checkout_session.breakdown.creator_percent, 70)
   assertEquals(body.checkout_session.breakdown.creator_amount, 70) // 10000 * 0.70 / 100
-  assertEquals(body.checkout_session.breakdown.platform_amount, 30) // 10000 * 0.30 / 100
+  assertEquals(body.checkout_session.breakdown.platform_amount, 26.5) // (3000 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5)
 })
 
 Deno.test('checkout: split uses ledger default_split_percent setting', async () => {
@@ -222,7 +224,8 @@ Deno.test('checkout: split uses ledger default_split_percent setting', async () 
   const body = result.body as any
   assertEquals(body.checkout_session.breakdown.creator_percent, 90)
   assertEquals(body.checkout_session.breakdown.creator_amount, 90)
-  assertEquals(body.checkout_session.breakdown.platform_amount, 10)
+  assertEquals(body.checkout_session.breakdown.platform_amount, 6.5) // (1000 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5)
 })
 
 Deno.test('checkout: rejects amount below minimum 50 cents', async () => {

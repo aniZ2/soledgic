@@ -264,7 +264,10 @@ Deno.test('checkout: split calculation with default_platform_fee_percent', async
   assertEquals(result.status, 200)
   const body = result.body as any
   // 100 - 15 = 85% creator
+  // Soledgic fee: floor(10000 * 0.035) = 350 cents = $3.50
+  // Platform: 1500 - 350 = 1150 cents = $11.50
   assertEquals(body.checkout_session.breakdown.creator_percent, 85)
   assertEquals(body.checkout_session.breakdown.creator_amount, 85) // 10000 * 0.85 / 100
-  assertEquals(body.checkout_session.breakdown.platform_amount, 15) // 10000 * 0.15 / 100
+  assertEquals(body.checkout_session.breakdown.platform_amount, 11.5) // (1500 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5) // 350 / 100
 })

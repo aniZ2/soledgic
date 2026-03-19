@@ -97,6 +97,7 @@ const handler = createHandler(
     const creatorCents = split.creator_cents
     const platformCents = split.platform_cents
     const feeCents = split.fee_cents
+    const soledgicFeeCents = split.soledgic_fee_cents ?? 0
 
     // ========================================================================
     // CAPABILITY GATE: daily volume limit
@@ -124,6 +125,7 @@ const handler = createHandler(
       p_creator_amount: creatorCents,
       p_platform_amount: platformCents,
       p_processing_fee: feeCents,
+      p_soledgic_fee: soledgicFeeCents,
       p_product_id: productId,
       p_product_name: productName,
       p_metadata: body.metadata || {}

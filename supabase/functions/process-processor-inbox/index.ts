@@ -545,7 +545,10 @@ async function handleChargeCompleted(
   )
 
   const creatorAmountCents = Math.floor(amountCents * (creatorPercent / 100))
-  const platformAmountCents = amountCents - creatorAmountCents
+  const soledgicFeeCents = Math.floor(amountCents * 0.035)
+  const platformGrossCents = amountCents - creatorAmountCents
+  const platformAmountCents = Math.max(0, platformGrossCents - soledgicFeeCents)
+  const actualSoledgicFee = platformGrossCents - platformAmountCents
 
   const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
     p_ledger_id: ledgerId,
@@ -555,6 +558,7 @@ async function handleChargeCompleted(
     p_creator_amount: creatorAmountCents,
     p_platform_amount: platformAmountCents,
     p_processing_fee: 0,
+    p_soledgic_fee: actualSoledgicFee,
     p_product_id: productId,
     p_product_name: ev.tags.product_name || null,
     p_metadata: {

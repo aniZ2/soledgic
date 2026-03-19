@@ -1135,6 +1135,7 @@ export async function purchaseFromWalletByIdResponse(
   }
 
   const split = splitResult[0]
+  const soledgicFeeCents = split.soledgic_fee_cents ?? 0
 
   const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
     p_ledger_id: ledger.id,
@@ -1144,6 +1145,7 @@ export async function purchaseFromWalletByIdResponse(
     p_creator_amount: split.creator_cents,
     p_platform_amount: split.platform_cents,
     p_processing_fee: 0,
+    p_soledgic_fee: soledgicFeeCents,
     p_product_id: body.product_id || null,
     p_product_name: body.product_name || null,
     p_metadata: {

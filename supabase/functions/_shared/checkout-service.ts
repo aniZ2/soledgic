@@ -145,7 +145,11 @@ export async function createCheckoutResponse(
 
   const participantPercent = await getParticipantSplit(supabase, ledger, participantId, productId)
   const participantAmount = Math.floor(amount * (participantPercent / 100))
-  const platformAmount = amount - participantAmount
+  // Soledgic platform fee: 3.5% of gross, deducted from platform's share
+  const soledgicFee = Math.floor(amount * 0.035)
+  const platformGross = amount - participantAmount
+  const platformAmount = Math.max(0, platformGross - soledgicFee)
+  const actualSoledgicFee = platformGross - platformAmount // Cap fee to platform's share
 
   if (!paymentMethodId) {
     const successUrl = body.success_url ? validateUrl(body.success_url) : null
@@ -240,6 +244,7 @@ export async function createCheckoutResponse(
           gross_amount: amount / 100,
           creator_amount: participantAmount / 100,
           platform_amount: platformAmount / 100,
+          soledgic_fee: actualSoledgicFee / 100,
           creator_percent: participantPercent,
         },
       },
@@ -337,6 +342,7 @@ export async function createCheckoutResponse(
         p_creator_amount: participantAmount,
         p_platform_amount: platformAmount,
         p_processing_fee: 0,
+        p_soledgic_fee: actualSoledgicFee,
         p_product_id: productId || null,
         p_product_name: productName || null,
         p_metadata: {
@@ -430,6 +436,7 @@ export async function createCheckoutResponse(
         gross_amount: amount / 100,
         creator_amount: participantAmount / 100,
         platform_amount: platformAmount / 100,
+        soledgic_fee: actualSoledgicFee / 100,
         creator_percent: participantPercent,
       },
     },
