@@ -5,9 +5,14 @@ import { createClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
+const VALID_SCOPES = ['payments', 'payouts', 'read', 'webhooks', 'creators', 'credits'] as const
+
 interface ApiKeysRequest {
-  action: 'reveal' | 'rotate'
+  action: 'reveal' | 'rotate' | 'create_scoped' | 'list_scoped' | 'revoke_scoped'
   ledger_id: string
+  name?: string
+  scopes?: string[]
+  key_id?: string
 }
 
 function keyPreviewFromPrefix(prefix: string | null | undefined): string {
@@ -166,7 +171,7 @@ export const POST = createApiHandler(
       return NextResponse.json({ error: 'action and ledger_id are required' }, { status: 400 })
     }
 
-    if (!['reveal', 'rotate'].includes(body.action)) {
+    if (!['reveal', 'rotate', 'create_scoped', 'list_scoped', 'revoke_scoped'].includes(body.action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
@@ -192,6 +197,92 @@ export const POST = createApiHandler(
 
     if (ledgerError || !ledger) {
       return NextResponse.json({ error: 'Ledger not found' }, { status: 404 })
+    }
+
+    // List scoped keys for this ledger
+    if (body.action === 'list_scoped') {
+      const { data: keys } = await serviceClient
+        .from('api_keys')
+        .select('id, name, key_prefix, scopes, created_at, last_used_at, expires_at')
+        .eq('ledger_id', ledger.id)
+        .is('revoked_at', null)
+        .order('created_at', { ascending: false })
+
+      return NextResponse.json({
+        keys: (keys || []).map(k => ({
+          id: k.id,
+          name: k.name,
+          preview: keyPreviewFromPrefix(k.key_prefix),
+          scopes: k.scopes,
+          created_at: k.created_at,
+          last_used_at: k.last_used_at,
+          expires_at: k.expires_at,
+        })),
+      })
+    }
+
+    // Create a new scoped key
+    if (body.action === 'create_scoped') {
+      if (!body.name || typeof body.name !== 'string') {
+        return NextResponse.json({ error: 'name is required' }, { status: 400 })
+      }
+      if (!body.scopes || !Array.isArray(body.scopes) || body.scopes.length === 0) {
+        return NextResponse.json({ error: 'scopes array is required' }, { status: 400 })
+      }
+      const invalidScopes = body.scopes.filter(s => !VALID_SCOPES.includes(s as any))
+      if (invalidScopes.length > 0) {
+        return NextResponse.json({ error: `Invalid scopes: ${invalidScopes.join(', ')}. Valid: ${VALID_SCOPES.join(', ')}` }, { status: 400 })
+      }
+
+      const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'create scoped API key')
+      if (sensitiveAuthFailure) return sensitiveAuthFailure
+
+      const scopedKey = makeApiKey(Boolean(ledger.livemode))
+      const scopedHash = hashApiKey(scopedKey)
+
+      const { error: insertError } = await serviceClient
+        .from('api_keys')
+        .insert({
+          ledger_id: ledger.id,
+          name: body.name.slice(0, 100),
+          key_hash: scopedHash,
+          key_prefix: scopedKey.slice(0, 12),
+          scopes: body.scopes,
+          created_by: user!.id,
+        })
+
+      if (insertError) {
+        return NextResponse.json({ error: 'Failed to create scoped key' }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        key: scopedKey,
+        name: body.name,
+        scopes: body.scopes,
+        preview: keyPreviewFromPrefix(scopedKey.slice(0, 12)),
+      })
+    }
+
+    // Revoke a scoped key
+    if (body.action === 'revoke_scoped') {
+      if (!body.key_id) {
+        return NextResponse.json({ error: 'key_id is required' }, { status: 400 })
+      }
+
+      const sensitiveAuthFailure = requireSensitiveActionAuth(context, 'revoke API key')
+      if (sensitiveAuthFailure) return sensitiveAuthFailure
+
+      const { error: revokeError } = await serviceClient
+        .from('api_keys')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('id', body.key_id)
+        .eq('ledger_id', ledger.id)
+
+      if (revokeError) {
+        return NextResponse.json({ error: 'Failed to revoke key' }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, revoked: true })
     }
 
     if (body.action === 'reveal') {

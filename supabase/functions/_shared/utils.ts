@@ -452,6 +452,8 @@ export async function hashApiKey(key: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+export type ApiScope = 'full' | 'payments' | 'payouts' | 'read' | 'webhooks' | 'creators' | 'credits'
+
 export interface LedgerContext {
   id: string
   business_name: string
@@ -460,6 +462,7 @@ export interface LedgerContext {
   status: string
   settings: any
   organization_id?: string
+  scopes?: ApiScope[]
 }
 
 const INTERNAL_TOKEN_HEADER = 'x-soledgic-internal-token'
@@ -496,23 +499,53 @@ export async function validateApiKey(
   
   // SECURITY: Always use hash lookup, never plaintext
   const keyHash = await hashApiKey(apiKey)
-  
+
+  // Try primary ledger key first (full access)
   const { data: ledger, error } = await supabase
     .from('ledgers')
     .select('id, business_name, ledger_mode, livemode, status, settings, organization_id')
     .eq('api_key_hash', keyHash)
     .single()
-  
-  if (error || !ledger) {
-    // Log failed attempts for security monitoring (don't log the key!)
-    console.warn(`[${requestId}] API key validation failed:`, { 
+
+  if (!error && ledger) {
+    return { ...ledger, scopes: ['full' as ApiScope] } as LedgerContext
+  }
+
+  // Try scoped api_keys table
+  const { data: scopedKey, error: scopedError } = await supabase
+    .from('api_keys')
+    .select('ledger_id, scopes, expires_at')
+    .eq('key_hash', keyHash)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (scopedError || !scopedKey) {
+    console.warn(`[${requestId}] API key validation failed:`, {
       hashPrefix: keyHash.substring(0, 8),
-      error: error?.code  // Only log error code, not message
+      error: error?.code
     })
     return null
   }
-  
-  return ledger as LedgerContext
+
+  // Check expiry
+  if (scopedKey.expires_at && new Date(scopedKey.expires_at) < new Date()) {
+    console.warn(`[${requestId}] Expired scoped API key`)
+    return null
+  }
+
+  // Load the ledger for this scoped key
+  const { data: scopedLedger } = await supabase
+    .from('ledgers')
+    .select('id, business_name, ledger_mode, livemode, status, settings, organization_id')
+    .eq('id', scopedKey.ledger_id)
+    .single()
+
+  if (!scopedLedger) return null
+
+  // Update last_used_at (fire and forget)
+  supabase.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('key_hash', keyHash).then(() => {}, () => {})
+
+  return { ...scopedLedger, scopes: (scopedKey.scopes || ['read']) as ApiScope[] } as LedgerContext
 }
 
 // ============================================================================
@@ -823,6 +856,32 @@ export async function checkRateLimit(
 // REQUEST HANDLER WRAPPER
 // ============================================================================
 
+// Endpoint → required scope mapping. 'full' keys bypass all checks.
+// Endpoints not listed here are accessible by any authenticated key.
+const ENDPOINT_SCOPE_MAP: Record<string, ApiScope> = {
+  // Payments
+  'checkout-sessions': 'payments',
+  'record-sale': 'payments',
+  // Payouts
+  'payouts': 'payouts',
+  'execute-payout': 'payouts',
+  'platform-payouts': 'payouts',
+  'scheduled-payouts': 'payouts',
+  // Creators / participants
+  'participants': 'creators',
+  'delete-creator': 'creators',
+  'submit-tax-info': 'creators',
+  // Credits
+  'credits': 'credits',
+  // Refunds
+  'refunds': 'payments',
+  // Webhooks management
+  'webhooks': 'webhooks',
+  // Read-only endpoints: accessible by 'read' scope (and all others)
+  // get-transactions, balance-sheet, profit-loss, trial-balance, etc.
+  // Not listed = no scope restriction beyond being authenticated
+}
+
 interface HandlerOptions {
   requireAuth?: boolean
   rateLimit?: boolean
@@ -984,8 +1043,19 @@ export function createHandler(options: HandlerOptions, handler: RequestHandler) 
         if (ledger.status !== 'active') {
           return errorResponse('Account inactive', 403, req, requestId)
         }
+
+        // Scope enforcement: check if API key has required scope for this endpoint
+        if (ledger.scopes && !ledger.scopes.includes('full')) {
+          const requiredScope = ENDPOINT_SCOPE_MAP[options.endpoint]
+          if (requiredScope && !ledger.scopes.includes(requiredScope)) {
+            return errorResponse(
+              `This API key does not have the '${requiredScope}' scope required for ${options.endpoint}`,
+              403, req, requestId,
+            )
+          }
+        }
       }
-      
+
       // Check rate limit
       // SECURITY FIX: Rate limit ALL requests, not just authenticated ones
       // - Authenticated: Rate limit by LEDGER ID (prevents bypass via key rotation)
