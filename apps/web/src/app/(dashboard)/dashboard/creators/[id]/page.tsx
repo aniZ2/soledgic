@@ -61,7 +61,7 @@ export default async function CreatorDetailPage({
 
   const { data: ledgers } = await supabase
     .from('ledgers')
-    .select('id, business_name, ledger_group_id')
+    .select('id, business_name, ledger_group_id, livemode')
     .eq('organization_id', membership.organization_id)
     .eq('status', 'active')
     .eq('livemode', livemode)
@@ -170,6 +170,7 @@ export default async function CreatorDetailPage({
     <CreatorDetailClient
       ledger={{
         id: ledger.id,
+        livemode: ledger.livemode ?? false,
       }}
       creatorAccount={{
         id: creatorAccount.id,

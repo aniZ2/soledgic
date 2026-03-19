@@ -72,6 +72,7 @@ interface TaxCalculation {
 interface CreatorDetailClientProps {
   ledger: {
     id: string
+    livemode: boolean
   }
   creatorAccount: {
     id: string
@@ -159,7 +160,7 @@ export function CreatorDetailClient({
     try {
       const response = await callLedgerFunction('delete-creator', {
         ledgerId: ledger.id,
-        body: { creator_id: creatorAccount.entity_id },
+        body: { creator_id: creatorAccount.entity_id, force: !ledger.livemode },
       })
 
       const payload = await response.json().catch(() => ({}))
@@ -263,8 +264,8 @@ export function CreatorDetailClient({
             </button>
             <button
               onClick={() => setIsDeleteDialogOpen(true)}
-              disabled={hasTransactions || isDeleting}
-              title={hasTransactions ? 'Cannot delete creator with transactions' : 'Delete creator'}
+              disabled={isDeleting || (ledger.livemode === true)}
+              title={ledger.livemode ? 'Creators cannot be deleted in live mode' : 'Delete creator (voids transactions in test mode)'}
               className="flex items-center gap-2 border border-red-300 text-red-600 px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-red-500/30 dark:hover:bg-red-500/10"
             >
               <Trash2 className="w-4 h-4" />
@@ -623,7 +624,7 @@ export function CreatorDetailClient({
         onClose={() => setIsDeleteDialogOpen(false)}
         onConfirm={handleDeleteCreator}
         title="Delete Creator"
-        message={`Are you sure you want to delete "${creatorAccount.name}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete "${creatorAccount.name}"?${hasTransactions ? ' All transactions will be voided.' : ''} This action cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
       />
