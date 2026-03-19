@@ -544,11 +544,12 @@ async function handleChargeCompleted(
     supabase, ledgerId, creatorId, productId, settings
   )
 
-  const creatorAmountCents = Math.floor(amountCents * (creatorPercent / 100))
+  // Soledgic fee: 3.5% of gross, off the top before split
   const soledgicFeeCents = Math.floor(amountCents * 0.035)
-  const platformGrossCents = amountCents - creatorAmountCents
-  const platformAmountCents = Math.max(0, platformGrossCents - soledgicFeeCents)
-  const actualSoledgicFee = platformGrossCents - platformAmountCents
+  const netAfterFee = amountCents - soledgicFeeCents
+  const creatorAmountCents = Math.floor(netAfterFee * (creatorPercent / 100))
+  const platformAmountCents = netAfterFee - creatorAmountCents
+  const actualSoledgicFee = soledgicFeeCents
 
   const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
     p_ledger_id: ledgerId,

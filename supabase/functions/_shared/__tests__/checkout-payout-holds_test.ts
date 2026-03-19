@@ -80,16 +80,16 @@ Deno.test('checkout: split uses default 80/20 when no overrides exist', async ()
   assertEquals(result.status, 200)
   const body = result.body as any
   assertEquals(body.success, true)
-  // Default split: 80% creator, 20% platform, 3.5% Soledgic fee from platform
+  // Soledgic 3.5% off top: fee=350, net=9650, creator=floor(9650*0.80)=7720, platform=1930
   assertEquals(body.checkout_session.breakdown.creator_percent, 80)
-  assertEquals(body.checkout_session.breakdown.creator_amount, 80) // 10000 * 0.80 / 100
-  assertEquals(body.checkout_session.breakdown.platform_amount, 16.5) // (2000 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.creator_amount, 77.2) // 7720 / 100
+  assertEquals(body.checkout_session.breakdown.platform_amount, 19.3) // 1930 / 100
   assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5) // 350 / 100
 
   // Verify the session was created with correct split amounts
   assertEquals(insertedSession['creator_percent'], 80)
-  assertEquals(insertedSession['creator_amount'], 8000) // in cents
-  assertEquals(insertedSession['platform_amount'], 1650) // in cents (2000 - 350 soledgic fee)
+  assertEquals(insertedSession['creator_amount'], 7720) // in cents
+  assertEquals(insertedSession['platform_amount'], 1930) // in cents
 })
 
 Deno.test('checkout: split uses product_splits override when available', async () => {
@@ -150,9 +150,10 @@ Deno.test('checkout: split uses product_splits override when available', async (
 
   assertEquals(result.status, 200)
   const body = result.body as any
+  // fee=350, net=9650, creator=floor(9650*0.70)=6755, platform=2895
   assertEquals(body.checkout_session.breakdown.creator_percent, 70)
-  assertEquals(body.checkout_session.breakdown.creator_amount, 70) // 10000 * 0.70 / 100
-  assertEquals(body.checkout_session.breakdown.platform_amount, 26.5) // (3000 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.creator_amount, 67.55) // 6755 / 100
+  assertEquals(body.checkout_session.breakdown.platform_amount, 28.95) // 2895 / 100
   assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5)
 })
 
@@ -222,9 +223,10 @@ Deno.test('checkout: split uses ledger default_split_percent setting', async () 
 
   assertEquals(result.status, 200)
   const body = result.body as any
+  // fee=350, net=9650, creator=floor(9650*0.90)=8685, platform=965
   assertEquals(body.checkout_session.breakdown.creator_percent, 90)
-  assertEquals(body.checkout_session.breakdown.creator_amount, 90)
-  assertEquals(body.checkout_session.breakdown.platform_amount, 6.5) // (1000 - 350) / 100
+  assertEquals(body.checkout_session.breakdown.creator_amount, 86.85) // 8685 / 100
+  assertEquals(body.checkout_session.breakdown.platform_amount, 9.65) // 965 / 100
   assertEquals(body.checkout_session.breakdown.soledgic_fee, 3.5)
 })
 

@@ -141,11 +141,10 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-      // Soledgic 3.5% platform fee, deducted from platform's share
+      // Soledgic 3.5% fee off the top — session already stores post-fee amounts
+      // (checkout-service computes the split after deducting the fee)
       const soledgicFeeCents = Math.floor(Number(session.amount) * 0.035)
-      const platformGross = Number(session.platform_amount)
-      const platformAfterFee = Math.max(0, platformGross - soledgicFeeCents)
-      const actualSoledgicFee = platformGross - platformAfterFee
+      const actualSoledgicFee = soledgicFeeCents
 
       const { error: rpcError } = await supabase.rpc('record_sale_atomic', {
         p_ledger_id: session.ledger_id,
@@ -153,7 +152,7 @@ Deno.serve(async (req: Request) => {
         p_creator_id: session.creator_id,
         p_gross_amount: session.amount,
         p_creator_amount: session.creator_amount,
-        p_platform_amount: platformAfterFee,
+        p_platform_amount: session.platform_amount,
         p_processing_fee: 0,
         p_soledgic_fee: actualSoledgicFee,
         p_product_id: session.product_id || null,
