@@ -227,6 +227,65 @@ const handler = createHandler(
 
             imported++
             if (inserted?.id) importedIds.push(inserted.id as string)
+
+            // Also create real ledger transaction for tax/reporting if requested
+            if (body.create_ledger_entries !== false && inserted?.id) {
+              try {
+                const isIncome = txn.amount > 0
+                const absAmount = Math.abs(txn.amount)
+                const txnType = isIncome ? 'income' : 'expense'
+
+                // Get or create the accounts
+                const cashAccountType = 'cash'
+                const counterAccountType = isIncome ? 'platform_revenue' : 'expense'
+
+                const { data: cashAccount } = await supabase
+                  .from('accounts')
+                  .select('id')
+                  .eq('ledger_id', ledger.id)
+                  .eq('account_type', cashAccountType)
+                  .limit(1)
+                  .single()
+
+                const { data: counterAccount } = await supabase
+                  .from('accounts')
+                  .select('id')
+                  .eq('ledger_id', ledger.id)
+                  .eq('account_type', counterAccountType)
+                  .limit(1)
+                  .maybeSingle()
+
+                if (cashAccount && counterAccount) {
+                  const { data: ledgerTxn } = await supabase
+                    .from('transactions')
+                    .insert({
+                      ledger_id: ledger.id,
+                      transaction_type: txnType,
+                      reference_id: `import_${txnHash}`,
+                      reference_type: 'bank_import',
+                      description: txn.description,
+                      amount: absAmount,
+                      currency: body.currency || 'USD',
+                      status: 'completed',
+                      entry_method: 'imported',
+                      metadata: { import_session_id: sessionId, bank_transaction_id: inserted.id, source: 'file_import' },
+                    })
+                    .select('id')
+                    .single()
+
+                  if (ledgerTxn) {
+                    const debitAccount = isIncome ? cashAccount.id : counterAccount.id
+                    const creditAccount = isIncome ? counterAccount.id : cashAccount.id
+                    await supabase.from('entries').insert([
+                      { transaction_id: ledgerTxn.id, account_id: debitAccount, entry_type: 'debit', amount: absAmount },
+                      { transaction_id: ledgerTxn.id, account_id: creditAccount, entry_type: 'credit', amount: absAmount },
+                    ])
+                  }
+                }
+              } catch {
+                // Non-fatal — bank transaction is still imported
+              }
+            }
           } catch (err: any) { errors.push(`Row ${i + 1}: ${err.message}`) }
         }
 
