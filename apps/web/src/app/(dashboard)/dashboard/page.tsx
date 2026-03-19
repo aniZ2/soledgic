@@ -89,12 +89,13 @@ export default async function DashboardPage() {
         .reduce((sum, t) => sum + Number(t.amount), 0)
     }
 
-    // Get creator count
+    // Get active creator count (soft-deleted creators excluded)
     const { count: creatorCount } = await supabase
       .from('accounts')
       .select('id', { count: 'exact', head: true })
       .eq('ledger_id', ledger.id)
       .eq('account_type', 'creator_balance')
+      .eq('is_active', true)
 
     stats.creatorCount = creatorCount || 0
   }
