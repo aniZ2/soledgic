@@ -54,7 +54,6 @@ const handler = createHandler(
           .from('transactions')
           .select(`id, transaction_type, reference_id, reference_type, description, amount, currency, status, created_at, entries(id, account_id, entry_type, amount, accounts(name, entity_id))`)
           .eq('ledger_id', ledger.id)
-          .not('status', 'in', '("voided","reversed")')
           .order('created_at', { ascending: false })
 
         if (startDate) query = query.gte('created_at', startDate)
@@ -135,7 +134,6 @@ const handler = createHandler(
           .select(`id, amount, currency, reference_id, status, metadata, created_at, entries!inner(entry_type, accounts!inner(entity_id))`)
           .eq('ledger_id', ledger.id)
           .eq('transaction_type', 'payout')
-          .not('status', 'in', '("voided","reversed")')
           .order('created_at', { ascending: false })
 
         if (startDate) query = query.gte('created_at', startDate)

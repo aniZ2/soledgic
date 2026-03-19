@@ -47,7 +47,6 @@ export default async function ExpensesPage() {
     .select('id, amount, description, created_at, metadata')
     .eq('ledger_id', ledger.id)
     .eq('transaction_type', 'expense')
-    .not('status', 'in', '("voided","reversed")')
     .order('created_at', { ascending: false })
     .limit(100)
 

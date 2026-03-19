@@ -295,7 +295,7 @@ const handler = createHandler(
       }
 
       case 'provenance': {
-        // Counts by entry_method (exclude voided/reversed)
+        // Counts by entry_method
         const countsByMethod: Record<string, number> = {}
         for (const method of ['processor', 'manual', 'system', 'import']) {
           const { count: methodCount } = await supabase
@@ -303,7 +303,6 @@ const handler = createHandler(
             .select('id', { count: 'exact', head: true })
             .eq('ledger_id', ledger.id)
             .eq('entry_method', method)
-            .not('status', 'in', '("voided","reversed")')
           countsByMethod[method] = methodCount || 0
         }
         const { count: untaggedCount } = await supabase
@@ -311,7 +310,6 @@ const handler = createHandler(
           .select('id', { count: 'exact', head: true })
           .eq('ledger_id', ledger.id)
           .is('entry_method', null)
-          .not('status', 'in', '("voided","reversed")')
         countsByMethod['untagged'] = untaggedCount || 0
 
         // Manual revenue entries (sales/income without processor verification)
@@ -321,7 +319,6 @@ const handler = createHandler(
           .eq('ledger_id', ledger.id)
           .eq('entry_method', 'manual')
           .in('transaction_type', ['sale', 'income'])
-          .not('status', 'in', '("voided","reversed")')
           .gte('created_at', startDate)
           .lte('created_at', endDate + 'T23:59:59')
           .order('created_at', { ascending: false })
@@ -333,7 +330,6 @@ const handler = createHandler(
           .select('id, transaction_type, reference_id, amount, description, status, created_at, metadata, entry_method')
           .eq('ledger_id', ledger.id)
           .eq('entry_method', 'system')
-          .not('status', 'in', '("voided","reversed")')
           .gte('created_at', startDate)
           .lte('created_at', endDate + 'T23:59:59')
           .order('created_at', { ascending: false })

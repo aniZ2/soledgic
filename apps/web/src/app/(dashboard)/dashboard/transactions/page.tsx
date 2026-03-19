@@ -59,7 +59,6 @@ export default async function TransactionsPage() {
     `)
     .eq('ledger_id', ledger.id)
     .neq('transaction_type', 'expense')
-    .not('status', 'in', '("voided","reversed")')
     .order('created_at', { ascending: false })
     .limit(100)
 
