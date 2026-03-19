@@ -100,16 +100,18 @@ const handler = createHandler(
     const difference = Math.round((totalDebits - totalCredits) * 100) / 100
     const isBalanced = Math.abs(difference) < 0.01
 
-    // Get integrity stats
+    // Get integrity stats (exclude voided/reversed)
     const { count: transactionCount } = await supabase
       .from('transactions')
       .select('*', { count: 'exact', head: true })
       .eq('ledger_id', ledger.id)
+      .not('status', 'in', '("voided","reversed")')
 
     const { data: lastTx } = await supabase
       .from('transactions')
       .select('created_at')
       .eq('ledger_id', ledger.id)
+      .not('status', 'in', '("voided","reversed")')
       .order('created_at', { ascending: false })
       .limit(1)
       .single()

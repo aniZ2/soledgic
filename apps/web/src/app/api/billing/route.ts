@@ -397,6 +397,7 @@ async function handleGetSubscriptionCore(org: OrganizationRecord, isOwner: boole
         .from('transactions')
         .select('id', { count: 'exact', head: true })
         .in('ledger_id', ledgerIds)
+        .not('status', 'in', '("voided","reversed")')
         .gte('created_at', start.toISOString())
         .lt('created_at', end.toISOString()),
       supabase

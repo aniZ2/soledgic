@@ -62,6 +62,7 @@ export default async function PayoutsPage() {
     `)
     .eq('ledger_id', ledger.id)
     .eq('transaction_type', 'payout')
+    .not('status', 'in', '("voided","reversed")')
     .order('created_at', { ascending: false })
     .limit(50)
 

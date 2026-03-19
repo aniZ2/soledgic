@@ -163,6 +163,7 @@ const handler = createHandler(
             .from('transactions')
             .select('id', { count: 'exact', head: true })
             .in('ledger_id', ledgerIds)
+            .not('status', 'in', '("voided","reversed")')
             .gte('created_at', start.toISOString())
             .lt('created_at', end.toISOString())
           transactionCount = txCount || 0

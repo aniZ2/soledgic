@@ -159,11 +159,12 @@ async function evaluateBudgetCap(
       periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
   }
 
-  // Query existing spending in period
+  // Query existing spending in period (exclude voided/reversed)
   let query = supabase
     .from('transactions')
     .select('id, entries!inner(amount, account:accounts!inner(account_type))')
     .eq('ledger_id', ledgerId)
+    .not('status', 'in', '("voided","reversed")')
     .gte('transaction_date', periodStart.toISOString().split('T')[0])
 
   const { data: transactions, error } = await query
