@@ -88,7 +88,6 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'Budgets', href: '/settings/budgets', icon: PiggyBank },
       { name: 'Recurring', href: '/settings/recurring', icon: Repeat },
       { name: 'Splits', href: '/settings/splits', icon: Percent },
-      { name: 'Bank Accounts', href: '/settings/bank-accounts', icon: Landmark },
       { name: 'Notifications', href: '/settings/notifications', icon: Bell },
       { name: 'Settings', href: '/settings', icon: Settings },
     ],
