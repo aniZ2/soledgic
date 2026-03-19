@@ -8,7 +8,6 @@ import {
   Users,
   Wallet,
   WalletCards,
-  Scale,
   Plug,
   Receipt,
   Bell,
@@ -19,11 +18,12 @@ import {
   PiggyBank,
   Repeat,
   Percent,
-  Landmark,
   HandCoins,
-  HardHat,
   TrendingUp,
   Banknote,
+  Calculator,
+  ClipboardCheck,
+  UserCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -61,12 +61,17 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'Ledgers', href: '/ledgers', icon: BookOpen },
       { name: 'Expenses', href: '/dashboard/expenses', icon: Receipt },
       { name: 'Invoices', href: '/dashboard/invoices', icon: FileText },
-      { name: 'Contractors', href: '/dashboard/contractors', icon: HardHat },
-      { name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
+{ name: 'Wallets', href: '/dashboard/wallets', icon: WalletCards },
       { name: 'Holds', href: '/dashboard/holds', icon: HandCoins },
-      { name: 'Reconciliation', href: '/dashboard/reconciliation', icon: Scale },
       { name: 'Reports', href: '/dashboard/reports', icon: FileText },
       { name: 'Compliance', href: '/dashboard/compliance', icon: ShieldCheck },
+    ],
+  },
+  {
+    label: 'Tax',
+    items: [
+      { name: 'Tax Summary', href: '/dashboard/tax/summary', icon: Calculator },
+      { name: 'Documents', href: '/dashboard/tax/documents', icon: FileText },
     ],
   },
   {
@@ -76,6 +81,10 @@ export const dashboardNavigation: NavSection[] = [
       { name: 'Risk Monitor', href: '/dashboard/admin/risk', icon: ShieldAlert },
       { name: 'Security Events', href: '/dashboard/admin/security-events', icon: Shield },
       { name: 'Platform Payouts', href: '/dashboard/admin/platform-payouts', icon: Banknote },
+      { name: 'Creator Verification', href: '/dashboard/admin/verify', icon: UserCheck },
+      { name: '1099 Overview', href: '/dashboard/tax/1099', icon: FileText },
+      { name: 'W-9 Status', href: '/dashboard/tax/w9', icon: ClipboardCheck },
+      { name: 'Tax Calculations', href: '/dashboard/tax/calculations', icon: Calculator },
     ],
   },
   {

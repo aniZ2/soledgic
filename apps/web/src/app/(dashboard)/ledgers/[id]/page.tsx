@@ -31,24 +31,59 @@ export default async function LedgerDetailPage({
     notFound()
   }
 
-  // Get account balances
+  // Get account balances — compute from non-voided entries instead of
+  // trusting accounts.balance (which may be stale after bulk voiding)
   const { data: accounts } = await supabase
     .from('accounts')
-    .select('account_type, balance')
+    .select('id, account_type')
     .eq('ledger_id', id)
+    .eq('is_active', true)
 
-  // Calculate totals
-  const cash = accounts?.find(a => a.account_type === 'cash')?.balance || 0
-  const revenue = accounts?.find(a => a.account_type === 'platform_revenue')?.balance || 0
-  const expenses = accounts?.find(a => a.account_type === 'expense')?.balance || 0
-  const creatorLiability = accounts?.filter(a => a.account_type === 'creator_balance')
-    .reduce((sum, a) => sum + (a.balance || 0), 0) || 0
+  // Sum entries per account type, only for non-voided/non-reversed transactions
+  const accountIds = accounts?.map(a => a.id) ?? []
+  let cash = 0
+  let revenue = 0
+  let expenses = 0
+  let creatorLiability = 0
 
-  // Get recent transactions
+  if (accountIds.length > 0) {
+    const { data: entries } = await supabase
+      .from('entries')
+      .select('account_id, entry_type, amount, transactions!inner(status)')
+      .in('account_id', accountIds)
+      .not('transactions.status', 'in', '("voided","reversed")')
+
+    // Build a map of account_id → account_type
+    const typeMap = new Map(accounts?.map(a => [a.id, a.account_type]) ?? [])
+
+    for (const entry of entries ?? []) {
+      const amt = Number(entry.amount)
+      const signed = entry.entry_type === 'credit' ? amt : -amt
+      const acctType = typeMap.get(entry.account_id)
+
+      switch (acctType) {
+        case 'cash':
+          cash += signed
+          break
+        case 'platform_revenue':
+          revenue += signed
+          break
+        case 'expense':
+          expenses += signed
+          break
+        case 'creator_balance':
+          creatorLiability += signed
+          break
+      }
+    }
+  }
+
+  // Get recent transactions (exclude voided/reversed)
   const { data: transactions } = await supabase
     .from('transactions')
     .select('*')
     .eq('ledger_id', id)
+    .not('status', 'in', '("voided","reversed")')
     .order('created_at', { ascending: false })
     .limit(10)
 
