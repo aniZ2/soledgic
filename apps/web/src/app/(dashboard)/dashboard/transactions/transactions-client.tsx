@@ -54,6 +54,9 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
 
   const filtered = useMemo(() => {
     return transactions.filter((tx) => {
+      // Hide voided/reversed by default — show only when explicitly filtered
+      if (!statusFilter && (tx.status === 'voided' || tx.status === 'reversed')) return false
+
       if (search) {
         const q = search.toLowerCase()
         const matches =
