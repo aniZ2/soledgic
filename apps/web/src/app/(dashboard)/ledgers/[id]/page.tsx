@@ -166,7 +166,7 @@ export default async function LedgerDetailPage({
                       {new Date(tx.created_at).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4 text-right font-medium text-foreground">
-                      ${(tx.amount / 100).toFixed(2)}
+                      ${tx.amount.toFixed(2)}
                     </td>
                   </tr>
                 ))}

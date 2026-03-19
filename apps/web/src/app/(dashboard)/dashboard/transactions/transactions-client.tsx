@@ -83,11 +83,11 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
     setDateTo('')
   }
 
-  const formatCurrency = (cents: number) => {
+  const formatCurrency = (dollars: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(cents / 100)
+    }).format(dollars)
   }
 
   const formatDate = (date: string) => {
@@ -122,7 +122,7 @@ export function TransactionsClient({ ledger, transactions }: TransactionsClientP
       reference: tx.reference_id,
       description: tx.description || '',
       status: tx.status,
-      amount: (tx.amount / 100).toFixed(2),
+      amount: tx.amount.toFixed(2),
     }))
     const header = 'Date,Type,Reference,Description,Status,Amount'
     const csv = [header, ...rows.map((r) =>

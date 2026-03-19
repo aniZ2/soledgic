@@ -1,0 +1,36 @@
+{
+  "signals": [
+    {
+      "severity": "LOW",
+      "category": "hub_growth",
+      "message": "treasury-resource.ts has 21 importers (infrastructure hub)",
+      "suggestion": "Expected for shared type modules",
+      "file": "supabase/functions/_shared/treasury-resource.ts",
+      "importers": 21,
+      "split": false
+    },
+    {
+      "severity": "LOW",
+      "category": "hub_growth",
+      "message": "utils.ts has 83 importers (split done)",
+      "suggestion": "Migrate importers to specific modules",
+      "file": "supabase/functions/_shared/utils.ts",
+      "importers": 83,
+      "split": true
+    },
+    {
+      "severity": "LOW",
+      "category": "dead_export",
+      "message": "utils.ts: exported function 'isStaging' is never imported",
+      "suggestion": "Remove or mark as internal",
+      "file": "utils.ts",
+      "function": "isStaging"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "high": 0,
+    "medium": 0,
+    "low": 3
+  }
+}

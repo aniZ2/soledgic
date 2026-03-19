@@ -46,7 +46,7 @@ export default async function ExpensesPage({
         <div>
           <h1 className="text-3xl font-bold text-foreground">Expenses</h1>
           <p className="mt-1 text-muted-foreground">
-            {ledger.platform_name} • Total: ${(totalExpenses / 100).toFixed(2)}
+            {ledger.platform_name} • Total: ${totalExpenses.toFixed(2)}
           </p>
         </div>
         <div className="flex gap-3">
@@ -95,7 +95,7 @@ export default async function ExpensesPage({
                       {expense.description || expense.metadata?.business_purpose || '-'}
                     </td>
                     <td className="py-3 px-4 text-right font-medium text-foreground">
-                      ${(expense.amount / 100).toFixed(2)}
+                      ${expense.amount.toFixed(2)}
                     </td>
                   </tr>
                 ))}

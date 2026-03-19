@@ -166,11 +166,11 @@ export function PayoutsClient({ ledger, payouts, stats }: PayoutsClientProps) {
     return name.replaceAll('_', ' ')
   }
 
-  const formatCurrency = (cents: number) => {
+  const formatCurrency = (dollars: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(cents / 100)
+    }).format(dollars)
   }
 
   const formatDate = (date: string) => {

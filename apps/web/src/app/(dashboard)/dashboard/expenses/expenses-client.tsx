@@ -24,7 +24,7 @@ export function ExpensesClient({ ledger, expenses, totalExpenses }: ExpensesClie
       merchant: (e.metadata?.merchant_name as string) || '',
       category: (e.metadata?.category_code as string) || 'other',
       purpose: e.description || (e.metadata?.business_purpose as string) || '',
-      amount: (e.amount / 100).toFixed(2),
+      amount: e.amount.toFixed(2),
     }))
     const header = 'Date,Merchant,Category,Purpose,Amount'
     const csv = [header, ...rows.map((r) =>
@@ -45,7 +45,7 @@ export function ExpensesClient({ ledger, expenses, totalExpenses }: ExpensesClie
         <div>
           <h1 className="text-3xl font-bold text-foreground">Expenses</h1>
           <p className="mt-1 text-muted-foreground">
-            {ledger.business_name} — Total: ${(totalExpenses / 100).toFixed(2)}
+            {ledger.business_name} — Total: ${totalExpenses.toFixed(2)}
           </p>
         </div>
         <div className="flex gap-3">
@@ -97,7 +97,7 @@ export function ExpensesClient({ ledger, expenses, totalExpenses }: ExpensesClie
                     {expense.description || (expense.metadata?.business_purpose as string) || '—'}
                   </td>
                   <td className="py-3 px-4 text-right font-medium text-foreground">
-                    ${(expense.amount / 100).toFixed(2)}
+                    ${expense.amount.toFixed(2)}
                   </td>
                 </tr>
               ))}

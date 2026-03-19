@@ -15,8 +15,8 @@ interface PlatformPayout {
   created_at: string
 }
 
-function formatCurrency(cents: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
+function formatCurrency(dollars: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(dollars)
 }
 
 function formatTime(dateStr: string) {
@@ -208,7 +208,7 @@ export default function AdminPlatformPayoutsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-foreground">
-                    {formatCurrency(Math.round(p.amount * 100))}
+                    {formatCurrency(p.amount)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[p.status] || 'bg-muted text-muted-foreground'}`}>
