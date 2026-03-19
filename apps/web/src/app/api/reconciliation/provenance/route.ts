@@ -31,7 +31,7 @@ export const GET = createApiHandler(
     const ledger = pickActiveLedger(ledgers, activeLedgerGroupId)
     if (!ledger) return NextResponse.json({ error: 'No ledger' }, { status: 404 })
 
-    // Counts by entry_method
+    // Counts by entry_method (exclude voided/reversed)
     const countsByMethod: Record<string, number> = {}
     for (const method of ['processor', 'manual', 'system', 'import']) {
       const { count } = await supabase
@@ -39,6 +39,7 @@ export const GET = createApiHandler(
         .select('id', { count: 'exact', head: true })
         .eq('ledger_id', ledger.id)
         .eq('entry_method', method)
+        .not('status', 'in', '("voided","reversed")')
 
       countsByMethod[method] = count || 0
     }
@@ -49,6 +50,7 @@ export const GET = createApiHandler(
       .select('id', { count: 'exact', head: true })
       .eq('ledger_id', ledger.id)
       .is('entry_method', null)
+      .not('status', 'in', '("voided","reversed")')
 
     countsByMethod['untagged'] = nullCount || 0
 
@@ -59,6 +61,7 @@ export const GET = createApiHandler(
       .eq('ledger_id', ledger.id)
       .eq('entry_method', 'manual')
       .in('transaction_type', ['sale', 'income'])
+      .not('status', 'in', '("voided","reversed")')
       .order('created_at', { ascending: false })
       .limit(50)
 
@@ -68,6 +71,7 @@ export const GET = createApiHandler(
       .select('id, transaction_type, reference_id, amount, description, status, created_at, metadata, entry_method')
       .eq('ledger_id', ledger.id)
       .eq('entry_method', 'system')
+      .not('status', 'in', '("voided","reversed")')
       .order('created_at', { ascending: false })
       .limit(50)
 
