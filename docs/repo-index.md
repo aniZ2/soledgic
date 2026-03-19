@@ -623,12 +623,18 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Risk Monitor (admin) | `/dashboard/admin/risk` | risk_signals, org_risk_summary, connected_accounts |
 | Security Events (admin) | `/dashboard/admin/security-events` | security_alerts, audit_log (cross_ledger_violation) |
 | Platform Payouts (admin) | `/dashboard/admin/platform-payouts` | platform-payouts edge function (Mercury ACH) |
+| Creator Verification (admin) | `/dashboard/admin/verify` | tax_info_submissions, organizations (identity match/no-match only) |
+| 1099 Overview (admin) | `/dashboard/tax/1099` | tax_documents, tax edge function |
+| W-9 Status (admin) | `/dashboard/tax/w9` | tax_info_submissions (counts only, no PII) |
+| Tax Calculations (admin) | `/dashboard/tax/calculations` | tax_year_summaries, compute_tax_year_summaries RPC |
+| Tax Summary (org) | `/dashboard/tax/summary` | transactions (revenue, fees, quarterly breakdown) |
+| Tax Documents (org) | `/dashboard/tax/documents` | transactions (CSV exports for accountant) |
 | Earnings | `/dashboard/earnings` | earnings edge function (per-creator period breakdown) |
 | Reports hub | `/dashboard/reports` | — |
 | P&L report | `/dashboard/reports/profit-loss` | profit-loss |
 | Trial balance | `/dashboard/reports/trial-balance` | trial-balance |
 | Creator statements | `/dashboard/reports/creator-statements` | send-statements, generate-pdf |
-| 1099 reports | `/dashboard/reports/1099` | tax |
+| ~~1099 reports~~ | `/dashboard/reports/1099` | _redirects to `/dashboard/tax/1099`_ |
 | Provenance | `/dashboard/reports/provenance` | reconciliation/provenance |
 | Ledger list | `/ledgers` | list-ledgers |
 | Ledger detail | `/ledgers/[id]` | list-ledgers |
