@@ -4,4 +4,5 @@
 
 export const LIVEMODE_COOKIE = 'soledgic_livemode'
 export const ACTIVE_LEDGER_GROUP_COOKIE = 'soledgic_active_ledger_group'
+export const ACTIVE_ORG_COOKIE = 'soledgic_active_org'
 export const READONLY_COOKIE = 'soledgic_readonly'

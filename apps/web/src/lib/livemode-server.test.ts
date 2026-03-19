@@ -11,32 +11,27 @@ vi.mock('next/headers', () => ({
   cookies: vi.fn(() => Promise.resolve(mockCookieStore)),
 }))
 
-// Mock supabase/server
+// Mock supabase/server — flexible chain mock that works for any query pattern
 const mockGetUser = vi.fn()
-const mockSelect = vi.fn()
-const mockEq1 = vi.fn()
-const mockEq2 = vi.fn()
-const mockIn = vi.fn()
-const mockLimit = vi.fn()
 const mockMaybeSingle = vi.fn()
+const mockSingle = vi.fn()
+
+function createChainMock() {
+  const chain: Record<string, unknown> = {}
+  const methods = ['select', 'eq', 'in', 'order', 'limit', 'gte', 'neq', 'not']
+  for (const m of methods) {
+    chain[m] = vi.fn(() => chain)
+  }
+  chain.maybeSingle = mockMaybeSingle
+  chain.single = mockSingle
+  return chain
+}
 
 vi.mock('./supabase/server', () => ({
   createClient: vi.fn(() =>
     Promise.resolve({
       auth: { getUser: mockGetUser },
-      from: vi.fn(() => ({
-        select: mockSelect.mockReturnValue({
-          eq: mockEq1.mockReturnValue({
-            eq: mockEq2.mockReturnValue({
-              in: mockIn.mockReturnValue({
-                limit: mockLimit.mockReturnValue({
-                  maybeSingle: mockMaybeSingle,
-                }),
-              }),
-            }),
-          }),
-        }),
-      })),
+      from: vi.fn(() => createChainMock()),
     })
   ),
 }))
@@ -106,15 +101,24 @@ describe('setLivemodeAction', () => {
     expect(result).toEqual({ success: false })
   })
 
-  it('sets livemode cookie and returns success', async () => {
+  it('sets livemode cookie and returns success (sandbox mode)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
-    const result = await setLivemodeAction(true, null)
+    const result = await setLivemodeAction(false, null)
     expect(result).toEqual({ success: true })
     expect(mockCookieStore.set).toHaveBeenCalledWith(
       'soledgic_livemode',
-      'true',
+      'false',
       expect.objectContaining({ path: '/' })
     )
+  })
+
+  it('sets livemode to live when KYC approved', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
+    // resolveActiveMembership returns a membership, then KYC check queries org
+    mockMaybeSingle.mockResolvedValue({ data: { organization_id: 'org-1', role: 'owner' }, error: null })
+    mockSingle.mockResolvedValue({ data: { kyc_status: 'approved' }, error: null })
+    const result = await setLivemodeAction(true, null)
+    expect(result).toEqual({ success: true })
   })
 
   it('sets active ledger group cookie when provided', async () => {
@@ -127,7 +131,7 @@ describe('setLivemodeAction', () => {
 
   it('deletes active ledger group cookie when null', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
-    await setLivemodeAction(true, null)
+    await setLivemodeAction(false, null)
     expect(mockCookieStore.delete).toHaveBeenCalledWith('soledgic_active_ledger_group')
   })
 
@@ -183,7 +187,7 @@ describe('setReadonlyAction', () => {
 
   it('sets readonly cookie when user is admin', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
-    mockMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
+    mockMaybeSingle.mockResolvedValue({ data: { organization_id: 'org-1', role: 'admin' }, error: null })
     const result = await setReadonlyAction(true)
     expect(result).toEqual({ success: true })
     expect(mockCookieStore.set).toHaveBeenCalledWith(
@@ -195,7 +199,7 @@ describe('setReadonlyAction', () => {
 
   it('deletes readonly cookie when setting to false', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
-    mockMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
+    mockMaybeSingle.mockResolvedValue({ data: { organization_id: 'org-1', role: 'owner' }, error: null })
     const result = await setReadonlyAction(false)
     expect(result).toEqual({ success: true })
     expect(mockCookieStore.delete).toHaveBeenCalledWith('soledgic_readonly')

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { CreatorDetailClient } from './creator-detail-client'
 
 interface CreatorAccountRow {
@@ -50,12 +51,8 @@ export default async function CreatorDetailPage({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .single()
+  const orgId = await getActiveOrganizationId(user.id)
+  const membership = orgId ? { organization_id: orgId } : null
 
   if (!membership) redirect('/onboarding')
 

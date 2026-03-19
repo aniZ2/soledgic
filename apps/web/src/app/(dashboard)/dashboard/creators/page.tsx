@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { User, Mail } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { DeleteCreatorButton } from '@/components/creators/delete-creator-button'
 
 export default async function CreatorsPage() {
@@ -14,12 +15,8 @@ export default async function CreatorsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .single()
+  const orgId = await getActiveOrganizationId(user.id)
+  const membership = orgId ? { organization_id: orgId } : null
 
   if (!membership) redirect('/onboarding')
 

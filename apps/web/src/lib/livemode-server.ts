@@ -1,7 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { LIVEMODE_COOKIE, ACTIVE_LEDGER_GROUP_COOKIE, READONLY_COOKIE } from './livemode'
+import { LIVEMODE_COOKIE, ACTIVE_LEDGER_GROUP_COOKIE, ACTIVE_ORG_COOKIE, READONLY_COOKIE } from './livemode'
 import { createClient } from './supabase/server'
 
 /**
@@ -20,6 +20,51 @@ export async function getLivemode(): Promise<boolean> {
 export async function getActiveLedgerGroupId(): Promise<string | null> {
   const cookieStore = await cookies()
   return cookieStore.get(ACTIVE_LEDGER_GROUP_COOKIE)?.value ?? null
+}
+
+/**
+ * Read the active organization ID from cookie.
+ * Returns null if not set (will fall back to first membership).
+ */
+export async function getActiveOrgId(): Promise<string | null> {
+  const cookieStore = await cookies()
+  return cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null
+}
+
+/**
+ * Resolve the active organization membership for the current user.
+ * Uses the active org cookie if set, otherwise picks the first membership.
+ * Returns null if user has no active memberships.
+ */
+export async function resolveActiveMembership(userId: string): Promise<{ organization_id: string; role: string } | null> {
+  const supabase = await createClient()
+  const activeOrgId = await getActiveOrgId()
+
+  if (activeOrgId) {
+    // Verify user is actually a member of this org
+    const { data } = await supabase
+      .from('organization_members')
+      .select('organization_id, role')
+      .eq('user_id', userId)
+      .eq('organization_id', activeOrgId)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    if (data) return data
+    // Cookie points to invalid org — fall through to first membership
+  }
+
+  // No cookie or invalid — pick first active membership
+  const { data } = await supabase
+    .from('organization_members')
+    .select('organization_id, role')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  return data
 }
 
 /**
@@ -52,17 +97,8 @@ async function getAuthenticatedUserId(): Promise<string | null> {
 }
 
 async function isOwnerOrAdmin(userId: string): Promise<boolean> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('organization_members')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .in('role', ['owner', 'admin'])
-    .limit(1)
-    .maybeSingle()
-
-  return !error && Boolean(data?.id)
+  const membership = await resolveActiveMembership(userId)
+  return membership !== null && (membership.role === 'owner' || membership.role === 'admin')
 }
 
 /**
@@ -84,17 +120,12 @@ export async function setLivemodeAction(
     return { success: false }
   }
 
-  // Block switching to live if org KYC is not approved
+  // Block switching to live if active org's KYC is not approved
   if (livemode) {
-    const supabase = await createClient()
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .single()
+    const membership = await resolveActiveMembership(userId)
 
     if (membership) {
+      const supabase = await createClient()
       const { data: org } = await supabase
         .from('organizations')
         .select('kyc_status')
@@ -172,6 +203,38 @@ export async function setReadonlyAction(
   } else {
     cookieStore.delete(READONLY_COOKIE)
   }
+
+  return { success: true }
+}
+
+/**
+ * Server action to switch the active organization.
+ */
+export async function setActiveOrgAction(
+  orgId: string
+): Promise<{ success: boolean }> {
+  const userId = await getAuthenticatedUserId()
+  if (!userId) return { success: false }
+
+  if (!isUuid(orgId)) return { success: false }
+
+  // Verify user is a member of this org
+  const supabase = await createClient()
+  const { data: membership } = await supabase
+    .from('organization_members')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (!membership) return { success: false }
+
+  const cookieStore = await cookies()
+  cookieStore.set(ACTIVE_ORG_COOKIE, orgId, COOKIE_OPTIONS)
+
+  // Clear ledger group when switching orgs (different org = different ledgers)
+  cookieStore.delete(ACTIVE_LEDGER_GROUP_COOKIE)
 
   return { success: true }
 }

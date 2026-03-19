@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { getActiveOrganizationId } from '@/lib/active-org'
 
 interface RecentTransaction {
   id: string
@@ -29,12 +30,8 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .single()
+  const orgId = await getActiveOrganizationId(user.id)
+  const membership = orgId ? { organization_id: orgId } : null
 
   if (!membership) {
     redirect('/onboarding')

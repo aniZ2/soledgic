@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
 import { LogOut } from 'lucide-react'
-import { getLivemode, getActiveLedgerGroupId, getReadonly } from '@/lib/livemode-server'
+import { getLivemode, getActiveLedgerGroupId, getReadonly, resolveActiveMembership } from '@/lib/livemode-server'
 import { LiveModeToggle } from '@/components/livemode-toggle'
 import { LivemodeProvider } from '@/components/livemode-provider'
 import { ToastProvider } from '@/components/notifications/toast-provider'
@@ -85,26 +85,24 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  // Get user's organization membership (only active memberships)
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select(`
-      role,
-      organization:organizations(
-        id,
-        name,
-        slug,
-        plan,
-        status,
-        trial_ends_at,
-        max_ledgers,
-        current_ledger_count,
-        kyc_status
-      )
-    `)
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .single()
+  // Get user's active organization membership (multi-org safe)
+  const activeMembership = await resolveActiveMembership(user.id)
+
+  let membership: { role: string; organization: OrganizationSummary } | null = null
+  if (activeMembership) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id, name, slug, plan, status, trial_ends_at, max_ledgers, current_ledger_count, kyc_status')
+      .eq('id', activeMembership.organization_id)
+      .single()
+
+    if (org) {
+      membership = {
+        role: activeMembership.role,
+        organization: org,
+      }
+    }
+  }
 
   // If no organization, redirect to onboarding (unless already there)
   if (!membership?.organization) {

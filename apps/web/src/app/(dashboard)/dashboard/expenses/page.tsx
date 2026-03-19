@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { ExpensesClient } from './expenses-client'
 
 export default async function ExpensesPage() {
@@ -13,12 +14,8 @@ export default async function ExpensesPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .single()
+  const orgId = await getActiveOrganizationId(user.id)
+  const membership = orgId ? { organization_id: orgId } : null
 
   if (!membership) redirect('/onboarding')
 
