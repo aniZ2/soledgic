@@ -150,7 +150,7 @@ for (const file of edgeFunctions) {
         'record-sale', 'record-expense', 'record-income', 'record-bill',
         'record-transfer', 'record-adjustment', 'record-opening-balance',
         'reverse-transaction', 'import-bank-statement',
-        'reconcile', 'processor-reconciliation',
+        'reconcile', 'processor-reconciliation', 'import-transactions',
         'ap-aging', 'ar-aging', 'trial-balance', 'frozen-statements',
         'ops-monitor', 'preflight-authorization', 'risk-evaluation',
         'manage-budgets', 'get-runway', 'upload-receipt', 'export-report',

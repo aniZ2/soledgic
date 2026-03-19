@@ -78,12 +78,11 @@ export default async function LedgerDetailPage({
     }
   }
 
-  // Get recent transactions (exclude voided/reversed)
+  // Get recent transactions (all statuses — voided/reversed shown with badge)
   const { data: transactions } = await supabase
     .from('transactions')
     .select('*')
     .eq('ledger_id', id)
-    .not('status', 'in', '("voided","reversed")')
     .order('created_at', { ascending: false })
     .limit(10)
 
