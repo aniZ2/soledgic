@@ -189,8 +189,8 @@ export default function DeveloperToolsPage() {
             <div className="flex-1">
               <h2 className="text-lg font-semibold text-foreground">Repair Orphaned Ledger Groups</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Find ledger groups that are missing their test or live sibling and create the missing counterpart.
-                This can happen if a ledger was created before the test/live mode feature was added.
+                Find ledger groups that are missing their sandbox or live sibling and create the missing counterpart.
+                This can happen if a ledger was created before the sandbox/live feature was added.
               </p>
 
               <button

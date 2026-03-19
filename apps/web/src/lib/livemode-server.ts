@@ -6,7 +6,7 @@ import { createClient } from './supabase/server'
 
 /**
  * Read livemode from cookie in server components / route handlers.
- * Returns true for live mode, false for test mode (default).
+ * Returns true for live, false for sandbox (default).
  */
 export async function getLivemode(): Promise<boolean> {
   const cookieStore = await cookies()
@@ -84,7 +84,7 @@ export async function setLivemodeAction(
     return { success: false }
   }
 
-  // Block switching to live mode if org KYC is not approved
+  // Block switching to live if org KYC is not approved
   if (livemode) {
     const supabase = await createClient()
     const { data: membership } = await supabase
@@ -102,7 +102,7 @@ export async function setLivemodeAction(
         .single()
 
       if (org?.kyc_status && org.kyc_status !== 'approved') {
-        return { success: false, error: 'Complete business verification to access live mode' }
+        return { success: false, error: 'Complete business verification to go live' }
       }
     }
   }

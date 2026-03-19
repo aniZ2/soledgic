@@ -265,7 +265,7 @@ export function CreatorDetailClient({
             <button
               onClick={() => setIsDeleteDialogOpen(true)}
               disabled={isDeleting || (ledger.livemode === true)}
-              title={ledger.livemode ? 'Creators cannot be deleted in live mode' : 'Delete creator (voids transactions in test mode)'}
+              title={ledger.livemode ? 'Creators cannot be deleted in live' : 'Delete creator (voids transactions in sandbox)'}
               className="flex items-center gap-2 border border-red-300 text-red-600 px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-red-500/30 dark:hover:bg-red-500/10"
             >
               <Trash2 className="w-4 h-4" />

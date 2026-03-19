@@ -26,15 +26,15 @@ export default function AuthenticationPage() {
       </section>
 
       <section className="mb-12">
-        <h2 className="text-2xl font-semibold text-foreground mb-4">Test vs Live Keys</h2>
+        <h2 className="text-2xl font-semibold text-foreground mb-4">Sandbox vs Live Keys</h2>
         <p className="text-muted-foreground mb-4">
-          Test and live mode are isolated. Participants, wallets, holds, and payouts created with a
-          test key never touch your live environment.
+          Sandbox and live are isolated. Participants, wallets, holds, and payouts created with a
+          sandbox key never touch your live environment.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-            <h3 className="font-semibold text-amber-600 mb-2">Test Mode</h3>
+            <h3 className="font-semibold text-amber-600 mb-2">Sandbox</h3>
             <p className="text-sm text-muted-foreground mb-2">
               Keys start with <code className="bg-amber-500/20 px-1 rounded">slk_test_</code>
             </p>
@@ -45,7 +45,7 @@ export default function AuthenticationPage() {
             </ul>
           </div>
           <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-            <h3 className="font-semibold text-green-600 mb-2">Live Mode</h3>
+            <h3 className="font-semibold text-green-600 mb-2">Live</h3>
             <p className="text-sm text-muted-foreground mb-2">
               Keys start with <code className="bg-green-500/20 px-1 rounded">slk_live_</code>
             </p>

@@ -15,7 +15,7 @@ export default function QuickstartPage() {
           <h2 className="text-2xl font-semibold text-foreground">Create an Account</h2>
         </div>
         <p className="text-muted-foreground mb-4">
-          Sign up for Soledgic and start in test mode. Test and live ledgers are isolated from each other.
+          Sign up for Soledgic and start in sandbox. Sandbox and live ledgers are isolated from each other.
         </p>
         <Link
           href="/signup"

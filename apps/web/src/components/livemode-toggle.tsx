@@ -24,7 +24,7 @@ export function LiveModeToggle({
     if (switching) return
 
     const next = !livemode
-    // Block switching to live mode if KYC is not approved
+    // Block switching to live if KYC is not approved
     if (next && !kycApproved) {
       setBlocked(true)
       setTimeout(() => setBlocked(false), 3000)
@@ -58,7 +58,7 @@ export function LiveModeToggle({
             }`}
           />
           <span className="text-sm font-medium text-foreground">
-            {livemode ? 'Live' : 'Test'}
+            {livemode ? 'Live' : 'Sandbox'}
           </span>
         </div>
 
@@ -77,7 +77,7 @@ export function LiveModeToggle({
       </button>
       {blocked && (
         <p className="px-3 mt-1 text-xs text-amber-600 dark:text-amber-400">
-          Complete verification to access live mode.{' '}
+          Complete verification to go live.{' '}
           <a href="/settings/verification" className="underline">Verify now</a>
         </p>
       )}

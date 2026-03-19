@@ -154,7 +154,7 @@ export default async function DashboardLayout({
           <Link href="/dashboard" className="text-2xl font-bold text-primary">
             Soledgic
             {!livemode && (
-              <span className="ml-1.5 text-sm font-medium text-amber-500">(Test)</span>
+              <span className="ml-1.5 text-sm font-medium text-amber-500">(Sandbox)</span>
             )}
           </Link>
           <NotificationBell />
@@ -175,7 +175,7 @@ export default async function DashboardLayout({
           </div>
         </div>
 
-        {/* Test / Live Toggle */}
+        {/* Sandbox / Live Toggle */}
         <div className="px-4 py-2 border-b border-border flex-shrink-0">
           <LiveModeToggle initialLivemode={livemode} activeLedgerGroupId={activeLedgerGroupId} kycStatus={org.kyc_status} />
         </div>
@@ -242,7 +242,7 @@ export default async function DashboardLayout({
         )}
         {!livemode && (
           <div className={`sticky ${readonly ? 'top-9' : 'top-0'} z-10 bg-amber-500 text-white text-center text-sm font-medium py-2 px-4`}>
-            TEST MODE — Data shown here is for testing only and won&apos;t affect your live environment.
+            SANDBOX — Data shown here is for testing only and won&apos;t affect your live environment.
           </div>
         )}
         {org.status === 'past_due' && (
@@ -268,10 +268,10 @@ export default async function DashboardLayout({
             {org.kyc_status === 'suspended'
               ? 'Your account has been suspended. Contact support for assistance.'
               : org.kyc_status === 'under_review'
-                ? 'Your business verification is under review. Live mode will be available once approved.'
+                ? 'Your business verification is under review. Live will be available once approved.'
                 : org.kyc_status === 'rejected'
                   ? <>Your verification was not approved. <Link href="/settings/verification" className="underline hover:no-underline">Update your information</Link> and resubmit.</>
-                  : <>Complete business verification to access live mode. <Link href="/settings/verification" className="underline hover:no-underline">Start verification</Link></>
+                  : <>Complete business verification to go live. <Link href="/settings/verification" className="underline hover:no-underline">Start verification</Link></>
             }
           </div>
         )}
