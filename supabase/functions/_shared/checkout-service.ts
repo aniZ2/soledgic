@@ -327,48 +327,87 @@ export async function createCheckoutResponse(
   const chargeStatus = (checkoutPayment.status || '').toUpperCase()
   const isChargeFailed = chargeStatus === 'FAILED' || chargeStatus === 'CANCELED'
 
+  let fundingBooked = false
+  let fundingTransactionId: string | null = null
   let saleBooked = false
   let saleTransactionId: string | null = null
 
   if (!isChargeFailed && !checkoutPayment.requires_action) {
-    const directChargeReferenceId = `charge_${checkoutPayment.id}`
+    const fundingReferenceId = `funding_${checkoutPayment.id}`
+    const saleReferenceId = `sale_${checkoutPayment.id}`
+    const buyerId = body.customer_id || body.buyer_id || participantId
+
+    // ── Step 1: FUNDING (Stripe → buyer wallet) ──────────────────
+    // External money enters the system. No creator, no platform split.
     try {
-      const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
+      const { data: fundingResult, error: fundingError } = await supabase.rpc('record_funding_atomic', {
         p_ledger_id: ledger.id,
-        p_reference_id: directChargeReferenceId,
-        p_creator_id: participantId,
-        p_gross_amount: amount,
-        p_creator_amount: participantAmount,
-        p_platform_amount: platformAmount,
-        p_processing_fee: 0,
-        p_soledgic_fee: actualSoledgicFee,
-        p_product_id: productId || null,
-        p_product_name: productName || null,
+        p_reference_id: fundingReferenceId,
+        p_buyer_id: buyerId,
+        p_amount_cents: amount,
+        p_processing_fee_cents: 0, // Stripe fee tracked separately via webhook
         p_metadata: {
-          ...(body.metadata || {}),
           checkout_provider: 'card',
-          processor_transfer_id: checkoutPayment.id,
-          direct_charge: true,
+          stripe_payment_id: checkoutPayment.id,
         },
       })
 
-      if (saleError) {
-        if (saleError.code === '23505' || String(saleError.message || '').includes('duplicate')) {
-          saleBooked = true
+      if (fundingError) {
+        if (fundingError.code === '23505' || String(fundingError.message || '').includes('duplicate')) {
+          fundingBooked = true
         } else {
-          console.error(`[${requestId}] Direct charge ledger booking failed:`, saleError.message)
+          console.error(`[${requestId}] Funding booking failed:`, fundingError.message)
         }
       } else {
-        saleBooked = true
-        const row = Array.isArray(saleResult) ? saleResult[0] : saleResult
-        saleTransactionId = row?.out_transaction_id || null
+        fundingBooked = true
+        const row = Array.isArray(fundingResult) ? fundingResult[0] : fundingResult
+        fundingTransactionId = row?.out_transaction_id || null
       }
     } catch (error) {
-      console.error(`[${requestId}] Direct charge ledger booking error:`, error)
+      console.error(`[${requestId}] Funding booking error:`, error)
+    }
+
+    // ── Step 2: SALE (wallet redistribution) ─────────────────────
+    // Internal: buyer wallet → creator + platform + soledgic fee.
+    // Only proceeds if funding succeeded.
+    if (fundingBooked) {
+      try {
+        const { data: saleResult, error: saleError } = await supabase.rpc('record_sale_atomic', {
+          p_ledger_id: ledger.id,
+          p_reference_id: saleReferenceId,
+          p_creator_id: participantId,
+          p_gross_amount: amount,
+          p_creator_amount: participantAmount,
+          p_platform_amount: platformAmount,
+          p_processing_fee: 0,
+          p_soledgic_fee: actualSoledgicFee,
+          p_product_id: productId || null,
+          p_product_name: productName || null,
+          p_metadata: {
+            ...(body.metadata || {}),
+            funding_transaction_id: fundingTransactionId,
+            buyer_id: buyerId,
+            checkout_provider: 'card',
+          },
+        })
+
+        if (saleError) {
+          if (saleError.code === '23505' || String(saleError.message || '').includes('duplicate')) {
+            saleBooked = true
+          } else {
+            console.error(`[${requestId}] Sale booking failed:`, saleError.message)
+          }
+        } else {
+          saleBooked = true
+          const row = Array.isArray(saleResult) ? saleResult[0] : saleResult
+          saleTransactionId = row?.out_transaction_id || null
+        }
+      } catch (error) {
+        console.error(`[${requestId}] Sale booking error:`, error)
+      }
     }
 
     if (saleBooked && saleTransactionId) {
-      // Build transaction graph node for this sale (no edges yet — edges created when refunds/payouts reference it)
       void autoLinkTransaction(supabase, ledger.id, {
         id: saleTransactionId,
         transaction_type: 'sale',
@@ -381,8 +420,8 @@ export async function createCheckoutResponse(
           event: 'checkout.completed',
           data: {
             payment_id: checkoutPayment.id,
-            reference_id: directChargeReferenceId,
-            transaction_id: saleTransactionId,
+            funding_transaction_id: fundingTransactionId,
+            sale_transaction_id: saleTransactionId,
             amount: amount / 100,
             currency,
             participant_id: participantId,
