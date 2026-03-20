@@ -20,6 +20,43 @@ const INDEX_PATH = join(ROOT, 'docs/repo-index.md')
 
 const index = readFileSync(INDEX_PATH, 'utf-8')
 
+function extractSection(headingRegex) {
+  const safeHeadingRegex = new RegExp(
+    headingRegex.source,
+    headingRegex.flags.replace(/[gy]/g, ''),
+  )
+  const match = safeHeadingRegex.exec(index)
+  if (!match) return ''
+
+  const start = match.index + match[0].length
+  const rest = index.slice(start)
+  const nextHeading = rest.match(/\n##\s+/)
+  const end = nextHeading ? start + nextHeading.index : index.length
+  return index.slice(start, end)
+}
+
+function uniqueById(items) {
+  const seen = new Set()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+function normalizeId(raw) {
+  return raw.replace(/\s*\(.*?\)\s*$/, '').trim()
+}
+
+function normalizeList(items) {
+  return items.map(normalizeId).filter(Boolean)
+}
+
+function parseInlineList(value) {
+  if (!value) return []
+  return value.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
 // ── Parse service blocks ────────────────────────────────────────────
 
 function parseServiceBlocks() {
@@ -72,24 +109,26 @@ function parseRpcBlocks() {
 }
 
 function parseCriticalPaths() {
+  const section = extractSection(/^##\s+Critical Paths\b[^\n]*$/m)
   const paths = []
   const regex = /^CRITICAL_PATH: (\S+)\n([\s\S]*?)(?=\nCRITICAL_PATH:|\n```)/gm
   let match
-  while ((match = regex.exec(index)) !== null) {
+  while ((match = regex.exec(section)) !== null) {
     paths.push({
       id: match[1],
       chain: extractField(match[2], 'chain'),
       invariants: extractField(match[2], 'invariants'),
     })
   }
-  return paths
+  return uniqueById(paths)
 }
 
 function parseInvariants() {
+  const section = extractSection(/^##\s+Invariants\b[^\n]*$/m)
   const invariants = []
   const regex = /^(INVARIANT_\S+)\n([\s\S]*?)(?=\nINVARIANT_|\n```)/gm
   let match
-  while ((match = regex.exec(index)) !== null) {
+  while ((match = regex.exec(section)) !== null) {
     invariants.push({
       id: match[1],
       description: match[2].split('\n')[0].trim(),
@@ -97,20 +136,21 @@ function parseInvariants() {
       verifiedBy: extractField(match[2], 'verified_by'),
     })
   }
-  return invariants
+  return uniqueById(invariants)
 }
 
 function parseEntryPoints() {
+  const section = extractSection(/^##\s+Entry Points\b[^\n]*$/m)
   const entries = []
   const regex = /^ENTRYPOINT: (\S+)\n([\s\S]*?)(?=\nENTRYPOINT:|\n```)/gm
   let match
-  while ((match = regex.exec(index)) !== null) {
+  while ((match = regex.exec(section)) !== null) {
     entries.push({
       id: match[1],
       body: match[2].trim(),
     })
   }
-  return entries
+  return uniqueById(entries)
 }
 
 function extractField(body, field) {
@@ -275,18 +315,21 @@ function buildAdjacencyGraph() {
 
   // Build edges: service calls → targets become dependents
   for (const s of services) {
-    for (const callTarget of s.calls) {
+    for (const callTarget of normalizeList(s.calls || [])) {
       const target = nodes.get(callTarget)
       if (target) {
         target.dependents.push(s.id)
       }
     }
     // calledBy → the caller depends on this service
-    for (const caller of s.calledBy) {
+    for (const caller of normalizeList(s.calledBy || [])) {
       // caller depends on s → s's dependents include caller
       // But we want reverse: if s changes, caller is affected
       // So s.dependents should include caller
-      if (!s.dependents) s.dependents = []
+      if (nodes.has(caller)) {
+        if (!s.dependents) s.dependents = []
+        s.dependents.push(caller)
+      }
     }
   }
 
@@ -359,9 +402,9 @@ function blastRadius(query) {
     if (!node) continue
 
     // Forward edges: what this node calls
-    const calls = node.calls || []
+    const calls = normalizeList(node.calls || [])
     for (const target of calls) {
-      if (!visited.has(target)) {
+      if (!visited.has(target) && nodes.has(target)) {
         visited.add(target)
         const newPath = [...path, target]
         affected.set(target, { depth: depth + 1, path: newPath })
@@ -370,9 +413,9 @@ function blastRadius(query) {
     }
 
     // Reverse edges: who calls this node (they are affected if this changes)
-    const calledBy = node.calledBy || []
+    const calledBy = normalizeList(node.calledBy || [])
     for (const caller of calledBy) {
-      if (!visited.has(caller)) {
+      if (!visited.has(caller) && nodes.has(caller)) {
         visited.add(caller)
         const newPath = [...path, caller]
         affected.set(caller, { depth: depth + 1, path: newPath })
@@ -381,9 +424,9 @@ function blastRadius(query) {
     }
 
     // Dependents from RPC callers
-    const dependents = node.dependents || []
+    const dependents = normalizeList(node.dependents || [])
     for (const dep of dependents) {
-      if (!visited.has(dep)) {
+      if (!visited.has(dep) && nodes.has(dep)) {
         visited.add(dep)
         const newPath = [...path, dep]
         affected.set(dep, { depth: depth + 1, path: newPath })
@@ -424,44 +467,18 @@ function blastRadius(query) {
   })
 
   // Find threatened invariants — match by stable ID, RPC name, or service file
-  const threatenedInvariants = invariants.filter((inv) => {
-    const text = `${inv.id} ${inv.description} ${inv.enforcedBy || ''} ${inv.verifiedBy || ''}`.toLowerCase()
-    // Check source node and all affected nodes
-    const checkIds = [sourceId, ...affected.keys()]
-    for (const id of checkIds) {
-      if (text.includes(id.toLowerCase())) return true
-      // Also check the human-readable RPC name (strip RPC_ prefix, lowercase, replace _ with _)
-      const rpcName = id.replace(/^RPC_/, '').toLowerCase()
-      if (rpcName !== id.toLowerCase() && text.includes(rpcName)) return true
-      // Check file basename
-      const node = nodes.get(id)
-      if (node?.file) {
-        const basename = node.file.split('/').pop().replace('.ts', '').toLowerCase()
-        if (text.includes(basename)) return true
-      }
-    }
-    // Also match by risk level — ledger invariants are threatened by CRITICAL_LEDGER changes
-    if (source.risk === 'CRITICAL_LEDGER') {
-      if (inv.id.includes('LEDGER_BALANCE') || inv.id.includes('DOUBLE_ENTRY')) return true
-    }
-    // Refund-specific
-    if (sourceId.includes('REFUND') || [...affected.keys()].some((k) => k.includes('REFUND'))) {
-      if (inv.id.includes('REFUND_CAP')) return true
-    }
-    // Reversal-specific
-    if (sourceId.includes('REVERSAL') || [...affected.keys()].some((k) => k.includes('REVERSAL') || k.includes('VOID'))) {
-      if (inv.id.includes('REVERSAL_CAP')) return true
-    }
-    // Payout-specific
-    if (sourceId.includes('PAYOUT') || [...affected.keys()].some((k) => k.includes('PAYOUT'))) {
-      if (inv.id.includes('NONNEGATIVE_BALANCE')) return true
-    }
-    // Idempotency — any financial service
-    if (source.risk === 'CRITICAL_LEDGER' && source.concurrency?.includes('idempotency')) {
-      if (inv.id.includes('IDEMPOTENCY')) return true
-    }
-    return false
-  })
+  const pathInvariantIds = affectedCritPaths.flatMap((path) => parseInlineList(path.invariants))
+  const directInvariantIds = invariants
+    .filter((inv) => {
+      const checkIds = [sourceId, ...affected.keys()]
+      return checkIds.some((id) => {
+        const node = nodes.get(id)
+        return node ? JSON.stringify(node).toUpperCase().includes(inv.id) : false
+      })
+    })
+    .map((inv) => inv.id)
+  const threatenedInvariantIds = new Set([...pathInvariantIds, ...directInvariantIds])
+  const threatenedInvariants = invariants.filter((inv) => threatenedInvariantIds.has(inv.id))
 
   // Parse change impact items
   const changeImpactItems = new Set()

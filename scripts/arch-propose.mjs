@@ -14,8 +14,7 @@
  *   npm run arch:propose
  */
 
-import { execSync } from 'child_process'
-import { readFileSync, existsSync } from 'fs'
+import { execFileSync } from 'child_process'
 import { join } from 'path'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
@@ -24,31 +23,40 @@ const jsonMode = process.argv.includes('--json')
 // ── Collect signals from all analyzers ──────────────────────────────
 
 function runAnalyzer(script) {
-  const tmpFile = join(ROOT, '.arch-analyze-output.json')
   try {
-    execSync(`node ${join(ROOT, script)} --json > "${tmpFile}" 2>/dev/null`, {
+    const output = execFileSync('node', [join(ROOT, script), '--json'], {
       cwd: ROOT,
       timeout: 120000,
-      shell: true,
-    })
-  } catch { /* exit non-zero is ok — output still in file */ }
-
-  try {
-    if (existsSync(tmpFile)) {
-      const content = readFileSync(tmpFile, 'utf-8').trim()
-      try { require('fs').unlinkSync(tmpFile) } catch { /* cleanup */ }
-      if (content.startsWith('{')) return JSON.parse(content)
+      encoding: 'utf-8',
+    }).trim()
+    if (output.startsWith('{')) return JSON.parse(output)
+  } catch (err) {
+    const output = `${err.stdout || ''}`.trim()
+    if (output.startsWith('{')) {
+      try {
+        return JSON.parse(output)
+      } catch {
+        /* parse failed */
+      }
     }
-  } catch { /* parse failed */ }
+  }
   return null
 }
 
 function runCheckScript(script) {
   try {
-    execSync(`node ${join(ROOT, script)} 2>/dev/null`, { cwd: ROOT, timeout: 60000 })
+    execFileSync('node', [join(ROOT, script)], {
+      cwd: ROOT,
+      timeout: 60000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
     return { passed: true, output: '' }
   } catch (err) {
-    return { passed: false, output: err.stdout || err.stderr || '' }
+    return {
+      passed: false,
+      output: `${err.stdout || ''}${err.stderr || ''}`,
+    }
   }
 }
 
@@ -78,9 +86,6 @@ const realityResult = runCheckScript('scripts/arch-reality-check.mjs')
 
 // Parse analyze signals
 const signals = analyzeResult?.signals || []
-const highSignals = signals.filter(s => s.severity === 'HIGH')
-const mediumSignals = signals.filter(s => s.severity === 'MEDIUM')
-
 // ── Generate proposals from signals ─────────────────────────────────
 
 // Test gaps → propose test creation
@@ -92,6 +97,21 @@ if (testGaps.length > 0) {
     'Focus on: input validation, error paths, financial calculations',
     'Use existing test patterns (mock supabase with chainable objects)',
   ], 'Critical money-moving services without tests are invisible failure points. A bug in payout-service.ts with no tests could drain accounts undetected.')
+}
+
+// Multi-org safety debt → propose scoped cleanup
+const orgContextSafety = signals.find((s) => s.category === 'org_context_safety')
+if (orgContextSafety) {
+  const sampleFiles = (orgContextSafety.files || []).slice(0, 5)
+  const remainingCount = Math.max((orgContextSafety.count || 0) - sampleFiles.length, 0)
+  propose('P1', 'multi_org_safety', `Finish multi-org org-context cleanup in ${orgContextSafety.count || '?'} remaining files`, [
+    'Prioritize API routes, auth flows, and shared server helpers before lower-risk settings pages',
+    ...sampleFiles.map((file) => `Replace singleton organization_members lookup in ${file}`),
+    remainingCount > 0
+      ? `Continue through the remaining ${remainingCount} file(s) with getActiveOrganizationId()/resolveActiveMembership`
+      : 'Use getActiveOrganizationId()/resolveActiveMembership consistently',
+    'Add one regression test for a multi-org API route and one auth callback flow',
+  ], 'The codebase now supports active-org context. Remaining singleton lookups can still mis-route requests or break users who belong to more than one organization.')
 }
 
 // Hub growth → propose service splits (skip if already split)
@@ -148,8 +168,10 @@ if (deadExports.length > 5) {
 // Financial spread → propose RPC consolidation
 const financialSpread = signals.filter(s => s.category === 'financial_spread')
 if (financialSpread.length > 0) {
+  const spreadFiles = financialSpread.flatMap((s) => s.files || [])
   propose('P2', 'financial_integrity', 'Consolidate direct transaction writes into atomic RPCs', [
-    'Identify edge functions that INSERT into transactions + entries directly',
+    ...spreadFiles.map((file) => `Replace direct transaction inserts in ${file} with an atomic RPC`),
+    spreadFiles.length === 0 ? 'Identify edge functions that INSERT into transactions + entries directly' : 'Keep direct transaction/entry writes out of edge functions',
     'For each: create a SECURITY DEFINER RPC with FOR UPDATE locking',
     'Priority: record-expense, record-income, record-bill (highest volume)',
     'Migrate edge functions to call RPCs instead of direct inserts',

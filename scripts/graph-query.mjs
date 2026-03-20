@@ -32,6 +32,21 @@ const index = readFileSync(INDEX_PATH, 'utf-8')
 
 // ── Parsers (shared with graph-impact) ──────────────────────────────
 
+function extractSection(headingRegex) {
+  const safeHeadingRegex = new RegExp(
+    headingRegex.source,
+    headingRegex.flags.replace(/[gy]/g, ''),
+  )
+  const match = safeHeadingRegex.exec(index)
+  if (!match) return ''
+
+  const start = match.index + match[0].length
+  const rest = index.slice(start)
+  const nextHeading = rest.match(/\n##\s+/)
+  const end = nextHeading ? start + nextHeading.index : index.length
+  return index.slice(start, end)
+}
+
 function extractField(body, field) {
   const regex = new RegExp(`^\\s*${field}:\\s*(.+)`, 'mi')
   const match = body.match(regex)
@@ -53,6 +68,23 @@ function normalizeId(raw) {
 /** Normalize a list of IDs, stripping annotations */
 function normalizeList(items) {
   return items.map(normalizeId).filter(Boolean)
+}
+
+function uniqueById(items) {
+  const seen = new Set()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+function parseInlineList(value) {
+  if (!value) return []
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function parseServiceBlocks() {
@@ -118,24 +150,26 @@ function parseTriggerBlocks() {
 }
 
 function parseCriticalPaths() {
+  const section = extractSection(/^##\s+Critical Paths\b[^\n]*$/m)
   const paths = []
   const regex = /^CRITICAL_PATH: (\S+)\n([\s\S]*?)(?=\nCRITICAL_PATH:|\n```)/gm
   let match
-  while ((match = regex.exec(index)) !== null) {
+  while ((match = regex.exec(section)) !== null) {
     paths.push({
       id: match[1],
       chain: extractField(match[2], 'chain'),
       invariants: extractField(match[2], 'invariants'),
     })
   }
-  return paths
+  return uniqueById(paths)
 }
 
 function parseInvariants() {
+  const section = extractSection(/^##\s+Invariants\b[^\n]*$/m)
   const invariants = []
   const regex = /^(INVARIANT_\S+)\n([\s\S]*?)(?=\nINVARIANT_|\n```)/gm
   let match
-  while ((match = regex.exec(index)) !== null) {
+  while ((match = regex.exec(section)) !== null) {
     invariants.push({
       id: match[1],
       description: match[2].split('\n')[0].trim(),
@@ -150,10 +184,11 @@ function parseInvariants() {
 }
 
 function parseEntryPoints() {
+  const section = extractSection(/^##\s+Entry Points\b[^\n]*$/m)
   const entries = []
   const regex = /^ENTRYPOINT: (\S+)\n([\s\S]*?)(?=\nENTRYPOINT:|\n```)/gm
   let match
-  while ((match = regex.exec(index)) !== null) {
+  while ((match = regex.exec(section)) !== null) {
     const body = match[2].trim()
     const fields = {}
     for (const line of body.split('\n')) {
@@ -162,7 +197,7 @@ function parseEntryPoints() {
     }
     entries.push({ id: match[1], ...fields })
   }
-  return entries
+  return uniqueById(entries)
 }
 
 // ── Resolve a query to a node ───────────────────────────────────────
@@ -267,18 +302,18 @@ function cmdRisk(query) {
   const affectedPaths = criticalPaths.filter(
     (p) => p.chain && p.chain.includes(node.id),
   )
-  const relatedInvariants = invariants.filter((inv) => {
-    const text = `${inv.id} ${inv.description} ${inv.enforcedBy || ''} ${inv.verifiedBy || ''}`.toLowerCase()
-    return text.includes(node.id.toLowerCase()) ||
-      (node.file && text.includes(node.file.split('/').pop().replace('.ts', '').toLowerCase()))
-  })
+  const pathInvariantIds = affectedPaths.flatMap((path) => parseInlineList(path.invariants))
+  const directInvariantIds = invariants
+    .filter((inv) => JSON.stringify(node).toUpperCase().includes(inv.id))
+    .map((inv) => inv.id)
+  const relatedInvariantIds = [...new Set([...pathInvariantIds, ...directInvariantIds])]
 
   return {
     id: node.id,
     risk: node.risk || null,
     riskScore: RISK_SCORES[node.risk] || 0,
     criticalPaths: affectedPaths.map((p) => p.id),
-    invariants: relatedInvariants.map((i) => i.id),
+    invariants: relatedInvariantIds,
     concurrency: node.concurrency || null,
     testedBy: node.testedBy || null,
   }
@@ -508,10 +543,10 @@ function cmdEntryPoints() {
 function cmdTable(tableName) {
   if (!tableName) return { error: 'Usage: table <table_name>' }
 
-  const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
   const writers = []
   const readers = []
   const rpcRefs = []
+  const escapedTableName = tableName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   // Scan .ts files for .from('tableName') with method chain context
   function scanDir(dir) {
@@ -525,8 +560,8 @@ function cmdTable(tableName) {
         const relPath = fullPath.replace(ROOT + '/', '')
 
         // Check for .from('tableName') references
-        const fromRegex = new RegExp(`\\.from\\(\\s*['"]${tableName}['"]\\s*\\)`, 'g')
-        if (!fromRegex.test(content)) return
+        const fromRegex = new RegExp(`\\.from\\(\\s*['"]${escapedTableName}['"]\\s*\\)`, 'g')
+        if (!fromRegex.test(content)) continue
 
         // Determine read vs write by looking at method chains after .from()
         const lines = content.split('\n')

@@ -46,6 +46,167 @@ function readDir(dir) {
   return files
 }
 
+function countDirectInsertChains(content, table) {
+  const lines = content.split('\n')
+  const fromPatterns = [
+    `.from('${table}')`,
+    `.from("${table}")`,
+  ]
+
+  let count = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!fromPatterns.some((pattern) => lines[i].includes(pattern))) continue
+
+    for (let j = i; j < Math.min(lines.length, i + 20); j++) {
+      const line = lines[j]
+
+      if (j > i && line.includes('.from(')) break
+      if (j > i && line.includes('.select(')) break
+      if (j > i && line.includes('.update(')) break
+      if (j > i && line.includes('.delete(')) break
+      if (j > i && line.includes('.upsert(')) break
+
+      if (line.includes('.insert(')) {
+        count++
+        break
+      }
+
+      if (line.includes(';')) break
+    }
+  }
+
+  return count
+}
+
+function isSafeDisplayOrSerializationConversion(line, lines, index) {
+  const trimmed = line.trim()
+  const nearbyContext = lines
+    .slice(Math.max(0, index - 8), index + 1)
+    .join('\n')
+
+  if (/[A-Za-z_]\w*(percent|percentage|rate|ratio)\s*\/\s*100\b/i.test(line)) {
+    return true
+  }
+
+  if (line.includes('.toFixed(') || line.includes('.format(')) return true
+  if (/\$\{.*\/\s*100.*\}/.test(line)) return true
+
+  if (/^\s*(const|let)\s+\w+\s*=\s*[\w.]*[Cc]ents\b.*\/\s*100\b/.test(line)) {
+    return true
+  }
+
+  const isObjectProperty = /^\s*[\w$]+\s*:\s*.+\/\s*100\b/.test(trimmed)
+  if (!isObjectProperty) return false
+
+  return [
+    'return resourceOk({',
+    'return jsonResponse({',
+    'return {',
+    'p_payload: {',
+    'data: {',
+    'breakdown: {',
+  ].some((marker) => nearbyContext.includes(marker))
+}
+
+function shouldWarnOnUnroundedAmountDivision(line, lines, index) {
+  if (!line.includes('/ 100')) return false
+  if (line.includes('Math.round') || line.includes('ROUND') || line.includes('//')) return false
+  if (line.trim().startsWith('//') || line.trim().startsWith('*')) return false
+  if (line.includes('p_amount_cents / 100.0')) return false
+  if (isSafeDisplayOrSerializationConversion(line, lines, index)) return false
+
+  return line.includes('.amount') || line.includes('Amount') || line.includes('amount')
+}
+
+function runSelfTests() {
+  let failed = 0
+
+  function expect(condition, msg) {
+    if (!condition) {
+      failed++
+      console.error(`  \x1b[31m✗\x1b[0m ${msg}`)
+    } else {
+      console.log(`  \x1b[32m✓\x1b[0m ${msg}`)
+    }
+  }
+
+  console.log('\n\x1b[1mFinancial Validator Self-Test\x1b[0m\n')
+
+  expect(
+    countDirectInsertChains([
+      "await supabase",
+      "  .from('transactions')",
+      "  .insert({ amount: 10 })",
+    ].join('\n'), 'transactions') === 1,
+    'detects a direct transactions insert chain',
+  )
+
+  expect(
+    countDirectInsertChains([
+      "const rows = await supabase",
+      "  .from('transactions')",
+      "  .select('*')",
+      '',
+      "await supabase.from('audit_log').insert({ action: 'export' })",
+    ].join('\n'), 'transactions') === 0,
+    'does not confuse a later unrelated insert with a transactions read',
+  )
+
+  expect(
+    shouldWarnOnUnroundedAmountDivision(
+      '            refunded_amount: refundedCents / 100,',
+      [
+        'return resourceOk({',
+        '  refund: {',
+        '    breakdown: {',
+        '      refunded_amount: refundedCents / 100,',
+      ],
+      3,
+    ) === false,
+    'suppresses response payload cents-to-dollars conversions',
+  )
+
+  expect(
+    shouldWarnOnUnroundedAmountDivision(
+      "  }).format(netToParticipant / 100)",
+      ["new Intl.NumberFormat('en-US', {", "  }).format(netToParticipant / 100)"],
+      1,
+    ) === false,
+    'suppresses display formatting conversions',
+  )
+
+  expect(
+    shouldWarnOnUnroundedAmountDivision(
+      'const participantAmount = Math.floor(netAfterFee * (participantPercent / 100))',
+      ['const participantAmount = Math.floor(netAfterFee * (participantPercent / 100))'],
+      0,
+    ) === false,
+    'suppresses percentage/rate calculations',
+  )
+
+  expect(
+    shouldWarnOnUnroundedAmountDivision(
+      'const convertedAmount = amount / 100 * exchangeRate',
+      ['const convertedAmount = amount / 100 * exchangeRate'],
+      0,
+    ) === true,
+    'still flags unrounded amount math in a computation path',
+  )
+
+  if (failed > 0) {
+    console.error(`\n\x1b[31m${failed} financial validator self-test failure(s)\x1b[0m`)
+    process.exit(1)
+  }
+
+  console.log('\n\x1b[32mFinancial validator heuristics look healthy\x1b[0m')
+  process.exit(0)
+}
+
+if (process.argv.includes('--self-test')) {
+  runSelfTests()
+}
+
 // ── 1. Check that financial RPCs use FOR UPDATE ───────────────────────
 
 console.log('\n\x1b[1mFinancial Integrity Validation\x1b[0m\n')
@@ -137,27 +298,25 @@ for (const file of edgeFunctions) {
   const relPath = file.replace(ROOT + '/', '')
 
   for (const table of protectedTables) {
-    // Pattern: .from('transactions').insert( or .from('entries').insert(
-    const insertRegex = new RegExp(`\\.from\\(['"]${table}['"]\\)[\\s\\S]*?\\.insert\\(`, 'g')
-    const matches = [...content.matchAll(insertRegex)]
-    if (matches.length > 0) {
+    const directInsertChains = countDirectInsertChains(content, table)
+    if (directInsertChains > 0) {
       // Known patterns that do direct inserts legitimately:
       // record-*: inline double-entry (pre-RPC, still atomic within the function)
       // reverse-transaction: reversal logic is inline by design
       // Others: read-only reports or administrative operations
       const exceptions = [
-        'platform-payouts', 'credits',
+        'credits',
         'record-sale', 'record-expense', 'record-income', 'record-bill',
         'record-transfer', 'record-adjustment', 'record-opening-balance',
         'reverse-transaction', 'import-bank-statement',
-        'reconcile', 'processor-reconciliation', 'import-transactions',
+        'reconcile', 'processor-reconciliation',
         'ap-aging', 'ar-aging', 'trial-balance', 'frozen-statements',
         'ops-monitor', 'preflight-authorization', 'risk-evaluation',
         'manage-budgets', 'get-runway', 'upload-receipt', 'export-report',
       ]
       const isException = exceptions.some(ex => relPath.includes(ex))
       if (isException) {
-        warn(`${relPath}: direct ${table} insert (known exception)`)
+        warn(`${relPath}: direct ${table} insert (${directInsertChains} chain${directInsertChains === 1 ? '' : 's'}, known exception)`)
       } else {
         fail(`${relPath}: direct ${table} insert — should use atomic RPC`)
         directInsertCount++
@@ -185,15 +344,9 @@ for (const file of sharedFiles) {
   const lines = content.split('\n')
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    // Detect division by 100 that isn't wrapped in Math.round
-    if (line.includes('/ 100') && !line.includes('Math.round') && !line.includes('ROUND') && !line.includes('//')) {
-      // Skip SQL strings and comments
-      if (line.trim().startsWith('//') || line.trim().startsWith('*') || line.includes('p_amount_cents / 100.0')) continue
-      // This is edge function code doing division without rounding
-      if (line.includes('.amount') || line.includes('Amount') || line.includes('amount')) {
-        warn(`${relPath}:${i + 1}: amount division without Math.round`)
-        unroundedAmounts++
-      }
+    if (shouldWarnOnUnroundedAmountDivision(line, lines, i)) {
+      warn(`${relPath}:${i + 1}: amount division without Math.round`)
+      unroundedAmounts++
     }
   }
 }

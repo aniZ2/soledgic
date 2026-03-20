@@ -15,7 +15,7 @@
  *   - Any critical path change → output explicit warning
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 
@@ -23,44 +23,133 @@ const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
 const INDEX_PATH = join(ROOT, 'docs/repo-index.md')
 const index = readFileSync(INDEX_PATH, 'utf-8')
 
-// ── Critical path files (money movement + auth) ─────────────────────
-// These are the files where a bug = real financial damage
-
-const CRITICAL_PATH_FILES = [
-  // Money movement
-  'supabase/functions/_shared/payout-service.ts',
-  'supabase/functions/_shared/checkout-service.ts',
-  'supabase/functions/_shared/refund-service.ts',
+const EXTRA_CRITICAL_FILES = [
   'supabase/functions/_shared/wallet-service.ts',
   'supabase/functions/_shared/payment-provider.ts',
   'supabase/functions/_shared/stripe-payment-provider.ts',
   'supabase/functions/_shared/stripe-rest.ts',
   'supabase/functions/_shared/capabilities.ts',
   'supabase/functions/_shared/mercury-client.ts',
-  'supabase/functions/execute-payout/',
-  'supabase/functions/platform-payouts/',
-  'supabase/functions/checkout-sessions/',
-  'supabase/functions/credits/',
-  // Auth & security
   'supabase/functions/_shared/utils.ts',
   'supabase/functions/_shared/authority.ts',
   'supabase/functions/_shared/identity-service.ts',
   'apps/web/src/lib/internal-platforms.ts',
-  // Transaction graph
   'supabase/functions/_shared/transaction-graph.ts',
   'supabase/functions/_shared/holds-service.ts',
   'supabase/functions/_shared/risk-engine.ts',
 ]
 
+function extractSection(headingRegex) {
+  const safeHeadingRegex = new RegExp(
+    headingRegex.source,
+    headingRegex.flags.replace(/[gy]/g, ''),
+  )
+  const match = safeHeadingRegex.exec(index)
+  if (!match) return ''
+  const start = match.index + match[0].length
+  const rest = index.slice(start)
+  const nextHeadingMatch = rest.match(/\n##\s+/)
+  return (nextHeadingMatch ? rest.slice(0, nextHeadingMatch.index) : rest).trim()
+}
+
+function normalizePath(filePath) {
+  return filePath.replace(/^\.\//, '').replace(/\/$/, '')
+}
+
+function normalizeIndexedFilePath(filePath) {
+  const normalized = normalizePath(filePath.trim())
+  if (normalized.startsWith('_shared/')) {
+    return normalizePath(`supabase/functions/${normalized}`)
+  }
+  return normalized
+}
+
+function parseServiceFiles() {
+  const filesByService = new Map()
+  const regex = /^SERVICE: (\S+)\nFILE: ([^\n]+)/gm
+  let match
+
+  while ((match = regex.exec(index)) !== null) {
+    const files = match[2]
+      .split(' + ')
+      .map((file) => normalizeIndexedFilePath(file))
+      .filter(Boolean)
+    filesByService.set(match[1], files)
+  }
+
+  return filesByService
+}
+
+function resolveCriticalToken(token, serviceFiles) {
+  const trimmed = token.trim()
+  if (!trimmed || trimmed.startsWith('EXT_') || trimmed.startsWith('TRG_')) return []
+
+  if (serviceFiles.has(trimmed)) {
+    return serviceFiles.get(trimmed)
+  }
+
+  if (trimmed === 'CRON_PROCESS_WEBHOOKS' && serviceFiles.has('SVC_WEBHOOK_PROCESSOR')) {
+    return serviceFiles.get('SVC_WEBHOOK_PROCESSOR')
+  }
+
+  const edgeFunctionName = trimmed.startsWith('CRON_')
+    ? trimmed.slice(5).toLowerCase().replace(/_/g, '-')
+    : trimmed
+
+  if (/^[a-z0-9-]+$/.test(edgeFunctionName)) {
+    const relPath = normalizePath(`supabase/functions/${edgeFunctionName}/index.ts`)
+    if (existsSync(join(ROOT, relPath))) {
+      return [relPath]
+    }
+  }
+
+  return []
+}
+
+function deriveCriticalFiles() {
+  const files = new Set(EXTRA_CRITICAL_FILES.map(normalizePath))
+  const serviceFiles = parseServiceFiles()
+  const section = extractSection(/^##\s+Critical Paths\b[^\n]*$/m)
+  const regex = /^CRITICAL_PATH: (\S+)\n([\s\S]*?)(?=\nCRITICAL_PATH:|\n```)/gm
+  let match
+
+  while ((match = regex.exec(section)) !== null) {
+    const chainLine = match[2]
+      .split('\n')
+      .find((line) => line.trim().startsWith('chain:'))
+    if (!chainLine) continue
+
+    const chain = chainLine.replace(/^\s*chain:\s*/, '')
+    for (const token of chain.split('→')) {
+      for (const file of resolveCriticalToken(token, serviceFiles)) {
+        files.add(file)
+      }
+    }
+  }
+
+  return [...files].sort()
+}
+
+const CRITICAL_PATH_FILES = deriveCriticalFiles()
+
+function getExplicitFilesOverride() {
+  const filesIndex = process.argv.indexOf('--files')
+  if (filesIndex === -1) return null
+  return process.argv.slice(filesIndex + 1).filter((arg) => !arg.startsWith('--'))
+}
+
 // ── Get changed files ───────────────────────────────────────────────
 
 function getChangedFiles() {
+  const explicitFiles = getExplicitFilesOverride()
+  if (explicitFiles) return explicitFiles.map(normalizePath)
+
   try {
     const diff = execSync('git diff --name-only origin/main...HEAD', { encoding: 'utf-8', cwd: ROOT }).trim()
-    if (diff) return diff.split('\n').filter(Boolean)
+    if (diff) return diff.split('\n').map(normalizePath).filter(Boolean)
     // Fallback to staged
     const staged = execSync('git diff --cached --name-only', { encoding: 'utf-8', cwd: ROOT }).trim()
-    return staged.split('\n').filter(Boolean)
+    return staged.split('\n').map(normalizePath).filter(Boolean)
   } catch {
     return []
   }
@@ -68,12 +157,17 @@ function getChangedFiles() {
 
 // ── Check ───────────────────────────────────────────────────────────
 
+if (process.argv.includes('--list-critical-files')) {
+  console.log(JSON.stringify(CRITICAL_PATH_FILES, null, 2))
+  process.exit(0)
+}
+
 const changedFiles = getChangedFiles()
 const touchedCritical = []
 
 for (const file of changedFiles) {
   for (const critPath of CRITICAL_PATH_FILES) {
-    if (file.includes(critPath.replace(/\/$/, ''))) {
+    if (normalizePath(file) === critPath) {
       touchedCritical.push({ file, path: critPath })
     }
   }

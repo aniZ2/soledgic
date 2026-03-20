@@ -22,7 +22,7 @@ import { sendACH, createRecipient, getRecipient, listRecipients, getAccountBalan
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface PlatformPayoutRequest {
-  action: 'request' | 'status' | 'history'
+  action: 'request' | 'status' | 'history' | 'mercury_balance' | 'list_recipients' | 'get_recipient' | 'configure_recipient'
   amount?: number       // cents — if omitted, pays out full available balance
   description?: string
   reference_id?: string
@@ -219,39 +219,39 @@ const handler = createHandler(
 
     // Step 1: Book the ledger transaction FIRST (safe — can be voided if ACH fails)
     const amountMajor = requestedCents / 100
-    const { data: txn, error: txnError } = await supabase
-      .from('transactions')
-      .insert({
-        ledger_id: ledger.id,
-        transaction_type: 'platform_payout',
-        reference_id: refId,
-        reference_type: 'platform_payout',
-        description,
-        amount: amountMajor,
-        currency: 'USD',
-        status: 'pending',
-        metadata: {
-          organization_id: ledger.organization_id,
-          rail: 'ach',
-        },
-      })
-      .select('id')
-      .single()
+    const { data: txnResult, error: txnError } = await supabase.rpc('record_transaction_atomic', {
+      p_ledger_id: ledger.id,
+      p_transaction_type: 'platform_payout',
+      p_reference_id: refId,
+      p_reference_type: 'platform_payout',
+      p_description: description,
+      p_amount: amountMajor,
+      p_currency: 'USD',
+      p_status: 'pending',
+      p_entry_method: 'api',
+      p_metadata: {
+        organization_id: ledger.organization_id,
+        rail: 'ach',
+      },
+      p_entries: [
+        { account_id: platformAccount.id, entry_type: 'debit', amount: amountMajor },
+        { account_id: cashAccount.id, entry_type: 'credit', amount: amountMajor },
+      ],
+    })
+
+    const txn = (txnResult && typeof txnResult === 'object')
+      ? (txnResult as { success?: boolean; transaction_id?: string; error?: string })
+      : null
 
     if (txnError) {
       return errorResponse('Failed to create payout transaction', 500, req, requestId)
     }
 
-    // Double-entry: debit platform_revenue, credit cash (money leaving)
-    const { error: entriesError } = await supabase.from('entries').insert([
-      { transaction_id: txn.id, account_id: platformAccount.id, entry_type: 'debit', amount: amountMajor },
-      { transaction_id: txn.id, account_id: cashAccount.id, entry_type: 'credit', amount: amountMajor },
-    ])
-
-    if (entriesError) {
-      // Void the transaction if entries fail
-      await supabase.from('transactions').update({ status: 'voided' }).eq('id', txn.id)
-      return errorResponse('Failed to create ledger entries', 500, req, requestId)
+    if (!txn?.success || !txn.transaction_id) {
+      if (txn?.error === 'duplicate_reference_id') {
+        return jsonResponse({ success: false, error: 'Duplicate reference_id', transaction_id: txn.transaction_id || null }, 409, req, requestId)
+      }
+      return errorResponse('Failed to create payout transaction', 500, req, requestId)
     }
 
     // Step 2: Send ACH via Mercury (ledger is booked, safe to attempt)
@@ -271,7 +271,7 @@ const handler = createHandler(
           rail: 'ach',
           voided_reason: achResult.error || 'Mercury ACH transfer failed',
         },
-      }).eq('id', txn.id)
+      }).eq('id', txn.transaction_id)
       return errorResponse(achResult.error || 'Mercury ACH transfer failed', 502, req, requestId)
     }
 
@@ -283,13 +283,13 @@ const handler = createHandler(
         mercury_transaction_id: achResult.transactionId,
         rail: 'ach',
       },
-    }).eq('id', txn.id)
+    }).eq('id', txn.transaction_id)
 
     await createAuditLog(supabase, req, {
       ledger_id: ledger.id,
       action: 'platform_payout',
       entity_type: 'transaction',
-      entity_id: txn.id,
+      entity_id: txn.transaction_id,
       actor_type: 'api',
       request_body: sanitizeForAudit({
         amount_cents: requestedCents,
@@ -303,7 +303,7 @@ const handler = createHandler(
     return jsonResponse({
       success: true,
       payout: {
-        transaction_id: txn.id,
+        transaction_id: txn.transaction_id,
         amount: amountMajor,
         amount_cents: requestedCents,
         mercury_transaction_id: achResult.transactionId,

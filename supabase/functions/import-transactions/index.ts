@@ -29,6 +29,7 @@ interface ImportRequest {
   closing_balance?: number
   currency?: string
   auto_match?: boolean  // Run tiered auto-matching after import (default: true)
+  create_ledger_entries?: boolean
 }
 
 interface ColumnMapping { date: number | string; description: number | string; amount: number | string; debit?: number | string; credit?: number | string; balance?: number | string; reference?: number | string; account_name?: number | string; status?: number | string; date_format?: string }
@@ -256,30 +257,38 @@ const handler = createHandler(
                   .maybeSingle()
 
                 if (cashAccount && counterAccount) {
-                  const { data: ledgerTxn } = await supabase
-                    .from('transactions')
-                    .insert({
-                      ledger_id: ledger.id,
-                      transaction_type: txnType,
-                      reference_id: `import_${txnHash}`,
-                      reference_type: 'bank_import',
-                      description: txn.description,
-                      amount: absAmount,
-                      currency: body.currency || 'USD',
-                      status: 'completed',
-                      entry_method: 'imported',
-                      metadata: { import_session_id: sessionId, bank_transaction_id: inserted.id, source: 'file_import' },
-                    })
-                    .select('id')
-                    .single()
+                  const debitAccount = isIncome ? cashAccount.id : counterAccount.id
+                  const creditAccount = isIncome ? counterAccount.id : cashAccount.id
+                  const { data: ledgerTxnResult, error: ledgerTxnError } = await supabase.rpc(
+                    'record_transaction_atomic',
+                    {
+                      p_ledger_id: ledger.id,
+                      p_transaction_type: txnType,
+                      p_reference_id: `import_${txnHash}`,
+                      p_reference_type: 'bank_import',
+                      p_description: txn.description,
+                      p_amount: absAmount,
+                      p_currency: body.currency || 'USD',
+                      p_status: 'completed',
+                      p_entry_method: 'imported',
+                      p_metadata: {
+                        import_session_id: sessionId,
+                        bank_transaction_id: inserted.id,
+                        source: 'file_import',
+                      },
+                      p_entries: [
+                        { account_id: debitAccount, entry_type: 'debit', amount: absAmount },
+                        { account_id: creditAccount, entry_type: 'credit', amount: absAmount },
+                      ],
+                    },
+                  )
 
-                  if (ledgerTxn) {
-                    const debitAccount = isIncome ? cashAccount.id : counterAccount.id
-                    const creditAccount = isIncome ? counterAccount.id : cashAccount.id
-                    await supabase.from('entries').insert([
-                      { transaction_id: ledgerTxn.id, account_id: debitAccount, entry_type: 'debit', amount: absAmount },
-                      { transaction_id: ledgerTxn.id, account_id: creditAccount, entry_type: 'credit', amount: absAmount },
-                    ])
+                  const ledgerTxn = (ledgerTxnResult && typeof ledgerTxnResult === 'object')
+                    ? (ledgerTxnResult as { success?: boolean; transaction_id?: string; error?: string })
+                    : null
+
+                  if (ledgerTxnError || !ledgerTxn?.success) {
+                    console.error('Failed to create imported ledger transaction:', ledgerTxnError || ledgerTxn?.error || 'unknown_error')
                   }
                 }
               } catch {

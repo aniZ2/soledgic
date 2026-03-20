@@ -16,7 +16,7 @@ Creator economy payment platform. Monorepo: Next.js web app + Supabase Edge Func
 
 ```
 CRITICAL_PATH: CHECKOUT_COMPLETION
-  chain: checkout-sessions → SVC_CHECKOUT_ORCHESTRATOR → EXT_STRIPE charge → RPC_RECORD_SALE_ATOMIC → TRG_UPDATE_ACCOUNT_BALANCE
+  chain: checkout-sessions → SVC_CHECKOUT_ORCHESTRATOR → SVC_PAYMENT_PROVIDER → EXT_PAYMENT_BACKEND charge → RPC_RECORD_SALE_ATOMIC → TRG_UPDATE_ACCOUNT_BALANCE
   invariants: INVARIANT_DOUBLE_ENTRY, INVARIANT_LEDGER_BALANCE
 
 CRITICAL_PATH: REFUND_PROCESSING
@@ -24,12 +24,20 @@ CRITICAL_PATH: REFUND_PROCESSING
   invariants: INVARIANT_REFUND_CAP, INVARIANT_IDEMPOTENCY, INVARIANT_DOUBLE_ENTRY
 
 CRITICAL_PATH: PAYOUT_EXECUTION
-  chain: payouts → SVC_PAYOUT_ENGINE → RPC_PROCESS_PAYOUT_ATOMIC → execute-payout → EXT_STRIPE transfer
+  chain: payouts → SVC_PAYOUT_ENGINE → RPC_PROCESS_PAYOUT_ATOMIC → execute-payout → SVC_PAYMENT_PROVIDER or SVC_MERCURY_CLIENT → EXT_TRANSFER_BACKEND
   invariants: INVARIANT_NONNEGATIVE_BALANCE, INVARIANT_DOUBLE_ENTRY
+
+CRITICAL_PATH: PLATFORM_PAYOUT_EXECUTION
+  chain: platform-payouts → SVC_PLATFORM_PAYOUT → RPC_RECORD_TRANSACTION_ATOMIC → SVC_MERCURY_CLIENT → EXT_MERCURY ACH transfer
+  invariants: INVARIANT_DOUBLE_ENTRY, INVARIANT_IDEMPOTENCY, INVARIANT_LEDGER_BALANCE
 
 CRITICAL_PATH: REVERSAL_PROCESSING
   chain: reverse-transaction → SVC_REVERSAL_ENGINE → RPC_VOID_TRANSACTION_ATOMIC → TRG_UPDATE_ACCOUNT_BALANCE
   invariants: INVARIANT_REVERSAL_CAP, INVARIANT_IDEMPOTENCY, INVARIANT_DOUBLE_ENTRY
+
+CRITICAL_PATH: CREDIT_REDEMPTION
+  chain: credits → SVC_CREDITS → RPC redeem_credits → TRG_UPDATE_ACCOUNT_BALANCE
+  invariants: INVARIANT_DOUBLE_ENTRY, INVARIANT_IDEMPOTENCY, INVARIANT_LEDGER_BALANCE
 
 CRITICAL_PATH: WEBHOOK_DELIVERY
   chain: queue_webhook → CRON_PROCESS_WEBHOOKS → HMAC sign → HTTP POST → mark delivered/failed
@@ -196,12 +204,12 @@ DEADLOCK SAFETY:
 
 ```
 CRITICAL_PATH: CHECKOUT_COMPLETION
-  FAILURE: Finix charge OK → record_sale_atomic fails
+  FAILURE: processor charge OK → record_sale_atomic fails
     state: checkout_sessions.status = 'charged_pending_ledger'
     recovery: AUTO — reconcile-checkout-ledger cron retries (30-day window)
     detection: audit log entry 'reconcile_stale_session' after 24h
 
-  FAILURE: Finix charge fails
+  FAILURE: processor charge fails
     state: no ledger entry, no session state change
     recovery: MANUAL — client retries payment
 
@@ -219,7 +227,7 @@ CRITICAL_PATH: REFUND_PROCESSING
     recovery: MANUAL — ops queries pending_processor_refunds, inserts matching ledger entry
 
 CRITICAL_PATH: PAYOUT_EXECUTION
-  FAILURE: process_payout_atomic OK → execute-payout (Finix transfer) fails
+  FAILURE: process_payout_atomic OK → execute-payout (card processor or Mercury transfer) fails
     state: payout transaction recorded, creator balance debited, no cash sent
     recovery: MANUAL — ops retries execute-payout (idempotent by payout_id) OR reverses via reverse-transaction
 
@@ -318,8 +326,8 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Function | Auth | Methods | Shared Service | Key RPCs |
 |---|---|---|---|---|
 | `payouts` | createHandler (API key) | POST | payout-service.ts | process_payout_atomic |
-| `execute-payout` | createHandler (API key) | POST | payment-provider.ts | Finix transfer via CardProcessorRail, NACHA generation |
-| `platform-payouts` | createHandler (API key) + admin-only | POST | mercury-client.ts | Mercury ACH — platform → org bank transfers |
+| `execute-payout` | createHandler (API key) | POST | payment-provider.ts, mercury-client.ts | Card processor transfer, Mercury ACH, NACHA generation |
+| `platform-payouts` | createHandler (API key) + admin-only | POST | mercury-client.ts | record_transaction_atomic, Mercury ACH — platform → org bank transfers |
 | `scheduled-payouts` | Bearer service-role / cron | POST | (inline, cron) | Batch payout execution on schedule |
 
 ### Participants & Identity
@@ -361,7 +369,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | Function | Auth | Methods | Shared Service | Key RPCs |
 |---|---|---|---|---|
 | `balance-sheet` | createHandler (API key) | GET | (inline) | account_balances_as_of, check_balance_equation |
-| `credits` | createHandler (API key) | POST | (inline) | Issue/redeem virtual credits with double-entry accounting (issue_credits, redeem_credits RPCs) |
+| `credits` | createHandler (API key) | POST | (inline) | Virtual credit issue/convert/redeem flow (issue_credits, convert_credits, redeem_credits RPCs) |
 | `earnings` | createHandler (API key) | GET | (inline) | Per-creator historical earnings with monthly/quarterly/daily breakdown |
 | `profit-loss` | createHandler (API key) | GET | (inline) | account_balances_for_period |
 | `trial-balance` | createHandler (API key) | GET | (inline) | calculate_trial_balance, create_trial_balance_snapshot |
@@ -387,7 +395,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | `record-transfer` | createHandler (API key) | POST | (inline) | internal_transfers |
 | `record-bill` | createHandler (API key) | POST | (inline) | transactions (bill type) |
 | `record-opening-balance` | createHandler (API key) | POST | (inline) | opening_balances, accounts |
-| `import-transactions` | createHandler (API key) | POST | (inline) | Bulk CSV/JSON import |
+| `import-transactions` | createHandler (API key) | POST | financial-file-parsers.ts | bank_transactions table, record_transaction_atomic (optional ledger booking), multi-format import (CSV, OFX, QFX, CAMT.053, BAI2, MT940) |
 
 ### Invoices
 
@@ -424,7 +432,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | `send-breach-alert` | createHandler (API key) | POST | (inline) | Resend email for breach alerts |
 | `configure-alerts` | createHandler (API key) | POST | (inline) | alert_configurations |
 | `processor-reconciliation` | x-cron-secret / service-role | POST | (inline) | transactions vs processor_events comparison |
-| `release-expired-holds` | x-cron-secret (cron) | POST | (inline) | entries, escrow_releases — auto-release elapsed holds |
+| `release-expired-holds` | x-cron-secret (cron) | POST | (inline) | release_expired_holds() — auto-release elapsed entry holds |
 
 ### Billing & Settings
 
@@ -449,7 +457,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 |---|---|---|---|
 | **utils.ts** | createHandler, jsonResponse, errorResponse, validateApiKey, validate*, getClientIp, timingSafeEqual, isPrivateIP, validateWebhookUrl, logSecurityEvent, createAuditLogAsync, sanitizeForAudit, getSupabaseClient, escapeHtml | All edge functions | api_keys, api_key_scopes, rate_limits, audit_log |
 | **treasury-resource.ts** | resourceOk, resourceError, respondWithResult, getResourceSegments, asJsonObject, getNumberParam, getBooleanParam | Resource-style functions (tax, wallets, holds, fraud, compliance, reconciliations, participants, refunds, payouts, transfers, checkout-sessions) | — |
-| **payment-provider.ts** | getPaymentProvider (returns PaymentProvider with createPaymentIntent, getPaymentStatus, refundPayment) | checkout-service, refund-service, holds-service, execute-payout | Finix API (via PROCESSOR_BASE_URL) |
+| **payment-provider.ts** | getPaymentProvider (returns PaymentProvider with createPaymentIntent, getPaymentStatus, refund) | checkout-service, refund-service, holds-service, execute-payout | Stripe REST or processor transfer/refund/status APIs |
 | **checkout-service.ts** | createCheckoutResponse | checkout-sessions | checkout_sessions, record_sale_atomic, payment-provider |
 | **refund-service.ts** | listRefundsResponse, recordRefundResponse | refunds | record_refund_atomic_v2, payment-provider (processor refunds) |
 | **payout-service.ts** | processPayoutResponse | payouts | process_payout_atomic |
@@ -465,10 +473,13 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 | **webhook-management.ts** | buildWebhookReplayUpdate, normalizeWebhookDelivery | webhooks | webhook_deliveries |
 | **processor-webhook-adapters.ts** | getProcessorWebhookAdapter, NormalizedProcessorEvent, ProcessorWebhookInboxRow | process-processor-inbox | processor_webhook_inbox |
 | **financial-file-parsers.ts** | parseFinancialFile (OFX, CAMT.053, BAI2, MT940), normalizeMerchant | import-transactions | — |
-| **transaction-graph.ts** | createLink, getTransactionGraph, getPayoutBatch (ledger-scoped), reconstructPayoutBatch, autoLinkTransaction | checkout, refund, execute-payout, reconcile | transaction_links (RLS: service_role), payout_batches (RLS: service_role), payout_batch_items (RLS: service_role) |
+| **transaction-graph.ts** | createLink, getTransactionGraph, getPayoutBatch (ledger-scoped), reconstructPayoutBatch, autoLinkTransaction | checkout-service, refund-service, payout-service, reverse-transaction, reconcile, wallet-service | transaction_links (RLS: service_role), payout_batches (RLS: service_role), payout_batch_items (RLS: service_role) |
 | **capabilities.ts** | loadOrgCapabilities, getDailyPayoutTotal, checkPayoutAllowed, getDailyVolume, checkDailyVolumeAllowed | payout-service, record-sale | organizations, transactions |
-| **mercury-client.ts** | sendACH, getTransactionStatus, createRecipient, getRecipient, listRecipients | platform-payouts, execute-payout | — (Mercury API external) |
+| **mercury-client.ts** | sendACH, getTransactionStatus, createRecipient, getRecipient, listRecipients, getAccountBalance | platform-payouts, execute-payout | — (Mercury API external) |
 | **risk-engine.ts** | recordRiskSignal, checkRefundRate, checkRapidTopupWithdraw, checkLargeTransaction | record-sale, refund-service, payout-service, wallet-service, fraud | risk_signals, organizations (capabilities patch) |
+| **stripe-rest.ts** | stripeRequest | stripe-payment-provider, bill-overages | — (Stripe REST API) |
+| **stripe-payment-provider.ts** | StripePaymentProvider (createPaymentIntent, capturePayment, refund, getPaymentStatus) | payment-provider | stripe-rest.ts, payment-provider-types.ts |
+| **stripe-webhook-adapter.ts** | StripeWebhookAdapter.normalize | processor-webhook-adapters | — (normalization only) |
 | **validators.ts** | validateAmount, validateId, validateUUID, validateEmail, validateString, validateUrl, validateDate, validateInteger | All edge functions (via utils.ts re-export) | — (pure validation) |
 | **network-security.ts** | getClientIp, timingSafeEqual, isPrivateIP, isBlockedHostname, validateWebhookUrl, safeWebhookFetch, escapeHtml | utils.ts (internal), process-webhooks | audit_log (SSRF attempts) |
 | **audit.ts** | sanitizeForAudit, AuditLogEntry, createAuditLog, createAuditLogAsync, logSecurityEvent | All edge functions (via utils.ts re-export) | audit_log |
@@ -722,7 +733,7 @@ PostgreSQL RPCs + Tables (supabase/migrations/) ← atomic operations, triggers
 ### Sale → Ledger Entries → Balance
 ```
 checkout-sessions (or record-sale)
-  → checkout-service.ts → payment-provider.ts (Finix charge)
+  → checkout-service.ts → payment-provider.ts (Stripe or processor charge)
   → record_sale_atomic RPC
     → INSERT transactions (type=sale)
     → INSERT entries (debit cash, credit creator_balance, credit platform_revenue)
@@ -739,7 +750,7 @@ refunds (POST)
     → INSERT entries (reverse the original sale entries, respecting refund_from)
     → Mark original sale as 'reversed' if fully refunded
     → update_account_balance trigger → balances updated
-  → Optional: payment-provider.ts (processor refund via Finix)
+  → Optional: payment-provider.ts (Stripe or processor refund)
 ```
 
 ### Reversal → Void or Reversing Entries
@@ -762,7 +773,7 @@ payouts (POST)
     → INSERT entries (debit creator_balance, credit cash)
     → Validates creator has sufficient balance (trg_payout_negative_balance_guard_fn)
 execute-payout (POST)
-  → CardProcessorRail → payment-provider.ts → Finix transfer API
+  → CardProcessorRail → payment-provider.ts OR MercuryACHRail → mercury-client.ts
   → Update transaction metadata with rail_used, external_id
 ```
 
@@ -802,8 +813,8 @@ Cron → process-processor-inbox
 ### Checkout Session Lifecycle
 ```
 1. checkout-sessions (POST) → creates checkout_sessions row (status=pending)
-2. Client → /api/checkout/[id]/setup → payment-provider identity creation
-3. Client → /api/checkout/[id]/complete → Finix charge → record_sale_atomic
+2. Client → /api/checkout/[id]/setup → hosted processor onboarding link
+3. Client → /api/checkout/[id]/complete → processor charge → record_sale_atomic
 4. Cron → reconcile-checkout-ledger → retries stuck charged_pending_ledger sessions
 ```
 
@@ -816,7 +827,7 @@ Cron → process-processor-inbox
 2.  SVC_REFUND_ENGINE           — refund-service.ts
 3.  SVC_REVERSAL_ENGINE         — reverse-transaction/index.ts
 4.  SVC_PAYOUT_ENGINE           — payout-service.ts
-5.  SVC_PAYMENT_PROVIDER        — payment-provider.ts (Finix adapter)
+5.  SVC_PAYMENT_PROVIDER        — payment-provider.ts (Stripe + processor abstraction)
 6.  SVC_TAX_ENGINE              — tax-service.ts
 7.  SVC_IDENTITY_ENGINE         — identity-service.ts
 8.  SVC_WALLET_ENGINE           — wallet-service.ts
@@ -841,6 +852,18 @@ Cron → process-processor-inbox
 27. SVC_IMPORT_ENGINE           — import-transactions/index.ts
 28. SVC_PREFLIGHT_AUTH          — preflight-authorization/index.ts
 29. SVC_FROZEN_STATEMENTS       — frozen-statements/index.ts
+30. SVC_PLATFORM_PAYOUT         — platform-payouts/index.ts
+31. SVC_MERCURY_CLIENT          — _shared/mercury-client.ts
+32. SVC_TRANSACTION_GRAPH       — _shared/transaction-graph.ts
+33. SVC_RISK_ENGINE             — _shared/risk-engine.ts
+34. SVC_STRIPE_REST             — _shared/stripe-rest.ts
+35. SVC_STRIPE_PAYMENT_PROVIDER — _shared/stripe-payment-provider.ts
+36. SVC_STRIPE_WEBHOOK_ADAPTER  — _shared/stripe-webhook-adapter.ts
+37. SVC_FINANCIAL_FILE_PARSERS  — _shared/financial-file-parsers.ts
+38. SVC_CREDITS                 — credits/index.ts
+39. SVC_EARNINGS                — earnings/index.ts
+40. SVC_HOLD_RELEASE_CRON       — release-expired-holds/index.ts
+41. SVC_PROCESSOR_RECONCILIATION — processor-reconciliation/index.ts
 ```
 
 ---
@@ -855,7 +878,7 @@ CALLS: RPC_RECORD_REFUND_ATOMIC_V2, RPC_GET_NET_REFUNDED_CENTS, RPC_VOID_TRANSAC
 CALLED_BY: API_REFUNDS
 WRITES: transactions, entries, pending_processor_refunds
 READS: transactions, entries (net refunded calc)
-EXTERNAL: EXT_FINIX (processor refunds)
+EXTERNAL: via SVC_PAYMENT_PROVIDER (Stripe or processor refunds)
 CONCURRENCY: FOR UPDATE on sale row via RPC; idempotency_key → unique reference_id
 TESTED_BY: treasury-services_test.ts (recordRefundResponse, listRefundsResponse), sdk/index.test.ts (createRefund)
 CHANGE_IMPACT: API_REFUNDS, MCP_RECORD_REFUND, SDK_createRefund, UI_record-refund-modal, TEST_test-client.createRefund
@@ -874,11 +897,11 @@ CHANGE_IMPACT: API_REVERSE_TRANSACTION, MCP_REVERSE_TRANSACTION, SDK_reverseTran
 SERVICE: SVC_CHECKOUT_ORCHESTRATOR
 FILE: supabase/functions/_shared/checkout-service.ts
 RISK: CRITICAL_LEDGER
-CALLS: SVC_PAYMENT_PROVIDER (Finix charge), RPC_RECORD_SALE_ATOMIC
+CALLS: SVC_PAYMENT_PROVIDER (charge backend), RPC_RECORD_SALE_ATOMIC
 CALLED_BY: API_CHECKOUT_SESSIONS
 WRITES: checkout_sessions, transactions, entries
 READS: checkout_sessions
-EXTERNAL: EXT_FINIX (payment charge)
+EXTERNAL: via SVC_PAYMENT_PROVIDER (Stripe payment intent or processor transfer)
 CONCURRENCY: checkout_sessions status state machine; record_sale_atomic is atomic
 TESTED_BY: treasury-services_test.ts (createCheckoutResponse)
 CHANGE_IMPACT: API_CHECKOUT_SESSIONS, /pay/[id] pages, CRON_RECONCILE_CHECKOUT_LEDGER
@@ -894,15 +917,50 @@ CONCURRENCY: negative balance guard trigger; deadlock retry (up to 3 attempts)
 TESTED_BY: treasury-services_test.ts (processPayoutResponse), sdk/index.test.ts (createPayout)
 CHANGE_IMPACT: API_PAYOUTS, API_EXECUTE_PAYOUT, MCP_PROCESS_PAYOUT, SDK_createPayout, UI_process-payout-modal
 
+SERVICE: SVC_PLATFORM_PAYOUT
+FILE: supabase/functions/platform-payouts/index.ts
+RISK: CRITICAL_LEDGER
+CALLS: SVC_MERCURY_CLIENT, RPC_RECORD_TRANSACTION_ATOMIC, jsonb_merge_capabilities
+CALLED_BY: /api/admin/platform-payouts (dashboard admin proxy)
+WRITES: transactions (pending/completed/voided platform_payout), entries via record_transaction_atomic, organizations.settings (mercury_recipient_id), audit_log
+READS: accounts, entries, organizations.settings, transactions
+EXTERNAL: EXT_MERCURY (recipient management, ACH transfer, account balance)
+CONCURRENCY: duplicate reference_id guard before booking; record_transaction_atomic locks accounts and enforces double-entry; Mercury ACH uses idempotency key platform_${reference_id}
+TESTED_BY: (no direct unit test file found)
+CHANGE_IMPACT: platform payout admin flow, Mercury recipient setup, org payout settings
+
 SERVICE: SVC_PAYMENT_PROVIDER
 FILE: supabase/functions/_shared/payment-provider.ts
 RISK: CRITICAL_EXTERNAL
-CALLS: EXT_FINIX (transfers, refunds, identities, settlements)
-CALLED_BY: SVC_CHECKOUT_ORCHESTRATOR, SVC_REFUND_ENGINE, SVC_PAYOUT_ENGINE (execute-payout), holds-service, checkout-sessions/index.ts, refunds/index.ts, holds/index.ts
-ENV: PROCESSOR_BASE_URL, PROCESSOR_USERNAME, PROCESSOR_PASSWORD, PROCESSOR_MERCHANT_ID, PROCESSOR_APPLICATION_ID
-CONCURRENCY: idempotency_id on all Finix calls; Finix-Version header trim-then-fallback
+CALLS: SVC_STRIPE_PAYMENT_PROVIDER, inline CardPaymentProvider
+CALLED_BY: SVC_CHECKOUT_ORCHESTRATOR, SVC_REFUND_ENGINE, execute-payout/index.ts, holds-service.ts, checkout-sessions/index.ts, refunds/index.ts, holds/index.ts
+EXTERNAL: EXT_STRIPE or EXT_FINIX (backend-selected)
+ENV: PAYMENT_PROVIDER, STRIPE_SECRET_KEY, STRIPE_TEST_SECRET_KEY, PROCESSOR_BASE_URL, PROCESSOR_USERNAME, PROCESSOR_PASSWORD, PROCESSOR_MERCHANT_ID, PROCESSOR_API_VERSION
+CONCURRENCY: idempotency forwarded to backend as Stripe Idempotency-Key or processor idempotency_id
 TESTED_BY: payment-provider_test.ts (16 tests), sdk/index.test.ts (parameterized contract tests)
 CHANGE_IMPACT: ALL money movement — checkout, refund, payout execution, holds
+
+SERVICE: SVC_MERCURY_CLIENT
+FILE: supabase/functions/_shared/mercury-client.ts
+RISK: CRITICAL_EXTERNAL
+CALLS: EXT_MERCURY /recipients, /account/{id}, /account/{id}/transactions
+CALLED_BY: platform-payouts/index.ts, execute-payout/index.ts
+EXTERNAL: EXT_MERCURY (recipient creation, ACH transfer, transaction status, account balance)
+ENV: MERCURY_API_KEY, MERCURY_ACCOUNT_ID
+CONCURRENCY: Mercury ACH accepts Idempotency-Key; client itself is stateless
+TESTED_BY: (no direct unit test file found)
+CHANGE_IMPACT: platform payouts, Mercury-backed execute-payout flows, recipient setup/status
+
+SERVICE: SVC_RISK_ENGINE
+FILE: supabase/functions/_shared/risk-engine.ts
+RISK: FINANCIAL_ORCHESTRATION
+CALLS: set_capability_with_authority, organizations/risk_signals/audit_log updates (fallback path), risk_signals INSERT
+CALLED_BY: fraud/index.ts, record-sale/index.ts, refund-service.ts, payout-service.ts, wallet-service.ts
+WRITES: risk_signals, organizations.capabilities (auto-action fallback), audit_log
+READS: transactions (refund/velocity checks)
+CONCURRENCY: fire-and-forget signal recording; auto-actions only tighten capabilities; duplicate signals are allowed and aggregated downstream
+TESTED_BY: _shared/__tests__/risk-engine_test.ts (8 tests)
+CHANGE_IMPACT: automated payout freezes/review requirements, refund-abuse detection, large-transaction alerts, wallet laundering signals
 
 SERVICE: SVC_TAX_ENGINE
 FILE: supabase/functions/_shared/tax-service.ts
@@ -934,6 +992,48 @@ WRITES: accounts, transactions, entries
 CONCURRENCY: enforce_wallet_nonnegative_balance trigger
 TESTED_BY: sdk/index.test.ts (wallet methods)
 CHANGE_IMPACT: API_WALLETS, API_TRANSFERS, wallets page, SDK wallet methods
+
+SERVICE: SVC_TRANSACTION_GRAPH
+FILE: supabase/functions/_shared/transaction-graph.ts
+RISK: FINANCIAL_ORCHESTRATION
+CALLS: RPC_GET_TRANSACTION_GRAPH, RPC_RECONSTRUCT_PAYOUT_BATCH, transaction_links upsert/select, payout_batches select, payout_batch_items select
+CALLED_BY: checkout-service.ts, refund-service.ts, payout-service.ts, reverse-transaction/index.ts, reconcile/index.ts, wallet-service.ts (dynamic import)
+WRITES: transaction_links
+READS: transaction_links, payout_batches, payout_batch_items, transactions
+CONCURRENCY: createLink/createLinks are idempotent via upsert on ledger_id,source_id,target_id,link_type
+TESTED_BY: _shared/__tests__/transaction-graph_test.ts (10 tests)
+CHANGE_IMPACT: refund/reversal lineage, payout batch reconstruction, reconciliation provenance, auto-linking across money flows
+
+SERVICE: SVC_STRIPE_REST
+FILE: supabase/functions/_shared/stripe-rest.ts
+RISK: CRITICAL_EXTERNAL
+CALLS: EXT_STRIPE REST API
+CALLED_BY: stripe-payment-provider.ts, bill-overages/index.ts
+EXTERNAL: EXT_STRIPE (Bearer auth + form-encoded REST)
+ENV: STRIPE_SECRET_KEY, STRIPE_TEST_SECRET_KEY, STRIPE_REQUEST_TIMEOUT_MS
+CONCURRENCY: request timeout via AbortSignal.timeout; Idempotency-Key forwarded when provided; hard block on raw card PANs before network call
+TESTED_BY: stripe-payment-provider_test.ts (indirect via StripePaymentProvider)
+CHANGE_IMPACT: Stripe charge/refund/transfer execution, bill-overages checkout/session flows, test/live key routing safety
+
+SERVICE: SVC_STRIPE_PAYMENT_PROVIDER
+FILE: supabase/functions/_shared/stripe-payment-provider.ts
+RISK: CRITICAL_EXTERNAL
+CALLS: SVC_STRIPE_REST
+CALLED_BY: payment-provider.ts
+EXTERNAL: EXT_STRIPE (payment intents, transfers, refunds)
+CONCURRENCY: uses Stripe idempotency_id on create/refund/transfer calls; status lookup falls back from payment_intent to transfer lookup
+TESTED_BY: _shared/__tests__/stripe-payment-provider_test.ts (11 tests)
+CHANGE_IMPACT: Stripe-backed payment provider behavior for charge, refund, transfer, and status flows
+
+SERVICE: SVC_STRIPE_WEBHOOK_ADAPTER
+FILE: supabase/functions/_shared/stripe-webhook-adapter.ts
+RISK: API_SURFACE
+CALLS: (normalization only)
+CALLED_BY: processor-webhook-adapters.ts
+READS: processor_webhook_inbox payload rows (input only)
+CONCURRENCY: pure mapping logic; no side effects
+TESTED_BY: _shared/__tests__/stripe-webhook-adapter_test.ts (10 tests)
+CHANGE_IMPACT: Stripe processor webhook ingestion, payout/refund/dispute event normalization
 
 SERVICE: SVC_WEBHOOK_PROCESSOR
 FILE: supabase/functions/process-webhooks/index.ts + _shared/webhook-signing.ts
@@ -1111,12 +1211,63 @@ CHANGE_IMPACT: Creator statement emails, email configuration
 SERVICE: SVC_IMPORT_ENGINE
 FILE: supabase/functions/import-transactions/index.ts
 RISK: CRITICAL_LEDGER
-CALLS: financial-file-parsers.ts (OFX/QFX, CAMT.053, BAI2, MT940), inline CSV parsing, bank_transactions INSERT
+CALLS: SVC_FINANCIAL_FILE_PARSERS (OFX/QFX, CAMT.053, BAI2, MT940 detection/parsing), inline CSV parsing, bank_transactions INSERT, record_transaction_atomic (optional ledger booking)
 CALLED_BY: SDK importTransactions, parseImportFile, getImportTemplates, saveImportTemplate
-READS: bank_connections, import_templates
-WRITES: bank_transactions, import_templates
-TESTED_BY: _shared/__tests__/import-transactions_test.ts (58 tests), _shared/__tests__/financial-file-parsers_test.ts (27 tests)
-CHANGE_IMPACT: Bank transaction imports, CSV parsing
+READS: accounts, bank_connections, import_templates
+WRITES: bank_connections, bank_transactions, import_sessions, import_templates, transactions/entries via record_transaction_atomic (optional)
+TESTED_BY: _shared/__tests__/import-transactions_test.ts (58 tests), _shared/__tests__/financial-file-parsers_test.ts (34 tests)
+CHANGE_IMPACT: Bank transaction imports, multi-format statement parsing, optional ledger entry creation
+
+SERVICE: SVC_FINANCIAL_FILE_PARSERS
+FILE: supabase/functions/_shared/financial-file-parsers.ts
+RISK: API_SURFACE
+CALLS: (pure parsing/normalization only)
+CALLED_BY: import-transactions/index.ts
+READS: file content only (OFX/QFX, CAMT.053, BAI2, MT940; format detection may classify CSV)
+CONCURRENCY: pure functions; no side effects
+TESTED_BY: _shared/__tests__/financial-file-parsers_test.ts (34 tests)
+CHANGE_IMPACT: statement format detection, non-CSV import normalization, merchant normalization in imports
+
+SERVICE: SVC_CREDITS
+FILE: supabase/functions/credits/index.ts
+RISK: CRITICAL_LEDGER
+CALLS: RPC issue_credits, RPC convert_credits, RPC redeem_credits, createAuditLogAsync
+CALLED_BY: API_CREDITS
+WRITES: transactions, entries, accounts (credits_liability/platform_marketing_expense/user_wallet/user_spendable_balance auto-create via RPCs), organizations (credit budget counters), audit_log
+READS: accounts, entries, transactions.metadata, organizations (credit budget state)
+CONCURRENCY: organizations row FOR UPDATE during issue budget check; user credit/spendable account FOR UPDATE during convert/redeem to prevent double-spend
+TESTED_BY: _shared/__tests__/credits_test.ts (33 tests — conversion helpers only; no direct handler test found)
+CHANGE_IMPACT: API_CREDITS, SDK issueCredits/convertCredits/redeemCredits/getCreditBalance, credits docs page
+
+SERVICE: SVC_EARNINGS
+FILE: supabase/functions/earnings/index.ts
+RISK: API_SURFACE
+CALLS: (DB queries only)
+CALLED_BY: API_EARNINGS
+READS: accounts (creator_balance), entries, transactions (status/created_at via join)
+WRITES: (none — read-only earnings aggregation)
+TESTED_BY: (no direct unit test file found)
+CHANGE_IMPACT: API_EARNINGS, dashboard earnings page, SDK getHistoricalEarnings
+
+SERVICE: SVC_HOLD_RELEASE_CRON
+FILE: supabase/functions/release-expired-holds/index.ts
+RISK: FINANCIAL_ORCHESTRATION
+CALLS: RPC release_expired_holds()
+CALLED_BY: CRON (x-cron-secret auth)
+WRITES: entries (hold_status, released_at via RPC)
+READS: entries, transactions (completed status gate) via RPC
+TESTED_BY: (no direct unit test file found)
+CHANGE_IMPACT: automatic hold release timing, payout availability after hold expiry
+
+SERVICE: SVC_PROCESSOR_RECONCILIATION
+FILE: supabase/functions/processor-reconciliation/index.ts
+RISK: FINANCIAL_ORCHESTRATION
+CALLS: (DB queries only)
+CALLED_BY: API_PROCESSOR_RECONCILIATION, CRON
+WRITES: processor_reconciliation_runs
+READS: transactions, processor_events
+TESTED_BY: (no direct unit test file found)
+CHANGE_IMPACT: processor-vs-ledger mismatch review, reconciliation run history, admin monitoring
 
 SERVICE: SVC_PREFLIGHT_AUTH
 FILE: supabase/functions/preflight-authorization/index.ts
@@ -1409,7 +1560,7 @@ ENTRYPOINT: PAYOUT
   API: POST /v1/payouts → POST /v1/execute-payout
   FUNCTION: payouts → SVC_PAYOUT_ENGINE → execute-payout → SVC_PAYMENT_PROVIDER
   RPC: process_payout_atomic → entries → TRG_UPDATE_ACCOUNT_BALANCE
-  EXTERNAL: EXT_FINIX (ACH/card push transfer)
+  EXTERNAL: EXT_STRIPE / EXT_FINIX / EXT_MERCURY depending on rail
 
 ENTRYPOINT: TAX_1099
   UI: 1099/page.tsx → callLedgerFunction('tax/documents/generate')
@@ -1419,7 +1570,7 @@ ENTRYPOINT: TAX_1099
   DOWNSTREAM: generate PDF → deliver Copy B (EXT_RESEND)
 
 ENTRYPOINT: INBOUND_WEBHOOK
-  EXTERNAL: EXT_FINIX → /api/webhooks/processor → processor_webhook_inbox INSERT
+  EXTERNAL: EXT_STRIPE or EXT_FINIX → /api/webhooks/processor → processor_webhook_inbox INSERT
   CRON: process-processor-inbox → claim + normalize → handle payout/refund/dispute
   RPC: varies by event type (settlement recording, dispute flagging)
 ```

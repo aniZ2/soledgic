@@ -93,6 +93,21 @@ function findPages(dir, prefix = '') {
   return pages
 }
 
+function findSourceFiles(dir) {
+  const files = []
+  if (!existsSync(dir)) return files
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.next' || entry.name === 'dist') continue
+      files.push(...findSourceFiles(fullPath))
+    } else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) {
+      files.push(fullPath)
+    }
+  }
+  return files
+}
+
 const dashboardPages = findPages(
   join(ROOT, 'apps/web/src/app/(dashboard)'),
 )
@@ -172,7 +187,6 @@ while ((ctMatch = createViewRegex.exec(allMigrationSql)) !== null) {
 }
 
 // Collect all .from('table') references in edge function code
-const fromRegex = /\.from\(\s*['"](\w+)['"]\s*\)/g
 const tablesUsedInCode = new Map() // table -> [files]
 
 function scanDir(dir) {
@@ -183,8 +197,11 @@ function scanDir(dir) {
       scanDir(fullPath)
     } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
       const content = readFileSync(fullPath, 'utf-8')
+      const fromRegex = /\.from\(\s*['"]([\w-]+)['"]\s*\)/g
       let m
       while ((m = fromRegex.exec(content)) !== null) {
+        const prefix = content.slice(Math.max(0, m.index - 40), m.index)
+        if (/\.storage\s*$/s.test(prefix)) continue
         const table = m[1].toLowerCase()
         if (!tablesUsedInCode.has(table)) tablesUsedInCode.set(table, [])
         tablesUsedInCode.get(table).push(fullPath.replace(ROOT + '/', ''))
@@ -230,6 +247,31 @@ for (const block of serviceBlocks) {
   }
 }
 ok(`${taggedCount}/${serviceBlocks.length} services tagged in source`)
+
+console.log('\nSource Service IDs:')
+const indexedServiceIds = new Set(
+  serviceBlocks.map((block) => block.match(/SERVICE: (SVC_\w+)/)?.[1]).filter(Boolean),
+)
+const sourceServiceIds = new Map()
+for (const file of [
+  ...findSourceFiles(join(ROOT, 'supabase/functions')),
+  ...findSourceFiles(join(ROOT, 'apps/web/src')),
+]) {
+  const content = readFileSync(file, 'utf-8')
+  const match = content.match(/SERVICE_ID:\s*(SVC_\w+)/)
+  if (!match) continue
+  if (!sourceServiceIds.has(match[1])) sourceServiceIds.set(match[1], [])
+  sourceServiceIds.get(match[1]).push(file.replace(ROOT + '/', ''))
+}
+
+const missingSourceServiceIds = [...sourceServiceIds.entries()]
+  .filter(([serviceId]) => !indexedServiceIds.has(serviceId))
+  .sort(([a], [b]) => a.localeCompare(b))
+
+for (const [serviceId, files] of missingSourceServiceIds) {
+  warn(`Source SERVICE_ID "${serviceId}" has no SERVICE block in index (${files[0]})`)
+}
+ok(`${sourceServiceIds.size - missingSourceServiceIds.length}/${sourceServiceIds.size} source SERVICE_ID tags are represented in the index`)
 
 // ── 9. Check stable IDs in index ────────────────────────────────────
 console.log('\nStable IDs:')

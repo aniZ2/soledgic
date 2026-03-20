@@ -253,11 +253,51 @@ if (existsSync(BOUNDARIES_PATH)) {
   }
 }
 
-// ── 5. Financial Risk Concentration ─────────────────────────────────
+// ── 5. App-Layer Org Context Safety ─────────────────────────────────
+
+const appFiles = readDir(join(ROOT, 'apps/web/src'))
+  .filter(f => !f.includes('.test.'))
+
+const orgContextSmells = []
+for (const file of appFiles) {
+  try {
+    const content = readFileSync(file, 'utf-8')
+    const membershipChains = [...content.matchAll(/(?:^|\n)\s*\.from\((['"])organization_members\1\)([\s\S]{0,500}?)\.(single|maybeSingle)\(\)/g)]
+    if (membershipChains.length === 0) continue
+
+    let flagged = false
+    for (const match of membershipChains) {
+      const chain = match[2]
+      const hasUserFilter = /\.eq\((['"])user_id\1\s*,/.test(chain)
+      const hasOrgFilter = /\.eq\((['"])organization_id\1\s*,/.test(chain)
+      const usesFallbackSelection = /\.order\(/.test(chain) && /\.limit\(1\)/.test(chain)
+
+      if (hasUserFilter && !hasOrgFilter && !usesFallbackSelection) {
+        orgContextSmells.push(relative(ROOT, file))
+        flagged = true
+        break
+      }
+    }
+
+    if (flagged) continue
+  } catch { /* skip */ }
+}
+
+if (orgContextSmells.length > 0) {
+  addSignal(
+    'HIGH',
+    'org_context_safety',
+    `${orgContextSmells.length} web file(s) still resolve organization_members by user_id with singleton queries`,
+    'Use getActiveOrganizationId()/resolveActiveMembership or add explicit organization_id scoping',
+    { count: orgContextSmells.length, files: orgContextSmells },
+  )
+}
+
+// ── 6. Financial Risk Concentration ─────────────────────────────────
 
 // Known patterns that legitimately do direct inserts (not record-* operations)
 const financialExceptionPatterns = [
-  'platform-payouts', 'credits', 'import-bank-statement', 'reconcile',
+  'credits', 'import-bank-statement', 'reconcile',
   'processor-reconciliation', 'ops-monitor', 'preflight-authorization',
   'risk-evaluation', 'manage-budgets', 'get-runway', 'upload-receipt',
   'export-report', 'trial-balance', 'ap-aging', 'ar-aging', 'frozen-statements',
@@ -279,7 +319,7 @@ if (moneyFiles.length > 0) {
   addSignal('MEDIUM', 'financial_spread', `${moneyFiles.length} non-exception file(s) do direct transaction inserts without atomic RPCs`, `Migrate to record_transaction_atomic RPC`, { count: moneyFiles.length, files: moneyFiles.map(f => relative(ROOT, f)) })
 }
 
-// ── 6. Migration Debt ───────────────────────────────────────────────
+// ── 7. Migration Debt ───────────────────────────────────────────────
 
 try {
   const pendingMigrations = execSync('supabase db push --dry-run 2>&1', { encoding: 'utf-8', cwd: ROOT, timeout: 15000 })
@@ -290,7 +330,7 @@ try {
   }
 } catch { /* supabase CLI not available or no pending */ }
 
-// ── 7. Coupling Analysis ────────────────────────────────────────────
+// ── 8. Coupling Analysis ────────────────────────────────────────────
 
 const importCounts = new Map()
 const allSrcFiles = [
@@ -310,7 +350,7 @@ for (const file of allSrcFiles) {
   } catch { /* skip */ }
 }
 
-// ── 8. Stale Critical Code ──────────────────────────────────────────
+// ── 9. Stale Critical Code ──────────────────────────────────────────
 
 try {
   for (const svc of criticalServices) {

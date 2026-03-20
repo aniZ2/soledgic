@@ -23,6 +23,38 @@ const index = readFileSync(INDEX_PATH, 'utf-8')
 
 // ── Parse graph ─────────────────────────────────────────────────────
 
+function extractSection(headingRegex) {
+  const safeHeadingRegex = new RegExp(
+    headingRegex.source,
+    headingRegex.flags.replace(/[gy]/g, ''),
+  )
+  const match = safeHeadingRegex.exec(index)
+  if (!match) return ''
+
+  const start = match.index + match[0].length
+  const rest = index.slice(start)
+  const nextHeading = rest.match(/\n##\s+/)
+  const end = nextHeading ? start + nextHeading.index : index.length
+  return index.slice(start, end)
+}
+
+function uniqueById(items) {
+  const seen = new Set()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+function normalizeId(raw) {
+  return raw.replace(/\s*\(.*?\)\s*$/, '').trim()
+}
+
+function normalizeList(items) {
+  return items.map(normalizeId).filter(Boolean)
+}
+
 function extractField(body, field) {
   const match = body.match(new RegExp(`^\\s*${field}:\\s*(.+)`, 'mi'))
   return match ? match[1].trim() : null
@@ -54,13 +86,14 @@ function parseServices() {
 }
 
 function parseCriticalPaths() {
+  const section = extractSection(/^##\s+Critical Paths\b[^\n]*$/m)
   const paths = []
   const regex = /^CRITICAL_PATH: (\S+)\n([\s\S]*?)(?=\nCRITICAL_PATH:|\n```)/gm
   let m
-  while ((m = regex.exec(index)) !== null) {
+  while ((m = regex.exec(section)) !== null) {
     paths.push({ id: m[1], chain: extractField(m[2], 'chain') })
   }
-  return paths
+  return uniqueById(paths)
 }
 
 // ── Map files → services ────────────────────────────────────────────
@@ -106,6 +139,7 @@ function getChangedFiles(mode) {
 function computeBlastRadius(serviceIds, services) {
   const affected = new Set(serviceIds)
   const queue = [...serviceIds]
+  const serviceIdSet = new Set(services.map((service) => service.id))
 
   while (queue.length > 0) {
     const current = queue.shift()
@@ -113,7 +147,8 @@ function computeBlastRadius(serviceIds, services) {
     if (!svc) continue
 
     // Anyone who calls this service is affected
-    for (const caller of svc.calledBy) {
+    for (const caller of normalizeList(svc.calledBy || [])) {
+      if (!serviceIdSet.has(caller)) continue
       if (!affected.has(caller)) {
         affected.add(caller)
         queue.push(caller)
@@ -231,6 +266,19 @@ function getAffectedTables(affectedIds, services) {
 // ── Main ────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2)
+if (args.length === 0 || args[0] === '--help') {
+  console.log(`
+\x1b[1mImpact Simulation Engine\x1b[0m
+
+Usage:
+  node scripts/arch-simulate.mjs
+  node scripts/arch-simulate.mjs --diff HEAD~1
+  node scripts/arch-simulate.mjs --file supabase/functions/payouts/index.ts
+  node scripts/arch-simulate.mjs --pr
+`)
+  process.exit(0)
+}
+
 const mode = args.join(' ') || null
 const changedFiles = getChangedFiles(mode)
 
