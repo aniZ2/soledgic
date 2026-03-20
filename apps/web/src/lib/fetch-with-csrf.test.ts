@@ -128,6 +128,20 @@ describe('fetchWithCsrf', () => {
     expect(headers.get('Content-Type')).toBe('application/json')
   })
 
+  it('does not set Content-Type for FormData bodies', async () => {
+    const formData = new FormData()
+    formData.append('file', new Blob(['hello'], { type: 'text/plain' }), 'hello.txt')
+
+    await fetchWithCsrf('https://external.com/data', {
+      method: 'POST',
+      body: formData,
+    })
+
+    const call = fetchSpy.mock.calls[0]
+    const headers = call[1].headers as Headers
+    expect(headers.get('Content-Type')).toBeNull()
+  })
+
   it('does not set Content-Type when body is undefined', async () => {
     await fetchWithCsrf('https://external.com/data')
 
@@ -320,8 +334,7 @@ describe('fetchWithCsrf', () => {
     expect(call[1].credentials).not.toBe('omit')
   })
 
-  it('does not set Content-Type when body is null (undefined check)', async () => {
-    // body: null is not undefined, so Content-Type SHOULD be set
+  it('does not set Content-Type when body is null', async () => {
     await fetchWithCsrf('https://external.com/data', {
       method: 'POST',
       body: null as any,
@@ -329,9 +342,7 @@ describe('fetchWithCsrf', () => {
 
     const call = fetchSpy.mock.calls[0]
     const headers = call[1].headers as Headers
-    // body is null, which is not undefined, so Content-Type should be set
-    // The check is `body !== undefined`, and null !== undefined is true
-    expect(headers.get('Content-Type')).toBe('application/json')
+    expect(headers.get('Content-Type')).toBeNull()
   })
 
   it('uses first URL that starts with /api/ on same origin for auth injection', async () => {

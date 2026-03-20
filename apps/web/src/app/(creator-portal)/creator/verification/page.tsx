@@ -79,7 +79,7 @@ export default function CreatorVerificationPage() {
       formData.append('file', file)
       formData.append('document_type', selectedDocType)
 
-      const res = await fetch('/api/creator/verification/documents', {
+      const res = await fetchWithCsrf('/api/creator/verification/documents', {
         method: 'POST',
         body: formData,
       })

@@ -200,21 +200,16 @@ fi
 CHECKS_RUN=$((CHECKS_RUN + 1))
 echo "--- Check 5: Destructive SQL in pending migrations ---"
 
-# Check for DROP TABLE or TRUNCATE in migration files (excluding comments)
+# Only inspect migrations pending in the current branch relative to origin/main,
+# plus any untracked migration files. Using filesystem mtimes here is flaky and
+# incorrectly flags old committed migrations as "pending".
 DESTRUCTIVE_FOUND=0
-while IFS= read -r migration; do
-  # Strip SQL comments and check for destructive statements
-  MATCHES=$(grep -inE '^\s*(DROP\s+TABLE|TRUNCATE)' "$migration" 2>/dev/null \
-    | grep -v '^\s*--' || true)
-  if [ -n "$MATCHES" ]; then
-    DESTRUCTIVE_FOUND=1
-    echo "  $migration:"
-    echo "$MATCHES" | sed 's/^/    /'
-  fi
-done < <(find ./supabase/migrations -name "*.sql" -newer .git/HEAD 2>/dev/null || true)
+CHANGED_MIGRATIONS=$(git diff --name-only origin/main -- 'supabase/migrations/*.sql' 2>/dev/null || true)
+UNTRACKED_MIGRATIONS=$(git ls-files --others --exclude-standard -- 'supabase/migrations/*.sql' 2>/dev/null || true)
+ALL_PENDING_MIGRATIONS=$(printf '%s\n%s' "$CHANGED_MIGRATIONS" "$UNTRACKED_MIGRATIONS" | sort -u | grep -v '^$' || true)
 
-# Also check uncommitted migration files
 while IFS= read -r migration; do
+  [ -z "$migration" ] && continue
   if [ -f "$migration" ]; then
     MATCHES=$(grep -inE '^\s*(DROP\s+TABLE|TRUNCATE)' "$migration" 2>/dev/null \
       | grep -v '^\s*--' || true)
@@ -224,7 +219,7 @@ while IFS= read -r migration; do
       echo "$MATCHES" | sed 's/^/    /'
     fi
   fi
-done < <(git diff --name-only --diff-filter=A -- 'supabase/migrations/*.sql' 2>/dev/null || true)
+done <<< "$ALL_PENDING_MIGRATIONS"
 
 if [ "$DESTRUCTIVE_FOUND" -eq 1 ]; then
   fail "5" "DROP TABLE or TRUNCATE found in pending migrations"

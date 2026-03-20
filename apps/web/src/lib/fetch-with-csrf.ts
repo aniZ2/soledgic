@@ -29,6 +29,16 @@ function isInternalApiRequest(url: string): boolean {
   }
 }
 
+function shouldSetJsonContentType(body: BodyInit | null | undefined): boolean {
+  if (body === undefined || body === null) return false
+  if (typeof FormData !== 'undefined' && body instanceof FormData) return false
+  if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return false
+  if (typeof Blob !== 'undefined' && body instanceof Blob) return false
+  if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer) return false
+  if (ArrayBuffer.isView(body)) return false
+  return true
+}
+
 export async function fetchWithCsrf(
   url: string,
   options: RequestInit = {},
@@ -38,7 +48,7 @@ export async function fetchWithCsrf(
   if (token) headers.set('x-csrf-token', token)
   if (!headers.has('x-requested-with')) headers.set('x-requested-with', 'fetch')
 
-  if (options.body !== undefined && !headers.has('Content-Type')) {
+  if (shouldSetJsonContentType(options.body) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 

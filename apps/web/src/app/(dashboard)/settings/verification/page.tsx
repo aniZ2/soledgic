@@ -216,7 +216,7 @@ export default function VerificationSettingsPage() {
       formData.append('file', file)
       formData.append('document_type', selectedDocType)
 
-      const res = await fetch('/api/settings/verification/documents', {
+      const res = await fetchWithCsrf('/api/settings/verification/documents', {
         method: 'POST',
         body: formData,
       })

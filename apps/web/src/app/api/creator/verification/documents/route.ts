@@ -74,7 +74,7 @@ export const POST = createApiHandler(
 
     return NextResponse.json({ success: true, document: doc })
   },
-  { requireAuth: true, rateLimit: true, csrfProtection: false, routePath: '/api/creator/verification/documents' }
+  { requireAuth: true, rateLimit: true, csrfProtection: true, routePath: '/api/creator/verification/documents' }
 )
 
 export const DELETE = createApiHandler(
