@@ -6,7 +6,7 @@ type: reference
 
 # Soledgic Repository Index
 
-Creator economy payment platform. Monorepo: Next.js web app + Supabase Edge Functions + Stripe payment processor (Finix legacy). Double-entry ledger with 68 edge function dirs (67 services + _shared), 90+ tables, 150 SDK methods.
+Creator economy payment platform. Monorepo: Next.js web app + Supabase Edge Functions + Stripe payment processor (Finix legacy). Double-entry ledger with 73 edge function dirs (72 services + _shared), 90+ tables, 150 SDK methods.
 
 **Domains:** Checkout, Sales, Refunds, Reversals, Payouts, Wallets, Tax/1099, Compliance, Reconciliation, Invoices, Webhooks, Billing
 

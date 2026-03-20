@@ -1,101 +1,71 @@
-#!/bin/bash
-# Deploy ALL security-hardened Soledgic Edge Functions
+#!/usr/bin/env bash
+# Deploy all Supabase Edge Functions present in supabase/functions.
 # Run: chmod +x scripts/deploy-all-functions.sh && ./scripts/deploy-all-functions.sh
 
-set -e
+set -euo pipefail
 
-echo "=========================================="
-echo "Deploying ALL Security-Hardened Edge Functions"
-echo "=========================================="
-echo ""
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FUNCTIONS_DIR="$ROOT/supabase/functions"
+FUNCTIONS=()
+FAILURES=()
 
-cd "$(dirname "$0")/.."
+while IFS= read -r fn; do
+  FUNCTIONS+=("$fn")
+done < <(find "$FUNCTIONS_DIR" -maxdepth 1 -mindepth 1 -type d ! -name '_*' -exec basename {} \; | sort)
 
-deploy() {
-  echo "  ✓ $1"
-  supabase functions deploy "$1" --no-verify-jwt 2>/dev/null || echo "    ⚠ $1 needs review"
+usage() {
+  echo "Usage: ./scripts/deploy-all-functions.sh [--list | --dry-run]"
 }
 
-echo "[1/12] Core Transactions (8)..."
-deploy record-sale
-deploy record-expense
-deploy record-income
-deploy record-transfer
-deploy record-adjustment
-deploy record-bill
-deploy record-opening-balance
-deploy reverse-transaction
+if [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
 
-echo "[2/12] Treasury Resources (7)..."
-deploy participants
-deploy wallets
-deploy transfers
-deploy holds
-deploy checkout-sessions
-deploy payouts
-deploy refunds
+if [ "${1:-}" = "--list" ]; then
+  printf '%s\n' "${FUNCTIONS[@]}"
+  exit 0
+fi
 
-echo "[3/12] Queries (2)..."
-deploy get-transactions
-deploy get-runway
+if [ "${1:-}" = "--dry-run" ]; then
+  total=${#FUNCTIONS[@]}
+  i=1
+  for fn in "${FUNCTIONS[@]}"; do
+    echo "[$i/$total] $fn"
+    i=$((i + 1))
+  done
+  exit 0
+fi
 
-echo "[4/12] Payout Execution (1)..."
-deploy execute-payout
+if [ $# -gt 0 ]; then
+  usage
+  exit 2
+fi
 
-echo "[5/12] Reports (5)..."
-deploy trial-balance
-deploy profit-loss
-deploy generate-report
-deploy generate-pdf
-deploy export-report
+echo "=========================================="
+echo "Deploying All Supabase Edge Functions"
+echo "=========================================="
+echo ""
 
-echo "[6/12] Management (7)..."
-deploy reconcile
-deploy manage-splits
-deploy manage-contractors
-deploy manage-recurring
-deploy manage-budgets
-deploy manage-bank-accounts
-deploy close-period
+total=${#FUNCTIONS[@]}
+i=1
 
-echo "[7/12] Ledger & Health (3)..."
-deploy create-ledger
-deploy list-ledgers
-deploy health-check
-
-echo "[8/12] Integrations (1)..."
-deploy webhooks
-
-echo "[9/12] Standard Mode & Statements (4)..."
-deploy pay-bill
-deploy receive-payment
-deploy send-statements
-deploy frozen-statements
-
-echo "[10/12] Tax & Billing (4)..."
-deploy generate-tax-summary
-deploy tax-documents
-deploy submit-tax-info
-deploy billing
-
-echo "[11/12] Imports & Utilities (4)..."
-deploy import-transactions
-deploy import-bank-statement
-deploy upload-receipt
-deploy process-webhooks
+for fn in "${FUNCTIONS[@]}"; do
+  echo "[$i/$total] $fn"
+  if ! supabase functions deploy "$fn" --no-verify-jwt; then
+    FAILURES+=("$fn")
+  fi
+  i=$((i + 1))
+done
 
 echo ""
 echo "=========================================="
-echo "✅ Deployment Complete"
+
+if [ ${#FAILURES[@]} -gt 0 ]; then
+  echo "Deployment finished with failures:"
+  printf '  - %s\n' "${FAILURES[@]}"
+  exit 1
+fi
+
+echo "Deployment complete"
 echo "=========================================="
-echo ""
-echo "Security Features Active:"
-echo "  ✓ Hash-based API key authentication"
-echo "  ✓ Dynamic CORS headers (origin-based)"
-echo "  ✓ IP address and user agent logging"
-echo "  ✓ Input validation on all parameters"
-echo "  ✓ Fire-and-forget audit logging"
-echo "  ✓ Webhook replay protection (5min)"
-echo "  ✓ SSRF protection for webhooks"
-echo ""
-echo "Run tests: cd test-data && ./test-api.sh"

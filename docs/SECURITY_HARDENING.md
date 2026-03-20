@@ -2,7 +2,7 @@
 
 ## Summary
 
-**All 48 Edge Functions** have been updated with comprehensive security hardening. The API is production-ready with Redis-backed rate limiting.
+The repo currently contains **72 deployable Edge Functions** under `supabase/functions` (plus `_shared`). This document describes the current shared security layer and the live deploy surface, not the older 48-function rollout snapshot.
 
 ---
 
@@ -54,8 +54,11 @@ Request → Redis (Upstash) → Response
 | `refunds` | 100 | 10 | 1 min | **Fail-Closed** |
 | `execute-payout` | 50 | 5 | 1 min | **Fail-Closed** |
 | `payouts` | 50 | 5 | 1 min | **Fail-Closed** |
-| `bank-feed` | 50 | 5 | 1 min | **Fail-Closed** |
-| `processor-webhook` | 500 | 50 | 1 min | **Fail-Closed** |
+| `participants` | 100 | 10 | 1 min | Fail-Open |
+| `wallets` | 100 | 10 | 1 min | Fail-Open |
+| `transfers` | 100 | 10 | 1 min | Fail-Open |
+| `holds` | 50 | 5 | 1 min | **Fail-Closed** |
+| `checkout-sessions` | 100 | 10 | 1 min | **Fail-Closed** |
 | `generate-pdf` | 20 | 2 | 1 min | Fail-Open |
 | `generate-report` | 30 | 3 | 1 min | Fail-Open |
 | `export-report` | 20 | 2 | 1 min | Fail-Open |
@@ -65,7 +68,7 @@ Request → Redis (Upstash) → Response
 | `create-ledger` | 10 | 1 | 1 hour | **Fail-Closed** (per-IP) |
 | `upload-receipt` | 50 | 5 | 1 min | Fail-Open |
 | `webhooks` | 100 | 10 | 1 min | Fail-Open |
-| `health-check` | 10 | 1 | 1 min | Fail-Open |
+| `health-check` | 5 | 1 | 1 min | Fail-Open |
 | Default | 100 | 10 | 1 min | Fail-Open |
 
 ### Fail-Open vs Fail-Closed
@@ -74,16 +77,17 @@ When **BOTH Redis AND Database** are unavailable:
 
 **Fail-Closed** (block requests):
 - `execute-payout`, `payouts`: Prevents double payouts
-- `processor-webhook`, `bank-feed`: Prevents replay attacks
-- `record-sale`, `refunds`: Prevents transaction flooding
+- `record-sale`, `refunds`: Prevents duplicate or abusive transaction writes
 - `create-ledger`: Prevents resource exhaustion
 - `send-statements`: Prevents email spam
-- `import-transactions`, `import-bank-statement`: Prevents data flooding
+- `import-transactions`, `import-bank-statement`: Prevents bulk data flooding
+- `checkout-sessions`: Prevents checkout spam and upstream processor exhaustion
+- `holds`: Prevents unauthorized or repeated fund-release operations
 
 **Fail-Open** (allow with warning):
-- `generate-pdf`, `generate-report`: Better UX, lower risk
-- `participants`, `get-transactions`: Read-only operations
-- `webhooks`, `health-check`: System operations
+- `generate-pdf`, `generate-report`, `export-report`: Better UX, lower risk
+- `participants`, `wallets`, `transfers`: Lower-risk treasury operations
+- `webhooks`, `health-check`, `upload-receipt`: Operational endpoints
 
 ### Environment Variables Required
 
@@ -107,95 +111,84 @@ done
 
 ---
 
-## Updated Functions (48 Total)
+## Current Edge Function Inventory (72 Total)
 
-### Core Transactions (9)
-| Function | Description |
-|----------|-------------|
-| `record-sale` | Sale recording with creator splits |
-| `refunds` | Refund processing with balance reversal |
-| `record-expense` | Expense tracking with categories |
-| `record-income` | Income recording |
-| `record-transfer` | Internal account transfers |
-| `record-adjustment` | Journal adjustments (corrections, accruals) |
-| `record-bill` | Accounts payable entry |
-| `record-opening-balance` | Opening balance for new ledgers |
-| `reverse-transaction` | Transaction reversal with audit trail |
+Canonical source: `supabase/functions/*` excluding `_shared`. The current deployable set is:
 
-### Queries (4)
-| Function | Description |
-|----------|-------------|
-| `participants/{participant_id}` | Single participant balance lookup |
-| `participants` | All participant balances |
-| `get-transactions` | Transaction listing with filters |
-| `get-runway` | Cash runway and financial health |
-
-### Payouts (3)
-| Function | Description |
-|----------|-------------|
-| `payouts` | Initiate payout (Payment Processor/manual) |
-| `execute-payout` | Execute approved payout |
-| `participants/{participant_id}/payout-eligibility` | Verify tax info, holds, minimums |
-
-### Reports (5)
-| Function | Description |
-|----------|-------------|
-| `trial-balance` | Trial balance report |
-| `profit-loss` | Profit & Loss statement |
-| `generate-report` | Various financial reports |
-| `generate-pdf` | PDF document generation |
-| `export-report` | CSV/JSON data exports |
-
-### Management (7)
-| Function | Description |
-|----------|-------------|
-| `reconcile` | Bank reconciliation engine |
-| `manage-splits` | Revenue split configuration |
-| `manage-contractors` | Contractor management & 1099 |
-| `manage-recurring` | Recurring expense templates |
-| `manage-budgets` | Budget envelope tracking |
-| `manage-bank-accounts` | Bank account settings |
-| `close-period` | Period closing with snapshots |
-
-### Ledger & Health (3)
-| Function | Description |
-|----------|-------------|
-| `create-ledger` | Ledger creation (hashed API keys) |
-| `list-ledgers` | List ledgers for owner |
-| `health-check` | Ledger health monitoring |
-
-### Integrations (3)
-| Function | Description |
-|----------|-------------|
-| `processor-webhook` | Payment Processor event processing (replay protection) |
-| `bank-feed` | Bank Feed bank integration (Vault encryption) |
-| `webhooks` | Outbound webhook delivery (SSRF protection) |
-
-### Standard Mode (4)
-| Function | Description |
-|----------|-------------|
-| `pay-bill` | Bill payment (A/P → Cash) |
-| `receive-payment` | Payment receipt (Cash → A/R) |
-| `send-statements` | Email creator statements |
-| `frozen-statements` | Frozen period statements with integrity |
-
-### Tax & Billing (4)
-| Function | Description |
-|----------|-------------|
-| `generate-tax-summary` | 1099 year-end summaries |
-| `tax-documents` | 1099 document management |
-| `submit-tax-info` | Deprecated (returns 410 Gone) |
-| `billing` | Subscription management (JWT auth) |
-
-### Imports & Utilities (6)
-| Function | Description |
-|----------|-------------|
-| `import-transactions` | Bank file import (CSV, OFX, QFX, CAMT.053, BAI2, MT940) |
-| `import-bank-statement` | Bank statement import |
-| `upload-receipt` | Receipt image upload |
-| `processor` | Payment Processor transaction management |
-| `billing-webhook` | Billing lifecycle events |
-| `process-webhooks` | Webhook queue processor (cron) |
+```text
+ap-aging
+ar-aging
+balance-sheet
+bill-overages
+billing
+checkout-sessions
+close-period
+compliance
+configure-alerts
+configure-risk-policy
+create-ledger
+credits
+delete-creator
+earnings
+execute-payout
+export-report
+fraud
+frozen-statements
+generate-pdf
+generate-report
+get-runway
+get-transactions
+health-check
+holds
+import-bank-statement
+import-transactions
+invoices
+list-ledgers
+manage-bank-accounts
+manage-budgets
+manage-contractors
+manage-recurring
+manage-splits
+ops-monitor
+participants
+pay-bill
+payouts
+platform-payouts
+preflight-authorization
+process-processor-inbox
+process-webhooks
+processor-reconciliation
+profit-loss
+project-intent
+receive-payment
+reconcile
+reconcile-checkout-ledger
+reconciliations
+record-adjustment
+record-bill
+record-expense
+record-income
+record-opening-balance
+record-sale
+record-transfer
+refunds
+register-instrument
+release-expired-holds
+reverse-transaction
+risk-evaluation
+scheduled-payouts
+security-alerts
+send-breach-alert
+send-statements
+submit-tax-info
+tax
+test-cleanup
+transfers
+trial-balance
+upload-receipt
+wallets
+webhooks
+```
 
 ---
 
@@ -204,7 +197,6 @@ done
 ### Authentication
 - ✅ **Hash-based API key validation** - SHA-256, no plaintext in DB
 - ✅ **Timing-safe comparison** - Prevents timing attacks
-- ✅ **Bank Feed tokens in Vault** - Encrypted at rest
 
 ### Rate Limiting
 - ✅ **Redis-backed (Upstash)** - Distributed, persistent, primary layer

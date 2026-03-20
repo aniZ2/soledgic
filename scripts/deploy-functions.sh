@@ -1,77 +1,86 @@
-#!/bin/bash
-# Deploy all security-hardened Soledgic Edge Functions
-# Run: chmod +x scripts/deploy-functions.sh && ./scripts/deploy-functions.sh
+#!/usr/bin/env bash
+# Deploy selected Supabase Edge Functions by name.
+# Run: chmod +x scripts/deploy-functions.sh && ./scripts/deploy-functions.sh payouts platform-payouts
 
-set -e
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FUNCTIONS_DIR="$ROOT/supabase/functions"
+AVAILABLE_FUNCTIONS=()
+TARGETS=()
+FAILURES=()
+
+while IFS= read -r fn; do
+  AVAILABLE_FUNCTIONS+=("$fn")
+done < <(find "$FUNCTIONS_DIR" -maxdepth 1 -mindepth 1 -type d ! -name '_*' -exec basename {} \; | sort)
+
+usage() {
+  echo "Usage: ./scripts/deploy-functions.sh <function> [function ...]"
+  echo "       ./scripts/deploy-functions.sh --list"
+}
+
+has_function() {
+  local candidate="$1"
+  local fn
+  for fn in "${AVAILABLE_FUNCTIONS[@]}"; do
+    if [ "$fn" = "$candidate" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+for arg in "$@"; do
+  if [ "$arg" = "--help" ]; then
+    usage
+    exit 0
+  fi
+done
+
+if [ "${1:-}" = "--list" ]; then
+  printf '%s\n' "${AVAILABLE_FUNCTIONS[@]}"
+  exit 0
+fi
+
+if [ $# -eq 0 ]; then
+  usage
+  exit 2
+fi
+
+for target in "$@"; do
+  if ! has_function "$target"; then
+    echo "Unknown function: $target" >&2
+    echo "" >&2
+    usage >&2
+    exit 2
+  fi
+  TARGETS+=("$target")
+done
 
 echo "=========================================="
-echo "Deploying Security-Hardened Edge Functions"
+echo "Deploying Selected Edge Functions"
 echo "=========================================="
 echo ""
 
-cd "$(dirname "$0")/.."
+total=${#TARGETS[@]}
+i=1
 
-# Core transaction functions
-echo "[1/6] Deploying core transaction functions..."
-supabase functions deploy record-sale --no-verify-jwt
-supabase functions deploy record-expense --no-verify-jwt
-supabase functions deploy record-income --no-verify-jwt
-supabase functions deploy record-transfer --no-verify-jwt
-supabase functions deploy reverse-transaction --no-verify-jwt
-
-# Treasury resource functions
-echo "[2/6] Deploying treasury resource functions..."
-supabase functions deploy participants --no-verify-jwt
-supabase functions deploy wallets --no-verify-jwt
-supabase functions deploy transfers --no-verify-jwt
-supabase functions deploy holds --no-verify-jwt
-supabase functions deploy checkout-sessions --no-verify-jwt
-supabase functions deploy payouts --no-verify-jwt
-supabase functions deploy refunds --no-verify-jwt
-
-# Query functions
-echo "[3/6] Deploying query functions..."
-supabase functions deploy get-transactions --no-verify-jwt
-
-# Payout execution functions
-echo "[4/6] Deploying payout execution functions..."
-supabase functions deploy execute-payout --no-verify-jwt
-
-# Reporting functions
-echo "[5/6] Deploying reporting functions..."
-supabase functions deploy trial-balance --no-verify-jwt
-supabase functions deploy profit-loss --no-verify-jwt
-
-# Management & Reconciliation
-echo "[6/6] Deploying management functions..."
-supabase functions deploy reconcile --no-verify-jwt
-supabase functions deploy manage-splits --no-verify-jwt
-supabase functions deploy create-ledger --no-verify-jwt
-supabase functions deploy webhooks --no-verify-jwt
+for target in "${TARGETS[@]}"; do
+  echo "[$i/$total] $target"
+  if ! supabase functions deploy "$target" --no-verify-jwt; then
+    FAILURES+=("$target")
+  fi
+  i=$((i + 1))
+done
 
 echo ""
 echo "=========================================="
-echo "✅ Deployment Complete!"
+
+if [ ${#FAILURES[@]} -gt 0 ]; then
+  echo "Deployment finished with failures:"
+  printf '  - %s\n' "${FAILURES[@]}"
+  exit 1
+fi
+
+echo "Deployment complete"
 echo "=========================================="
-echo ""
-echo "Functions deployed with the resource-first treasury surface:"
-echo ""
-echo "Core Transactions:"
-echo "  ✓ record-sale, record-expense, record-income"
-echo "  ✓ record-transfer, reverse-transaction"
-echo ""
-echo "Treasury Resources:"
-echo "  ✓ participants, wallets, transfers"
-echo "  ✓ holds, checkout-sessions, payouts, refunds"
-echo ""
-echo "Queries & Payout Execution:"
-echo "  ✓ get-transactions, execute-payout"
-echo ""
-echo "Reports & Management:"
-echo "  ✓ trial-balance, profit-loss"
-echo "  ✓ reconcile, manage-splits, create-ledger"
-echo ""
-echo "Integrations:"
-echo "  ✓ webhook handlers"
-echo ""
-echo "Run tests: cd test-data && ./test-api.sh"

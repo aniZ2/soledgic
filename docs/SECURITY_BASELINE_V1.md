@@ -118,14 +118,14 @@ This document certifies that Soledgic API has completed security hardening and e
 These endpoints BLOCK if rate limiting is unavailable:
 - `execute-payout`
 - `payouts`
-- `processor-webhook`
-- `bank-feed`
 - `record-sale`
 - `refunds`
 - `create-ledger`
 - `send-statements`
 - `import-transactions`
 - `import-bank-statement`
+- `checkout-sessions`
+- `holds`
 
 ---
 
@@ -347,7 +347,7 @@ bash scripts/first-light-test.sh
 
 ### Pre-Production ✅
 
-- [x] All 48 Edge Functions deployed with `createHandler`
+- [x] Current Edge Function deployment surface verified against `supabase/functions` (72 deployable dirs)
 - [x] RLS policies enabled on all tables
 - [x] Rate limiting configured (Redis + DB fallback)
 - [x] Security headers on all responses

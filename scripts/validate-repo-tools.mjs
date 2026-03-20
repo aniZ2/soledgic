@@ -5,6 +5,7 @@
  */
 
 import { execFileSync } from 'child_process'
+import { readdirSync } from 'fs'
 import { join } from 'path'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
@@ -36,8 +37,22 @@ function runTool(scriptPath, ...args) {
   })
 }
 
+function runShellScript(scriptPath, ...args) {
+  return execFileSync('bash', [join(ROOT, scriptPath), ...args], {
+    cwd: ROOT,
+    encoding: 'utf-8',
+  })
+}
+
 function stripAnsi(value) {
   return value.replace(/\x1b\[[0-9;]*m/g, '')
+}
+
+function listFunctionsOnDisk() {
+  return readdirSync(join(ROOT, 'supabase/functions'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_'))
+    .map((entry) => entry.name)
+    .sort()
 }
 
 console.log('\nGraph Tool Validation:')
@@ -172,6 +187,37 @@ if (!financialSelfTest.includes('Financial validator heuristics look healthy')) 
   error('arch-validate-financial no longer reports a clean direct-insert state for the repo')
 } else {
   ok('arch-validate-financial self-tests pass and the repo stays clean of direct-write violations')
+}
+
+const edgeFunctionsOnDisk = listFunctionsOnDisk()
+const deployAllFunctions = runShellScript('scripts/deploy-all-functions.sh', '--list')
+  .trim()
+  .split('\n')
+  .filter(Boolean)
+const deployAllSet = new Set(deployAllFunctions)
+const missingFromDeployAll = edgeFunctionsOnDisk.filter((fn) => !deployAllSet.has(fn))
+const unexpectedInDeployAll = deployAllFunctions.filter((fn) => !edgeFunctionsOnDisk.includes(fn))
+if (deployAllFunctions.length !== edgeFunctionsOnDisk.length) {
+  error(`deploy-all-functions.sh --list returned ${deployAllFunctions.length} functions instead of ${edgeFunctionsOnDisk.length}`)
+} else if (missingFromDeployAll.length > 0 || unexpectedInDeployAll.length > 0) {
+  error(`deploy-all-functions.sh drifted from supabase/functions (missing: ${missingFromDeployAll.join(', ') || 'none'}; unexpected: ${unexpectedInDeployAll.join(', ') || 'none'})`)
+} else {
+  ok('deploy-all-functions.sh stays aligned with supabase/functions')
+}
+
+const deploySelectedFunctions = runShellScript('scripts/deploy-functions.sh', '--list')
+  .trim()
+  .split('\n')
+  .filter(Boolean)
+const deploySelectedSet = new Set(deploySelectedFunctions)
+const missingFromDeploySelected = edgeFunctionsOnDisk.filter((fn) => !deploySelectedSet.has(fn))
+const unexpectedInDeploySelected = deploySelectedFunctions.filter((fn) => !edgeFunctionsOnDisk.includes(fn))
+if (deploySelectedFunctions.length !== edgeFunctionsOnDisk.length) {
+  error(`deploy-functions.sh --list returned ${deploySelectedFunctions.length} functions instead of ${edgeFunctionsOnDisk.length}`)
+} else if (missingFromDeploySelected.length > 0 || unexpectedInDeploySelected.length > 0) {
+  error(`deploy-functions.sh --list drifted from supabase/functions (missing: ${missingFromDeploySelected.join(', ') || 'none'}; unexpected: ${unexpectedInDeploySelected.join(', ') || 'none'})`)
+} else {
+  ok('deploy-functions.sh validates against the same live function set')
 }
 
 if (errors > 0) {
