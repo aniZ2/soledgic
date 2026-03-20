@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
   const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString()
   const { data: sessions, error: fetchError } = await supabase
     .from('checkout_sessions')
-    .select('id, ledger_id, creator_id, amount, creator_amount, platform_amount, product_id, product_name, metadata, payment_id, reference_id, updated_at')
+    .select('id, ledger_id, creator_id, amount, subtotal_amount, sales_tax_amount, sales_tax_state, customer_tax_country, customer_tax_state, creator_amount, platform_amount, product_id, product_name, metadata, payment_id, reference_id, updated_at')
     .eq('status', 'charged_pending_ledger')
     .gte('updated_at', cutoff)
     .order('updated_at', { ascending: true })
@@ -141,10 +141,11 @@ Deno.serve(async (req: Request) => {
     }
 
     try {
-      // Soledgic 3.5% fee off the top — session already stores post-fee amounts
-      // (checkout-service computes the split after deducting the fee)
-      const soledgicFeeCents = Math.floor(Number(session.amount) * 0.035)
+      // Soledgic 3.5% fee applies to the taxable subtotal, not the sales tax.
+      const subtotalAmountCents = Number(session.subtotal_amount ?? session.amount)
+      const soledgicFeeCents = Math.floor(subtotalAmountCents * 0.035)
       const actualSoledgicFee = soledgicFeeCents
+      const taxCategory = typeof session.metadata?.tax_category === 'string' ? session.metadata.tax_category : null
 
       const { error: rpcError } = await supabase.rpc('record_sale_atomic', {
         p_ledger_id: session.ledger_id,
@@ -155,9 +156,16 @@ Deno.serve(async (req: Request) => {
         p_platform_amount: session.platform_amount,
         p_processing_fee: 0,
         p_soledgic_fee: actualSoledgicFee,
+        p_sales_tax: session.sales_tax_amount || 0,
         p_product_id: session.product_id || null,
         p_product_name: session.product_name || null,
-        p_metadata: session.metadata || {},
+        p_metadata: {
+          ...(session.metadata || {}),
+          subtotal_amount_cents: subtotalAmountCents,
+          sales_tax_amount_cents: session.sales_tax_amount ?? 0,
+          customer_tax_country: session.customer_tax_country ?? null,
+          customer_tax_state: session.customer_tax_state ?? null,
+        },
       })
 
       if (rpcError) {
@@ -191,6 +199,27 @@ Deno.serve(async (req: Request) => {
         continue
       }
 
+      const taxableSalesCents = subtotalAmountCents
+      if (taxCategory === 'digital_goods' && (session.customer_tax_state || '').trim().length > 0 && taxableSalesCents > 0) {
+        const { error: taxTrackingError } = await supabase.rpc('record_sales_tax_threshold_event', {
+          p_ledger_id: session.ledger_id,
+          p_state_code: session.customer_tax_state,
+          p_source_type: 'checkout_session',
+          p_source_id: session.id,
+          p_taxable_sales_cents: taxableSalesCents,
+          p_tax_amount_cents: Number(session.sales_tax_amount ?? 0),
+          p_calendar_year: new Date(now).getUTCFullYear(),
+          p_metadata: {
+            source: 'reconcile_checkout_ledger',
+            sales_tax_state: session.sales_tax_state ?? null,
+            customer_tax_country: session.customer_tax_country ?? null,
+          },
+        })
+        if (taxTrackingError) {
+          console.error(`[${requestId}] Failed to record sales tax threshold progress for ${session.id}:`, taxTrackingError)
+        }
+      }
+
       // Queue the webhook only after successful atomic claim
       const { error: webhookError } = await supabase
         .rpc('queue_webhook', {
@@ -203,6 +232,9 @@ Deno.serve(async (req: Request) => {
               payment_id: session.payment_id,
               reference_id: referenceId,
               amount: session.amount / 100,
+              subtotal_amount: taxableSalesCents / 100,
+              sales_tax_amount: Number(session.sales_tax_amount ?? 0) / 100,
+              sales_tax_state: session.sales_tax_state ?? null,
               creator_id: session.creator_id,
               product_id: session.product_id,
               reconciled: true,

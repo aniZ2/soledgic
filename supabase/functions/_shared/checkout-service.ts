@@ -26,12 +26,110 @@ export interface CreateCheckoutRequest {
   product_name?: string
   customer_email?: string
   customer_id?: string
+  buyer_id?: string
+  customer_country?: string
+  customer_state?: string
+  customer_postal_code?: string
+  customer_address?: {
+    country?: string
+    state?: string
+    postal_code?: string
+  }
   payment_method_id?: string
   source_id?: string
   success_url?: string
   cancel_url?: string
   idempotency_key?: string
+  tax_category?: string
+  collect_sales_tax?: boolean
   metadata?: Record<string, string>
+}
+
+const MARYLAND_DIGITAL_GOODS_TAX_RATE_BPS = 600
+
+function pickFirstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return null
+}
+
+function normalizeCountryCode(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
+}
+
+function normalizeStateCode(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
+}
+
+function normalizePostalCode(value: string | null): string | null {
+  if (!value) return null
+  const trimmed = value.trim().toUpperCase()
+  return trimmed.length > 20 ? trimmed.slice(0, 20) : trimmed
+}
+
+function normalizeTaxCategory(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (normalized === 'ebook' || normalized === 'e_book' || normalized === 'digital_book') {
+    return 'digital_goods'
+  }
+  if (normalized === 'digital_goods' || normalized === 'service' || normalized === 'physical_goods' || normalized === 'exempt') {
+    return normalized
+  }
+  return normalized
+}
+
+function isDigitalGoodsCategory(taxCategory: string | null): boolean {
+  return taxCategory === 'digital_goods'
+}
+
+function shouldCollectMarylandDigitalGoodsTax(
+  taxCategory: string | null,
+  collectSalesTax: boolean,
+  customerCountry: string | null,
+  customerState: string | null,
+): boolean {
+  if (!collectSalesTax) return false
+  if (!isDigitalGoodsCategory(taxCategory)) return false
+  if ((customerCountry || 'US') !== 'US') return false
+  return customerState === 'MD'
+}
+
+async function recordSalesTaxThresholdProgress(
+  supabase: SupabaseClient,
+  ledgerId: string,
+  stateCode: string | null,
+  sourceType: string,
+  sourceId: string,
+  taxableSalesCents: number,
+  taxAmountCents: number,
+  metadata: Record<string, string | number | boolean | null>,
+): Promise<void> {
+  if (!stateCode || taxableSalesCents <= 0) return
+
+  const now = new Date()
+  const calendarYear = now.getUTCFullYear()
+  const { error } = await supabase.rpc('record_sales_tax_threshold_event', {
+    p_ledger_id: ledgerId,
+    p_state_code: stateCode,
+    p_source_type: sourceType,
+    p_source_id: sourceId,
+    p_taxable_sales_cents: taxableSalesCents,
+    p_tax_amount_cents: taxAmountCents,
+    p_calendar_year: calendarYear,
+    p_metadata: metadata,
+  })
+
+  if (error) {
+    console.error(`[sales-tax] Failed to record threshold progress for ${sourceType}:${sourceId}`, error.message)
+  }
 }
 
 async function getParticipantSplit(
@@ -99,12 +197,12 @@ export async function createCheckoutResponse(
   requestId: string,
   provider?: PaymentProvider,
 ): Promise<ResourceResult> {
-  const amount = validateAmount(body.amount)
-  if (amount === null || amount <= 0) {
+  const requestedAmount = validateAmount(body.amount)
+  if (requestedAmount === null || requestedAmount <= 0) {
     return resourceError('Invalid amount: must be a positive integer (cents)', 400, {}, 'invalid_amount')
   }
 
-  if (amount < 50) {
+  if (requestedAmount < 50) {
     return resourceError('Amount must be at least 50 cents', 400, {}, 'amount_below_minimum')
   }
 
@@ -135,6 +233,39 @@ export async function createCheckoutResponse(
   const productName = body.product_name ? validateString(body.product_name, 200) : null
   const customerEmail = body.customer_email ? validateEmail(body.customer_email) : null
   const customerId = body.customer_id ? validateId(body.customer_id, 100) : null
+  const customerCountry = normalizeCountryCode(
+    pickFirstString(
+      body.customer_country,
+      body.customer_address?.country,
+      body.metadata?.customer_country,
+      body.metadata?.country,
+    )
+  ) || 'US'
+  const customerState = normalizeStateCode(
+    pickFirstString(
+      body.customer_state,
+      body.customer_address?.state,
+      body.metadata?.customer_state,
+      body.metadata?.state,
+    )
+  )
+  const customerPostalCode = normalizePostalCode(
+    pickFirstString(
+      body.customer_postal_code,
+      body.customer_address?.postal_code,
+      body.metadata?.customer_postal_code,
+      body.metadata?.postal_code,
+      body.metadata?.zip,
+    )
+  )
+  const taxCategory = normalizeTaxCategory(
+    pickFirstString(
+      body.tax_category,
+      body.metadata?.tax_category,
+      body.metadata?.product_tax_category,
+    )
+  )
+  const collectSalesTax = body.collect_sales_tax === true
   const paymentMethodIdRaw = body.payment_method_id || body.source_id || null
   const paymentMethodId = paymentMethodIdRaw ? validateString(paymentMethodIdRaw, 200) : null
 
@@ -143,10 +274,22 @@ export async function createCheckoutResponse(
     return resourceError('Invalid idempotency_key', 400, {}, 'invalid_idempotency_key')
   }
 
+  if (collectSalesTax && isDigitalGoodsCategory(taxCategory) && !customerState) {
+    return resourceError('customer_state is required when collect_sales_tax is true for digital goods', 400, {}, 'missing_customer_state')
+  }
+
+  const subtotalAmount = requestedAmount
+  const salesTaxAmount = shouldCollectMarylandDigitalGoodsTax(taxCategory, collectSalesTax, customerCountry, customerState)
+    ? Math.round(subtotalAmount * (MARYLAND_DIGITAL_GOODS_TAX_RATE_BPS / 10000))
+    : 0
+  const salesTaxRateBps = salesTaxAmount > 0 ? MARYLAND_DIGITAL_GOODS_TAX_RATE_BPS : null
+  const salesTaxState = salesTaxAmount > 0 ? 'MD' : null
+  const totalAmount = subtotalAmount + salesTaxAmount
+
   const participantPercent = await getParticipantSplit(supabase, ledger, participantId, productId)
-  // Soledgic fee: 3.5% of gross, off the top before split
-  const actualSoledgicFee = Math.floor(amount * 0.035)
-  const netAfterFee = amount - actualSoledgicFee
+  // Soledgic fee: 3.5% of taxable subtotal, off the top before split.
+  const actualSoledgicFee = Math.floor(subtotalAmount * 0.035)
+  const netAfterFee = subtotalAmount - actualSoledgicFee
   const participantAmount = Math.floor(netAfterFee * (participantPercent / 100))
   const platformAmount = netAfterFee - participantAmount
 
@@ -181,14 +324,25 @@ export async function createCheckoutResponse(
       .from('checkout_sessions')
       .insert({
         ledger_id: ledger.id,
-        amount,
+        amount: totalAmount,
+        subtotal_amount: subtotalAmount,
+        sales_tax_amount: salesTaxAmount,
+        sales_tax_rate_bps: salesTaxRateBps,
+        sales_tax_state: salesTaxState,
+        customer_tax_country: customerCountry,
+        customer_tax_state: customerState,
+        customer_tax_postal_code: customerPostalCode,
         currency,
         creator_id: participantId,
         product_id: productId,
         product_name: productName,
         customer_email: customerEmail,
         customer_id: customerId,
-        metadata: body.metadata || {},
+        metadata: {
+          ...(body.metadata || {}),
+          ...(taxCategory ? { tax_category: taxCategory } : {}),
+          collect_sales_tax: collectSalesTax,
+        },
         success_url: successUrl,
         cancel_url: cancelUrl,
         creator_percent: participantPercent,
@@ -214,11 +368,15 @@ export async function createCheckoutResponse(
       entity_id: session.id,
       actor_type: 'api',
       request_body: sanitizeForAudit({
-        amount,
+        subtotal_amount: subtotalAmount,
+        total_amount: totalAmount,
+        sales_tax_amount: salesTaxAmount,
         currency,
         participant_id: participantId,
         product_id: productId,
         participant_percent: participantPercent,
+        customer_tax_state: customerState,
+        collect_sales_tax: collectSalesTax,
       }),
       response_status: 200,
       risk_score: 10,
@@ -236,11 +394,14 @@ export async function createCheckoutResponse(
         payment_intent_id: null,
         status: null,
         requires_action: false,
-        amount,
+        amount: totalAmount,
         currency,
         expires_at: session.expires_at,
         breakdown: {
-          gross_amount: amount / 100,
+          gross_amount: totalAmount / 100,
+          subtotal_amount: subtotalAmount / 100,
+          sales_tax_amount: salesTaxAmount / 100,
+          sales_tax_state: salesTaxState,
           creator_amount: participantAmount / 100,
           platform_amount: platformAmount / 100,
           soledgic_fee: actualSoledgicFee / 100,
@@ -271,6 +432,13 @@ export async function createCheckoutResponse(
   if (productId) checkoutMetadata.product_id = productId
   if (productName) checkoutMetadata.product_name = productName
   if (customerId) checkoutMetadata.customer_id = customerId
+  if (customerState) checkoutMetadata.customer_tax_state = customerState
+  if (customerPostalCode) checkoutMetadata.customer_tax_postal_code = customerPostalCode
+  if (taxCategory) checkoutMetadata.tax_category = taxCategory
+  if (salesTaxAmount > 0) {
+    checkoutMetadata.sales_tax_amount_cents = String(salesTaxAmount)
+    checkoutMetadata.sales_tax_state = salesTaxState || ''
+  }
   if (body.metadata) {
     for (const [key, value] of Object.entries(body.metadata)) {
       const safeKey = validateId(key, 40)
@@ -286,7 +454,7 @@ export async function createCheckoutResponse(
   }
 
   const checkoutResult = await provider.createPaymentIntent({
-    amount,
+    amount: totalAmount,
     currency,
     metadata: checkoutMetadata,
     description,
@@ -344,7 +512,7 @@ export async function createCheckoutResponse(
         p_ledger_id: ledger.id,
         p_reference_id: fundingReferenceId,
         p_buyer_id: buyerId,
-        p_amount_cents: amount,
+        p_amount_cents: totalAmount,
         p_processing_fee_cents: 0, // Stripe fee tracked separately via webhook
         p_metadata: {
           checkout_provider: 'card',
@@ -376,11 +544,12 @@ export async function createCheckoutResponse(
           p_ledger_id: ledger.id,
           p_reference_id: saleReferenceId,
           p_creator_id: participantId,
-          p_gross_amount: amount,
+          p_gross_amount: totalAmount,
           p_creator_amount: participantAmount,
           p_platform_amount: platformAmount,
           p_processing_fee: 0,
           p_soledgic_fee: actualSoledgicFee,
+          p_sales_tax: salesTaxAmount,
           p_product_id: productId || null,
           p_product_name: productName || null,
           p_metadata: {
@@ -388,6 +557,11 @@ export async function createCheckoutResponse(
             funding_transaction_id: fundingTransactionId,
             buyer_id: buyerId,
             checkout_provider: 'card',
+            subtotal_amount_cents: subtotalAmount,
+            sales_tax_amount_cents: salesTaxAmount,
+            customer_tax_country: customerCountry,
+            customer_tax_state: customerState,
+            ...(taxCategory ? { tax_category: taxCategory } : {}),
           },
         })
 
@@ -408,6 +582,22 @@ export async function createCheckoutResponse(
     }
 
     if (saleBooked && saleTransactionId) {
+      await recordSalesTaxThresholdProgress(
+        supabase,
+        ledger.id,
+        isDigitalGoodsCategory(taxCategory) ? customerState : null,
+        'direct_charge',
+        checkoutPayment.id,
+        isDigitalGoodsCategory(taxCategory) ? subtotalAmount : 0,
+        salesTaxAmount,
+        {
+          source: 'checkout_service_direct',
+          tax_category: taxCategory,
+          collect_sales_tax: collectSalesTax,
+          customer_tax_state: customerState,
+        },
+      )
+
       void autoLinkTransaction(supabase, ledger.id, {
         id: saleTransactionId,
         transaction_type: 'sale',
@@ -422,7 +612,10 @@ export async function createCheckoutResponse(
             payment_id: checkoutPayment.id,
             funding_transaction_id: fundingTransactionId,
             sale_transaction_id: saleTransactionId,
-            amount: amount / 100,
+            amount: totalAmount / 100,
+            subtotal_amount: subtotalAmount / 100,
+            sales_tax_amount: salesTaxAmount / 100,
+            sales_tax_state: salesTaxState,
             currency,
             participant_id: participantId,
             product_id: productId,
@@ -443,13 +636,17 @@ export async function createCheckoutResponse(
     entity_id: checkoutPayment.id,
     actor_type: 'api',
     request_body: sanitizeForAudit({
-      amount,
+      subtotal_amount: subtotalAmount,
+      total_amount: totalAmount,
+      sales_tax_amount: salesTaxAmount,
       currency,
       participant_id: participantId,
       product_id: productId,
       participant_percent: participantPercent,
       provider: 'card',
       sale_booked: saleBooked,
+      customer_tax_state: customerState,
+      collect_sales_tax: collectSalesTax,
     }),
     response_status: 200,
     risk_score: 10,
@@ -467,11 +664,14 @@ export async function createCheckoutResponse(
       payment_intent_id: checkoutPayment.id,
       status: checkoutPayment.status,
       requires_action: checkoutPayment.requires_action,
-      amount,
+      amount: totalAmount,
       currency,
       expires_at: null,
       breakdown: {
-        gross_amount: amount / 100,
+        gross_amount: totalAmount / 100,
+        subtotal_amount: subtotalAmount / 100,
+        sales_tax_amount: salesTaxAmount / 100,
+        sales_tax_state: salesTaxState,
         creator_amount: participantAmount / 100,
         platform_amount: platformAmount / 100,
         soledgic_fee: actualSoledgicFee / 100,

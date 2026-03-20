@@ -27,6 +27,50 @@ interface QuarterlyBreakdown {
   net: number
 }
 
+interface SalesTaxStateSummary {
+  stateCode: string
+  stateName: string
+  reviewStatus: string
+  registrationStatus: string
+  taxableSales: number
+  salesTaxCollected: number
+  transactionCount: number
+  thresholdSales: number | null
+  thresholdTransactions: number | null
+  thresholdReachedAt: string | null
+  defaultTaxRateBps: number | null
+}
+
+type JsonRecord = Record<string, unknown>
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getAmountCents(value: unknown): number | null {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount : null
+}
+
+function getSaleAmounts(meta: Record<string, unknown> | null) {
+  const amounts = isJsonRecord(meta?.amounts_cents) ? meta.amounts_cents : null
+  const grossCents = getAmountCents(amounts?.gross)
+  const subtotalCents = getAmountCents(amounts?.subtotal)
+  const salesTaxCents = getAmountCents(amounts?.sales_tax) ?? 0
+  const feeCents = getAmountCents(amounts?.fee) ?? 0
+  const soledgicFeeCents = getAmountCents(amounts?.soledgic_fee) ?? 0
+
+  return {
+    subtotal: subtotalCents !== null
+      ? subtotalCents / 100
+      : grossCents !== null
+        ? (grossCents - salesTaxCents) / 100
+        : null,
+    salesTax: salesTaxCents / 100,
+    fees: (feeCents + soledgicFeeCents) / 100,
+  }
+}
+
 export default function TaxSummaryPage() {
   const livemode = useLivemode()
   const activeLedgerGroupId = useActiveLedgerGroupId()
@@ -43,13 +87,18 @@ export default function TaxSummaryPage() {
   })
   const [quarters, setQuarters] = useState<QuarterlyBreakdown[]>([])
   const [creatorCompliance, setCreatorCompliance] = useState({ total: 0, withTaxInfo: 0 })
+  const [salesTaxCollected, setSalesTaxCollected] = useState(0)
+  const [salesTaxStates, setSalesTaxStates] = useState<SalesTaxStateSummary[]>([])
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      setLoading(false)
+      return
+    }
 
     const { data: membership } = await supabase
       .from('organization_members')
@@ -57,7 +106,10 @@ export default function TaxSummaryPage() {
       .eq('user_id', user.id)
       .single()
 
-    if (!membership) return
+    if (!membership) {
+      setLoading(false)
+      return
+    }
 
     const { data: ledgers } = await supabase
       .from('ledgers')
@@ -106,13 +158,16 @@ export default function TaxSummaryPage() {
 
       switch (tx.transaction_type) {
         case 'sale':
-          grossRevenue += amount
-          quarterBuckets[q].revenue += amount
-          // Extract fees from metadata if present
-          if (meta?.platform_fee) platformFees += Number(meta.platform_fee)
-          if (meta?.processing_fee) processingFees += Number(meta.processing_fee)
-          if (meta?.platform_fee || meta?.processing_fee) {
-            quarterBuckets[q].fees += Number(meta?.platform_fee ?? 0) + Number(meta?.processing_fee ?? 0)
+          {
+            const saleAmounts = getSaleAmounts(meta)
+            const revenueAmount = saleAmounts.subtotal ?? amount
+            grossRevenue += revenueAmount
+            quarterBuckets[q].revenue += revenueAmount
+            platformFees += saleAmounts.fees
+            processingFees += 0
+            if (saleAmounts.fees > 0) {
+              quarterBuckets[q].fees += saleAmounts.fees
+            }
           }
           break
         case 'refund':
@@ -171,6 +226,49 @@ export default function TaxSummaryPage() {
       total: totalCreators ?? 0,
       withTaxInfo: creatorsWithTax ?? 0,
     })
+
+    const { data: stateStatusRows } = await supabase
+      .from('ledger_sales_tax_state_status')
+      .select('state_code, taxable_sales_cents, tax_amount_cents, transaction_count, threshold_sales_cents, threshold_transactions, threshold_reached_at, registration_status')
+      .eq('ledger_id', ledger.id)
+      .eq('calendar_year', taxYear)
+      .order('taxable_sales_cents', { ascending: false })
+
+    const activeStateCodes = Array.from(new Set([
+      'MD',
+      ...((stateStatusRows ?? []).map((row) => row.state_code).filter((code): code is string => typeof code === 'string' && code.length > 0)),
+    ]))
+
+    const { data: stateRuleRows } = await supabase
+      .from('sales_tax_state_rules')
+      .select('state_code, state_name, review_status, default_tax_rate_bps')
+      .in('state_code', activeStateCodes)
+
+    const statusMap = new Map((stateStatusRows ?? []).map((row) => [row.state_code, row]))
+    const summaries = (stateRuleRows ?? [])
+      .map((rule) => {
+        const status = statusMap.get(rule.state_code)
+        return {
+          stateCode: rule.state_code,
+          stateName: rule.state_name,
+          reviewStatus: rule.review_status,
+          registrationStatus: status?.registration_status ?? (rule.review_status === 'reviewed' ? 'monitoring' : 'pending_review'),
+          taxableSales: Number(status?.taxable_sales_cents ?? 0) / 100,
+          salesTaxCollected: Number(status?.tax_amount_cents ?? 0) / 100,
+          transactionCount: Number(status?.transaction_count ?? 0),
+          thresholdSales: status?.threshold_sales_cents ? Number(status.threshold_sales_cents) / 100 : null,
+          thresholdTransactions: status?.threshold_transactions ? Number(status.threshold_transactions) : null,
+          thresholdReachedAt: status?.threshold_reached_at ?? null,
+          defaultTaxRateBps: rule.default_tax_rate_bps ?? null,
+        } satisfies SalesTaxStateSummary
+      })
+      .sort((a, b) => {
+        if (b.taxableSales !== a.taxableSales) return b.taxableSales - a.taxableSales
+        return a.stateCode.localeCompare(b.stateCode)
+      })
+
+    setSalesTaxStates(summaries)
+    setSalesTaxCollected(summaries.reduce((sum, row) => sum + row.salesTaxCollected, 0))
 
     setLoading(false)
   }, [activeLedgerGroupId, livemode, taxYear])
@@ -264,6 +362,16 @@ export default function TaxSummaryPage() {
             {fmt(totals.netIncome)}
           </div>
         </div>
+        <div className="bg-card p-5 rounded-lg border border-border col-span-2 md:col-span-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Receipt className="w-4 h-4 text-sky-500" />
+            <span className="text-sm text-muted-foreground">Sales Tax Collected</span>
+          </div>
+          <div className="text-2xl font-bold text-foreground">{fmt(salesTaxCollected)}</div>
+          <div className="text-xs text-muted-foreground mt-1">
+            Tracked separately from creator and platform revenue.
+          </div>
+        </div>
       </div>
 
       {/* Creator Compliance Status — counts only, no PII */}
@@ -296,6 +404,77 @@ export default function TaxSummaryPage() {
             Creators without tax info are subject to 24% IRS backup withholding on payouts.
           </p>
         )}
+      </div>
+
+      {/* Sales Tax Threshold Tracking */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Receipt className="w-5 h-5" />
+          Sales Tax Threshold Tracking
+        </h2>
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border bg-muted/30 text-sm text-muted-foreground">
+            Maryland digital goods is the only reviewed auto-collect rule in this repo. Other states are monitored for threshold activity and remain pending review.
+          </div>
+          <table className="w-full">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">State</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Taxable Sales</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Tax Collected</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Transactions</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Threshold</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {salesTaxStates.map((row) => (
+                <tr key={row.stateCode} className="hover:bg-muted/50">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-foreground">{row.stateName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {row.defaultTaxRateBps ? `${(row.defaultTaxRateBps / 100).toFixed(2)}% reviewed rate` : 'Rate pending review'}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm font-medium text-foreground">
+                    {row.taxableSales > 0 ? fmt(row.taxableSales) : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm text-foreground">
+                    {row.salesTaxCollected > 0 ? fmt(row.salesTaxCollected) : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-right text-sm text-muted-foreground">
+                    {row.transactionCount > 0 ? row.transactionCount : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {row.thresholdSales || row.thresholdTransactions
+                      ? `${row.thresholdSales ? fmt(row.thresholdSales) : 'No sales threshold'}${row.thresholdTransactions ? ` or ${row.thresholdTransactions} tx` : ''}`
+                      : 'Needs legal review'}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                      row.registrationStatus === 'threshold_reached'
+                        ? 'bg-yellow-500/15 text-yellow-700'
+                        : row.registrationStatus === 'collecting' || row.registrationStatus === 'registered'
+                          ? 'bg-green-500/15 text-green-700'
+                          : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {row.registrationStatus === 'threshold_reached'
+                        ? 'Threshold reached'
+                        : row.reviewStatus === 'reviewed'
+                          ? 'Monitoring'
+                          : 'Pending review'}
+                    </span>
+                    {row.thresholdReachedAt && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Reached {new Date(row.thresholdReachedAt).toLocaleDateString()}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Quarterly Breakdown */}

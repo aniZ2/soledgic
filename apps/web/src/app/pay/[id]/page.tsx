@@ -5,6 +5,9 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 interface CheckoutSession {
   id: string
   amount: number
+  subtotal_amount: number
+  sales_tax_amount: number
+  sales_tax_state: string | null
   currency: string
   product_name: string | null
   customer_email: string | null
@@ -18,7 +21,7 @@ async function getSession(id: string): Promise<CheckoutSession | null> {
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .from('checkout_sessions')
-    .select('id, amount, currency, product_name, customer_email, status, expires_at, cancel_url, ledger_id')
+    .select('id, amount, subtotal_amount, sales_tax_amount, sales_tax_state, currency, product_name, customer_email, status, expires_at, cancel_url, ledger_id')
     .eq('id', id)
     .single()
 
@@ -93,12 +96,33 @@ export default async function CheckoutPage({ params }: { params: Promise<{ id: s
           </div>
 
           <div className="border-t border-b border-border py-6 mb-6">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total</span>
-              <span className="text-3xl font-bold text-foreground">
-                {formatAmount(session.amount, session.currency)}
-              </span>
-            </div>
+            {session.sales_tax_amount > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-medium text-foreground">{formatAmount(session.subtotal_amount, session.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    {session.sales_tax_state || 'Sales'} tax
+                  </span>
+                  <span className="font-medium text-foreground">{formatAmount(session.sales_tax_amount, session.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-border">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="text-3xl font-bold text-foreground">
+                    {formatAmount(session.amount, session.currency)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Total</span>
+                <span className="text-3xl font-bold text-foreground">
+                  {formatAmount(session.amount, session.currency)}
+                </span>
+              </div>
+            )}
             <p className="mt-1 text-xs text-muted-foreground text-right uppercase">{session.currency}</p>
           </div>
 

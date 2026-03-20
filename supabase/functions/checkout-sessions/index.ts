@@ -40,11 +40,30 @@ const handler = createHandler(
       product_name: typeof payload.product_name === 'string' ? payload.product_name : undefined,
       customer_email: typeof payload.customer_email === 'string' ? payload.customer_email : undefined,
       customer_id: typeof payload.customer_id === 'string' ? payload.customer_id : undefined,
+      buyer_id: typeof payload.buyer_id === 'string' ? payload.buyer_id : undefined,
+      customer_country: typeof payload.customer_country === 'string' ? payload.customer_country : undefined,
+      customer_state: typeof payload.customer_state === 'string' ? payload.customer_state : undefined,
+      customer_postal_code: typeof payload.customer_postal_code === 'string' ? payload.customer_postal_code : undefined,
+      customer_address: payload.customer_address && typeof payload.customer_address === 'object'
+        ? {
+            country: typeof (payload.customer_address as Record<string, unknown>).country === 'string'
+              ? (payload.customer_address as Record<string, unknown>).country as string
+              : undefined,
+            state: typeof (payload.customer_address as Record<string, unknown>).state === 'string'
+              ? (payload.customer_address as Record<string, unknown>).state as string
+              : undefined,
+            postal_code: typeof (payload.customer_address as Record<string, unknown>).postal_code === 'string'
+              ? (payload.customer_address as Record<string, unknown>).postal_code as string
+              : undefined,
+          }
+        : undefined,
       payment_method_id: typeof payload.payment_method_id === 'string' ? payload.payment_method_id : undefined,
       source_id: typeof payload.source_id === 'string' ? payload.source_id : undefined,
       success_url: typeof payload.success_url === 'string' ? payload.success_url : undefined,
       cancel_url: typeof payload.cancel_url === 'string' ? payload.cancel_url : undefined,
       idempotency_key: typeof payload.idempotency_key === 'string' ? payload.idempotency_key : undefined,
+      tax_category: typeof payload.tax_category === 'string' ? payload.tax_category : undefined,
+      collect_sales_tax: payload.collect_sales_tax === true,
       metadata: payload.metadata as Record<string, string> | undefined,
     }, requestId, getPaymentProvider('card', { livemode: ledger.livemode }))
 

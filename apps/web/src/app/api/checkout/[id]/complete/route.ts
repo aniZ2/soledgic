@@ -50,6 +50,30 @@ interface CompleteRequest {
   state?: string
 }
 
+async function recordSalesTaxThresholdProgress(
+  ledgerId: string,
+  stateCode: string | null | undefined,
+  sourceId: string,
+  taxableSalesCents: number,
+  taxAmountCents: number,
+  metadata: Record<string, unknown>,
+) {
+  if (!stateCode || taxableSalesCents <= 0) return
+
+  const supabase = createServiceRoleClient()
+  const now = new Date()
+  await supabase.rpc('record_sales_tax_threshold_event', {
+    p_ledger_id: ledgerId,
+    p_state_code: stateCode,
+    p_source_type: 'checkout_session',
+    p_source_id: sourceId,
+    p_taxable_sales_cents: taxableSalesCents,
+    p_tax_amount_cents: taxAmountCents,
+    p_calendar_year: now.getUTCFullYear(),
+    p_metadata: metadata,
+  })
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -255,6 +279,9 @@ export async function POST(
   // retried by reconciliation instead of silently losing the journal entry.
   // ========================================================================
   const referenceId = `checkout_${session.id}`
+  const subtotalAmount = Number(session.subtotal_amount ?? session.amount)
+  const soledgicFeeAmount = Math.floor(subtotalAmount * 0.035)
+  const taxCategory = typeof session.metadata?.tax_category === 'string' ? session.metadata.tax_category : null
   let saleRecorded = false
   try {
     const { error: rpcError } = await supabase.rpc('record_sale_atomic', {
@@ -265,9 +292,17 @@ export async function POST(
       p_creator_amount: session.creator_amount,
       p_platform_amount: session.platform_amount,
       p_processing_fee: 0,
+      p_soledgic_fee: soledgicFeeAmount,
+      p_sales_tax: session.sales_tax_amount || 0,
       p_product_id: session.product_id || null,
       p_product_name: session.product_name || null,
-      p_metadata: session.metadata || {},
+      p_metadata: {
+        ...(session.metadata || {}),
+        subtotal_amount_cents: subtotalAmount,
+        sales_tax_amount_cents: session.sales_tax_amount ?? 0,
+        customer_tax_country: session.customer_tax_country ?? null,
+        customer_tax_state: session.customer_tax_state ?? null,
+      },
     })
     if (rpcError) {
       console.error('record_sale_atomic RPC error after successful charge:', rpcError.message)
@@ -281,6 +316,23 @@ export async function POST(
   const completedAt = new Date()
 
   if (saleRecorded) {
+    try {
+      await recordSalesTaxThresholdProgress(
+        session.ledger_id,
+        taxCategory === 'digital_goods' ? session.customer_tax_state : null,
+        session.id,
+        subtotalAmount,
+        Number(session.sales_tax_amount ?? 0),
+        {
+          source: 'checkout_complete',
+          sales_tax_state: session.sales_tax_state ?? null,
+          customer_tax_country: session.customer_tax_country ?? null,
+        },
+      )
+    } catch (error) {
+      console.error('Failed to record sales tax threshold progress:', error)
+    }
+
     // Full success: mark completed, clear state
     await supabase
       .from('checkout_sessions')
@@ -308,6 +360,9 @@ export async function POST(
             payment_id: transfer.id,
             reference_id: referenceId,
             amount: session.amount / 100,
+            subtotal_amount: subtotalAmount / 100,
+            sales_tax_amount: Number(session.sales_tax_amount ?? 0) / 100,
+            sales_tax_state: session.sales_tax_state ?? null,
             currency: session.currency,
             creator_id: session.creator_id,
             product_id: session.product_id,
