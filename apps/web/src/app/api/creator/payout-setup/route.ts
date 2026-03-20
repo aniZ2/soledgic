@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
-import { createClient } from '@/lib/supabase/server'
 import { getPublicAppUrl } from '@/lib/public-url'
+import { createServiceRoleClient } from '@/lib/supabase/service'
+import { listCreatorConnectedAccountsForUser } from '@/lib/creator-connected-accounts-server'
 import {
   createOnboardingLink,
   fetchProcessorIdentity,
@@ -110,52 +111,30 @@ interface PayoutSetupRequest {
 }
 
 async function findCreatorAccount(
-  supabase: Awaited<ReturnType<typeof createClient>>,
   user: { id: string; email?: string },
   ledgerId?: string
 ) {
-  // SECURITY: Look up the connected_accounts row by the authenticated user's email.
-  // The `email` column on connected_accounts is set by platform admins when they
-  // register creators; it is the trust anchor. We do NOT use user_metadata.creator_id
-  // because user_metadata is user-writable in Supabase and is not a safe auth boundary.
-  if (!user.email) {
-    return { data: null, error: 'No email on authenticated user', creatorId: null, ambiguous: false }
-  }
+  const accounts = await listCreatorConnectedAccountsForUser(user.id, user.email)
+  const matches = ledgerId
+    ? accounts.filter((account) => account.ledger_id === ledgerId)
+    : accounts
 
-  let query = supabase
-    .from('connected_accounts')
-    .select('id, entity_id, ledger_id, processor_account_id, processor_identity_id, default_bank_last4, default_bank_name, payouts_enabled, setup_state, setup_state_expires_at')
-    .eq('entity_type', 'creator')
-    .eq('email', user.email)
-    .eq('is_active', true)
-
-  // If caller specified a ledger_id, scope to that ledger
-  if (ledgerId) {
-    query = query.eq('ledger_id', ledgerId)
-  }
-
-  const { data, error } = await query.order('created_at', { ascending: true })
-
-  if (error) {
-    return { data: null, error: String(error.message || error), creatorId: null, ambiguous: false }
-  }
-
-  if (!data || data.length === 0) {
+  if (matches.length === 0) {
     return { data: null, error: null, creatorId: null, ambiguous: false }
   }
 
   // If multiple rows and no ledger_id filter, require disambiguation
-  if (data.length > 1 && !ledgerId) {
+  if (matches.length > 1 && !ledgerId) {
     return {
       data: null,
       error: null,
       creatorId: null,
       ambiguous: true,
-      ledger_ids: data.map(r => r.ledger_id),
+      ledger_ids: matches.map((row) => row.ledger_id),
     }
   }
 
-  const row = data[0]
+  const row = matches[0]
   return { data: row, error: null, creatorId: row.entity_id || null, ambiguous: false }
 }
 
@@ -166,10 +145,8 @@ export const POST = createApiHandler(
       return NextResponse.json({ error: parseError || 'Invalid request body' }, { status: 400 })
     }
 
-    const supabase = await createClient()
-
     // Look up the creator's connected account by their verified email
-    const found = await findCreatorAccount(supabase, user!, body.ledger_id)
+    const found = await findCreatorAccount(user!, body.ledger_id)
 
     if (found.ambiguous) {
       return NextResponse.json({
@@ -238,7 +215,8 @@ export const POST = createApiHandler(
         return NextResponse.json({ error: 'Failed to create payout setup link' }, { status: 500 })
       }
 
-      const { error: stateError } = await supabase
+      const serviceClient = createServiceRoleClient()
+      const { error: stateError } = await serviceClient
         .from('connected_accounts')
         .update({
           setup_state: setupState,
@@ -295,7 +273,8 @@ export const POST = createApiHandler(
       }
 
       // Update connected_account with payout details
-      const { error: saveError } = await supabase
+      const serviceClient = createServiceRoleClient()
+      const { error: saveError } = await serviceClient
         .from('connected_accounts')
         .update({
           processor_identity_id: identity.id || identityId,

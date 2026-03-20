@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
-import { createClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { listCreatorConnectedAccountsForUser } from '@/lib/creator-connected-accounts-server'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 const DOCUMENT_TYPES = ['government_id', 'proof_of_address', 'w9', 'other']
 
-async function getCreatorOrgId(userId: string): Promise<string | null> {
-  const supabase = await createClient()
-  const { data: account } = await supabase
-    .from('connected_accounts')
-    .select('ledger_id')
-    .eq('created_by', userId)
-    .eq('is_active', true)
-    .maybeSingle()
+async function getCreatorOrgId(userId: string, userEmail?: string | null): Promise<string | null> {
+  const accounts = await listCreatorConnectedAccountsForUser(userId, userEmail)
+  const account = accounts[0]
   if (!account) return null
 
   const serviceClient = createServiceRoleClient()
@@ -28,7 +23,7 @@ async function getCreatorOrgId(userId: string): Promise<string | null> {
 
 export const POST = createApiHandler(
   async (request, { user }) => {
-    const orgId = await getCreatorOrgId(user!.id)
+    const orgId = await getCreatorOrgId(user!.id, user!.email)
     if (!orgId) {
       return NextResponse.json({ error: 'No creator account found' }, { status: 404 })
     }
@@ -79,7 +74,7 @@ export const POST = createApiHandler(
 
 export const DELETE = createApiHandler(
   async (request, { user }) => {
-    const orgId = await getCreatorOrgId(user!.id)
+    const orgId = await getCreatorOrgId(user!.id, user!.email)
     if (!orgId) return NextResponse.json({ error: 'No creator account found' }, { status: 404 })
 
     const { searchParams } = new URL(request.url)

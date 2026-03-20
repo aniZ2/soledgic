@@ -33,7 +33,7 @@ export const POST = createApiHandler(
     // Verify the connected account belongs to this user (via email match)
     const { data: account } = await supabase
       .from('connected_accounts')
-      .select('id, ledger_id, entity_id, is_active')
+      .select('id, ledger_id, entity_id, is_active, payouts_enabled, default_bank_account_id')
       .eq('id', connected_account_id)
       .eq('email', user.email)
       .eq('is_active', true)
@@ -41,6 +41,12 @@ export const POST = createApiHandler(
 
     if (!account) {
       return NextResponse.json({ error: 'Account not found or not yours' }, { status: 404 })
+    }
+
+    if (account.payouts_enabled !== true || !account.default_bank_account_id) {
+      return NextResponse.json({
+        error: 'Complete payout setup before requesting a payout',
+      }, { status: 400 })
     }
 
     // Server-side balance check

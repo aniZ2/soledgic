@@ -5,6 +5,7 @@ import { LogOut } from 'lucide-react'
 import { creatorPortalNavigation } from '@/lib/navigation'
 import { MobileNav } from '@/components/mobile-nav'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { listCreatorConnectedAccountsForUser } from '@/lib/creator-connected-accounts-server'
 
 export default async function CreatorPortalLayout({
   children,
@@ -19,15 +20,8 @@ export default async function CreatorPortalLayout({
     redirect('/creator/login')
   }
 
-  // Verify user is actually a creator (has a connected_accounts row)
-  const { data: creatorAccount } = await supabase
-    .from('connected_accounts')
-    .select('id')
-    .eq('email', user.email)
-    .eq('is_active', true)
-    .limit(1)
-
-  if (!creatorAccount || creatorAccount.length === 0) {
+  const creatorAccounts = await listCreatorConnectedAccountsForUser(user.id, user.email)
+  if (creatorAccounts.length === 0) {
     redirect('/login')
   }
 

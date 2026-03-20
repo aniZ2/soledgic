@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ConnectWizardClient } from './connect-wizard-client'
 
@@ -12,20 +13,13 @@ export default async function ConnectPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .single()
-
-  if (!membership) redirect('/onboarding')
+  const organizationId = await getActiveOrganizationId(user.id)
+  if (!organizationId) redirect('/onboarding')
 
   const { data: ledgers } = await supabase
     .from('ledgers')
     .select('id, business_name, ledger_group_id')
-    .eq('organization_id', membership.organization_id)
+    .eq('organization_id', organizationId)
     .eq('status', 'active')
     .eq('livemode', livemode)
 

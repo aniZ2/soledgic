@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
+import { listCreatorConnectedAccountsForUser } from '@/lib/creator-connected-accounts-server'
 
 const VALID_FORMATS = new Set(['pdf', 'csv'])
 
@@ -56,15 +57,9 @@ export const GET = createApiHandler(
     }
 
     const supabase = await createClient()
+    const connectedAccounts = await listCreatorConnectedAccountsForUser(user.id, user.email)
 
-    // Look up the creator's connected account(s) by their verified email
-    const { data: connectedAccounts, error: caError } = await supabase
-      .from('connected_accounts')
-      .select('id, ledger_id, entity_id, ledger:ledgers(business_name)')
-      .eq('email', user.email)
-      .eq('is_active', true)
-
-    if (caError || !connectedAccounts || connectedAccounts.length === 0) {
+    if (connectedAccounts.length === 0) {
       return NextResponse.json(
         { error: 'No linked creator account found.' },
         { status: 404 }
@@ -72,16 +67,16 @@ export const GET = createApiHandler(
     }
 
     // Use the first connected account (consistent with the statements page)
-    const account = connectedAccounts[0] as {
-      id: string
-      ledger_id: string
-      entity_id: string
-      ledger: { business_name: string }[] | null
-    }
+    const account = connectedAccounts[0]
 
     const ledgerId = account.ledger_id
     const creatorEntityId = account.entity_id
-    const businessName = account.ledger?.[0]?.business_name || 'Platform'
+    const { data: ledgerRow } = await supabase
+      .from('ledgers')
+      .select('business_name')
+      .eq('id', ledgerId)
+      .maybeSingle()
+    const businessName = ledgerRow?.business_name || 'Platform'
 
     // Look up the creator's account record in the ledger
     const { data: creatorAccount } = await supabase

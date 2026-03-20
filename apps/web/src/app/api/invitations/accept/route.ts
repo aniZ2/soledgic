@@ -3,6 +3,9 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { createApiHandler } from '@/lib/api-handler'
 import { getPublicAppUrl } from '@/lib/public-url'
 import { NextResponse } from 'next/server'
+import { ACTIVE_LEDGER_GROUP_COOKIE, ACTIVE_ORG_COOKIE } from '@/lib/livemode'
+
+const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
 function normalizeEmail(email: string | null | undefined): string | null {
   if (!email) return null
@@ -23,11 +26,25 @@ function getSafeRedirectOrigin(requestUrl: URL): string {
   }
 }
 
+function buildSuccessRedirect(origin: string, path: string, organizationId: string, isSecure: boolean) {
+  const response = NextResponse.redirect(`${origin}${path}`)
+  response.cookies.set(ACTIVE_ORG_COOKIE, organizationId, {
+    path: '/',
+    maxAge: ACTIVE_ORG_COOKIE_MAX_AGE,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isSecure,
+  })
+  response.cookies.delete(ACTIVE_LEDGER_GROUP_COOKIE)
+  return response
+}
+
 export const GET = createApiHandler(
   async (request) => {
     const requestUrl = new URL(request.url)
     const { searchParams } = requestUrl
     const origin = getSafeRedirectOrigin(requestUrl)
+    const isSecure = requestUrl.protocol === 'https:'
     const token = (searchParams.get('token') || '').trim()
     const encodedToken = encodeURIComponent(token)
 
@@ -106,7 +123,7 @@ export const GET = createApiHandler(
           .eq('id', invitation.id)
           .eq('status', 'pending')
 
-        return NextResponse.redirect(`${origin}/dashboard?success=already_member`)
+        return buildSuccessRedirect(origin, '/dashboard?success=already_member', invitation.organization_id, isSecure)
       }
 
       // Re-invite of a removed member - reactivate with new role
@@ -161,7 +178,7 @@ export const GET = createApiHandler(
       return NextResponse.redirect(`${origin}/dashboard?error=accept_failed`)
     }
 
-    return NextResponse.redirect(`${origin}/dashboard?success=invitation_accepted`)
+    return buildSuccessRedirect(origin, '/dashboard?success=invitation_accepted', invitation.organization_id, isSecure)
   },
   {
     requireAuth: false,

@@ -1,27 +1,23 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
-import { createClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/service'
+import { listCreatorConnectedAccountsForUser } from '@/lib/creator-connected-accounts-server'
 
-async function getCreatorContext(userId: string) {
-  const supabase = await createClient()
-  // Creator portal users are linked via connected_accounts.created_by or email match
-  const { data: account, error } = await supabase
-    .from('connected_accounts')
-    .select('id, ledger_id, entity_id, kyc_status, is_active')
-    .eq('created_by', userId)
-    .eq('is_active', true)
-    .maybeSingle()
-  if (error || !account) return null
-  return account
+function aggregateKycStatus(statuses: string[]): string {
+  if (statuses.length === 0) return 'pending'
+  if (statuses.every((status) => status === 'approved')) return 'approved'
+  if (statuses.includes('suspended')) return 'suspended'
+  if (statuses.includes('rejected')) return 'rejected'
+  if (statuses.includes('under_review')) return 'under_review'
+  return 'pending'
 }
 
 export const GET = createApiHandler(
   async (_request, { user }) => {
-    const account = await getCreatorContext(user!.id)
+    const accounts = await listCreatorConnectedAccountsForUser(user!.id, user!.email)
 
     // Return status even if no connected_account (creator hasn't been onboarded)
-    if (!account) {
+    if (accounts.length === 0) {
       return NextResponse.json({
         status: { kyc_status: 'pending', rejection_reason: null },
         documents: [],
@@ -30,19 +26,24 @@ export const GET = createApiHandler(
 
     const serviceClient = createServiceRoleClient()
 
-    // Get documents uploaded by this creator (stored under the ledger's org)
-    const { data: ledger } = await serviceClient
+    const ledgerIds = Array.from(new Set(accounts.map((account) => account.ledger_id)))
+    const { data: ledgers } = await serviceClient
       .from('ledgers')
       .select('organization_id')
-      .eq('id', account.ledger_id)
-      .single()
+      .in('id', ledgerIds)
 
     let documents: unknown[] = []
-    if (ledger?.organization_id) {
+    const organizationIds = Array.from(new Set(
+      (ledgers || [])
+        .map((ledger) => (typeof ledger.organization_id === 'string' ? ledger.organization_id : null))
+        .filter((organizationId): organizationId is string => organizationId !== null),
+    ))
+
+    if (organizationIds.length > 0) {
       const { data: docs } = await serviceClient
         .from('compliance_documents')
         .select('id, document_type, file_name, status, rejection_reason, created_at')
-        .eq('organization_id', ledger.organization_id)
+        .in('organization_id', organizationIds)
         .eq('uploaded_by', user!.id)
         .order('created_at', { ascending: false })
       documents = docs || []
@@ -50,7 +51,7 @@ export const GET = createApiHandler(
 
     return NextResponse.json({
       status: {
-        kyc_status: account.kyc_status || 'pending',
+        kyc_status: aggregateKycStatus(accounts.map((account) => account.kyc_status || 'pending')),
         rejection_reason: null,
       },
       documents,

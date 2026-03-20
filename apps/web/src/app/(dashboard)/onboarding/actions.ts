@@ -1,7 +1,9 @@
 'use server'
 
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { provisionOrganizationWithLedgers, type BusinessInfoInput } from '@/lib/org-provisioning'
+import { ACTIVE_LEDGER_GROUP_COOKIE, ACTIVE_ORG_COOKIE } from '@/lib/livemode'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -39,6 +41,17 @@ export async function createOrganizationWithLedger(input: {
       ledgerMode,
       businessInfo,
     })
+
+    const cookieStore = await cookies()
+    cookieStore.set(ACTIVE_ORG_COOKIE, data.organizationId, {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    })
+    cookieStore.delete(ACTIVE_LEDGER_GROUP_COOKIE)
+
     return { success: true, data }
   } catch (error: unknown) {
     return { error: getErrorMessage(error, 'Failed to create organization') }

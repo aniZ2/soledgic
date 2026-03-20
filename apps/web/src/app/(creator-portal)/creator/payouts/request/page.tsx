@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { fetchWithCsrf } from '@/lib/fetch-with-csrf'
 import Link from 'next/link'
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 
@@ -92,7 +93,10 @@ export default function RequestPayoutPage() {
       }
 
       setAccounts(accountsWithBalance)
-      if (accountsWithBalance.length === 1) {
+      const firstEligibleAccount = accountsWithBalance.find((account) => account.payouts_enabled)
+      if (firstEligibleAccount) {
+        setSelectedAccount(firstEligibleAccount.id)
+      } else if (accountsWithBalance.length === 1) {
         setSelectedAccount(accountsWithBalance[0].id)
       }
     }
@@ -109,6 +113,7 @@ export default function RequestPayoutPage() {
 
   const selectedAccountData = accounts.find(a => a.id === selectedAccount)
   const maxAmount = selectedAccountData?.balance || 0
+  const hasEligibleAccount = accounts.some((account) => account.payouts_enabled)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -136,7 +141,7 @@ export default function RequestPayoutPage() {
     }
 
     // Server-side validated payout request (prevents client-side amount bypass)
-    const res = await fetch('/api/creator/payout-request', {
+    const res = await fetchWithCsrf('/api/creator/payout-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -213,6 +218,19 @@ export default function RequestPayoutPage() {
       </div>
 
       <div className="max-w-lg">
+        {!hasEligibleAccount && (
+          <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4">
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+              Complete bank setup before requesting a payout.
+            </p>
+            <Link
+              href="/creator/settings"
+              className="mt-2 inline-block text-sm font-medium text-amber-700 underline hover:no-underline dark:text-amber-300"
+            >
+              Open creator settings
+            </Link>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Account Selection */}
           {accounts.length > 1 && (
@@ -228,7 +246,7 @@ export default function RequestPayoutPage() {
                 <option value="">Choose an account</option>
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>
-                    {account.ledger_name} - {formatCurrency(account.balance)} available
+                    {account.ledger_name} - {formatCurrency(account.balance)} available{account.payouts_enabled ? '' : ' (bank setup required)'}
                   </option>
                 ))}
               </select>
@@ -251,6 +269,11 @@ export default function RequestPayoutPage() {
                     {selectedAccountData.default_bank_name} ****{selectedAccountData.default_bank_last4}
                   </span>
                 </div>
+              )}
+              {!selectedAccountData.payouts_enabled && (
+                <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+                  This account is not ready for payouts yet.
+                </p>
               )}
             </div>
           )}
@@ -309,7 +332,7 @@ export default function RequestPayoutPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={submitting || !selectedAccount || !amount || maxAmount === 0}
+            disabled={submitting || !selectedAccount || !amount || maxAmount === 0 || !selectedAccountData?.payouts_enabled}
             className="w-full bg-primary text-primary-foreground py-2 px-4 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
