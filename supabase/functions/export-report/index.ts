@@ -26,6 +26,35 @@ interface ExportRequest {
 const VALID_REPORT_TYPES = ['transaction_detail', 'creator_earnings', 'platform_revenue', 
                            'payout_summary', 'reconciliation', 'audit_log']
 
+function getSaleAmounts(metadata: unknown, fallbackGrossAmount: number) {
+  const meta = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown>
+    : null
+  const amounts = meta?.amounts_cents && typeof meta.amounts_cents === 'object' && !Array.isArray(meta.amounts_cents)
+    ? meta.amounts_cents as Record<string, unknown>
+    : null
+
+  const grossCents = Number(amounts?.gross)
+  const subtotalCents = Number(amounts?.subtotal)
+  const salesTaxCents = Number(amounts?.sales_tax)
+  const creatorCents = Number(amounts?.creator)
+  const platformCents = Number(amounts?.platform)
+
+  const subtotalAmount = Number.isFinite(subtotalCents)
+    ? subtotalCents / 100
+    : Number.isFinite(grossCents) && Number.isFinite(salesTaxCents)
+      ? (grossCents - salesTaxCents) / 100
+      : fallbackGrossAmount
+
+  return {
+    subtotalAmount,
+    salesTaxAmount: Number.isFinite(salesTaxCents) ? salesTaxCents / 100 : 0,
+    grossChargeAmount: Number.isFinite(grossCents) ? grossCents / 100 : fallbackGrossAmount,
+    platformAmount: Number.isFinite(platformCents) ? platformCents / 100 : 0,
+    creatorAmount: Number.isFinite(creatorCents) ? creatorCents / 100 : 0,
+  }
+}
+
 const handler = createHandler(
   { endpoint: 'export-report', requireAuth: true, rateLimit: true },
   async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, body: ExportRequest) => {
@@ -114,16 +143,21 @@ const handler = createHandler(
 
         const { data: sales } = await query
 
-        data = sales?.map(sale => ({
-          date: sale.created_at,
-          reference_id: sale.reference_id,
-          total_amount: sale.amount,
-          platform_amount: (sale.metadata as any)?.breakdown?.platform_amount || 0,
-          creator_amount: (sale.metadata as any)?.breakdown?.creator_amount || 0,
-          platform_fee_percent: (sale.metadata as any)?.platform_fee_percent || 20
-        })) || []
+        data = sales?.map(sale => {
+          const amounts = getSaleAmounts(sale.metadata, Number(sale.amount))
+          return {
+            date: sale.created_at,
+            reference_id: sale.reference_id,
+            total_amount: amounts.subtotalAmount,
+            gross_charge_amount: amounts.grossChargeAmount,
+            sales_tax_amount: amounts.salesTaxAmount,
+            platform_amount: amounts.platformAmount,
+            creator_amount: amounts.creatorAmount,
+            platform_fee_percent: (sale.metadata as any)?.platform_fee_percent || 20
+          }
+        }) || []
 
-        columns = ['date', 'reference_id', 'total_amount', 'platform_amount', 'creator_amount', 'platform_fee_percent']
+        columns = ['date', 'reference_id', 'total_amount', 'gross_charge_amount', 'sales_tax_amount', 'platform_amount', 'creator_amount', 'platform_fee_percent']
         break
       }
 

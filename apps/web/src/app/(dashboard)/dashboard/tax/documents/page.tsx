@@ -20,6 +20,27 @@ interface ExportableReport {
   type: 'revenue' | 'expenses' | 'fees' | 'payouts' | 'full'
 }
 
+function getSaleSubtotalAmount(row: { amount: number; metadata?: Record<string, unknown> | null }) {
+  const amounts = row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+    ? (row.metadata as Record<string, unknown>).amounts_cents
+    : null
+
+  if (amounts && typeof amounts === 'object' && !Array.isArray(amounts)) {
+    const subtotal = Number((amounts as Record<string, unknown>).subtotal)
+    if (Number.isFinite(subtotal)) {
+      return subtotal / 100
+    }
+
+    const gross = Number((amounts as Record<string, unknown>).gross)
+    const salesTax = Number((amounts as Record<string, unknown>).sales_tax)
+    if (Number.isFinite(gross) && Number.isFinite(salesTax)) {
+      return (gross - salesTax) / 100
+    }
+  }
+
+  return Number(row.amount)
+}
+
 const AVAILABLE_REPORTS: ExportableReport[] = [
   {
     id: 'revenue-summary',
@@ -153,12 +174,16 @@ export default function TaxDocumentsPage() {
       const csvRows = [headers.join(',')]
       for (const row of rows ?? []) {
         const meta = row.metadata as Record<string, unknown> | null
+        const amountValue =
+          report.type === 'revenue' && row.transaction_type === 'sale'
+            ? getSaleSubtotalAmount(row as { amount: number; metadata?: Record<string, unknown> | null })
+            : Number(row.amount)
         const line = [
           new Date(row.created_at).toISOString().split('T')[0],
           row.transaction_type,
           `"${(row.description ?? '').replace(/"/g, '""')}"`,
           row.reference_id ?? '',
-          Number(row.amount).toFixed(2),
+          amountValue.toFixed(2),
           row.status,
         ]
         if (report.type === 'fees') {

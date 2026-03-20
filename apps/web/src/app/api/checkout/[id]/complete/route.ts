@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import {
+  extractProcessorTaxLocation,
   fetchProcessorIdentity,
   fetchProcessorPaymentInstrumentsForIdentity,
   processorRequest,
@@ -30,7 +31,42 @@ function normalizePaymentInstrumentType(pi: unknown): string {
   return type ? type.toLowerCase() : 'unknown'
 }
 
-function pickCheckoutInstrument(instruments: unknown[]): { id: string; type: string } | null {
+function normalizeStateCode(value: string | null | undefined): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
+}
+
+function normalizeCountryCode(value: string | null | undefined): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
+}
+
+function normalizePostalCode(value: string | null | undefined): string | null {
+  if (!value) return null
+  const trimmed = value.trim().toUpperCase()
+  if (trimmed.length === 0) return null
+  return trimmed.slice(0, 20)
+}
+
+function isDigitalGoodsTaxCategory(value: unknown): boolean {
+  return typeof value === 'string' && value === 'digital_goods'
+}
+
+function shouldCollectMarylandDigitalGoodsTax(
+  taxCategory: unknown,
+  collectSalesTax: boolean,
+  countryCode: string | null,
+  stateCode: string | null
+): boolean {
+  if (!collectSalesTax) return false
+  if (!isDigitalGoodsTaxCategory(taxCategory)) return false
+  if ((countryCode || 'US') !== 'US') return false
+  return stateCode === 'MD'
+}
+
+function pickCheckoutInstrument(instruments: unknown[]): { id: string; type: string; raw: unknown } | null {
   if (!Array.isArray(instruments) || instruments.length === 0) return null
   const enabled = instruments.filter((pi) => getNestedValue(pi, 'enabled') !== false)
   const list = enabled.length > 0 ? enabled : instruments
@@ -42,7 +78,7 @@ function pickCheckoutInstrument(instruments: unknown[]): { id: string; type: str
 
   const idRaw = getNestedValue(first, 'id')
   if (typeof idRaw !== 'string' || idRaw.trim().length === 0) return null
-  return { id: idRaw, type: normalizePaymentInstrumentType(first) }
+  return { id: idRaw, type: normalizePaymentInstrumentType(first), raw: first }
 }
 
 interface CompleteRequest {
@@ -171,6 +207,93 @@ export async function POST(
     )
   }
 
+  const taxCategory = typeof session.metadata?.tax_category === 'string' ? session.metadata.tax_category : null
+  const collectSalesTax = session.metadata?.collect_sales_tax === true
+  const verifiedLocation = extractProcessorTaxLocation(identity, chosen.raw)
+  const verifiedCountry = normalizeCountryCode(verifiedLocation.country)
+  const verifiedState = normalizeStateCode(verifiedLocation.state)
+  const verifiedPostalCode = normalizePostalCode(verifiedLocation.postalCode)
+  const subtotalAmount = Number(session.subtotal_amount ?? session.amount)
+  const verifiedSalesTaxAmount = shouldCollectMarylandDigitalGoodsTax(
+    taxCategory,
+    collectSalesTax,
+    verifiedCountry,
+    verifiedState
+  )
+    ? Math.round(subtotalAmount * 0.06)
+    : 0
+  const verifiedSalesTaxState = verifiedSalesTaxAmount > 0 ? 'MD' : null
+  const verifiedTotalAmount = subtotalAmount + verifiedSalesTaxAmount
+
+  if (isDigitalGoodsTaxCategory(taxCategory) && collectSalesTax && !verifiedState) {
+    await supabase
+      .from('checkout_sessions')
+      .update({
+        status: 'collecting',
+        setup_state: null,
+        setup_state_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+
+    return NextResponse.json(
+      { error: 'Billing address state is required to calculate sales tax. Please review your payment details and try again.' },
+      { status: 400 }
+    )
+  }
+
+  const needsSessionTaxRefresh =
+    normalizeCountryCode(session.customer_tax_country) !== verifiedCountry ||
+    normalizeStateCode(session.customer_tax_state) !== verifiedState ||
+    normalizePostalCode(session.customer_tax_postal_code) !== verifiedPostalCode ||
+    Number(session.sales_tax_amount ?? 0) !== verifiedSalesTaxAmount ||
+    normalizeStateCode(session.sales_tax_state) !== verifiedSalesTaxState ||
+    Number(session.amount) !== verifiedTotalAmount
+
+  if (isDigitalGoodsTaxCategory(taxCategory) && needsSessionTaxRefresh) {
+    await supabase
+      .from('checkout_sessions')
+      .update({
+        status: 'collecting',
+        amount: verifiedTotalAmount,
+        sales_tax_amount: verifiedSalesTaxAmount,
+        sales_tax_rate_bps: verifiedSalesTaxAmount > 0 ? 600 : null,
+        sales_tax_state: verifiedSalesTaxState,
+        customer_tax_country: verifiedCountry,
+        customer_tax_state: verifiedState,
+        customer_tax_postal_code: verifiedPostalCode,
+        metadata: {
+          ...(session.metadata || {}),
+          customer_tax_source: verifiedLocation.source || 'processor_verified',
+        },
+        setup_state: null,
+        setup_state_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+
+    return NextResponse.json(
+      { error: 'Your billing details updated the checkout tax information. Please review the checkout page and try again.' },
+      { status: 409 }
+    )
+  }
+
+  if (isDigitalGoodsTaxCategory(taxCategory) && !needsSessionTaxRefresh && verifiedLocation.source) {
+    await supabase
+      .from('checkout_sessions')
+      .update({
+        customer_tax_country: verifiedCountry,
+        customer_tax_state: verifiedState,
+        customer_tax_postal_code: verifiedPostalCode,
+        metadata: {
+          ...(session.metadata || {}),
+          customer_tax_source: verifiedLocation.source,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+  }
+
   // Verify creator is still active before charging
   const { data: creatorAccount } = await supabase
     .from('accounts')
@@ -279,29 +402,28 @@ export async function POST(
   // retried by reconciliation instead of silently losing the journal entry.
   // ========================================================================
   const referenceId = `checkout_${session.id}`
-  const subtotalAmount = Number(session.subtotal_amount ?? session.amount)
   const soledgicFeeAmount = Math.floor(subtotalAmount * 0.035)
-  const taxCategory = typeof session.metadata?.tax_category === 'string' ? session.metadata.tax_category : null
   let saleRecorded = false
   try {
     const { error: rpcError } = await supabase.rpc('record_sale_atomic', {
       p_ledger_id: session.ledger_id,
       p_reference_id: referenceId,
       p_creator_id: session.creator_id,
-      p_gross_amount: session.amount,
+      p_gross_amount: verifiedTotalAmount,
       p_creator_amount: session.creator_amount,
       p_platform_amount: session.platform_amount,
       p_processing_fee: 0,
       p_soledgic_fee: soledgicFeeAmount,
-      p_sales_tax: session.sales_tax_amount || 0,
+      p_sales_tax: verifiedSalesTaxAmount,
       p_product_id: session.product_id || null,
       p_product_name: session.product_name || null,
       p_metadata: {
         ...(session.metadata || {}),
         subtotal_amount_cents: subtotalAmount,
-        sales_tax_amount_cents: session.sales_tax_amount ?? 0,
-        customer_tax_country: session.customer_tax_country ?? null,
-        customer_tax_state: session.customer_tax_state ?? null,
+        sales_tax_amount_cents: verifiedSalesTaxAmount,
+        customer_tax_country: verifiedCountry,
+        customer_tax_state: verifiedState,
+        customer_tax_source: verifiedLocation.source || session.metadata?.customer_tax_source || null,
       },
     })
     if (rpcError) {
@@ -319,14 +441,15 @@ export async function POST(
     try {
       await recordSalesTaxThresholdProgress(
         session.ledger_id,
-        taxCategory === 'digital_goods' ? session.customer_tax_state : null,
+        taxCategory === 'digital_goods' ? verifiedState : null,
         session.id,
         subtotalAmount,
-        Number(session.sales_tax_amount ?? 0),
+        verifiedSalesTaxAmount,
         {
           source: 'checkout_complete',
-          sales_tax_state: session.sales_tax_state ?? null,
-          customer_tax_country: session.customer_tax_country ?? null,
+          sales_tax_state: verifiedSalesTaxState,
+          customer_tax_country: verifiedCountry,
+          customer_tax_source: verifiedLocation.source || session.metadata?.customer_tax_source || null,
         },
       )
     } catch (error) {
@@ -359,10 +482,10 @@ export async function POST(
             session_id: session.id,
             payment_id: transfer.id,
             reference_id: referenceId,
-            amount: session.amount / 100,
+            amount: verifiedTotalAmount / 100,
             subtotal_amount: subtotalAmount / 100,
-            sales_tax_amount: Number(session.sales_tax_amount ?? 0) / 100,
-            sales_tax_state: session.sales_tax_state ?? null,
+            sales_tax_amount: verifiedSalesTaxAmount / 100,
+            sales_tax_state: verifiedSalesTaxState,
             currency: session.currency,
             creator_id: session.creator_id,
             product_id: session.product_id,

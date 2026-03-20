@@ -11,6 +11,27 @@ import {
 } from '../_shared/utils.ts'
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+function getSaleSubtotalAmount(transaction: { amount: number; metadata?: Record<string, unknown> | null }) {
+  const amounts = transaction.metadata && typeof transaction.metadata === 'object' && !Array.isArray(transaction.metadata)
+    ? (transaction.metadata as Record<string, unknown>).amounts_cents
+    : null
+
+  if (amounts && typeof amounts === 'object' && !Array.isArray(amounts)) {
+    const subtotal = Number((amounts as Record<string, unknown>).subtotal)
+    if (Number.isFinite(subtotal)) {
+      return subtotal / 100
+    }
+
+    const gross = Number((amounts as Record<string, unknown>).gross)
+    const salesTax = Number((amounts as Record<string, unknown>).sales_tax)
+    if (Number.isFinite(gross) && Number.isFinite(salesTax)) {
+      return (gross - salesTax) / 100
+    }
+  }
+
+  return Number(transaction.amount)
+}
+
 const handler = createHandler(
   { endpoint: 'get-runway', requireAuth: true, rateLimit: true },
   async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, _body: any) => {
@@ -53,7 +74,7 @@ const handler = createHandler(
 
     const { data: revenueData } = await supabase
       .from('transactions')
-      .select('amount, created_at')
+      .select('amount, created_at, metadata')
       .eq('ledger_id', ledger.id)
       .eq('transaction_type', 'sale')
       .eq('status', 'completed')
@@ -62,7 +83,7 @@ const handler = createHandler(
     const revenueByMonth: Record<string, number> = {}
     revenueData?.forEach((tx: any) => {
       const month = tx.created_at.substring(0, 7)
-      revenueByMonth[month] = (revenueByMonth[month] || 0) + Number(tx.amount)
+      revenueByMonth[month] = (revenueByMonth[month] || 0) + getSaleSubtotalAmount(tx)
     })
     const totalRevenue = Object.values(revenueByMonth).reduce((a, b) => a + b, 0)
     const avgRevenue = totalRevenue / 3  // Always divide by the full 3-month window

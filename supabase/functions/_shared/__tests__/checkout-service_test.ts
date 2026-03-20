@@ -108,6 +108,116 @@ Deno.test('checkout: accepts exactly 50 cents (boundary)', async () => {
   assertEquals(body.checkout_session.amount, 50)
 })
 
+Deno.test('checkout: adds Maryland digital goods tax from explicit address fields', async () => {
+  let insertedSession: Record<string, unknown> | null = null
+  const supabase = {
+    from(table: string) {
+      if (table === 'product_splits') {
+        return {
+          select() { return this },
+          eq() { return this },
+          single() { return Promise.resolve({ data: null, error: { code: 'PGRST116' } }) },
+        }
+      }
+      if (table === 'accounts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'acct_1', is_active: true, metadata: {} },
+              error: null,
+            })
+          },
+          single() {
+            return Promise.resolve({ data: { metadata: {} }, error: null })
+          },
+        }
+      }
+      if (table === 'checkout_sessions') {
+        return {
+          insert(payload: Record<string, unknown>) {
+            insertedSession = payload
+            return {
+              select() { return this },
+              single() {
+                return Promise.resolve({
+                  data: { id: 'sess_tax', expires_at: '2026-01-01T01:00:00Z' },
+                  error: null,
+                })
+              },
+            }
+          },
+        }
+      }
+      if (table === 'audit_log') {
+        const chain: any = { select() { return chain }, eq() { return chain }, gte() { return chain }, neq() { return chain }, single() { return Promise.resolve({ data: null, error: null }) }, insert() { return Promise.resolve({ error: null }) } }
+        return chain
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    },
+  } as any
+
+  const result = await createCheckoutResponse(req, supabase, ledger, {
+    amount: 1000,
+    participant_id: 'creator1',
+    success_url: 'https://example.com/success',
+    collect_sales_tax: true,
+    tax_category: 'digital_goods',
+    customer_country: 'US',
+    customer_state: 'MD',
+  }, requestId)
+
+  assertEquals(result.status, 200)
+  const body = result.body as any
+  assertEquals(body.checkout_session.amount, 1060)
+  assertEquals(body.checkout_session.breakdown.subtotal_amount, 10)
+  assertEquals(body.checkout_session.breakdown.sales_tax_amount, 0.6)
+  assertEquals(insertedSession?.sales_tax_amount, 60)
+  assertEquals(insertedSession?.metadata?.customer_tax_source, 'request_address')
+})
+
+Deno.test('checkout: ignores metadata state when collecting sales tax', async () => {
+  const supabase = {
+    from(table: string) {
+      if (table === 'product_splits') {
+        return {
+          select() { return this },
+          eq() { return this },
+          single() { return Promise.resolve({ data: null, error: { code: 'PGRST116' } }) },
+        }
+      }
+      if (table === 'accounts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'acct_1', is_active: true, metadata: {} },
+              error: null,
+            })
+          },
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    },
+  } as any
+
+  const result = await createCheckoutResponse(req, supabase, ledger, {
+    amount: 1000,
+    participant_id: 'creator1',
+    success_url: 'https://example.com/success',
+    collect_sales_tax: true,
+    tax_category: 'digital_goods',
+    metadata: {
+      customer_state: 'MD',
+    },
+  }, requestId)
+
+  assertEquals(result.status, 400)
+  assertEquals(result.body.error_code, 'missing_customer_state')
+})
+
 Deno.test('checkout: rejects missing participant_id (empty string)', async () => {
   const result = await createCheckoutResponse(req, {} as any, ledger, {
     amount: 5000,

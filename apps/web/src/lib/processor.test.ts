@@ -17,7 +17,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-import { processorRequest } from './processor'
+import { extractProcessorTaxLocation, processorRequest } from './processor'
 
 describe('processorRequest', () => {
   it('throws when path does not start with /', async () => {
@@ -197,5 +197,35 @@ describe('getProcessorRequestTimeoutMs', () => {
     )
 
     await expect(processorRequest('/test')).rejects.toThrow('Processor request timed out')
+  })
+})
+
+describe('extractProcessorTaxLocation', () => {
+  it('prefers payment instrument billing address', () => {
+    const location = extractProcessorTaxLocation(
+      { business_address: { state: 'CA', country: 'US', postal_code: '94105' } },
+      { billing_address: { state: 'MD', country: 'us', postal_code: '21201' } }
+    )
+
+    expect(location).toEqual({
+      country: 'US',
+      state: 'MD',
+      postalCode: '21201',
+      source: 'payment_instrument',
+    })
+  })
+
+  it('falls back to identity address when payment instrument lacks location', () => {
+    const location = extractProcessorTaxLocation(
+      { business_address: { region: 'NY', country_code: 'US', zip: '10001' } },
+      { type: 'BANK_ACCOUNT' }
+    )
+
+    expect(location).toEqual({
+      country: 'US',
+      state: 'NY',
+      postalCode: '10001',
+      source: 'identity',
+    })
   })
 })

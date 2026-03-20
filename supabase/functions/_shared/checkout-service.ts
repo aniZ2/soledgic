@@ -237,25 +237,18 @@ export async function createCheckoutResponse(
     pickFirstString(
       body.customer_country,
       body.customer_address?.country,
-      body.metadata?.customer_country,
-      body.metadata?.country,
     )
   ) || 'US'
   const customerState = normalizeStateCode(
     pickFirstString(
       body.customer_state,
       body.customer_address?.state,
-      body.metadata?.customer_state,
-      body.metadata?.state,
     )
   )
   const customerPostalCode = normalizePostalCode(
     pickFirstString(
       body.customer_postal_code,
       body.customer_address?.postal_code,
-      body.metadata?.customer_postal_code,
-      body.metadata?.postal_code,
-      body.metadata?.zip,
     )
   )
   const taxCategory = normalizeTaxCategory(
@@ -266,6 +259,10 @@ export async function createCheckoutResponse(
     )
   )
   const collectSalesTax = body.collect_sales_tax === true
+  const customerTaxSource =
+    customerState || customerPostalCode || customerCountry
+      ? 'request_address'
+      : null
   const paymentMethodIdRaw = body.payment_method_id || body.source_id || null
   const paymentMethodId = paymentMethodIdRaw ? validateString(paymentMethodIdRaw, 200) : null
 
@@ -342,6 +339,7 @@ export async function createCheckoutResponse(
           ...(body.metadata || {}),
           ...(taxCategory ? { tax_category: taxCategory } : {}),
           collect_sales_tax: collectSalesTax,
+          ...(customerTaxSource ? { customer_tax_source: customerTaxSource } : {}),
         },
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -377,6 +375,7 @@ export async function createCheckoutResponse(
         participant_percent: participantPercent,
         customer_tax_state: customerState,
         collect_sales_tax: collectSalesTax,
+        customer_tax_source: customerTaxSource,
       }),
       response_status: 200,
       risk_score: 10,
@@ -421,13 +420,22 @@ export async function createCheckoutResponse(
     ? `${productName}`
     : `Purchase from ${(ledger.settings as any)?.platform_name || ledger.business_name}`
 
-  const checkoutMetadata: Record<string, string> = {
-    ledger_id: ledger.id,
-    creator_id: participantId,
-    participant_id: participantId,
-    soledgic_request_id: requestId,
-    checkout_provider: 'card',
+  const checkoutMetadata: Record<string, string> = {}
+  if (body.metadata) {
+    for (const [key, value] of Object.entries(body.metadata)) {
+      const safeKey = validateId(key, 40)
+      const safeValue = typeof value === 'string' ? value.substring(0, 500) : String(value).substring(0, 500)
+      if (safeKey && safeValue) {
+        checkoutMetadata[safeKey] = safeValue
+      }
+    }
   }
+
+  checkoutMetadata.ledger_id = ledger.id
+  checkoutMetadata.creator_id = participantId
+  checkoutMetadata.participant_id = participantId
+  checkoutMetadata.soledgic_request_id = requestId
+  checkoutMetadata.checkout_provider = 'card'
 
   if (productId) checkoutMetadata.product_id = productId
   if (productName) checkoutMetadata.product_name = productName
@@ -439,14 +447,8 @@ export async function createCheckoutResponse(
     checkoutMetadata.sales_tax_amount_cents = String(salesTaxAmount)
     checkoutMetadata.sales_tax_state = salesTaxState || ''
   }
-  if (body.metadata) {
-    for (const [key, value] of Object.entries(body.metadata)) {
-      const safeKey = validateId(key, 40)
-      const safeValue = typeof value === 'string' ? value.substring(0, 500) : String(value).substring(0, 500)
-      if (safeKey && safeValue) {
-        checkoutMetadata[safeKey] = safeValue
-      }
-    }
+  if (customerTaxSource) {
+    checkoutMetadata.customer_tax_source = customerTaxSource
   }
 
   if (!idempotencyKey) {
@@ -561,6 +563,7 @@ export async function createCheckoutResponse(
             sales_tax_amount_cents: salesTaxAmount,
             customer_tax_country: customerCountry,
             customer_tax_state: customerState,
+            ...(customerTaxSource ? { customer_tax_source: customerTaxSource } : {}),
             ...(taxCategory ? { tax_category: taxCategory } : {}),
           },
         })
@@ -595,6 +598,7 @@ export async function createCheckoutResponse(
           tax_category: taxCategory,
           collect_sales_tax: collectSalesTax,
           customer_tax_state: customerState,
+          customer_tax_source: customerTaxSource,
         },
       )
 
@@ -647,6 +651,7 @@ export async function createCheckoutResponse(
       sale_booked: saleBooked,
       customer_tax_state: customerState,
       collect_sales_tax: collectSalesTax,
+      customer_tax_source: customerTaxSource,
     }),
     response_status: 200,
     risk_score: 10,

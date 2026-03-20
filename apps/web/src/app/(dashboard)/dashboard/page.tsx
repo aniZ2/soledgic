@@ -22,6 +22,27 @@ interface RecentTransaction {
   status: string
 }
 
+function getSaleSubtotalAmount(transaction: { amount: number; metadata?: Record<string, unknown> | null }) {
+  const amounts = transaction.metadata && typeof transaction.metadata === 'object' && !Array.isArray(transaction.metadata)
+    ? (transaction.metadata as Record<string, unknown>).amounts_cents
+    : null
+
+  if (amounts && typeof amounts === 'object' && !Array.isArray(amounts)) {
+    const subtotal = Number((amounts as Record<string, unknown>).subtotal)
+    if (Number.isFinite(subtotal)) {
+      return subtotal / 100
+    }
+
+    const gross = Number((amounts as Record<string, unknown>).gross)
+    const salesTax = Number((amounts as Record<string, unknown>).sales_tax)
+    if (Number.isFinite(gross) && Number.isFinite(salesTax)) {
+      return (gross - salesTax) / 100
+    }
+  }
+
+  return Number(transaction.amount)
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const livemode = await getLivemode()
@@ -72,14 +93,14 @@ export default async function DashboardPage() {
     // Calculate totals
     const { data: totals } = await supabase
       .from('transactions')
-      .select('transaction_type, amount')
+      .select('transaction_type, amount, metadata')
       .eq('ledger_id', ledger.id)
       .not('status', 'in', '("voided","reversed")')
 
     if (totals) {
       stats.totalRevenue = totals
         .filter(t => t.transaction_type === 'sale')
-        .reduce((sum, t) => sum + Number(t.amount), 0)
+        .reduce((sum, t) => sum + getSaleSubtotalAmount(t as { amount: number; metadata?: Record<string, unknown> | null }), 0)
       
       stats.totalPayouts = totals
         .filter(t => t.transaction_type === 'payout')

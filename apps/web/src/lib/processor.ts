@@ -36,6 +36,13 @@ interface ProcessorPaymentInstrumentsResponse {
   }
 }
 
+export interface ProcessorTaxLocation {
+  country: string | null
+  state: string | null
+  postalCode: string | null
+  source: 'payment_instrument' | 'identity' | null
+}
+
 interface ProcessorErrorBody {
   error?: unknown
   message?: unknown
@@ -46,6 +53,111 @@ interface ProcessorErrorBody {
 
 function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getNestedUnknown(value: unknown, ...path: string[]): unknown {
+  let current: unknown = value
+  for (const key of path) {
+    if (!isJsonRecord(current)) return null
+    current = current[key]
+  }
+  return current
+}
+
+function pickNestedObject(value: unknown, paths: string[][]): JsonRecord | null {
+  for (const path of paths) {
+    const candidate = getNestedUnknown(value, ...path)
+    if (isJsonRecord(candidate)) return candidate
+  }
+  return null
+}
+
+function normalizeCountryCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
+}
+
+function normalizeStateCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : null
+}
+
+function normalizePostalCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().toUpperCase()
+  if (trimmed.length === 0) return null
+  return trimmed.slice(0, 20)
+}
+
+function readAddressValue(address: JsonRecord | null, keys: string[]): unknown {
+  if (!address) return null
+  for (const key of keys) {
+    const value = address[key]
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value
+    }
+  }
+  return null
+}
+
+function extractLocationFromAddress(
+  address: JsonRecord | null,
+  source: 'payment_instrument' | 'identity'
+): ProcessorTaxLocation {
+  const country = normalizeCountryCode(readAddressValue(address, ['country', 'country_code']))
+  const state = normalizeStateCode(readAddressValue(address, ['state', 'region', 'province']))
+  const postalCode = normalizePostalCode(readAddressValue(address, ['postal_code', 'zip', 'postal']))
+  return {
+    country,
+    state,
+    postalCode,
+    source: country || state || postalCode ? source : null,
+  }
+}
+
+export function extractProcessorTaxLocation(
+  identity: unknown,
+  paymentInstrument: unknown
+): ProcessorTaxLocation {
+  const paymentInstrumentAddress = pickNestedObject(paymentInstrument, [
+    ['billing_address'],
+    ['address'],
+    ['instrument_data', 'billing_details', 'address'],
+    ['instrument_data', 'address'],
+    ['card', 'address'],
+    ['bank_account', 'address'],
+    ['_embedded', 'billing_address'],
+  ])
+  const paymentInstrumentLocation = extractLocationFromAddress(
+    paymentInstrumentAddress,
+    'payment_instrument'
+  )
+  if (paymentInstrumentLocation.source) {
+    return paymentInstrumentLocation
+  }
+
+  const identityAddress = pickNestedObject(identity, [
+    ['business_address'],
+    ['address'],
+    ['personal_address'],
+    ['additional_underwriting_data', 'business_address'],
+    ['entity', 'business_address'],
+    ['entity', 'address'],
+    ['person', 'address'],
+  ])
+  const identityLocation = extractLocationFromAddress(identityAddress, 'identity')
+  if (identityLocation.source) {
+    return identityLocation
+  }
+
+  return {
+    country: null,
+    state: null,
+    postalCode: null,
+    source: null,
+  }
 }
 
 export function isStripePaymentProvider(): boolean {

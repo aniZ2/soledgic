@@ -27,6 +27,24 @@ interface LedgerSummary {
   }
 }
 
+function getSaleSubtotalAmount(transaction: { amount: number; metadata?: Record<string, unknown> | null }): number {
+  const amounts = transaction.metadata && typeof transaction.metadata === 'object' && !Array.isArray(transaction.metadata)
+    ? (transaction.metadata as Record<string, unknown>).amounts_cents
+    : null
+  if (amounts && typeof amounts === 'object' && !Array.isArray(amounts)) {
+    const subtotal = Number((amounts as Record<string, unknown>).subtotal)
+    if (Number.isFinite(subtotal)) {
+      return subtotal / 100
+    }
+    const gross = Number((amounts as Record<string, unknown>).gross)
+    const salesTax = Number((amounts as Record<string, unknown>).sales_tax)
+    if (Number.isFinite(gross) && Number.isFinite(salesTax)) {
+      return (gross - salesTax) / 100
+    }
+  }
+  return Number(transaction.amount)
+}
+
 const handler = createHandler(
   { endpoint: 'list-ledgers', requireAuth: true, rateLimit: true },
   async (req: Request, supabase: SupabaseClient, ledger: LedgerContext | null, _body: any) => {
@@ -76,7 +94,7 @@ const handler = createHandler(
       // Batch: transaction summaries (type + amount in one query)
       const { data: txnSummaries } = await supabase
         .from('transactions')
-        .select('ledger_id, transaction_type, amount, status')
+        .select('ledger_id, transaction_type, amount, metadata, status')
         .in('ledger_id', ledgerIds)
         .eq('status', 'completed')
         .in('transaction_type', ['sale', 'expense'])
@@ -84,7 +102,9 @@ const handler = createHandler(
       for (const id of ledgerIds) {
         const acctCount = (accountCounts || []).filter((a) => a.ledger_id === id).length
         const txns = (txnSummaries || []).filter((t) => t.ledger_id === id)
-        const revenue = txns.filter((t) => t.transaction_type === 'sale').reduce((s, t) => s + Number(t.amount), 0)
+        const revenue = txns
+          .filter((t) => t.transaction_type === 'sale')
+          .reduce((s, t) => s + getSaleSubtotalAmount(t as { amount: number; metadata?: Record<string, unknown> | null }), 0)
         const expenses = txns.filter((t) => t.transaction_type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
 
         statsMap.set(id, { revenue, expenses, accounts: acctCount, transactions: txns.length })
