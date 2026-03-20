@@ -5,7 +5,7 @@ import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isPlatformOperatorUser } from '@/lib/internal-platforms'
 import { createHash } from 'crypto'
 
-async function requirePlatformAdmin(userId: string) {
+async function requirePlatformAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || !isPlatformOperatorUser(user)) return null
@@ -22,8 +22,8 @@ function hashApiKey(apiKey: string): string {
 }
 
 export const GET = createApiHandler(
-  async (request, { user }) => {
-    const membership = await requirePlatformAdmin(user!.id)
+  async (request) => {
+    const membership = await requirePlatformAdmin()
     if (!membership) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
@@ -81,7 +81,7 @@ export const GET = createApiHandler(
 
     // Load document counts per org
     const orgIds = (orgs || []).map((o) => o.id)
-    let docCounts: Record<string, number> = {}
+    const docCounts: Record<string, number> = {}
 
     if (orgIds.length > 0) {
       const { data: docs } = await serviceClient
@@ -108,7 +108,7 @@ export const GET = createApiHandler(
 
 export const POST = createApiHandler(
   async (request, { user }) => {
-    const membership = await requirePlatformAdmin(user!.id)
+    const membership = await requirePlatformAdmin()
     if (!membership) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }

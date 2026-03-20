@@ -115,11 +115,7 @@ By keeping the stored tax profile narrow:
 ### Calculate Totals for One Creator
 
 ```typescript
-const result = await soledgic.request('tax-documents', {
-  action: 'calculate',
-  creator_id: 'creator_jane_doe',
-  tax_year: 2024
-})
+const result = await soledgic.generateTaxSummary(2024, 'creator_jane_doe')
 
 // Response:
 {
@@ -136,10 +132,7 @@ const result = await soledgic.request('tax-documents', {
 ### Generate for All Creators
 
 ```typescript
-const result = await soledgic.request('tax-documents', {
-  action: 'generate_all',
-  tax_year: 2024
-})
+const result = await soledgic.generateAllTaxDocuments(2024)
 
 // Response:
 {
@@ -152,11 +145,7 @@ const result = await soledgic.request('tax-documents', {
 ### Export CSV
 
 ```typescript
-const csv = await soledgic.request('tax-documents', {
-  action: 'export',
-  tax_year: 2024,
-  format: 'csv'
-})
+const csv = await soledgic.exportTaxDocuments(2024, 'csv')
 
 // Returns CSV file:
 // recipient_id,gross_amount,jan,feb,mar,...

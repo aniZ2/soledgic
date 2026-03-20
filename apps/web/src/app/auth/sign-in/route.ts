@@ -1,6 +1,25 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { ACTIVE_ORG_COOKIE } from '@/lib/livemode'
+import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
+
+const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+function setActiveOrgCookie(response: NextResponse, orgId: string | null, isSecure: boolean) {
+  if (!orgId) {
+    response.cookies.delete(ACTIVE_ORG_COOKIE)
+    return
+  }
+
+  response.cookies.set(ACTIVE_ORG_COOKIE, orgId, {
+    path: '/',
+    maxAge: ACTIVE_ORG_COOKIE_MAX_AGE,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isSecure,
+  })
+}
 
 function sanitizeRedirect(raw: string | null): string {
   const path = (raw || '/dashboard').trim()
@@ -62,12 +81,11 @@ export async function POST(request: Request) {
   }
 
   // Check if user has an active organization membership
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id')
-    .eq('user_id', data.user.id)
-    .eq('status', 'active')
-    .single()
+  const membership = await resolveActiveOrganizationMembershipForClient(
+    asMembershipQueryClient(supabase),
+    data.user.id,
+    cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
+  )
 
   const finalRedirect = membership ? redirectTo : '/onboarding'
 
@@ -83,6 +101,8 @@ export async function POST(request: Request) {
       secure: isSecure,
     })
   }
+
+  setActiveOrgCookie(response, membership?.organization_id ?? null, isSecure)
 
   return response
 }

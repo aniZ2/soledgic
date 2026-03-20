@@ -234,8 +234,8 @@ supabase db push --include-all
 supabase functions deploy
 
 # Specific functions
-supabase functions deploy processor-webhook --no-verify-jwt
-supabase functions deploy billing-webhook --no-verify-jwt
+supabase functions deploy process-processor-inbox --no-verify-jwt
+supabase functions deploy process-webhooks --no-verify-jwt
 supabase functions deploy health-check --no-verify-jwt
 ```
 

@@ -160,8 +160,8 @@ earnings wallets are provisioned through participant and treasury flows.
 | `listWebhookEndpoints()` | List configured webhook endpoints |
 | `getWebhookDeliveries(endpointId?, limit?)` | Inspect recent deliveries |
 | `rotateWebhookSecret(endpointId)` | Rotate an endpoint secret |
-| `webhooks.verifySignature(...)` | Verify `X-Soledgic-Signature` |
-| `webhooks.parseEvent(payload)` | Parse a webhook payload into an event object |
+| `verifyWebhookSignature(...)` | Verify `X-Soledgic-Signature` |
+| `parseWebhookEvent(payload)` | Parse a webhook payload into an event object |
 
 ## Replay Safety
 

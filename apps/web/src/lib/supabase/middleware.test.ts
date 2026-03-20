@@ -3,10 +3,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 // --- Mocks ---
 
 const mockGetUser = vi.fn()
+type CookieSetAll = (cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => void
 let capturedSetAll: ((cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => void) | null = null
 
 vi.mock('@supabase/ssr', () => ({
-  createServerClient: vi.fn((_url: string, _key: string, opts: { cookies: { setAll: Function } }) => {
+  createServerClient: vi.fn((_url: string, _key: string, opts: { cookies: { setAll: CookieSetAll } }) => {
     capturedSetAll = opts.cookies.setAll as typeof capturedSetAll
     return {
       auth: {
@@ -28,7 +29,7 @@ vi.mock('next/server', () => {
       this.cookies = { set: mockNextResponseCookiesSet }
     }
 
-    static next(_opts?: unknown) {
+    static next() {
       return new MockNextResponse()
     }
   }
@@ -71,7 +72,7 @@ describe('updateSession', () => {
     const req = makeNextRequest('POST', [
       { name: 'sb-testproject-auth-token', value: 'some-token' },
     ])
-    const result = await updateSession(req)
+    await updateSession(req)
     // Should return the original response without calling getUser
     expect(mockGetUser).not.toHaveBeenCalled()
   })
@@ -80,7 +81,7 @@ describe('updateSession', () => {
     const req = makeNextRequest('GET', [
       { name: 'some-other-cookie', value: 'value' },
     ])
-    const result = await updateSession(req)
+    await updateSession(req)
     expect(mockGetUser).not.toHaveBeenCalled()
   })
 
@@ -110,7 +111,7 @@ describe('updateSession', () => {
     const req = makeNextRequest('GET', [
       { name: 'sb-testproject-auth-token', value: 'expired-token' },
     ])
-    const result = await updateSession(req)
+    await updateSession(req)
     // The original response is returned (no cookie mutations)
     expect(mockNextResponseCookiesSet).not.toHaveBeenCalled()
   })
@@ -196,7 +197,7 @@ describe('updateSession', () => {
     const req = makeNextRequest('GET', [
       { name: 'sb-testproject-auth-token', value: 'token' },
     ])
-    const result = await updateSession(req)
+    await updateSession(req)
     // No cookies should have been set on the response
     expect(mockNextResponseCookiesSet).not.toHaveBeenCalled()
   })
@@ -214,7 +215,7 @@ describe('updateSession', () => {
     const req = makeNextRequest('GET', [
       { name: 'sb-testproject-auth-token', value: 'old-token' },
     ])
-    const result = await updateSession(req)
+    await updateSession(req)
     // Cookie mutations should have been applied
     expect(mockNextResponseCookiesSet).toHaveBeenCalledWith(
       'sb-testproject-auth-token',

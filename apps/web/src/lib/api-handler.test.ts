@@ -83,7 +83,7 @@ vi.mock('@supabase/ssr', () => ({
 vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://testproject.supabase.co')
 vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key')
 
-import { createApiHandler, parseJsonBody } from './api-handler'
+import { createApiHandler, parseJsonBody, type ApiContext } from './api-handler'
 
 function makeRequest(
   method = 'POST',
@@ -118,7 +118,7 @@ describe('createApiHandler', () => {
       throw new Error('should not be called')
     })
 
-    const response = await handler(makeRequest())
+    await handler(makeRequest())
     expect(mockJsonFn).toHaveBeenCalledWith(
       expect.objectContaining({ error: 'Access denied' }),
       expect.objectContaining({ status: 403 })
@@ -126,7 +126,7 @@ describe('createApiHandler', () => {
   })
 
   it('skips CSRF when csrfProtection is false', async () => {
-    const innerHandler = vi.fn(async (_req, ctx) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -149,7 +149,7 @@ describe('createApiHandler', () => {
       throw new Error('should not be called')
     })
 
-    const response = await handler(makeRequest())
+    await handler(makeRequest())
     expect(mockJsonFn).toHaveBeenCalledWith(
       expect.objectContaining({ error: 'Unauthorized' }),
       expect.objectContaining({ status: 401 })
@@ -157,7 +157,7 @@ describe('createApiHandler', () => {
   })
 
   it('skips auth when requireAuth is false', async () => {
-    const innerHandler = vi.fn(async (_req, ctx) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -249,7 +249,7 @@ describe('createApiHandler', () => {
   })
 
   it('passes user context to handler when authenticated', async () => {
-    const innerHandler = vi.fn(async (_req, ctx) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -398,7 +398,10 @@ describe('createApiHandler', () => {
   })
 
   it('uses custom rateLimitKey function when provided', async () => {
-    const customKeyFn = vi.fn((_req: Request, ctx: { user: { id: string } | null }) => `custom:${ctx.user?.id ?? 'anon'}`)
+    const customKeyFn = vi.fn((...args: [Request, Pick<ApiContext, 'user'>]) => {
+      const [, ctx] = args
+      return `custom:${ctx.user?.id ?? 'anon'}`
+    })
 
     const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
@@ -506,7 +509,11 @@ describe('createApiHandler', () => {
     // Simulate Supabase calling setAll during auth token refresh
     const { createServerClient } = await import('@supabase/ssr')
     const mockCreateServerClient = vi.mocked(createServerClient)
-    mockCreateServerClient.mockImplementation((_url, _key, opts: any) => {
+    mockCreateServerClient.mockImplementation((_url, _key, opts: {
+      cookies: {
+        setAll: (cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => void
+      }
+    }) => {
       // Call setAll to simulate token refresh
       opts.cookies.setAll([
         { name: 'sb-testproject-auth-token', value: 'refreshed', options: { path: '/' } },
@@ -515,7 +522,7 @@ describe('createApiHandler', () => {
         auth: {
           getUser: () => Promise.resolve({ data: { user: { id: 'user_1', email: 'test@test.com' } }, error: null }),
         },
-      } as any
+      } as never
     })
 
     const innerHandler = vi.fn(async () => {
@@ -536,9 +543,9 @@ describe('createApiHandler', () => {
     )
 
     // Restore the default createServerClient mock for subsequent tests
-    mockCreateServerClient.mockImplementation((() => ({
+    mockCreateServerClient.mockImplementation(() => ({
       auth: { getUser: () => mockGetUser() },
-    })) as any)
+    }) as never)
   })
 
   it('returns 401 with request_id when authentication fails (no bearer)', async () => {
@@ -561,11 +568,6 @@ describe('createApiHandler', () => {
   })
 
   it('getClientIp prefers cf-connecting-ip over other headers', async () => {
-    const innerHandler = vi.fn(async () => {
-      const { NextResponse } = await import('next/server')
-      return NextResponse.json({ ok: true })
-    })
-
     // We can't directly test getClientIp but we can verify audit log uses it on error
     const handler = createApiHandler(async () => {
       throw new Error('test error')
@@ -586,7 +588,8 @@ describe('createApiHandler', () => {
   })
 
   it('requestId matches exact format req_ followed by 24 hex chars', async () => {
-    const innerHandler = vi.fn(async (_req: Request, ctx: { requestId: string }) => {
+    const innerHandler = vi.fn(async (...args: [Request, ApiContext]) => {
+      const [, ctx] = args
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ id: ctx.requestId })
     })
@@ -620,7 +623,7 @@ describe('createApiHandler', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new Error('test ip')
@@ -641,7 +644,7 @@ describe('createApiHandler', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new Error('test unknown ip')
@@ -662,7 +665,7 @@ describe('createApiHandler', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new Error('test forwarded')
@@ -703,7 +706,8 @@ describe('createApiHandler', () => {
       .mockResolvedValueOnce({ data: { user: null }, error: { message: 'no cookie' } })
       .mockResolvedValueOnce({ data: { user: { id: 'bearer_user', email: 'bearer@test.com' } }, error: null })
 
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async (...args: [Request, ApiContext]) => {
+      const [, ctx] = args
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ userId: ctx.user?.id })
     })
@@ -725,7 +729,7 @@ describe('createApiHandler', () => {
   })
 
   it('sets accessToken to null when authenticated via cookies only', async () => {
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -800,7 +804,7 @@ describe('createApiHandler', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new TypeError('bad type')
@@ -824,7 +828,7 @@ describe('createApiHandler', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw 'string error'
@@ -1580,7 +1584,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
       throw new Error('should not be called')
     })
 
-    const response = await handler(makeRequest())
+    await handler(makeRequest())
     const body = mockJsonFn.mock.calls[0][0]
     expect(body.request_id).toMatch(/^req_[0-9a-f]{24}$/)
     expect(body.error).toBe('Access denied')
@@ -1602,7 +1606,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
       throw new Error('should not be called')
     }, { requireAuth: false, csrfProtection: false })
 
-    const response = await handler(makeRequest())
+    await handler(makeRequest())
     const body = mockJsonFn.mock.calls[0][0]
     const init = mockJsonFn.mock.calls[0][1]
 
@@ -1702,7 +1706,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
         expect(table).toBe('audit_log')
         return { insert: mockInsert }
       },
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new Error('test audit')
@@ -1739,7 +1743,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new Error('user error')
@@ -1780,7 +1784,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
     const mockInsert = vi.fn(async () => ({ error: null }))
     vi.mocked(createClient).mockResolvedValue({
       from: () => ({ insert: mockInsert }),
-    } as any)
+    } as never)
 
     const handler = createApiHandler(async () => {
       throw new Error('test vercel ip')
@@ -1801,7 +1805,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
       .mockResolvedValueOnce({ data: { user: null }, error: { message: 'no cookie' } })
       .mockResolvedValueOnce({ data: { user: { id: 'bearer_user', email: 'b@t.com' } }, error: null })
 
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -1825,7 +1829,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
     // Cookie auth succeeds on first call
     mockGetUser.mockResolvedValue({ data: { user: { id: 'cookie_user', email: 'c@t.com' } }, error: null })
 
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -1951,7 +1955,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
 
   it('startTime in context is a number close to current time', async () => {
     const before = Date.now()
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -1973,7 +1977,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
     const mockUser = { id: 'user_1', email: 'test@example.com', app_metadata: {} }
     mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null })
 
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -1990,7 +1994,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
   })
 
   it('authUser is null when requireAuth is false', async () => {
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })
@@ -2042,7 +2046,7 @@ describe('createApiHandler - additional mutation-killing tests', () => {
       { name: 'sb-testproject-auth-token', value: 'from-store' },
     ])
 
-    const innerHandler = vi.fn(async (_req: Request, ctx: any) => {
+    const innerHandler = vi.fn(async () => {
       const { NextResponse } = await import('next/server')
       return NextResponse.json({ ok: true })
     })

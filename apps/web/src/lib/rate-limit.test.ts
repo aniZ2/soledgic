@@ -12,7 +12,6 @@ vi.mock('@supabase/ssr', () => ({
 }))
 
 import { checkRateLimit, getRateLimitKey, getRouteLimit, ROUTE_LIMITS } from './rate-limit'
-import { createServerClient } from '@supabase/ssr'
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('https://example.com/api/test', {
@@ -661,7 +660,6 @@ describe('checkRateLimit (Supabase RPC path)', () => {
   })
 
   it('Number.isFinite check uses now + windowMs for undefined reset_at', async () => {
-    const before = Date.now()
     mockRpc.mockResolvedValue({
       data: [{ allowed: true, remaining: 5, reset_at: undefined, blocked: false }],
       error: null,

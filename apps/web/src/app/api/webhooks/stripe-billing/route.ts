@@ -59,7 +59,7 @@ function isJsonRecord(value: unknown): value is JsonRecord {
 }
 
 export const POST = createApiHandler(
-  async (request, { requestId }) => {
+  async (request) => {
     const rawBody = await request.text()
 
     // Verify Stripe signature

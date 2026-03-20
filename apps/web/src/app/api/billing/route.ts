@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { PLANS } from '@/lib/plans'
 import { type BillingPricingMode, isAutoChargeEnabled, isBillingBypassed, parseBillingSettings, resolveBillingMode } from '@/lib/billing-policy'
 import { isPlatformOperatorUser } from '@/lib/internal-platforms'
@@ -102,27 +103,21 @@ function parseOrganization(value: unknown): OrganizationRecord | null {
 
 async function getUserOrganization(userId: string) {
   const supabase = await createClient()
-
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select(`
-      role,
-      organization:organizations(*)
-    `)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single()
-
+  const membership = await getActiveOrganizationMembership(userId)
   if (!membership) return null
 
-  const orgRaw = (membership as { organization?: unknown } | null)?.organization
-  const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
+  const { data: organization } = await supabase
+    .from('organizations')
+    .select('*')
+    .eq('id', membership.organization_id)
+    .maybeSingle()
+
   const parsedOrganization = parseOrganization(organization)
   if (!parsedOrganization) return null
 
   return {
     organization: parsedOrganization,
-    role: membership.role as string,
+    role: membership.role,
     isOwner: membership.role === 'owner',
   }
 }

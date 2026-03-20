@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { createClient } from '@/lib/supabase/server'
 
+interface CompletedEntry {
+  entry_type: string
+  amount: number | string
+}
+
 export const POST = createApiHandler(
   async (request, { user }) => {
     if (!user) {
@@ -58,8 +63,8 @@ export const POST = createApiHandler(
       .eq('transactions.status', 'completed')
 
     let balance = 0
-    for (const e of entries || []) {
-      balance += (e as any).entry_type === 'credit' ? Number((e as any).amount) : -Number((e as any).amount)
+    for (const entry of (entries || []) as CompletedEntry[]) {
+      balance += entry.entry_type === 'credit' ? Number(entry.amount) : -Number(entry.amount)
     }
     const balanceCents = Math.round(balance * 100)
 

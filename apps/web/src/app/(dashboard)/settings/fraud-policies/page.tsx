@@ -35,11 +35,6 @@ const POLICY_TYPE_DESCRIPTIONS: Record<PolicyType, string> = {
   projection_guard: 'Alert when projected cash coverage drops below a ratio',
 }
 
-const SEVERITY_LABELS: Record<Severity, string> = {
-  hard: 'Block',
-  soft: 'Flag',
-}
-
 function getSeverityBadge(severity: Severity) {
   switch (severity) {
     case 'hard':

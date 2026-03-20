@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { isPlatformOperatorUser } from '@/lib/internal-platforms'
 
-async function requirePlatformAdmin(userId: string) {
+async function requirePlatformAdmin() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user || !isPlatformOperatorUser(user)) return null
@@ -12,8 +12,8 @@ async function requirePlatformAdmin(userId: string) {
 }
 
 export const GET = createApiHandler(
-  async (request, { user }) => {
-    const membership = await requirePlatformAdmin(user!.id)
+  async (request) => {
+    const membership = await requirePlatformAdmin()
     if (!membership) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
@@ -95,7 +95,7 @@ export const GET = createApiHandler(
 
 export const POST = createApiHandler(
   async (request, { user }) => {
-    const membership = await requirePlatformAdmin(user!.id)
+    const membership = await requirePlatformAdmin()
     if (!membership) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }

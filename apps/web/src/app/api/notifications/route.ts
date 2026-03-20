@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 
 interface NotificationPatchBody {
@@ -13,14 +14,8 @@ export const GET = createApiHandler(
     const supabase = await createClient()
 
     // Get user's organization
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!membership) {
+    const organizationId = await getActiveOrganizationId(user!.id)
+    if (!organizationId) {
       return NextResponse.json({ notifications: [] })
     }
 
@@ -28,7 +23,7 @@ export const GET = createApiHandler(
     const { data: notifications, error } = await supabase
       .from('notifications')
       .select('*')
-      .eq('organization_id', membership.organization_id)
+      .eq('organization_id', organizationId)
       .or(`user_id.is.null,user_id.eq.${user!.id}`)
       .is('dismissed_at', null)
       .order('created_at', { ascending: false })
@@ -66,14 +61,8 @@ export const PATCH = createApiHandler(
     }
 
     // Get user's organization
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!membership) {
+    const organizationId = await getActiveOrganizationId(user!.id)
+    if (!organizationId) {
       return NextResponse.json({ error: 'No organization' }, { status: 404 })
     }
 
@@ -85,7 +74,7 @@ export const PATCH = createApiHandler(
           .from('notifications')
           .update({ read_at: new Date().toISOString() })
           .eq('id', notificationId)
-          .eq('organization_id', membership.organization_id)
+          .eq('organization_id', organizationId)
           .or(scopedRecipientFilter)
         if (error) {
           return NextResponse.json({ error: 'Failed to update notification' }, { status: 500 })
@@ -95,7 +84,7 @@ export const PATCH = createApiHandler(
           .from('notifications')
           .update({ read_at: new Date().toISOString() })
           .in('id', notificationIds)
-          .eq('organization_id', membership.organization_id)
+          .eq('organization_id', organizationId)
           .or(scopedRecipientFilter)
         if (error) {
           return NextResponse.json({ error: 'Failed to update notifications' }, { status: 500 })
@@ -107,7 +96,7 @@ export const PATCH = createApiHandler(
       const { error } = await supabase
         .from('notifications')
         .update({ read_at: new Date().toISOString() })
-        .eq('organization_id', membership.organization_id)
+        .eq('organization_id', organizationId)
         .or(scopedRecipientFilter)
         .is('read_at', null)
       if (error) {
@@ -119,7 +108,7 @@ export const PATCH = createApiHandler(
           .from('notifications')
           .update({ dismissed_at: new Date().toISOString() })
           .eq('id', notificationId)
-          .eq('organization_id', membership.organization_id)
+          .eq('organization_id', organizationId)
           .or(scopedRecipientFilter)
         if (error) {
           return NextResponse.json({ error: 'Failed to dismiss notification' }, { status: 500 })

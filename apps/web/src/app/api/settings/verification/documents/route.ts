@@ -1,27 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
-import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 const DOCUMENT_TYPES = ['ein_letter', 'articles_of_incorporation', 'government_id', 'proof_of_address', 'w9', 'other']
 
-async function getActiveMembership(userId: string) {
-  const supabase = await createClient()
-  const { data: membership, error } = await supabase
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single()
-  if (error || !membership) return null
-  return membership
-}
-
 export const GET = createApiHandler(
   async (_request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }
@@ -44,7 +32,7 @@ export const GET = createApiHandler(
 
 export const POST = createApiHandler(
   async (request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }
@@ -114,7 +102,7 @@ export const POST = createApiHandler(
 
 export const DELETE = createApiHandler(
   async (request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }

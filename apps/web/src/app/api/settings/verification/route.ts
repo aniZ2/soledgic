@@ -1,24 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
-import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { maskTaxId, isKycApproved } from '@/lib/kyc-status'
 
-async function getActiveMembership(userId: string) {
-  const supabase = await createClient()
-  const { data: membership, error } = await supabase
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single()
-  if (error || !membership) return null
-  return membership
-}
-
 export const GET = createApiHandler(
   async (_request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }
@@ -50,7 +38,7 @@ export const GET = createApiHandler(
 
 export const PUT = createApiHandler(
   async (request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }
@@ -124,7 +112,7 @@ export const PUT = createApiHandler(
 
 export const POST = createApiHandler(
   async (request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }

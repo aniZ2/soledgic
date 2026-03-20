@@ -48,7 +48,11 @@ export function ReverseTransactionButton({
   }, [livemode, activeLedgerGroupId])
 
   useEffect(() => {
-    void loadLedger()
+    const timeoutId = setTimeout(() => {
+      void loadLedger()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [loadLedger])
 
   // Don't show button if transaction is already reversed/voided

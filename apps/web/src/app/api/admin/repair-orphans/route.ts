@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
 import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
@@ -18,13 +19,7 @@ export const POST = createApiHandler(
     const supabase = await createClient()
 
     // Verify user is an admin/owner of their org
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id, role')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership || !['owner', 'admin'].includes(membership.role)) {
       return NextResponse.json(
         { error: 'Only organization owners and admins can run repairs' },

@@ -243,7 +243,7 @@ For creators to request payout from their connected account to bank.
    ↓
 3. Reader pays $9.99
    ↓
-4. Payment Processor → POST /processor-webhook (payment_intent.succeeded)
+4. Payment Processor → POST /api/webhooks/processor (payment_intent.succeeded)
    ↓
 5. Soledgic creates entries:
    - DEBIT cash $9.99

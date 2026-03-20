@@ -9,7 +9,6 @@ import type {
   Invoice,
   InvoiceDetail,
   InvoiceLineItem,
-  InvoicePayment,
   ListInvoicesResponse,
   CreateInvoiceResponse,
   RecordPaymentResponse,

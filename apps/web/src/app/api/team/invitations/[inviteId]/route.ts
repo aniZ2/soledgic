@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { NextResponse } from 'next/server'
 import { createApiHandler } from '@/lib/api-handler'
 import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
@@ -25,13 +26,7 @@ export const DELETE = createApiHandler(
     }
 
     // Get caller's membership
-    const { data: callerMembership } = await supabase
-      .from('organization_members')
-      .select('organization_id, role')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
+    const callerMembership = await getActiveOrganizationMembership(user!.id)
     if (!callerMembership) {
       return NextResponse.json(
         { error: 'No organization membership found' },

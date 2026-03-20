@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { createApiHandler } from '@/lib/api-handler'
 
 export const GET = createApiHandler(
@@ -71,21 +72,15 @@ export const GET = createApiHandler(
     }
 
     // No ledger_id - get all creators across user's ledgers
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!membership) {
+    const organizationId = await getActiveOrganizationId(user!.id)
+    if (!organizationId) {
       return NextResponse.json({ creators: [] })
     }
 
     const { data: ledgers } = await supabase
       .from('ledgers')
       .select('id')
-      .eq('organization_id', membership.organization_id)
+      .eq('organization_id', organizationId)
       .eq('status', 'active')
 
     if (!ledgers || ledgers.length === 0) {

@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getActiveOrgId } from '@/lib/livemode-server'
+import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
 import {
   type CurrentEcosystemSummary,
   type EcosystemPlatformSummary,
@@ -53,26 +55,20 @@ export async function getCurrentOrganizationContext(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<OrganizationContext | null> {
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select(`
-      role,
-      organization:organizations(
-        id,
-        name,
-        slug,
-        owner_id,
-        ecosystem_id
-      )
-    `)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single()
+  const membership = await resolveActiveOrganizationMembershipForClient(
+    asMembershipQueryClient(supabase),
+    userId,
+    await getActiveOrgId(),
+  )
+  if (!membership) return null
 
-  const organizationRaw = Array.isArray(membership?.organization)
-    ? membership.organization[0]
-    : membership?.organization
-  const organization = asRecord(organizationRaw)
+  const { data } = await supabase
+    .from('organizations')
+    .select('id, name, slug, owner_id, ecosystem_id')
+    .eq('id', membership.organization_id)
+    .maybeSingle()
+
+  const organization = asRecord(data)
   const organizationId = asString(organization?.id)
   const organizationName = asString(organization?.name)
   const organizationSlug = asString(organization?.slug)
@@ -86,7 +82,7 @@ export async function getCurrentOrganizationContext(
     organizationName,
     organizationSlug,
     organizationOwnerId: asString(organization?.owner_id),
-    organizationRole: asString(membership?.role) || 'member',
+    organizationRole: membership.role,
     ecosystemId: asString(organization?.ecosystem_id),
   }
 }

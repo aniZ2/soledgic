@@ -39,7 +39,6 @@ export default function ContractorsPage() {
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState<Contractor | null>(null)
-  const toast = useToast()
 
   const loadData = useCallback(async () => {
     setLoading(true)

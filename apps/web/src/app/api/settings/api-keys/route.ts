@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
-import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { createHash } from 'crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 
 const VALID_SCOPES = ['payments', 'payouts', 'read', 'webhooks', 'creators', 'credits'] as const
+const VALID_SCOPE_SET = new Set<string>(VALID_SCOPES)
 
 interface ApiKeysRequest {
   action: 'reveal' | 'rotate' | 'create_scoped' | 'list_scoped' | 'revoke_scoped'
@@ -26,20 +27,6 @@ function hashApiKey(apiKey: string): string {
 
 function makeApiKey(livemode: boolean): string {
   return `slk_${livemode ? 'live' : 'test'}_${crypto.randomUUID().replace(/-/g, '').slice(0, 32)}`
-}
-
-async function getActiveMembership(userId: string) {
-  const supabase = await createClient()
-
-  const { data: membership, error } = await supabase
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single()
-
-  if (error || !membership) return null
-  return membership
 }
 
 function createServiceClient() {
@@ -81,7 +68,7 @@ async function updateLedgerApiKeyHash(
 
 export const GET = createApiHandler(
   async (_request, { user }) => {
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }
@@ -175,7 +162,7 @@ export const POST = createApiHandler(
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
-    const membership = await getActiveMembership(user!.id)
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json({ error: 'No active organization found' }, { status: 404 })
     }
@@ -229,7 +216,7 @@ export const POST = createApiHandler(
       if (!body.scopes || !Array.isArray(body.scopes) || body.scopes.length === 0) {
         return NextResponse.json({ error: 'scopes array is required' }, { status: 400 })
       }
-      const invalidScopes = body.scopes.filter(s => !VALID_SCOPES.includes(s as any))
+      const invalidScopes = body.scopes.filter((scope) => !VALID_SCOPE_SET.has(scope))
       if (invalidScopes.length > 0) {
         return NextResponse.json({ error: `Invalid scopes: ${invalidScopes.join(', ')}. Valid: ${VALID_SCOPES.join(', ')}` }, { status: 400 })
       }

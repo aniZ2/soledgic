@@ -176,7 +176,11 @@ export default function TaxSummaryPage() {
   }, [activeLedgerGroupId, livemode, taxYear])
 
   useEffect(() => {
-    void loadData()
+    const timeoutId = setTimeout(() => {
+      void loadData()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [loadData])
 
   const fmt = (amount: number) =>

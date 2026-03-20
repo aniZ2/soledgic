@@ -150,13 +150,24 @@ if (!archSimulateHelp.includes('Usage:') || archSimulateHelp.includes('Changed F
   ok('arch-simulate --help renders usage without executing a simulation')
 }
 
+const archAnalyze = JSON.parse(runTool('scripts/arch-analyze.mjs', '--json'))
 const archPropose = JSON.parse(runTool('scripts/arch-propose.mjs', '--json'))
-if (!Array.isArray(archPropose.proposals) || archPropose.proposals.length === 0) {
-  error('arch-propose --json returned no proposals')
-} else if (!archPropose.proposals.some((proposal) => proposal.category === 'multi_org_safety')) {
-  error('arch-propose --json missed the org_context_safety proposal')
+if (!Array.isArray(archPropose.proposals)) {
+  error('arch-propose --json returned malformed proposals')
 } else {
-  ok('arch-propose surfaces the remaining multi-org cleanup debt')
+  const hasOrgContextSignal = Array.isArray(archAnalyze.signals)
+    && archAnalyze.signals.some((signal) => signal.category === 'org_context_safety')
+  const hasOrgContextProposal = archPropose.proposals.some((proposal) => proposal.category === 'multi_org_safety')
+
+  if (hasOrgContextSignal && !hasOrgContextProposal) {
+    error('arch-propose --json missed the org_context_safety proposal')
+  } else if (!hasOrgContextSignal && hasOrgContextProposal) {
+    error('arch-propose --json still proposes multi_org_safety after the smell was removed')
+  } else if (hasOrgContextSignal) {
+    ok('arch-propose surfaces the remaining multi-org cleanup debt')
+  } else {
+    ok('arch-propose no longer emits multi-org cleanup once the smell is fixed')
+  }
 }
 
 const criticalGateFiles = JSON.parse(runTool('scripts/arch-critical-path-gate.mjs', '--list-critical-files'))

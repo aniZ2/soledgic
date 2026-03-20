@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 
 interface PaymentRailsRequest {
   action: 'status' | 'create_onboarding_link' | 'save_identity' | 'save_payout_settings'
@@ -35,20 +36,15 @@ function getPlatformProcessorSettings() {
 
 async function getUserOrganization(userId: string) {
   const supabase = await createClient()
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select(`
-      role,
-      organization:organizations(id, name, settings)
-    `)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single()
-
+  const membership = await getActiveOrganizationMembership(userId)
   if (!membership) return null
 
-  const orgRaw = (membership as { organization?: unknown }).organization
-  const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw
+  const { data: organization } = await supabase
+    .from('organizations')
+    .select('id, name, settings')
+    .eq('id', membership.organization_id)
+    .maybeSingle()
+
   if (!isJsonRecord(organization)) return null
 
   const organizationId = typeof organization.id === 'string' ? organization.id : null
@@ -60,7 +56,7 @@ async function getUserOrganization(userId: string) {
     : null
 
   return {
-    role: membership.role as string,
+    role: membership.role,
     isOwner: membership.role === 'owner',
     organization: {
       id: organizationId,

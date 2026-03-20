@@ -19,7 +19,6 @@ import { ArrowLeft, Shield, RefreshCw, AlertTriangle } from 'lucide-react'
 export default function ComplianceDashboardPage() {
   const livemode = useLivemode()
   const activeLedgerGroupId = useActiveLedgerGroupId()
-  const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +59,6 @@ export default function ComplianceDashboardPage() {
       setLoading(false)
       return
     }
-    setLedgerId(id)
 
     try {
       const [overviewRes, patternsRes, summaryRes] = await Promise.all([

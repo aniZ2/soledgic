@@ -26,7 +26,6 @@ export default function BankAccountsPage() {
   const [error, setError] = useState<string | null>(null)
   const [ledgerId, setLedgerId] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
-  const toast = useToast()
 
   const loadData = useCallback(async () => {
     setLoading(true)

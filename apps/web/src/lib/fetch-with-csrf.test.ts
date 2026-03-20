@@ -337,7 +337,7 @@ describe('fetchWithCsrf', () => {
   it('does not set Content-Type when body is null', async () => {
     await fetchWithCsrf('https://external.com/data', {
       method: 'POST',
-      body: null as any,
+      body: null,
     })
 
     const call = fetchSpy.mock.calls[0]

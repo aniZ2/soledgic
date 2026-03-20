@@ -3,8 +3,8 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
-  ArrowUpRight, ArrowDownRight, Plus, ChevronDown,
-  DollarSign, RotateCcw, ArrowRightLeft, FileEdit,
+  ArrowUpRight, ArrowDownRight, Plus,
+  DollarSign, ArrowRightLeft,
   Search, Filter, Download, X
 } from 'lucide-react'
 import { RecordIncomeModal } from '@/components/transactions/record-income-modal'
@@ -36,7 +36,7 @@ const TRANSACTION_TYPES = ['sale', 'income', 'payout', 'platform_payout', 'refun
 const STATUSES = ['completed', 'pending', 'voided', 'reversed', 'draft']
 
 export function TransactionsClient({ ledger, transactions }: TransactionsClientProps) {
-  const [showActionMenu, setShowActionMenu] = useState(false)
+  const [, setShowActionMenu] = useState(false)
   const [incomeModalOpen, setIncomeModalOpen] = useState(false)
   const [refundModalOpen, setRefundModalOpen] = useState(false)
   const [transferModalOpen, setTransferModalOpen] = useState(false)

@@ -1,6 +1,10 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { ACTIVE_ORG_COOKIE } from '@/lib/livemode'
+import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
+
+const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -15,7 +19,11 @@ export async function GET(request: Request) {
 
   // Helper to create redirect with cookies
   // Note: httpOnly must be false (Supabase default) so client SDK can read session
-  const createRedirectWithCookies = (url: string, cookiesToSet: { name: string; value: string; options: CookieOptions }[]) => {
+  const createRedirectWithCookies = (
+    url: string,
+    cookiesToSet: { name: string; value: string; options: CookieOptions }[],
+    activeOrgId: string | null = null,
+  ) => {
     const response = NextResponse.redirect(url, { status: 303 })
     for (const { name, value, options } of cookiesToSet) {
       response.cookies.set(name, value, {
@@ -26,6 +34,19 @@ export async function GET(request: Request) {
         secure: isSecure,
       })
     }
+
+    if (activeOrgId) {
+      response.cookies.set(ACTIVE_ORG_COOKIE, activeOrgId, {
+        path: '/',
+        maxAge: ACTIVE_ORG_COOKIE_MAX_AGE,
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: isSecure,
+      })
+    } else {
+      response.cookies.delete(ACTIVE_ORG_COOKIE)
+    }
+
     return response
   }
 
@@ -60,17 +81,22 @@ export async function GET(request: Request) {
         const { data: { user } } = await supabase.auth.getUser()
 
         if (user) {
-          const { data: membership } = await supabase
-            .from('organization_members')
-            .select('organization_id')
-            .eq('user_id', user.id)
-            .eq('status', 'active')
-            .single()
+          const membership = await resolveActiveOrganizationMembershipForClient(
+            asMembershipQueryClient(supabase),
+            user.id,
+            cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
+          )
 
           // Redirect to onboarding if no active membership, otherwise dashboard
           if (!membership) {
             return createRedirectWithCookies(`${origin}/onboarding`, cookiesToSet)
           }
+
+          return createRedirectWithCookies(
+            `${origin}/dashboard?confirmed=true`,
+            cookiesToSet,
+            membership.organization_id,
+          )
         }
 
         return createRedirectWithCookies(`${origin}/dashboard?confirmed=true`, cookiesToSet)

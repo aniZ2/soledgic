@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationId } from '@/lib/active-org'
 import { createApiHandler } from '@/lib/api-handler'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
@@ -12,19 +13,13 @@ export const GET = createApiHandler(
 
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .single()
-
-    if (!membership) return NextResponse.json({ error: 'No org' }, { status: 404 })
+    const organizationId = await getActiveOrganizationId(user.id)
+    if (!organizationId) return NextResponse.json({ error: 'No org' }, { status: 404 })
 
     const { data: ledgers } = await supabase
       .from('ledgers')
       .select('id, business_name, ledger_group_id')
-      .eq('organization_id', membership.organization_id)
+      .eq('organization_id', organizationId)
       .eq('status', 'active')
       .eq('livemode', livemode)
 

@@ -266,7 +266,11 @@ function ReconciliationTab({ ledgerId }: { ledgerId: string }) {
   }, [ledgerId])
 
   useEffect(() => {
-    void loadData()
+    const timeoutId = setTimeout(() => {
+      void loadData()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [loadData])
 
   const matchRate = matchStats && matchStats.total > 0

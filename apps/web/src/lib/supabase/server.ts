@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -41,26 +42,22 @@ export async function getUserWithOrg() {
   
   if (!user) return null
 
-  // Get user's organization membership
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select(`
-      role,
-      organization:organizations(
-        id,
-        name,
-        slug,
-        plan,
-        limits
-      )
-    `)
-    .eq('user_id', user.id)
-    .single()
+  const membership = await getActiveOrganizationMembership(user.id)
+
+  let organization: Record<string, unknown> | null = null
+  if (membership) {
+    const { data } = await supabase
+      .from('organizations')
+      .select('id, name, slug, plan, limits')
+      .eq('id', membership.organization_id)
+      .maybeSingle()
+    organization = data
+  }
 
   return {
     ...user,
     membership: membership || null,
-    organization: membership?.organization || null,
+    organization,
     role: membership?.role || null,
   }
 }

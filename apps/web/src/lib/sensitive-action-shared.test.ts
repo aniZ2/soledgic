@@ -73,8 +73,9 @@ describe('isSensitiveActionChallenge', () => {
   })
 
   it('returns false when error is missing', () => {
-    const { error, ...rest } = validChallenge
-    expect(isSensitiveActionChallenge(rest)).toBe(false)
+    const invalidChallenge = { ...validChallenge }
+    delete invalidChallenge.error
+    expect(isSensitiveActionChallenge(invalidChallenge)).toBe(false)
   })
 
   it('returns false for invalid error_code', () => {
@@ -90,8 +91,9 @@ describe('isSensitiveActionChallenge', () => {
   })
 
   it('returns false when verification is missing', () => {
-    const { verification, ...rest } = validChallenge
-    expect(isSensitiveActionChallenge(rest)).toBe(false)
+    const invalidChallenge = { ...validChallenge }
+    delete invalidChallenge.verification
+    expect(isSensitiveActionChallenge(invalidChallenge)).toBe(false)
   })
 
   it('returns false when verification has wrong requires_mfa type', () => {

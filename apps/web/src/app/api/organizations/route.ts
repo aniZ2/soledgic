@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getActiveOrganizationMembership } from '@/lib/active-org'
 import { NextResponse } from 'next/server'
 import { createApiHandler, parseJsonBody } from '@/lib/api-handler'
 import { requireSensitiveActionAuth } from '@/lib/sensitive-action-server'
@@ -60,13 +61,7 @@ export const PATCH = createApiHandler(
     }
 
     // Get user's membership
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id, role')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json(
         { error: 'No organization membership found' },
@@ -148,13 +143,7 @@ export const DELETE = createApiHandler(
     const supabase = await createClient()
 
     // Get user's membership
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('organization_id, role')
-      .eq('user_id', user!.id)
-      .eq('status', 'active')
-      .single()
-
+    const membership = await getActiveOrganizationMembership(user!.id)
     if (!membership) {
       return NextResponse.json(
         { error: 'No organization membership found' },
