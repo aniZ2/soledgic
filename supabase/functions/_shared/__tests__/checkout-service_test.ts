@@ -218,6 +218,55 @@ Deno.test('checkout: ignores metadata state when collecting sales tax', async ()
   assertEquals(result.body.error_code, 'missing_customer_state')
 })
 
+Deno.test('checkout: rejects taxed direct-charge flow and requires hosted checkout', async () => {
+  const supabase = {
+    from(table: string) {
+      if (table === 'product_splits') {
+        return {
+          select() { return this },
+          eq() { return this },
+          single() { return Promise.resolve({ data: null, error: { code: 'PGRST116' } }) },
+        }
+      }
+      if (table === 'accounts') {
+        return {
+          select() { return this },
+          eq() { return this },
+          maybeSingle() {
+            return Promise.resolve({
+              data: { id: 'acct_1', is_active: true, metadata: {} },
+              error: null,
+            })
+          },
+          single() {
+            return Promise.resolve({ data: { metadata: {} }, error: null })
+          },
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    },
+  } as any
+
+  const result = await createCheckoutResponse(req, supabase, ledger, {
+    amount: 1000,
+    participant_id: 'creator1',
+    collect_sales_tax: true,
+    tax_category: 'digital_goods',
+    customer_country: 'US',
+    customer_state: 'MD',
+    payment_method_id: 'pm_direct_123',
+    idempotency_key: 'taxed-direct-charge-1',
+  }, requestId, {
+    createPaymentIntent() {
+      throw new Error('provider should not be invoked')
+    },
+  } as any)
+
+  assertEquals(result.status, 400)
+  assertEquals(result.body.error_code, 'taxed_direct_charge_not_allowed')
+  assertEquals(result.body.tax_source, 'hosted_checkout_required')
+})
+
 Deno.test('checkout: rejects missing participant_id (empty string)', async () => {
   const result = await createCheckoutResponse(req, {} as any, ledger, {
     amount: 5000,

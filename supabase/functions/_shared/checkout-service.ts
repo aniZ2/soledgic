@@ -275,6 +275,17 @@ export async function createCheckoutResponse(
     return resourceError('customer_state is required when collect_sales_tax is true for digital goods', 400, {}, 'missing_customer_state')
   }
 
+  if (paymentMethodId && collectSalesTax) {
+    return resourceError(
+      'Taxed checkout flows must use hosted checkout so billing address can be verified before charging',
+      400,
+      {
+        tax_source: 'hosted_checkout_required',
+      },
+      'taxed_direct_charge_not_allowed',
+    )
+  }
+
   const subtotalAmount = requestedAmount
   const salesTaxAmount = shouldCollectMarylandDigitalGoodsTax(taxCategory, collectSalesTax, customerCountry, customerState)
     ? Math.round(subtotalAmount * (MARYLAND_DIGITAL_GOODS_TAX_RATE_BPS / 10000))
