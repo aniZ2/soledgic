@@ -8,6 +8,7 @@ describe('public-url', () => {
     // Clear relevant env vars
     delete process.env.NEXT_PUBLIC_APP_URL
     delete process.env.NEXT_PUBLIC_SITE_URL
+    vi.unstubAllGlobals()
   })
 
   afterEach(() => {
@@ -21,6 +22,12 @@ describe('public-url', () => {
   describe('getPublicAppUrl', () => {
     it('uses NEXT_PUBLIC_APP_URL when set', async () => {
       process.env.NEXT_PUBLIC_APP_URL = 'https://custom.example.com/'
+      const { getPublicAppUrl } = await importModule()
+      expect(getPublicAppUrl()).toBe('https://custom.example.com')
+    })
+
+    it('trims surrounding whitespace from configured URL', async () => {
+      process.env.NEXT_PUBLIC_APP_URL = '  https://custom.example.com/\n'
       const { getPublicAppUrl } = await importModule()
       expect(getPublicAppUrl()).toBe('https://custom.example.com')
     })
@@ -49,6 +56,18 @@ describe('public-url', () => {
       const { getPublicAppUrl } = await importModule()
       // When typeof window === 'undefined' and no env vars, falls to default
       expect(getPublicAppUrl()).toBe('http://localhost:3000')
+    })
+
+    it('prefers the current browser origin over configured env values', async () => {
+      process.env.NEXT_PUBLIC_APP_URL = 'https://configured.example.com'
+      vi.stubGlobal('window', {
+        location: {
+          origin: 'https://runtime.example.com',
+        },
+      })
+
+      const { getPublicAppUrl } = await importModule()
+      expect(getPublicAppUrl()).toBe('https://runtime.example.com')
     })
   })
 

@@ -126,6 +126,11 @@ export async function GET(request: Request) {
 
       return response
     }
+
+    console.error('Auth callback exchange failed:', error.message)
+    const includeDebug = process.env.AUTH_DEBUG_LOGS === 'true'
+    const authError = includeDebug ? error.message : 'auth_callback_error'
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(authError)}`)
   }
 
   // Return to login with error
