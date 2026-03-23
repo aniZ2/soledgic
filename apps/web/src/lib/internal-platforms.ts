@@ -1,6 +1,12 @@
 import type { User } from '@supabase/supabase-js'
 
 const DEFAULT_PRIMARY_OWNER_EMAIL = 'soledgic@gmail.com'
+const PRIMARY_OWNER_HOME_PATH = '/dashboard/admin/platform-payouts'
+const PRIMARY_OWNER_CUSTOMER_ENTRY_PATHS = new Set([
+  '/dashboard',
+  '/onboarding',
+  '/connect',
+])
 
 function parseCsvEnv(value: string | undefined): string[] {
   if (!value) return []
@@ -56,6 +62,22 @@ export function isPrimarySoledgicOwnerEmail(email: string | null | undefined): b
   const normalized = (email || '').trim().toLowerCase()
   if (!normalized) return false
   return normalized === getPrimaryOwnerEmail()
+}
+
+export function getPrimaryOwnerHomePath(): string {
+  return PRIMARY_OWNER_HOME_PATH
+}
+
+export function resolvePrimaryOwnerAppEntryPath(path: string, email: string | null | undefined): string {
+  if (!isPrimarySoledgicOwnerEmail(email)) {
+    return path
+  }
+
+  if (PRIMARY_OWNER_CUSTOMER_ENTRY_PATHS.has(path)) {
+    return PRIMARY_OWNER_HOME_PATH
+  }
+
+  return path
 }
 
 export function isPlatformOperatorUser(user: User | null | undefined): boolean {

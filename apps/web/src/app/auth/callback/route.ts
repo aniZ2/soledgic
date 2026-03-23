@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { ACTIVE_ORG_COOKIE } from '@/lib/livemode'
 import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
 import { sendWelcomeEmail } from '@/lib/email'
+import { resolvePrimaryOwnerAppEntryPath } from '@/lib/internal-platforms'
 import { maybeProvisionPrimaryOwnerWorkspace } from '@/lib/platform-owner-bootstrap'
 
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
@@ -102,6 +103,8 @@ export async function GET(request: Request) {
           }).catch(console.error)
 
           redirectUrl = `${origin}/onboarding`
+        } else {
+          redirectUrl = `${origin}${resolvePrimaryOwnerAppEntryPath(redirect, user.email)}`
         }
       }
 

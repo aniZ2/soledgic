@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { ACTIVE_ORG_COOKIE } from '@/lib/livemode'
 import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
+import { resolvePrimaryOwnerAppEntryPath } from '@/lib/internal-platforms'
 import { maybeProvisionPrimaryOwnerWorkspace } from '@/lib/platform-owner-bootstrap'
 
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
@@ -102,7 +103,9 @@ export async function POST(request: Request) {
     }
   }
 
-  const finalRedirect = membership ? redirectTo : '/onboarding'
+  const finalRedirect = membership
+    ? resolvePrimaryOwnerAppEntryPath(redirectTo, data.user.email)
+    : '/onboarding'
 
   const response = NextResponse.redirect(`${origin}${finalRedirect}`, { status: 303 })
 

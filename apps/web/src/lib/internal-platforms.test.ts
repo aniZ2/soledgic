@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  getPrimaryOwnerHomePath,
   isInternalPlatformOperatorEmail,
   isPrimarySoledgicOwnerEmail,
+  resolvePrimaryOwnerAppEntryPath,
 } from './internal-platforms'
 
 const originalEnv = { ...process.env }
@@ -34,5 +36,19 @@ describe('internal platform owner helpers', () => {
 
     expect(isInternalPlatformOperatorEmail('ops@soledgic.com')).toBe(true)
     expect(isInternalPlatformOperatorEmail('soledgic@gmail.com')).toBe(true)
+  })
+
+  it('routes the primary owner away from customer entry points', () => {
+    expect(resolvePrimaryOwnerAppEntryPath('/dashboard', 'soledgic@gmail.com')).toBe(getPrimaryOwnerHomePath())
+    expect(resolvePrimaryOwnerAppEntryPath('/onboarding', 'soledgic@gmail.com')).toBe(getPrimaryOwnerHomePath())
+    expect(resolvePrimaryOwnerAppEntryPath('/connect', 'soledgic@gmail.com')).toBe(getPrimaryOwnerHomePath())
+  })
+
+  it('preserves explicit deep links for the primary owner', () => {
+    expect(resolvePrimaryOwnerAppEntryPath('/dashboard/admin/risk', 'soledgic@gmail.com')).toBe('/dashboard/admin/risk')
+  })
+
+  it('does not rewrite paths for non-primary users', () => {
+    expect(resolvePrimaryOwnerAppEntryPath('/dashboard', 'ops@soledgic.com')).toBe('/dashboard')
   })
 })

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { getPrimaryOwnerHomePath } from '@/lib/internal-platforms'
 import { createClient } from '@/lib/supabase/server'
 import { maybeProvisionPrimaryOwnerWorkspace } from '@/lib/platform-owner-bootstrap'
 import OnboardingForm from './onboarding-form'
@@ -14,7 +15,7 @@ export default async function OnboardingPage() {
     })
 
     if (provisioned) {
-      redirect('/dashboard')
+      redirect(getPrimaryOwnerHomePath())
     }
   }
 

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { getActiveOrganizationId } from '@/lib/active-org'
+import { getPrimaryOwnerHomePath, isPrimarySoledgicOwnerEmail } from '@/lib/internal-platforms'
 import { createServiceRoleClient } from '@/lib/supabase/service'
 import { ConnectWizardClient } from './connect-wizard-client'
 
@@ -13,6 +14,7 @@ export default async function ConnectPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  if (isPrimarySoledgicOwnerEmail(user.email)) redirect(getPrimaryOwnerHomePath())
   const organizationId = await getActiveOrganizationId(user.id)
   if (!organizationId) redirect('/onboarding')
 

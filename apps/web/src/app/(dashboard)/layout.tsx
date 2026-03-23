@@ -12,7 +12,8 @@ import { NotificationBell } from '@/components/notifications/notification-bell'
 import { MobileNav } from '@/components/mobile-nav'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { dashboardNavigation, type NavSection } from '@/lib/navigation'
-import { isPlatformOperatorUser } from '@/lib/internal-platforms'
+import { isPlatformOperatorUser, isPrimarySoledgicOwnerEmail } from '@/lib/internal-platforms'
+import { maybeProvisionPrimaryOwnerWorkspace } from '@/lib/platform-owner-bootstrap'
 
 interface OrganizationSummary {
   id: string
@@ -86,7 +87,21 @@ export default async function DashboardLayout({
   }
 
   // Get user's active organization membership (multi-org safe)
-  const activeMembership = await resolveActiveMembership(user.id)
+  let activeMembership = await resolveActiveMembership(user.id)
+
+  if (!activeMembership && isPrimarySoledgicOwnerEmail(user.email)) {
+    const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
+      id: user.id,
+      email: user.email,
+    })
+
+    if (provisioned) {
+      activeMembership = {
+        organization_id: provisioned.organizationId,
+        role: 'owner',
+      }
+    }
+  }
 
   let membership: { role: string; organization: OrganizationSummary } | null = null
   if (activeMembership) {

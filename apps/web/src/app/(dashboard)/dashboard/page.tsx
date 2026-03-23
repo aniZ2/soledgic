@@ -12,6 +12,7 @@ import {
 import { getLivemode, getActiveLedgerGroupId } from '@/lib/livemode-server'
 import { pickActiveLedger } from '@/lib/active-ledger'
 import { getActiveOrganizationId } from '@/lib/active-org'
+import { getPrimaryOwnerHomePath, isPrimarySoledgicOwnerEmail } from '@/lib/internal-platforms'
 
 interface RecentTransaction {
   id: string
@@ -50,6 +51,7 @@ export default async function DashboardPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  if (isPrimarySoledgicOwnerEmail(user.email)) redirect(getPrimaryOwnerHomePath())
 
   const orgId = await getActiveOrganizationId(user.id)
   const membership = orgId ? { organization_id: orgId } : null
