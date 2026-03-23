@@ -1,5 +1,7 @@
 import type { User } from '@supabase/supabase-js'
 
+const DEFAULT_PRIMARY_OWNER_EMAIL = 'soledgic@gmail.com'
+
 function parseCsvEnv(value: string | undefined): string[] {
   if (!value) return []
   return value
@@ -8,12 +10,25 @@ function parseCsvEnv(value: string | undefined): string[] {
     .filter(Boolean)
 }
 
+function getPrimaryOwnerEmail(): string {
+  return (
+    process.env.SOLEDGIC_PRIMARY_OWNER_EMAIL ||
+    process.env.PRIMARY_PLATFORM_OWNER_EMAIL ||
+    DEFAULT_PRIMARY_OWNER_EMAIL
+  )
+    .trim()
+    .toLowerCase()
+}
+
 function getInternalOperatorEmails(): string[] {
-  return parseCsvEnv(
+  return Array.from(new Set([
+    getPrimaryOwnerEmail(),
+    ...parseCsvEnv(
     process.env.SOLEDGIC_INTERNAL_OWNER_EMAILS ||
       process.env.INTERNAL_PLATFORM_OWNER_EMAILS ||
       process.env.PLATFORM_ADMIN_EMAILS,
-  )
+    ),
+  ]))
 }
 
 function getInternalOperatorDomains(): string[] {
@@ -35,6 +50,12 @@ export function isInternalPlatformOperatorEmail(email: string | null | undefined
   if (!domain) return false
 
   return getInternalOperatorDomains().includes(domain)
+}
+
+export function isPrimarySoledgicOwnerEmail(email: string | null | undefined): boolean {
+  const normalized = (email || '').trim().toLowerCase()
+  if (!normalized) return false
+  return normalized === getPrimaryOwnerEmail()
 }
 
 export function isPlatformOperatorUser(user: User | null | undefined): boolean {

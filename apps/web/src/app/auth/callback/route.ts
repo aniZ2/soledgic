@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { ACTIVE_ORG_COOKIE } from '@/lib/livemode'
 import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
 import { sendWelcomeEmail } from '@/lib/email'
+import { maybeProvisionPrimaryOwnerWorkspace } from '@/lib/platform-owner-bootstrap'
 
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
@@ -68,13 +69,27 @@ export async function GET(request: Request) {
 
       let redirectUrl = `${origin}${redirect}`
 
-      const membership = user
+      let membership = user
         ? await resolveActiveOrganizationMembershipForClient(
             asMembershipQueryClient(supabase),
             user.id,
             cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
           )
         : null
+
+      if (user && !membership) {
+        const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
+          id: user.id,
+          email: user.email,
+        })
+
+        if (provisioned) {
+          membership = {
+            organization_id: provisioned.organizationId,
+            role: 'owner',
+          }
+        }
+      }
 
       if (user) {
         // If no active membership, this is a new user - send welcome email

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { ACTIVE_ORG_COOKIE } from '@/lib/livemode'
 import { asMembershipQueryClient, resolveActiveOrganizationMembershipForClient } from '@/lib/active-org'
+import { maybeProvisionPrimaryOwnerWorkspace } from '@/lib/platform-owner-bootstrap'
 
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
@@ -81,11 +82,25 @@ export async function POST(request: Request) {
   }
 
   // Check if user has an active organization membership
-  const membership = await resolveActiveOrganizationMembershipForClient(
+  let membership = await resolveActiveOrganizationMembershipForClient(
     asMembershipQueryClient(supabase),
     data.user.id,
     cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
   )
+
+  if (!membership) {
+    const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
+      id: data.user.id,
+      email: data.user.email,
+    })
+
+    if (provisioned) {
+      membership = {
+        organization_id: provisioned.organizationId,
+        role: 'owner',
+      }
+    }
+  }
 
   const finalRedirect = membership ? redirectTo : '/onboarding'
 
