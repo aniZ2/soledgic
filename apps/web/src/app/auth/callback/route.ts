@@ -65,66 +65,75 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error) {
-      // Check if user has an active organization membership
-      const { data: { user } } = await supabase.auth.getUser()
+      try {
+        // Check if user has an active organization membership
+        const { data: { user } } = await supabase.auth.getUser()
 
-      let redirectUrl = `${origin}${redirect}`
+        let redirectUrl = `${origin}${redirect}`
 
-      let membership = user
-        ? await resolveActiveOrganizationMembershipForClient(
-            asMembershipQueryClient(supabase),
-            user.id,
-            cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
-          )
-        : null
+        let membership = user
+          ? await resolveActiveOrganizationMembershipForClient(
+              asMembershipQueryClient(supabase),
+              user.id,
+              cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
+            )
+          : null
 
-      if (user && !membership) {
-        const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
-          id: user.id,
-          email: user.email,
-        })
+        if (user && !membership) {
+          const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
+            id: user.id,
+            email: user.email,
+          })
 
-        if (provisioned) {
-          membership = {
-            organization_id: provisioned.organizationId,
-            role: 'owner',
+          if (provisioned) {
+            membership = {
+              organization_id: provisioned.organizationId,
+              role: 'owner',
+            }
           }
         }
-      }
 
-      if (user) {
-        // If no active membership, this is a new user - send welcome email
-        if (!membership) {
-          // Send welcome email (non-blocking)
-          const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'there'
-          sendWelcomeEmail({
-            to: user.email!,
-            name: userName,
-          }).catch(console.error)
+        if (user) {
+          // If no active membership, this is a new user - send welcome email
+          if (!membership) {
+            // Send welcome email (non-blocking)
+            const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'there'
+            sendWelcomeEmail({
+              to: user.email!,
+              name: userName,
+            }).catch(console.error)
 
-          redirectUrl = `${origin}/onboarding`
-        } else {
-          redirectUrl = `${origin}${resolvePrimaryOwnerAppEntryPath(redirect, user.email)}`
+            redirectUrl = `${origin}/onboarding`
+          } else {
+            redirectUrl = `${origin}${resolvePrimaryOwnerAppEntryPath(redirect, user.email)}`
+          }
         }
+
+        const response = NextResponse.redirect(redirectUrl, { status: 303 })
+
+        // Set cookies directly on the response
+        // Note: httpOnly must be false (Supabase default) so client SDK can read session
+        for (const { name, value, options } of cookiesToSet) {
+          response.cookies.set(name, value, {
+            path: options.path ?? '/',
+            maxAge: options.maxAge,
+            httpOnly: options.httpOnly ?? false,
+            sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
+            secure: isSecure,
+          })
+        }
+
+        setActiveOrgCookie(response, membership?.organization_id ?? null, isSecure)
+
+        return response
+      } catch (authSetupError) {
+        console.error('Auth callback post-exchange setup failed:', authSetupError)
+        const includeDebug = process.env.AUTH_DEBUG_LOGS === 'true'
+        const message = authSetupError instanceof Error ? authSetupError.message : 'auth_setup_failed'
+        return NextResponse.redirect(
+          `${origin}/login?error=${encodeURIComponent(includeDebug ? message : 'auth_setup_failed')}`
+        )
       }
-
-      const response = NextResponse.redirect(redirectUrl, { status: 303 })
-
-      // Set cookies directly on the response
-      // Note: httpOnly must be false (Supabase default) so client SDK can read session
-      for (const { name, value, options } of cookiesToSet) {
-        response.cookies.set(name, value, {
-          path: options.path ?? '/',
-          maxAge: options.maxAge,
-          httpOnly: options.httpOnly ?? false,
-          sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
-          secure: isSecure,
-        })
-      }
-
-      setActiveOrgCookie(response, membership?.organization_id ?? null, isSecure)
-
-      return response
     }
 
     console.error('Auth callback exchange failed:', error.message)

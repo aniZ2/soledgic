@@ -82,45 +82,55 @@ export async function POST(request: Request) {
     )
   }
 
-  // Check if user has an active organization membership
-  let membership = await resolveActiveOrganizationMembershipForClient(
-    asMembershipQueryClient(supabase),
-    data.user.id,
-    cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
-  )
+  try {
+    // Check if user has an active organization membership
+    let membership = await resolveActiveOrganizationMembershipForClient(
+      asMembershipQueryClient(supabase),
+      data.user.id,
+      cookieStore.get(ACTIVE_ORG_COOKIE)?.value ?? null,
+    )
 
-  if (!membership) {
-    const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
-      id: data.user.id,
-      email: data.user.email,
-    })
+    if (!membership) {
+      const provisioned = await maybeProvisionPrimaryOwnerWorkspace({
+        id: data.user.id,
+        email: data.user.email,
+      })
 
-    if (provisioned) {
-      membership = {
-        organization_id: provisioned.organizationId,
-        role: 'owner',
+      if (provisioned) {
+        membership = {
+          organization_id: provisioned.organizationId,
+          role: 'owner',
+        }
       }
     }
+
+    const finalRedirect = membership
+      ? resolvePrimaryOwnerAppEntryPath(redirectTo, data.user.email)
+      : '/onboarding'
+
+    const response = NextResponse.redirect(`${origin}${finalRedirect}`, { status: 303 })
+
+    // Set cookies on the redirect response
+    for (const { name, value, options } of cookiesToSet) {
+      response.cookies.set(name, value, {
+        path: options.path ?? '/',
+        maxAge: options.maxAge,
+        httpOnly: options.httpOnly ?? false,
+        sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
+        secure: isSecure,
+      })
+    }
+
+    setActiveOrgCookie(response, membership?.organization_id ?? null, isSecure)
+
+    return response
+  } catch (error) {
+    console.error('Sign-in post-auth setup failed:', error)
+    const includeDebug = process.env.AUTH_DEBUG_LOGS === 'true'
+    const message = error instanceof Error ? error.message : 'auth_setup_failed'
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent(includeDebug ? message : 'auth_setup_failed')}&redirect=${encodeURIComponent(redirectTo)}`,
+      { status: 303 }
+    )
   }
-
-  const finalRedirect = membership
-    ? resolvePrimaryOwnerAppEntryPath(redirectTo, data.user.email)
-    : '/onboarding'
-
-  const response = NextResponse.redirect(`${origin}${finalRedirect}`, { status: 303 })
-
-  // Set cookies on the redirect response
-  for (const { name, value, options } of cookiesToSet) {
-    response.cookies.set(name, value, {
-      path: options.path ?? '/',
-      maxAge: options.maxAge,
-      httpOnly: options.httpOnly ?? false,
-      sameSite: (options.sameSite as 'lax' | 'strict' | 'none') ?? 'lax',
-      secure: isSecure,
-    })
-  }
-
-  setActiveOrgCookie(response, membership?.organization_id ?? null, isSecure)
-
-  return response
 }
